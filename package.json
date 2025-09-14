@@ -1,0 +1,23 @@
+{
+  "name": "prescribe-patient-management",
+  "version": "1.0.0",
+  "description": "Patient Management System with Svelte and Firebase",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.0.0",
+    "svelte": "^4.2.0",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^6.5.0",
+    "bootstrap": "^5.3.2",
+    "firebase": "^12.2.1",
+    "jspdf": "^2.5.1",
+    "openai": "^5.20.2"
+  }
+}

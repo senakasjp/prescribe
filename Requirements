@@ -1,0 +1,9 @@
+I need a patient management system to implement based on Svelte and firebase.
+A doctor can register for the system
+One doctor has one or meny pations
+A patient have one or more illness
+A patient can be prescripted with one or more medication
+A patient has a symptoms and medication hostory
+Doctor and register/select a patient
+Under patient symptoms and prescriptions can be entered
+Prescription can be printed as PDF 

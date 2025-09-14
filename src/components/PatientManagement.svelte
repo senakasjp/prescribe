@@ -1,0 +1,508 @@
+<script>
+  import { onMount } from 'svelte'
+  import jsonStorage from '../services/jsonStorage.js'
+  import PatientForm from './PatientForm.svelte'
+  import PatientDetails from './PatientDetails.svelte'
+  import PatientList from './PatientList.svelte'
+  import MedicalSummary from './MedicalSummary.svelte'
+  
+  export let user
+  
+  let patients = []
+  let selectedPatient = null
+  let showPatientForm = false
+  let loading = true
+  let searchQuery = ''
+  let filteredPatients = []
+  
+  // Medical data for selected patient
+  let illnesses = []
+  let prescriptions = []
+  let symptoms = []
+  
+  // Notes visibility state
+  let showSymptomsNotes = false
+  let showIllnessesNotes = false
+  let showPrescriptionsNotes = false
+  
+  // Medical summary tab state
+  let activeMedicalTab = 'prescriptions'
+  
+  // Prescription state
+  let currentPrescription = []
+  
+  // Refresh trigger for right side updates
+  let refreshTrigger = 0
+  
+  // Reactive statements to ensure component updates when data changes
+  $: if (selectedPatient) {
+    loadMedicalData(selectedPatient.id)
+  }
+  
+  $: if (symptoms) {
+    symptoms = symptoms || []
+  }
+  
+  $: if (illnesses) {
+    illnesses = illnesses || []
+  }
+  
+  $: if (prescriptions) {
+    prescriptions = prescriptions || []
+  }
+  
+  // Reactive tab counts
+  $: symptomsCount = symptoms?.length || 0
+  $: illnessesCount = illnesses?.length || 0
+  $: prescriptionsCount = prescriptions?.length || 0
+  
+  // Load patients from storage
+  const loadPatients = async () => {
+    try {
+      loading = true
+      patients = await jsonStorage.getPatients()
+      filteredPatients = [...patients]
+      console.log('Loaded patients:', patients.length)
+    } catch (error) {
+      console.error('Error loading patients:', error)
+      patients = []
+      filteredPatients = []
+    } finally {
+      loading = false
+    }
+  }
+  
+  // Search patients
+  const searchPatients = () => {
+    if (!searchQuery.trim()) {
+      filteredPatients = [...patients]
+      return
+    }
+    
+    const query = searchQuery.toLowerCase().trim()
+    filteredPatients = patients.filter(patient => {
+      const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase()
+      return fullName.includes(query) || 
+             patient.firstName.toLowerCase().includes(query) || 
+             patient.lastName.toLowerCase().includes(query) || 
+             patient.idNumber.toLowerCase().includes(query) || 
+             patient.email.toLowerCase().includes(query) || 
+             (patient.phone && patient.phone.toLowerCase().includes(query)) ||
+             (patient.dateOfBirth && patient.dateOfBirth.includes(query))
+    }).slice(0, 20) // Limit to 20 results for performance
+  }
+  
+  // Reactive statement to trigger search when query changes
+  $: if (searchQuery !== undefined) {
+    searchPatients()
+  }
+  
+  // Clear search
+  const clearSearch = () => {
+    searchQuery = ''
+    filteredPatients = [...patients]
+    // If a patient is selected and we're searching, deselect them
+    if (selectedPatient) {
+      selectedPatient = null
+      illnesses = []
+      prescriptions = []
+      symptoms = []
+    }
+  }
+  
+  // Add patient
+  const addPatient = async (event) => {
+    const patientData = event.detail
+    try {
+      if (!user) {
+        console.error('No user found for adding patient')
+        return
+      }
+      
+      // Get doctor ID from user object (handle both Firebase and localStorage formats)
+      const doctorId = user.uid || user.id || user.email
+      
+      if (!doctorId) {
+        console.error('No valid doctor ID found in user object:', user)
+        return
+      }
+      
+      console.log('Adding patient with doctor ID:', doctorId)
+      console.log('Patient data:', patientData)
+      
+      const newPatient = await jsonStorage.createPatient({
+        ...patientData,
+        doctorId: doctorId
+      })
+      
+      console.log('Patient created successfully:', newPatient)
+      
+      // Reload patients to ensure we get the latest data
+      await loadPatients()
+      
+      showPatientForm = false
+    } catch (error) {
+      console.error('Error adding patient:', error)
+    }
+  }
+  
+  // Handle data updates from PatientDetails
+  const handleDataUpdated = async (event) => {
+    const { type, data } = event.detail
+    console.log('🔄 Data updated in PatientDetails:', type, data)
+    
+    // Refresh medical data to update MedicalSummary
+    if (selectedPatient) {
+      await loadMedicalData(selectedPatient.id)
+    }
+  }
+  
+  // Load medical data for selected patient
+  const loadMedicalData = async (patientId) => {
+    try {
+      console.log('Loading medical data for patient:', patientId)
+      
+      // Load illnesses
+      illnesses = await jsonStorage.getIllnessesByPatientId(patientId) || []
+      console.log('Loaded illnesses:', illnesses.length)
+      
+      // Load prescriptions
+      prescriptions = await jsonStorage.getMedicationsByPatientId(patientId) || []
+      console.log('Loaded prescriptions:', prescriptions.length)
+      
+      // Load symptoms
+      symptoms = await jsonStorage.getSymptomsByPatientId(patientId) || []
+      console.log('Loaded symptoms:', symptoms.length)
+      
+    } catch (error) {
+      console.error('Error loading medical data:', error)
+      // Ensure arrays are always defined
+      illnesses = []
+      prescriptions = []
+      symptoms = []
+    }
+  }
+
+  // Select a patient
+  const selectPatient = (patient) => {
+    selectedPatient = patient
+    if (patient) {
+      loadMedicalData(patient.id)
+    } else {
+      // Clear medical data when no patient selected
+      illnesses = []
+      prescriptions = []
+      symptoms = []
+    }
+  }
+  
+  // Show add patient form
+  const showAddPatientForm = () => {
+    showPatientForm = true
+    selectedPatient = null
+    // Clear medical data when showing add form
+    illnesses = []
+    prescriptions = []
+    symptoms = []
+  }
+  
+  // Toggle notes visibility
+  const toggleSymptomsNotes = () => {
+    showSymptomsNotes = !showSymptomsNotes
+  }
+  
+  const toggleIllnessesNotes = () => {
+    showIllnessesNotes = !showIllnessesNotes
+  }
+  
+  const togglePrescriptionsNotes = () => {
+    showPrescriptionsNotes = !showPrescriptionsNotes
+  }
+  
+  // Check if notes are available
+  const hasNotes = (items, field = 'notes') => {
+    return items && items.some(item => item[field] && item[field].trim())
+  }
+  
+  // Add medication to current prescription
+  const addToPrescription = async (medication) => {
+    try {
+      // Create a new medication object with today's date
+      const todayMedication = {
+        ...medication,
+        createdAt: new Date().toISOString(),
+        prescriptionDate: new Date().toISOString()
+      }
+      
+      // Add to the prescriptions list for the selected patient
+      const newPrescription = await jsonStorage.createMedication({
+        ...todayMedication,
+        patientId: selectedPatient.id
+      })
+      
+      // Update the prescriptions array to trigger UI update
+      prescriptions = [...prescriptions, newPrescription]
+      
+      // Increment refresh trigger to update right side
+      refreshTrigger++
+      
+      console.log('Added to prescriptions for today:', medication.name)
+    } catch (error) {
+      console.error('Error adding prescription:', error)
+    }
+  }
+  
+  // Check if medication is already in prescription
+  const isInPrescription = (medicationId) => {
+    return prescriptions.some(item => item.id === medicationId)
+  }
+  
+  // Group items by date
+  const groupByDate = (items) => {
+    if (!items || !Array.isArray(items)) return []
+    
+    const grouped = items.reduce((groups, item) => {
+      const date = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'No date'
+      if (!groups[date]) {
+        groups[date] = []
+      }
+      groups[date].push(item)
+      return groups
+    }, {})
+    
+    return Object.entries(grouped)
+      .map(([date, items]) => ({ date, items }))
+      .sort((a, b) => new Date(b.items[0]?.createdAt || 0) - new Date(a.items[0]?.createdAt || 0))
+  }
+  
+  onMount(() => {
+    loadPatients()
+  })
+</script>
+
+<div class="row g-3">
+  <!-- Patient List Sidebar -->
+  <div class="col-12 col-lg-4">
+    <!-- Patients Card -->
+    <div class="card mb-3">
+      <!-- Fixed Header -->
+      <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="mb-0">
+            <i class="fas fa-users me-2"></i>Patients
+          </h5>
+          <button 
+            class="btn btn-primary btn-sm" 
+            on:click={showAddPatientForm}
+          >
+            <i class="fas fa-plus me-1"></i>
+            <span class="d-none d-sm-inline">Add Patient</span>
+          </button>
+        </div>
+        
+        <!-- Search Bar -->
+        <div class="input-group">
+          <span class="input-group-text">
+            <i class="fas fa-search"></i>
+          </span>
+          <input 
+            type="text" 
+            class="form-control" 
+            placeholder="Search by name, ID, email, phone, or DOB..."
+            bind:value={searchQuery}
+          >
+          {#if searchQuery}
+            <button 
+              class="btn btn-outline-secondary" 
+              type="button" 
+              on:click={clearSearch}
+              title="Clear search"
+            >
+              <i class="fas fa-times"></i>
+            </button>
+          {/if}
+        </div>
+        
+        {#if searchQuery}
+          <div class="mt-2">
+            <small class="text-muted">
+              <i class="fas fa-info-circle me-1"></i>
+              Showing {filteredPatients.length} of {patients.filter(p => {
+                const query = searchQuery.toLowerCase().trim()
+                const fullName = `${p.firstName} ${p.lastName}`.toLowerCase()
+                return fullName.includes(query) || 
+                       p.firstName.toLowerCase().includes(query) || 
+                       p.lastName.toLowerCase().includes(query) || 
+                       p.idNumber.toLowerCase().includes(query) || 
+                       p.email.toLowerCase().includes(query) || 
+                       (p.phone && p.phone.toLowerCase().includes(query)) ||
+                       (p.dateOfBirth && p.dateOfBirth.includes(query))
+              }).length} patient{filteredPatients.length !== 1 ? 's' : ''} matching "{searchQuery}"
+              {#if patients.filter(p => {
+                const query = searchQuery.toLowerCase().trim()
+                const fullName = `${p.firstName} ${p.lastName}`.toLowerCase()
+                return fullName.includes(query) || 
+                       p.firstName.toLowerCase().includes(query) || 
+                       p.lastName.toLowerCase().includes(query) || 
+                       p.idNumber.toLowerCase().includes(query) || 
+                       p.email.toLowerCase().includes(query) || 
+                       (p.phone && p.phone.toLowerCase().includes(query)) ||
+                       (p.dateOfBirth && p.dateOfBirth.includes(query))
+              }).length > 20}
+                <br><small class="text-warning">
+                  <i class="fas fa-exclamation-triangle me-1"></i>
+                  Showing first 20 results. Refine your search for more specific results.
+                </small>
+              {/if}
+            </small>
+          </div>
+        {/if}
+      </div>
+      
+      <!-- Scrollable Content Area -->
+      <div class="card-body p-0" style="overflow-y: auto; max-height: 300px;">
+        {#if searchQuery}
+          {#if loading}
+            <div class="text-center p-3">
+              <i class="fas fa-spinner fa-spin fa-2x text-primary mb-2"></i>
+              <p class="text-muted">Loading patients...</p>
+            </div>
+          {:else if filteredPatients.length === 0}
+            <div class="text-center p-3 text-muted">
+              <i class="fas fa-search fa-2x mb-2"></i>
+              <p>No patients found matching "{searchQuery}"</p>
+              <button class="btn btn-outline-primary btn-sm" on:click={clearSearch}>
+                <i class="fas fa-times me-1"></i>Clear Search
+              </button>
+            </div>
+          {:else}
+            <div class="list-group list-group-flush">
+              {#each filteredPatients as patient}
+                <button 
+                  class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
+                  on:click={() => selectPatient(patient)}
+                >
+                  <div class="d-flex w-100 justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                      <h6 class="mb-1">
+                        <i class="fas fa-user me-1"></i>
+                        <span class="d-inline d-sm-none">{patient.firstName} {patient.lastName}</span>
+                        <span class="d-none d-sm-inline">{patient.firstName} {patient.lastName}</span>
+                      </h6>
+                      <p class="mb-1 text-muted small">
+                        <i class="fas fa-envelope me-1"></i>
+                        <span class="d-inline d-md-none">{patient.email.split('@')[0]}...</span>
+                        <span class="d-none d-md-inline">{patient.email}</span>
+                      </p>
+                      <small class="text-muted">
+                        <i class="fas fa-id-card me-1"></i>ID: {patient.idNumber}
+                      </small>
+                    </div>
+                    <small class="text-muted ms-2">
+                      <i class="fas fa-calendar me-1"></i>
+                      <span class="d-none d-lg-inline">{patient.dateOfBirth}</span>
+                      <span class="d-inline d-lg-none">{new Date(patient.dateOfBirth).getFullYear()}</span>
+                    </small>
+                  </div>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {:else if !selectedPatient}
+          {#if loading}
+            <div class="text-center p-3">
+              <i class="fas fa-spinner fa-spin fa-2x text-primary mb-2"></i>
+              <p class="text-muted">Loading patients...</p>
+            </div>
+          {:else if filteredPatients.length === 0}
+            <div class="text-center p-3 text-muted">
+              <i class="fas fa-user-plus fa-2x mb-2"></i>
+              <p>No patients yet. Add your first patient!</p>
+              <button class="btn btn-primary btn-sm" on:click={showAddPatientForm}>
+                <i class="fas fa-plus me-1"></i>Get Started
+              </button>
+            </div>
+          {:else}
+            <div class="list-group list-group-flush">
+              {#each filteredPatients as patient}
+                <button 
+                  class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
+                  on:click={() => selectPatient(patient)}
+                >
+                  <div class="d-flex w-100 justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                      <h6 class="mb-1">
+                        <i class="fas fa-user me-1"></i>
+                        <span class="d-inline d-sm-none">{patient.firstName} {patient.lastName}</span>
+                        <span class="d-none d-sm-inline">{patient.firstName} {patient.lastName}</span>
+                      </h6>
+                      <p class="mb-1 text-muted small">
+                        <i class="fas fa-envelope me-1"></i>
+                        <span class="d-inline d-md-none">{patient.email.split('@')[0]}...</span>
+                        <span class="d-none d-md-inline">{patient.email}</span>
+                      </p>
+                      <small class="text-muted">
+                        <i class="fas fa-id-card me-1"></i>ID: {patient.idNumber}
+                      </small>
+                    </div>
+                    <small class="text-muted ms-2">
+                      <i class="fas fa-calendar me-1"></i>
+                      <span class="d-none d-lg-inline">{patient.dateOfBirth}</span>
+                      <span class="d-inline d-lg-none">{new Date(patient.dateOfBirth).getFullYear()}</span>
+                    </small>
+                  </div>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {:else}
+          <!-- Empty space when patient is selected and no search -->
+        {/if}
+      </div>
+    </div>
+    
+    <!-- Medical Summary (No Card Wrapper) -->
+    {#if selectedPatient}
+      <MedicalSummary 
+        {selectedPatient}
+        {illnesses}
+        {prescriptions}
+        {symptoms}
+        {activeMedicalTab}
+        {showSymptomsNotes}
+        {showIllnessesNotes}
+        {showPrescriptionsNotes}
+        {addToPrescription}
+        {hasNotes}
+        {toggleSymptomsNotes}
+        {toggleIllnessesNotes}
+        {togglePrescriptionsNotes}
+        {groupByDate}
+        on:tabChange={(e) => activeMedicalTab = e.detail.tab}
+      />
+    {/if}
+  </div>
+  
+  <!-- Main Content Area -->
+    <div class="col-12 col-lg-8">
+      {#if showPatientForm}
+        <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
+      {:else if selectedPatient}
+        <PatientDetails 
+          {selectedPatient} 
+          {addToPrescription} 
+          {refreshTrigger} 
+          doctorId={user?.uid || user?.id} 
+          on:dataUpdated={handleDataUpdated}
+        />
+      {:else}
+      <div class="card">
+        <div class="card-body text-center">
+          <i class="fas fa-user-md fa-3x text-muted mb-3"></i>
+          <h4>Welcome to Prescribe</h4>
+          <p class="text-muted">Select a patient from the list to view their details, or add a new patient to get started.</p>
+        </div>
+      </div>
+    {/if}
+  </div>
+</div>
