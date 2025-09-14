@@ -1,12 +1,15 @@
 <script>
   import { onMount } from 'svelte'
   import authService from './services/authService.js'
+  import adminAuthService from './services/adminAuthService.js'
   import DoctorAuth from './components/DoctorAuth.svelte'
   import PatientManagement from './components/PatientManagement.svelte'
+  import AdminPanel from './components/AdminPanel.svelte'
   import NotificationContainer from './components/NotificationContainer.svelte'
   
   let user = null
   let loading = true
+  let showAdminPanel = false
   
   onMount(() => {
     // Get current user from auth service
@@ -32,10 +35,23 @@
       console.error('Error signing out:', error)
     }
   }
+  
+  // Handle admin panel access
+  const handleAdminAccess = () => {
+    showAdminPanel = true
+  }
+  
+  // Handle back from admin panel
+  const handleBackFromAdmin = () => {
+    showAdminPanel = false
+  }
 </script>
 
 <main class="container-fluid">
-  {#if loading}
+  {#if showAdminPanel}
+    <!-- Admin Panel -->
+    <AdminPanel on:back-to-app={handleBackFromAdmin} />
+  {:else if loading}
     <div class="d-flex justify-content-center align-items-center vh-100">
       <div class="text-center">
         <i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>
@@ -53,6 +69,9 @@
           <span class="navbar-text me-3">
             <i class="fas fa-user me-1"></i>Dr. {user.email}
           </span>
+          <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
+            <i class="fas fa-shield-alt me-1"></i>Admin
+          </button>
           <button class="btn btn-outline-light btn-sm" on:click={handleLogout}>
             <i class="fas fa-sign-out-alt me-1"></i>Logout
           </button>
@@ -73,6 +92,18 @@
               <i class="fas fa-user-md text-primary me-2"></i>Doctor Login
             </h2>
             <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+            
+            <!-- Admin Access Button -->
+            <div class="text-center mt-4">
+              <button 
+                class="btn btn-outline-secondary btn-sm" 
+                on:click={handleAdminAccess}
+                title="Access Admin Panel"
+              >
+                <i class="fas fa-shield-alt me-2"></i>
+                Admin Panel
+              </button>
+            </div>
           </div>
         </div>
       </div>

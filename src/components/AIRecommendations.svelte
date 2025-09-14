@@ -16,9 +16,10 @@
   let showMedicationSuggestions = false
   let showRecommendationsInline = false
   let showMedicationSuggestionsInline = false
+  let showCombinedAnalysis = false
   
-  // Generate AI recommendations
-  const generateRecommendations = async () => {
+  // Generate comprehensive AI analysis (recommendations + medication suggestions)
+  const generateComprehensiveAnalysis = async () => {
     if (!symptoms || symptoms.length === 0) {
       error = 'No symptoms available to analyze'
       return
@@ -28,37 +29,23 @@
     error = ''
     
     try {
-      console.log('🤖 Generating AI recommendations...')
-      recommendations = await openaiService.generateRecommendations(symptoms, patientAge)
-      showRecommendationsInline = true
-      showMedicationSuggestionsInline = false // Hide medication suggestions when showing recommendations
-      console.log('✅ AI recommendations generated')
+      console.log('🤖 Generating comprehensive AI analysis...')
+      
+      // Generate both recommendations and medication suggestions
+      const [recommendationsResult, medicationSuggestionsResult] = await Promise.all([
+        openaiService.generateRecommendations(symptoms, patientAge),
+        openaiService.generateMedicationSuggestions(symptoms, currentMedications)
+      ])
+      
+      recommendations = recommendationsResult
+      medicationSuggestions = medicationSuggestionsResult
+      showCombinedAnalysis = true
+      showRecommendationsInline = false
+      showMedicationSuggestionsInline = false
+      
+      console.log('✅ Comprehensive AI analysis generated')
     } catch (err) {
-      console.error('❌ Error generating recommendations:', err)
-      error = err.message
-    } finally {
-      loading = false
-    }
-  }
-  
-  // Generate medication suggestions
-  const generateMedicationSuggestions = async () => {
-    if (!symptoms || symptoms.length === 0) {
-      error = 'No symptoms available to analyze'
-      return
-    }
-    
-    loading = true
-    error = ''
-    
-    try {
-      console.log('💊 Generating medication suggestions...')
-      medicationSuggestions = await openaiService.generateMedicationSuggestions(symptoms, currentMedications)
-      showMedicationSuggestionsInline = true
-      showRecommendationsInline = false // Hide recommendations when showing medication suggestions
-      console.log('✅ Medication suggestions generated')
-    } catch (err) {
-      console.error('❌ Error generating medication suggestions:', err)
+      console.error('❌ Error generating comprehensive analysis:', err)
       error = err.message
     } finally {
       loading = false
@@ -86,6 +73,13 @@
   // Close inline medication suggestions
   const closeMedicationSuggestionsInline = () => {
     showMedicationSuggestionsInline = false
+    medicationSuggestions = ''
+  }
+  
+  // Close combined analysis
+  const closeCombinedAnalysis = () => {
+    showCombinedAnalysis = false
+    recommendations = ''
     medicationSuggestions = ''
   }
   
@@ -119,33 +113,20 @@
 </script>
 
 <div class="ai-recommendations">
-  <!-- AI Recommendations Button -->
+  <!-- AI Comprehensive Analysis Button -->
   {#if symptoms && symptoms.length > 0}
-    <div class="d-flex gap-2 mb-3">
+    <div class="mb-3">
       <button 
-        class="btn btn-outline-primary btn-sm"
-        on:click={generateRecommendations}
+        class="btn btn-outline-danger btn-sm w-100"
+        on:click={generateComprehensiveAnalysis}
         disabled={loading || !isOpenAIConfigured}
-        title="Generate AI-powered medical recommendations based on symptoms"
+        title="Generate comprehensive AI analysis including medical recommendations and medication suggestions"
       >
         {#if loading}
-          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
         {/if}
-        <i class="fas fa-robot me-1"></i>
-        AI Recommendations
-      </button>
-      
-      <button 
-        class="btn btn-outline-success btn-sm"
-        on:click={generateMedicationSuggestions}
-        disabled={loading || !isOpenAIConfigured}
-        title="Generate AI-powered medication suggestions based on symptoms"
-      >
-        {#if loading}
-          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-        {/if}
-        <i class="fas fa-pills me-1"></i>
-        Medication Suggestions
+        <i class="fas fa-robot me-2"></i>
+        AI-Powered Medical Intelligence
       </button>
     </div>
   {/if}
@@ -234,17 +215,77 @@
       </div>
     </div>
   {/if}
+  
+  <!-- Combined AI Analysis -->
+  {#if showCombinedAnalysis}
+    <div class="ai-combined-analysis mt-3">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h6 class="mb-0 text-danger">
+            <i class="fas fa-robot me-2"></i>AI-Powered Medical Intelligence
+          </h6>
+          <button 
+            type="button" 
+            class="btn-close btn-sm" 
+            on:click={closeCombinedAnalysis}
+            title="Close AI analysis"
+          ></button>
+        </div>
+        
+        <div class="card-body">
+          <div class="alert alert-info alert-sm mb-3" role="alert">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Disclaimer:</strong> This analysis is generated by AI and is for informational purposes only. It should not replace professional medical consultation.
+          </div>
+          
+          <!-- Medical Recommendations Section -->
+          {#if recommendations}
+            <div class="mb-4">
+              <h6 class="text-primary mb-3">
+                <i class="fas fa-stethoscope me-2"></i>Medical Recommendations
+              </h6>
+              <div class="recommendations-content">
+                <div class="recommendations-text">
+                  {@html formatRecommendations(recommendations)}
+                </div>
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Medication Suggestions Section -->
+          {#if medicationSuggestions}
+            <div class="mb-2">
+              <h6 class="text-success mb-3">
+                <i class="fas fa-pills me-2"></i>Medication Suggestions
+              </h6>
+              <div class="alert alert-warning alert-sm mb-3" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Important:</strong> Always consult with a healthcare professional before taking any medications.
+              </div>
+              <div class="medication-suggestions-content">
+                <div class="suggestions-text">
+                  {@html formatRecommendations(medicationSuggestions)}
+                </div>
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
   .ai-recommendations-inline .card,
-  .ai-medication-suggestions-inline .card {
+  .ai-medication-suggestions-inline .card,
+  .ai-combined-analysis .card {
     border: 1px solid #dee2e6;
     box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
   }
   
   .ai-recommendations-inline .card-header,
-  .ai-medication-suggestions-inline .card-header {
+  .ai-medication-suggestions-inline .card-header,
+  .ai-combined-analysis .card-header {
     background-color: #f8f9fa;
     border-bottom: 1px solid #dee2e6;
   }
