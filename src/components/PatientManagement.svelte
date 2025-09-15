@@ -26,6 +26,11 @@
     console.log('PatientManagement: User lastName:', user.lastName)
     console.log('PatientManagement: User email:', user.email)
   }
+
+  // Get doctor's data from storage
+  $: doctorData = user ? jsonStorage.getDoctorByEmail(user.email) : null
+  $: doctorName = doctorData ? (doctorData.displayName || (doctorData.firstName && doctorData.lastName ? `${doctorData.firstName} ${doctorData.lastName}` : doctorData.firstName) || user?.displayName || user?.email || 'Doctor') : (user?.displayName || user?.email || 'Doctor')
+  $: doctorCountry = doctorData?.country || 'Not specified'
   
   let patients = []
   let selectedPatient = null
@@ -194,12 +199,23 @@
   const getTotalPrescriptions = () => {
     let total = 0
     console.log('🔍 getTotalPrescriptions: Patients count:', patients.length)
-    patients.forEach(patient => {
-      const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
-      console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
-      console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
-      total += patientPrescriptions.length
-    })
+    
+    // Check if we have any patients at all
+    if (patients.length === 0) {
+      console.log('🔍 getTotalPrescriptions: No patients found, checking all prescriptions in storage')
+      // If no patients, check all prescriptions in storage
+      const allPrescriptions = jsonStorage.data.prescriptions || []
+      console.log('🔍 getTotalPrescriptions: All prescriptions in storage:', allPrescriptions)
+      total = allPrescriptions.length
+    } else {
+      patients.forEach(patient => {
+        const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
+        console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
+        console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
+        total += patientPrescriptions.length
+      })
+    }
+    
     console.log('🔍 getTotalPrescriptions: Total prescriptions:', total)
     return total
   }
@@ -207,10 +223,15 @@
   const getTotalDrugs = () => {
     let total = 0
     console.log('🔍 getTotalDrugs: Patients count:', patients.length)
-    patients.forEach(patient => {
-      const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
-      console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
-      patientPrescriptions.forEach(prescription => {
+    
+    // Check if we have any patients at all
+    if (patients.length === 0) {
+      console.log('🔍 getTotalDrugs: No patients found, checking all prescriptions in storage')
+      // If no patients, check all prescriptions in storage
+      const allPrescriptions = jsonStorage.data.prescriptions || []
+      console.log('🔍 getTotalDrugs: All prescriptions in storage:', allPrescriptions)
+      
+      allPrescriptions.forEach(prescription => {
         console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
         if (prescription.medications && Array.isArray(prescription.medications)) {
           console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
@@ -220,7 +241,23 @@
           total += 1 // Single medication prescription
         }
       })
-    })
+    } else {
+      patients.forEach(patient => {
+        const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
+        console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
+        patientPrescriptions.forEach(prescription => {
+          console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
+          if (prescription.medications && Array.isArray(prescription.medications)) {
+            console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
+            total += prescription.medications.length
+          } else {
+            console.log(`🔍 getTotalDrugs: Prescription has no medications array, counting as 1`)
+            total += 1 // Single medication prescription
+          }
+        })
+      })
+    }
+    
     console.log('🔍 getTotalDrugs: Total drugs:', total)
     return total
   }
@@ -772,7 +809,7 @@
                          </div>
                          <div class="flex-grow-1 ms-3">
                            <h4 class="card-title mb-1 fw-bold text-dark">
-                             Welcome, Dr. {user?.name || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName) || user?.email || 'Doctor'}!
+                             Welcome, Dr. {doctorName}!
                            </h4>
                            <p class="card-text mb-0 text-muted">
                              Ready to provide excellent patient care with AI-powered assistance
@@ -780,10 +817,7 @@
                            <!-- Added Country Information -->
                            <p class="card-text mt-2 mb-0 text-muted small">
                              <i class="fas fa-map-marker-alt me-1"></i>
-                             Country: {user?.country || 'Not specified'}
-                             {#if user}
-                               <br><small class="text-info">Debug: {JSON.stringify({name: user.name, firstName: user.firstName, lastName: user.lastName, country: user.country})}</small>
-                             {/if}
+                             Country: {doctorCountry || 'Not specified'}
                            </p>
                          </div>
                        </div>

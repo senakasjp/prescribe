@@ -245,22 +245,21 @@
           </span>
           
           <!-- Mobile Toggle Button -->
-          <button class="navbar-toggler d-lg-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
           
           <!-- Navbar Content -->
-          <div class="collapse navbar-collapse d-flex justify-content-end align-items-center" id="navbarNav">
-            <!-- User Info and Action Buttons - Right Side -->
-            <div class="d-flex align-items-center">
+          <div class="collapse navbar-collapse" id="navbarNav">
+            <!-- Desktop Layout -->
+            <div class="d-none d-lg-flex align-items-center ms-auto">
               <!-- User Info -->
-              <div class="navbar-text me-4 d-flex align-items-center">
+              <div class="navbar-text me-3 d-flex align-items-center">
                 <i class="fas fa-user me-2"></i>
-                <span class="d-none d-md-inline me-3">Dr. {user.name || (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName) || user.email}</span>
-                <span class="d-md-none me-3">Dr. {user.firstName || user.email}</span>
+                <span class="me-3">Dr. {user.name || (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName) || user.email}</span>
                 
                 <!-- AI Health Bar - Progress Bar -->
-                <div class="d-flex align-items-center me-4">
+                <div class="d-flex align-items-center me-3">
                   <i class="fas fa-robot me-2 text-white"></i>
                   <div class="progress bg-danger border border-light" style="width: 120px; height: 20px;" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
                     <div class="progress-bar bg-white progress-bar-striped progress-bar-animated" 
@@ -278,20 +277,60 @@
               </div>
               
               <!-- Action Buttons -->
-              <button class="btn btn-outline-light btn-sm me-1 me-md-2" on:click={handleEditProfile}>
+              <button class="btn btn-outline-light btn-sm me-2" on:click={handleEditProfile}>
                 <i class="fas fa-user-edit me-1"></i>
-                <span class="d-none d-sm-inline">Edit Profile</span>
-                <span class="d-sm-none">Edit</span>
+                Edit Profile
               </button>
-              <button class="btn btn-outline-light btn-sm me-1 me-md-2" on:click={handleAdminAccess}>
+              <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
                 <i class="fas fa-shield-alt me-1"></i>
-                <span class="d-none d-sm-inline">Admin</span>
+                Admin
               </button>
               <button class="btn btn-outline-light btn-sm" on:click={handleLogout}>
                 <i class="fas fa-sign-out-alt me-1"></i>
-                <span class="d-none d-sm-inline">Logout</span>
-                <span class="d-sm-none">Exit</span>
+                Logout
               </button>
+            </div>
+            
+            <!-- Mobile Layout -->
+            <div class="d-lg-none mt-2">
+              <!-- User Info Row -->
+              <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-user me-2"></i>
+                <span class="text-light">Dr. {user.firstName || user.email}</span>
+              </div>
+              
+              <!-- AI Health Bar Row -->
+              <div class="d-flex align-items-center mb-3">
+                <i class="fas fa-robot me-2 text-white"></i>
+                <div class="progress bg-danger border border-light flex-grow-1" style="height: 18px;" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
+                  <div class="progress-bar bg-white progress-bar-striped progress-bar-animated" 
+                       role="progressbar" 
+                       style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%"
+                       aria-valuenow="{doctorUsageStats?.today?.tokens || 0}" 
+                       aria-valuemin="0" 
+                       aria-valuemax="100000">
+                    <span class="text-dark fw-bold" style="font-size: 0.65rem;">
+                      {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Action Buttons Row -->
+              <div class="d-flex gap-2">
+                <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleEditProfile}>
+                  <i class="fas fa-user-edit me-1"></i>
+                  Edit
+                </button>
+                <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleAdminAccess}>
+                  <i class="fas fa-shield-alt me-1"></i>
+                  Admin
+                </button>
+                <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleLogout}>
+                  <i class="fas fa-sign-out-alt me-1"></i>
+                  Exit
+                </button>
+              </div>
             </div>
           </div>
         </div>
