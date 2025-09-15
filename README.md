@@ -5,10 +5,12 @@ A comprehensive patient management system built with Svelte 4 and Bootstrap 5, f
 ## 🏥 Features
 
 ### Patient Management
-- **Patient Registration** - Add new patients with complete information
+- **Patient Registration** - Add new patients with simplified mandatory fields (First Name and Age only)
 - **Patient Search** - Search by name, ID, DOB, phone number (limited to 20 results)
-- **Patient Details** - Comprehensive view with medical history
+- **Patient Details** - Comprehensive view with medical history including blood group and allergies
+- **Patient Editing** - Update patient information with inline editing capabilities
 - **Clickable Overview Cards** - Quick navigation between sections
+- **Blood Group Tracking** - Essential medical information for procedures and emergencies
 
 ### Medical Data Management
 - **Symptoms Tracking** - Record patient symptoms with severity and duration

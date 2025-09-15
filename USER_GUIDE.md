@@ -27,11 +27,17 @@ Once logged in, you'll see:
 
 ### Adding a New Patient
 1. **Click "Add Patient"** button
-2. **Fill in Patient Information**:
-   - Personal details (name, DOB, gender)
-   - Contact information (phone, email, address)
+2. **Fill in Required Information** (marked with red asterisks *):
+   - **First Name** - Required field
+   - **Age** - Required field (can be entered directly or calculated from date of birth)
+3. **Optional Information** (can be added later):
+   - Last Name, Email, Phone, Date of Birth
+   - Weight, Blood Group (important for medical procedures)
+   - ID Number, Address, Allergies (critical medical information)
    - Emergency contact details
-3. **Click "Save Patient"** to register
+4. **Click "Save Patient"** to register
+
+**Note**: Only First Name and Age are mandatory. All other fields can be added later through the edit function.
 
 ### Searching Patients
 Use the search box to find patients by:
@@ -46,9 +52,20 @@ Use the search box to find patients by:
 ### Viewing Patient Details
 1. **Click on a patient** from the list
 2. **View comprehensive information**:
-   - Personal details
-   - Contact information
+   - Personal details (name, age, weight, blood group)
+   - Contact information (phone, email, address)
+   - Medical information (allergies displayed prominently)
    - Medical history tabs
+
+### Editing Patient Information
+1. **Click the "Edit" button** next to the patient's name
+2. **Update any information** in the edit form
+3. **Required fields** remain the same (First Name and Age with red asterisks)
+4. **Add missing information** like blood group, allergies, or weight
+5. **Click "Save Changes"** to update the patient record
+6. **Click "Cancel"** to discard changes
+
+**Important**: Blood group and allergies are displayed prominently in the patient overview for quick medical reference.
 
 ## 🏥 Medical Data Management
 
@@ -260,7 +277,8 @@ The system provides instant feedback for all your actions through a notification
 - **Refresh Page** - Reload the application
 
 #### Data Not Saving
-- **Check Required Fields** - Ensure all required fields are filled
+- **Check Required Fields** - Ensure First Name and Age are filled (marked with red asterisks)
+- **Age Requirements** - Age can be entered directly OR calculated from date of birth
 - **Verify Internet Connection** - Although not required, check connectivity
 - **Clear Browser Cache** - Clear cache and try again
 - **Check Browser Storage** - Ensure localStorage is available

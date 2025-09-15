@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import jsonStorage from '../services/jsonStorage.js'
   import openaiService from '../services/openaiService.js'
+  import { notifyError, notifySuccess } from '../stores/notifications.js'
   import PatientTabs from './PatientTabs.svelte'
   import PatientForms from './PatientForms.svelte'
   import PrescriptionList from './PrescriptionList.svelte'
@@ -18,10 +19,12 @@
   const dispatch = createEventDispatcher()
   
   let illnesses = []
-  let prescriptions = []
+  let prescriptions = [] // Array of prescription objects (each containing medications)
   let symptoms = []
-  let currentPrescriptions = []
+  let currentPrescription = null // Current prescription being worked on
+  let currentPrescriptions = [] // Current medications in the working prescription (for display)
   let activeTab = 'overview'
+  let isNewPrescriptionSession = false
   let showIllnessForm = false
   let showMedicationForm = false
   let showSymptomsForm = false
@@ -93,31 +96,44 @@
     }
   }
   
-  // Filter current prescriptions (show all prescriptions)
+  // Filter current prescriptions (show all medications from all prescriptions)
   const filterCurrentPrescriptions = () => {
-    console.log('🔍 Showing all prescriptions from', prescriptions.length, 'total prescriptions')
+    // Don't filter if we're in a new prescription session
+    if (isNewPrescriptionSession) {
+      console.log('🔍 Skipping filter - in new prescription session')
+      return
+    }
     
-    // Show all prescriptions regardless of start/end dates
-    currentPrescriptions = prescriptions.filter(prescription => {
-      // Only filter out prescriptions that have explicitly ended (before today)
-      if (prescription.endDate) {
-        const endDate = new Date(prescription.endDate)
-        const today = new Date()
-        today.setHours(0, 0, 0, 0) // Set to start of day for accurate comparison
-        endDate.setHours(0, 0, 0, 0)
-        
-        const hasEnded = endDate < today
-        
-        if (hasEnded) {
-          console.log(`📋 ${prescription.name}: ended on ${prescription.endDate} - not showing`)
-          return false
-        }
+    console.log('🔍 Showing all medications from', prescriptions.length, 'total prescriptions')
+    
+    // Flatten all medications from all prescriptions
+    const allMedications = []
+    prescriptions.forEach(prescription => {
+      if (prescription.medications && prescription.medications.length > 0) {
+        prescription.medications.forEach(medication => {
+          // Only filter out medications that have explicitly ended (before today)
+          if (medication.endDate) {
+            const endDate = new Date(medication.endDate)
+            const today = new Date()
+            today.setHours(0, 0, 0, 0) // Set to start of day for accurate comparison
+            endDate.setHours(0, 0, 0, 0)
+            
+            const hasEnded = endDate < today
+            
+            if (hasEnded) {
+              console.log(`📋 ${medication.name}: ended on ${medication.endDate} - not showing`)
+              return
+            }
+          }
+          
+          console.log(`📋 ${medication.name}: showing in current prescriptions`)
+          allMedications.push(medication)
+        })
       }
-      
-      console.log(`📋 ${prescription.name}: showing in current prescriptions`)
-      return true
     })
-    console.log('📅 Current prescriptions (all active):', currentPrescriptions.length)
+    
+    currentPrescriptions = allMedications
+    console.log('📅 Current medications (all active):', currentPrescriptions.length)
     
     // Check for drug interactions when prescriptions change
     // Only check if not already checking (to avoid duplicate calls)
@@ -191,6 +207,7 @@
   // Reactive statement to filter current prescriptions when prescriptions change
   $: if (prescriptions) {
     console.log('🔄 Reactive statement triggered - prescriptions changed:', prescriptions.length)
+    console.log('🔄 isNewPrescriptionSession:', isNewPrescriptionSession)
     filterCurrentPrescriptions()
   }
   
@@ -297,28 +314,48 @@
           currentPrescriptions = [...currentPrescriptions] // Trigger reactivity
         }
       } else {
-        // Add new medication to database
-        const newMedication = await jsonStorage.createMedication({
-          ...medicationData,
-          patientId: selectedPatient.id,
-          doctorId: doctorId
-        })
+        // Add new medication to current prescription
+        if (!currentPrescription) {
+          throw new Error('No current prescription. Please click "New Prescription" first.')
+        }
         
-        console.log('💾 Medication saved to database:', newMedication)
+        const newMedication = await jsonStorage.addMedicationToPrescription(
+          currentPrescription.id, 
+          medicationData
+        )
         
-        // Add to prescriptions array immediately and trigger reactivity
-        prescriptions = [...prescriptions, newMedication]
-        console.log('📋 Updated prescriptions array:', prescriptions.length)
+        console.log('💾 Medication added to prescription:', newMedication)
         
-        // Force update current prescriptions array
-        currentPrescriptions = [...currentPrescriptions, newMedication]
-        console.log('📋 Updated current prescriptions array:', currentPrescriptions.length)
+        // Update the current prescription object
+        currentPrescription.medications.push(newMedication)
+        currentPrescription.updatedAt = new Date().toISOString()
         
-        // Force reactivity by reassigning the array
-        currentPrescriptions = currentPrescriptions
+        // Update prescriptions array to trigger reactivity
+        const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id)
+        if (prescriptionIndex !== -1) {
+          prescriptions[prescriptionIndex] = currentPrescription
+          prescriptions = [...prescriptions]
+        }
         
-        // Also call the filter function to ensure consistency
-        filterCurrentPrescriptions()
+        // Add to current prescriptions array (this will show the new prescription)
+        if (isNewPrescriptionSession) {
+          // For new prescription sessions, start with just this medication
+          console.log('📋 NEW SESSION: Starting fresh prescription list')
+          currentPrescriptions = [newMedication]
+          console.log('📋 New prescription session - starting fresh with:', newMedication.name)
+          console.log('📋 Current prescriptions after new session:', currentPrescriptions.length)
+          
+          // Reset the flag AFTER setting currentPrescriptions to prevent reactive overwrite
+          setTimeout(() => {
+            isNewPrescriptionSession = false;
+            console.log('📋 Reset isNewPrescriptionSession flag')
+          }, 100);
+        } else {
+          // For existing sessions, add to current list
+          console.log('📋 EXISTING SESSION: Adding to current list')
+          currentPrescriptions = [...currentPrescriptions, newMedication]
+          console.log('📋 Updated current prescriptions array:', currentPrescriptions.length)
+        }
         
         // Check for drug interactions immediately after adding new medication
         // This ensures immediate feedback when a new drug is added
@@ -876,6 +913,40 @@
       </h5>
       <div class="btn-group" role="group">
         <button 
+          class="btn btn-success btn-sm me-2" 
+          on:click={async () => { 
+            console.log('🆕 New Prescription button clicked');
+            activeTab = 'prescriptions'; 
+            showMedicationForm = false; 
+            editingMedication = null;
+            
+            try {
+              // Create a new prescription
+              currentPrescription = await jsonStorage.createPrescription({
+                patientId: selectedPatient.id,
+                doctorId: doctorId,
+                notes: ''
+              });
+              console.log('📋 Created new prescription:', currentPrescription.id);
+              
+              // Clear current medications to start fresh
+              currentPrescriptions = [];
+              prescriptionNotes = '';
+              isNewPrescriptionSession = true;
+              console.log('🆕 Set isNewPrescriptionSession = true, cleared currentPrescriptions');
+              
+              // Don't auto-show medication form - wait for "Add Drug" button
+              console.log('✅ New prescription created - ready for "Add Drug" button');
+            } catch (error) {
+              console.error('❌ Error creating new prescription:', error);
+            }
+          }}
+          disabled={loading || isEditingPatient}
+          title="Add new prescription"
+        >
+          <i class="fas fa-plus me-1"></i>New Prescription
+        </button>
+        <button 
           class="btn btn-outline-primary btn-sm" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
@@ -896,17 +967,10 @@
       {#if activeTab === 'overview'}
         <div class="tab-pane active">
           <div class="card mb-3">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header">
               <h6 class="mb-0">
                 <i class="fas fa-info-circle me-2"></i>Patient Information
               </h6>
-              <button 
-                class="btn btn-primary btn-sm" 
-                on:click={() => { activeTab = 'prescriptions'; }}
-                title="Go to prescriptions tab"
-              >
-                <i class="fas fa-plus me-1"></i>New Prescription
-              </button>
             </div>
             <div class="card-body">
               {#if isEditingPatient}
@@ -1355,13 +1419,42 @@
       <!-- Prescriptions Tab -->
       {#if activeTab === 'prescriptions'}
         <div class="tab-pane active">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="mb-0">
-              <i class="fas fa-calendar-day me-2"></i>Current Prescriptions
-            </h6>
+          <!-- Add Drug Button -->
+          <div class="mb-3 text-end">
             <button 
-              class="btn btn-success btn-sm" 
-              on:click={() => showMedicationForm = true}
+              class="btn btn-primary btn-sm" 
+              on:click={async () => { 
+                console.log('🔍 Add Drug clicked - currentPrescription:', currentPrescription);
+                console.log('🔍 showMedicationForm:', showMedicationForm);
+                
+                try {
+                  // If no current prescription exists, create one automatically
+                  if (!currentPrescription) {
+                    console.log('📋 No current prescription - creating new one automatically');
+                    currentPrescription = await jsonStorage.createPrescription({
+                      patientId: selectedPatient.id,
+                      doctorId: doctorId,
+                      notes: ''
+                    });
+                    console.log('📋 Created new prescription automatically:', currentPrescription.id);
+                    
+                    // Clear current medications to start fresh
+                    currentPrescriptions = [];
+                    prescriptionNotes = '';
+                    isNewPrescriptionSession = true;
+                    notifySuccess('New prescription created - medication form opened');
+                  } else {
+                    notifySuccess('Medication form opened - add drug details');
+                  }
+                  
+                  showMedicationForm = true;
+                  editingMedication = null;
+                } catch (error) {
+                  console.error('❌ Error creating prescription:', error);
+                  notifyError('Failed to create prescription: ' + error.message);
+                }
+              }}
+              disabled={showMedicationForm}
             >
               <i class="fas fa-plus me-1"></i>Add Drug
             </button>
@@ -1462,16 +1555,16 @@
           <!-- Current Prescriptions List -->
           {#if currentPrescriptions && currentPrescriptions.length > 0}
             <div class="list-group">
-              {#each currentPrescriptions as prescription, index}
+              {#each currentPrescriptions as medication, index}
                 <div class="list-group-item d-flex justify-content-between align-items-start">
                   <div class="ms-2 me-auto">
-                    <div class="fw-bold" style="font-size: 1.1rem;">{prescription.name}</div>
+                    <div class="fw-bold" style="font-size: 1.1rem;">{medication.name}</div>
                     <small class="text-muted">
-                      {prescription.dosage} • {prescription.frequency} • {prescription.duration}
+                      {medication.dosage} • {medication.frequency} • {medication.duration}
                     </small>
-                    {#if prescription.instructions}
+                    {#if medication.instructions}
                       <div class="mt-1">
-                        <small class="text-muted">{prescription.instructions}</small>
+                        <small class="text-muted">{medication.instructions}</small>
                       </div>
                     {/if}
                   </div>
@@ -1479,15 +1572,15 @@
                     <div class="btn-group btn-group-sm">
                       <button 
                         class="btn btn-outline-primary btn-sm"
-                        on:click={() => handleEditPrescription(prescription, index)}
-                        title="Edit prescription"
+                        on:click={() => handleEditPrescription(medication, index)}
+                        title="Edit medication"
                       >
                         <i class="fas fa-edit"></i>
                       </button>
                       <button 
                         class="btn btn-outline-danger btn-sm"
                         on:click={() => handleDeletePrescription(index)}
-                        title="Delete prescription"
+                        title="Delete medication"
                       >
                         <i class="fas fa-trash"></i>
                       </button>

@@ -3,11 +3,19 @@
 ## 🏥 Core Features
 
 ### Patient Management
-- **Patient Registration** - Complete patient information entry
+- **Patient Registration** - Complete patient information entry with simplified mandatory fields
 - **Patient Search** - Multi-criteria search with 20-result limit
-- **Patient Details** - Comprehensive patient information view
-- **Patient Editing** - Update patient information
+- **Patient Details** - Comprehensive patient information view with medical data display
+- **Patient Editing** - Update patient information with inline editing capabilities
 - **Patient Deletion** - Remove patient records
+- **Blood Group Tracking** - Essential medical information for procedures and emergencies
+
+### Patient Form Requirements
+- **Mandatory Fields Only** - First Name and Age are the only required fields (marked with red asterisks)
+- **Flexible Age Input** - Age can be entered directly or calculated from date of birth
+- **Optional Medical Data** - Weight, blood group, allergies, and other medical information are optional
+- **Simplified Registration** - Quick patient registration with minimal information required
+- **Enhanced Medical Profile** - Complete medical data including age, weight, blood group, and allergies
 
 ### Medical Data Management
 - **Symptoms Tracking** - Record and track patient symptoms

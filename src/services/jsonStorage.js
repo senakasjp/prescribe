@@ -15,8 +15,29 @@ class JSONStorage {
         doctors: [],
         patients: [],
         illnesses: [],
-        medications: [],
+        medications: [], // Legacy - will be migrated
+        prescriptions: [], // New structure
         symptoms: []
+      }
+      
+      // Ensure all required arrays exist (migration for existing data)
+      if (!data.prescriptions) {
+        data.prescriptions = []
+      }
+      if (!data.medications) {
+        data.medications = []
+      }
+      if (!data.doctors) {
+        data.doctors = []
+      }
+      if (!data.patients) {
+        data.patients = []
+      }
+      if (!data.illnesses) {
+        data.illnesses = []
+      }
+      if (!data.symptoms) {
+        data.symptoms = []
       }
       
       // Clean up any corrupted data
@@ -36,6 +57,7 @@ class JSONStorage {
         patients: [],
         illnesses: [],
         medications: [],
+        prescriptions: [],
         symptoms: []
       }
     }
@@ -184,32 +206,75 @@ class JSONStorage {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
   }
 
-  // Prescription/Medication operations (unified)
-  async createMedication(medicationData) {
+  // Prescription operations (prescriptions contain multiple medications)
+  async createPrescription(prescriptionData) {
+    const prescription = {
+      id: this.generateId(),
+      ...prescriptionData,
+      medications: [], // Array of medications in this prescription
+      createdAt: new Date().toISOString()
+    }
+    this.data.prescriptions.push(prescription)
+    this.saveData()
+    return prescription
+  }
+
+  // Add medication to existing prescription
+  async addMedicationToPrescription(prescriptionId, medicationData) {
+    const prescription = this.data.prescriptions.find(p => p.id === prescriptionId)
+    if (!prescription) {
+      throw new Error('Prescription not found')
+    }
+
     const medication = {
       id: this.generateId(),
       ...medicationData,
       createdAt: new Date().toISOString()
     }
-    this.data.medications.push(medication)
+    
+    prescription.medications.push(medication)
+    prescription.updatedAt = new Date().toISOString()
     this.saveData()
     return medication
   }
 
-  // Prescription methods (unified with medications)
-  async createPrescription(prescriptionData) {
-    return this.createMedication(prescriptionData)
-  }
-
+  // Get all prescriptions for a patient
   getPrescriptionsByPatientId(patientId) {
-    return this.data.medications
-      .filter(medication => medication.patientId === patientId)
+    return this.data.prescriptions
+      .filter(prescription => prescription.patientId === patientId)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
   }
 
+  // Get all medications for a patient (flattened from all prescriptions)
   getMedicationsByPatientId(patientId) {
-    return this.getPrescriptionsByPatientId(patientId)
+    const prescriptions = this.getPrescriptionsByPatientId(patientId)
+    const allMedications = []
+    
+    prescriptions.forEach(prescription => {
+      prescription.medications.forEach(medication => {
+        allMedications.push({
+          ...medication,
+          prescriptionId: prescription.id,
+          prescriptionDate: prescription.createdAt
+        })
+      })
+    })
+    
+    return allMedications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
   }
+
+  // Legacy method for backward compatibility
+  async createMedication(medicationData) {
+    // If this is called, create a new prescription with this single medication
+    const prescription = await this.createPrescription({
+      patientId: medicationData.patientId,
+      doctorId: medicationData.doctorId,
+      notes: medicationData.notes || ''
+    })
+    
+    return await this.addMedicationToPrescription(prescription.id, medicationData)
+  }
+
 
   async deletePrescription(prescriptionId) {
     return this.deleteMedication(prescriptionId)

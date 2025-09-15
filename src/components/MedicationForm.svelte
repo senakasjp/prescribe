@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher } from 'svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
   import DrugAutocomplete from './DrugAutocomplete.svelte'
   import drugDatabase from '../services/drugDatabase.js'
   import { notifySuccess, notifyInfo } from '../stores/notifications.js'
@@ -28,6 +28,31 @@
   
   // Track if form has been initialized for editing
   let formInitialized = false
+  let formKey = 0
+  
+  // Function to reset form to empty state
+  const resetForm = () => {
+    console.log('🔄 Resetting MedicationForm to empty state')
+    // Force reset all variables
+    name = ''
+    dosage = ''
+    instructions = ''
+    frequency = ''
+    duration = ''
+    startDate = ''
+    endDate = ''
+    notes = ''
+    error = ''
+    formInitialized = false
+    formKey++ // Increment key to force DrugAutocomplete reset
+    
+    // Force a small delay to ensure state updates
+    setTimeout(() => {
+      console.log('✅ MedicationForm reset complete - final state:', {
+        name, dosage, instructions, frequency, duration, startDate, endDate, notes
+      })
+    }, 10)
+  }
   
   // Populate form when editing (only once)
   $: if (editingMedication && !formInitialized) {
@@ -42,19 +67,7 @@
     formInitialized = true
   }
   
-  // Reset form when not editing
-  $: if (!editingMedication && visible) {
-    name = ''
-    dosage = ''
-    instructions = ''
-    frequency = ''
-    duration = ''
-    startDate = ''
-    endDate = ''
-    notes = ''
-    error = ''
-    formInitialized = false
-  }
+  // No reactive reset - only reset on mount to avoid conflicts
   
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -141,8 +154,9 @@
   // Handle drug selection from autocomplete
   const handleDrugSelect = (drug) => {
     name = drug.displayName
-    // Only update other fields if they're empty (not when editing)
-    if (!editingMedication) {
+    // Only auto-fill other fields when editing an existing prescription
+    // For new prescriptions, only fill the name field
+    if (editingMedication) {
       dosage = drug.dosage || dosage
       instructions = drug.instructions || instructions
       frequency = drug.frequency || frequency
@@ -151,13 +165,24 @@
     }
     
     // Show notification
-    notifyInfo(`"${drug.displayName}" loaded from your drug database`)
+    notifyInfo(`"${drug.displayName}" selected`)
   }
   
   // Handle cancel
   const handleCancel = () => {
     dispatch('cancel')
   }
+  
+  // Reset form when component mounts if not editing
+  onMount(() => {
+    console.log('🚀 MedicationForm mounted - checking if reset needed')
+    if (!editingMedication) {
+      console.log('🔄 New prescription - resetting to empty state')
+      resetForm()
+    } else {
+      console.log('📝 Editing existing prescription - keeping data')
+    }
+  })
 </script>
 
 <div class="card">
