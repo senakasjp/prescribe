@@ -77,7 +77,7 @@
     
     try {
       // Validate required fields
-      if (!name || !dosage || !instructions || !frequency || !startDate) {
+      if (!name || !dosage || !instructions || !frequency || !duration) {
         throw new Error('Please fill in all required fields')
       }
       
@@ -194,7 +194,7 @@
   <div class="card-body">
     <form on:submit={handleSubmit}>
       <div class="mb-3">
-        <label for="medicationName" class="form-label">Medication Name *</label>
+        <label for="medicationName" class="form-label">Medication Name <span class="text-danger">*</span></label>
         <DrugAutocomplete 
           bind:value={name}
           placeholder="e.g., Metformin, Lisinopril"
@@ -207,7 +207,7 @@
       <div class="row">
         <div class="col-md-6">
           <div class="mb-3">
-            <label for="medicationDosage" class="form-label">Dosage *</label>
+            <label for="medicationDosage" class="form-label">Dosage <span class="text-danger">*</span></label>
             <input 
               type="text" 
               class="form-control" 
@@ -221,7 +221,7 @@
         </div>
         <div class="col-md-6">
           <div class="mb-3">
-            <label for="medicationFrequency" class="form-label">Frequency *</label>
+            <label for="medicationFrequency" class="form-label">Frequency <span class="text-danger">*</span></label>
             <select 
               class="form-select" 
               id="medicationFrequency" 
@@ -243,7 +243,7 @@
       </div>
       
       <div class="mb-3">
-        <label for="medicationInstructions" class="form-label">Instructions *</label>
+        <label for="medicationInstructions" class="form-label">Instructions <span class="text-danger">*</span></label>
         <textarea 
           class="form-control" 
           id="medicationInstructions" 
@@ -258,7 +258,7 @@
       <div class="row">
         <div class="col-md-4">
           <div class="mb-3">
-            <label for="medicationDuration" class="form-label">Duration</label>
+            <label for="medicationDuration" class="form-label">Duration <span class="text-danger">*</span></label>
             <input 
               type="text" 
               class="form-control" 
@@ -271,7 +271,7 @@
         </div>
         <div class="col-md-4">
           <div class="mb-3">
-            <label for="medicationStartDate" class="form-label">Start Date *</label>
+            <label for="medicationStartDate" class="form-label">Start Date</label>
             <input 
               type="date" 
               class="form-control" 

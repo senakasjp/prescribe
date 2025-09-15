@@ -114,7 +114,7 @@
         </span>
         <div class="navbar-nav ms-auto">
           <span class="navbar-text me-4">
-            <i class="fas fa-user me-1"></i>Dr. {user.name || user.firstName || user.email}
+            <i class="fas fa-user me-1"></i>Dr. {user.name || (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName) || user.email}
             {#if doctorUsageStats}
               <span class="badge {doctorUsageStats.today.tokens > 0 ? 'bg-warning text-dark' : 'bg-secondary text-white'} me-3" 
                     title={doctorUsageStats.today.tokens > 0 ? "Today's AI Token Usage" : "AI Usage - No tokens used today"}>
