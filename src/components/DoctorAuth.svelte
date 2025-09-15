@@ -150,10 +150,12 @@
       required
       disabled={loading}
     >
-    <div class="form-text">
-      <i class="fas fa-shield-alt me-1"></i>
-      Password must be at least 8 characters with uppercase, lowercase, number, and special character
-    </div>
+    {#if isRegistering}
+      <div class="form-text">
+        <i class="fas fa-shield-alt me-1"></i>
+        Password must be at least 8 characters with uppercase, lowercase, number, and special character
+      </div>
+    {/if}
   </div>
   
   {#if isRegistering}

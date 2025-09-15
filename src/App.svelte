@@ -127,13 +127,6 @@
 </script>
 
 <main class="container-fluid">
-  <!-- Debug info -->
-  <div class="position-fixed top-0 end-0 p-2 bg-light border rounded" style="z-index: 9999; font-size: 12px;">
-    <div>Loading: {loading}</div>
-    <div>User: {user ? 'Yes' : 'No'}</div>
-    <div>Role: {user?.role || 'None'}</div>
-    <div>Admin: {showAdminPanel ? 'Yes' : 'No'}</div>
-  </div>
   
   {#if showAdminPanel}
     <!-- Admin Panel -->
@@ -182,46 +175,74 @@
       </div>
     {/if}
   {:else}
-    <!-- User is not logged in - Show authentication -->
-    <div class="row justify-content-center">
-      <div class="col-12 col-sm-10 col-md-8 col-lg-6 col-xl-4">
-        <div class="card shadow">
-          <div class="card-body p-4">
-            <!-- Auth Mode Toggle -->
-            <div class="text-center mb-4">
-              <div class="btn-group w-100" role="group">
-                <button 
-                  type="button" 
-                  class="btn {authMode === 'doctor' ? 'btn-primary' : 'btn-outline-primary'} flex-fill"
-                  on:click={handleSwitchToDoctor}
-                >
-                  <i class="fas fa-user-md me-2"></i>Doctor
-                </button>
-                <button 
-                  type="button" 
-                  class="btn {authMode === 'pharmacist' ? 'btn-primary' : 'btn-outline-primary'} flex-fill"
-                  on:click={handleSwitchToPharmacist}
-                >
-                  <i class="fas fa-pills me-2"></i>Pharmacist
-                </button>
+    <!-- User is not logged in - Show stylish authentication -->
+    <div class="min-vh-100 d-flex align-items-center justify-content-center bg-gradient-primary px-2 px-sm-3 px-md-4">
+      <div class="container-fluid">
+        <div class="row justify-content-center">
+          <div class="col-12 col-sm-11 col-md-10 col-lg-8 col-xl-6 col-xxl-5">
+            <!-- Main Auth Card -->
+            <div class="card shadow-lg border-0 rounded-4 auth-card">
+              <div class="card-body p-3 p-sm-4 p-md-5">
+                <!-- App Logo and Title -->
+                <div class="text-center mb-4">
+                  <div class="mb-3">
+                    <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                      <i class="fas fa-stethoscope fa-2x text-primary"></i>
+                    </div>
+                  </div>
+                  <h1 class="card-title fw-bold text-dark mb-2">Prescribe</h1>
+                  <p class="text-muted mb-0">AI-Powered Medical Prescription System</p>
+                </div>
+                
+                <!-- Auth Mode Toggle -->
+                <div class="text-center mb-4">
+                  <div class="single-toggle-button w-100 rounded-3" role="group">
+                    <div class="toggle-container">
+                      <div 
+                        class="toggle-option {authMode === 'doctor' ? 'active' : 'inactive'}"
+                        on:click={handleSwitchToDoctor}
+                      >
+                        <i class="fas fa-user-md me-2"></i>Doctor
+                      </div>
+                      <div 
+                        class="toggle-option {authMode === 'pharmacist' ? 'active' : 'inactive'}"
+                        on:click={handleSwitchToPharmacist}
+                      >
+                        <i class="fas fa-pills me-2"></i>Pharmacist
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Auth Forms -->
+                {#if authMode === 'doctor'}
+                  <div class="auth-form-container">
+                    <h3 class="text-center mb-4 fw-semibold text-dark">
+                      <i class="fas fa-user-md text-primary me-2"></i>Doctor Portal
+                    </h3>
+                    <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+                  </div>
+                {:else}
+                  <div class="auth-form-container">
+                    <h3 class="text-center mb-4 fw-semibold text-dark">
+                      <i class="fas fa-pills text-primary me-2"></i>Pharmacist Portal
+                    </h3>
+                    <PharmacistAuth 
+                      on:pharmacist-login={handlePharmacistLogin}
+                      on:switch-to-doctor={handleSwitchToDoctor}
+                    />
+                  </div>
+                {/if}
+                
+                <!-- Footer -->
+                <div class="text-center mt-4">
+                  <small class="text-muted">
+                    <i class="fas fa-shield-alt me-1"></i>
+                    Secure • HIPAA Compliant • AI-Enhanced
+                  </small>
+                </div>
               </div>
             </div>
-            
-            {#if authMode === 'doctor'}
-              <h2 class="card-title text-center mb-4">
-                <i class="fas fa-user-md text-primary me-2"></i>Doctor Login
-              </h2>
-              <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
-            {:else}
-              <h2 class="card-title text-center mb-4">
-                <i class="fas fa-pills text-primary me-2"></i>Pharmacist Login
-              </h2>
-              <PharmacistAuth 
-                on:pharmacist-login={handlePharmacistLogin}
-                on:switch-to-doctor={handleSwitchToDoctor}
-              />
-            {/if}
-            
           </div>
         </div>
       </div>
@@ -350,6 +371,290 @@
     background-color: #0d6efd !important; /* Dark blue */
     border-color: #0d6efd !important; /* Dark blue */
     color: white !important;
+  }
+  
+  /* Stylish Login Page Styles */
+  .bg-gradient-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 50%, #0a58ca 100%);
+    min-height: 100vh;
+  }
+  
+  .auth-card {
+    backdrop-filter: blur(10px);
+    background-color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  }
+  
+  .auth-form-container {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    margin: 0.5rem 0;
+  }
+  
+  .btn-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    border: none;
+    transition: all 0.3s ease;
+  }
+  
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #0b5ed7 0%, #0a58ca 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+  }
+  
+  .btn-outline-primary {
+    border: 2px solid #0d6efd;
+    color: #0d6efd;
+    transition: all 0.3s ease;
+  }
+  
+  .btn-outline-primary:hover {
+    background: #0d6efd;
+    border-color: #0d6efd;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+  }
+  
+  .form-control {
+    transition: all 0.3s ease;
+    border-radius: 0.5rem;
+  }
+  
+  .form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    transform: translateY(-1px);
+  }
+  
+  .rounded-4 {
+    border-radius: 1rem !important;
+  }
+  
+  .rounded-3 {
+    border-radius: 0.75rem !important;
+  }
+  
+  /* Single Toggle Button Styles */
+  .single-toggle-button {
+    background: #e9ecef;
+    border: 2px solid #dee2e6;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+  
+  .toggle-container {
+    display: flex;
+    width: 100%;
+    height: 100%;
+  }
+  
+  .toggle-option {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    border-radius: 0.5rem;
+    margin: 0.125rem;
+  }
+  
+  .toggle-option.active {
+    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    color: white;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.3);
+    transform: translateY(-1px);
+  }
+  
+  .toggle-option.inactive {
+    background: transparent;
+    color: #6c757d;
+    border: none;
+  }
+  
+  .toggle-option.inactive:hover {
+    background: rgba(13, 110, 253, 0.1);
+    color: #0d6efd;
+  }
+  
+  .toggle-option i {
+    transition: all 0.3s ease;
+  }
+  
+  .toggle-option.active i {
+    color: white;
+  }
+  
+  .toggle-option.inactive i {
+    color: #6c757d;
+  }
+  
+  .toggle-option.inactive:hover i {
+    color: #0d6efd;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 1200px) {
+    .col-xl-5 {
+      max-width: 50%;
+    }
+  }
+  
+  @media (max-width: 992px) {
+    .col-lg-6 {
+      max-width: 60%;
+    }
+    
+    .auth-card .card-body {
+      padding: 2rem !important;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .col-md-8 {
+      max-width: 80%;
+    }
+    
+    .auth-card {
+      margin: 0.5rem;
+      border-radius: 1rem !important;
+    }
+    
+    .auth-card .card-body {
+      padding: 1.5rem !important;
+    }
+    
+    .auth-form-container {
+      padding: 1rem;
+      margin: 0.25rem 0;
+    }
+    
+    .btn-group .btn {
+      font-size: 0.9rem;
+      padding: 0.5rem 0.75rem;
+    }
+    
+    .toggle-option {
+      padding: 0.6rem 0.8rem;
+      font-size: 0.9rem;
+    }
+    
+    .form-control {
+      font-size: 0.95rem;
+    }
+    
+    h1 {
+      font-size: 1.75rem;
+    }
+    
+    h3 {
+      font-size: 1.25rem;
+    }
+  }
+  
+  @media (max-width: 576px) {
+    .col-sm-10 {
+      max-width: 95%;
+    }
+    
+    .auth-card {
+      margin: 0.25rem;
+      border-radius: 0.75rem !important;
+    }
+    
+    .auth-card .card-body {
+      padding: 1rem !important;
+    }
+    
+    .auth-form-container {
+      padding: 0.75rem;
+      margin: 0.125rem 0;
+    }
+    
+    .btn-group .btn {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.6rem;
+    }
+    
+    .toggle-option {
+      padding: 0.5rem 0.6rem;
+      font-size: 0.85rem;
+    }
+    
+    .form-control {
+      font-size: 0.9rem;
+      padding: 0.5rem 0.75rem;
+    }
+    
+    h1 {
+      font-size: 1.5rem;
+    }
+    
+    h3 {
+      font-size: 1.1rem;
+    }
+    
+    .bg-primary.bg-opacity-10 {
+      width: 60px !important;
+      height: 60px !important;
+    }
+    
+    .fa-2x {
+      font-size: 1.5rem !important;
+    }
+    
+    .fa-stethoscope {
+      font-size: 1.25rem !important;
+    }
+  }
+  
+  @media (max-width: 400px) {
+    .auth-card .card-body {
+      padding: 0.75rem !important;
+    }
+    
+    .auth-form-container {
+      padding: 0.5rem;
+    }
+    
+    .btn-group .btn {
+      font-size: 0.8rem;
+      padding: 0.35rem 0.5rem;
+    }
+    
+    .toggle-option {
+      padding: 0.4rem 0.5rem;
+      font-size: 0.8rem;
+    }
+    
+    .form-control {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.6rem;
+    }
+    
+    h1 {
+      font-size: 1.25rem;
+    }
+    
+    h3 {
+      font-size: 1rem;
+    }
+    
+    .bg-primary.bg-opacity-10 {
+      width: 50px !important;
+      height: 50px !important;
+    }
+    
+    .fa-stethoscope {
+      font-size: 1rem !important;
+    }
   }
   
 </style>
