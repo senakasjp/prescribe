@@ -442,6 +442,101 @@ Format your response with clear headings and bullet points. If no significant in
       throw error
     }
   }
+
+  // Generate combined analysis (recommendations + medication suggestions) in single call
+  async generateCombinedAnalysis(symptoms, currentMedications = [], patientAge = null, doctorId = null) {
+    if (!this.isConfigured()) {
+      throw new Error('OpenAI API key not configured.')
+    }
+
+    try {
+      console.log('🤖 Generating combined AI analysis...')
+
+      // Optimized symptom formatting
+      const symptomsText = symptoms.map(symptom => symptom.description).join(', ')
+      
+      // Optimized medication formatting
+      const currentMedsText = currentMedications.length > 0 
+        ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
+        : 'No current medications'
+
+      // Single comprehensive but concise prompt
+      const prompt = `Patient symptoms: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
+${currentMedsText}
+
+Provide concise medical analysis:
+
+**Possible Conditions:**
+- List 2-3 most likely conditions
+
+**Treatment Recommendations:**
+- Key medications to consider (OTC and prescription)
+- Important dosages and considerations
+
+**Drug Interactions:**
+- Critical interactions with current medications
+- Key warnings
+
+**Red Flags:**
+- When to seek immediate medical attention
+
+Be brief and focused. Medical information only.`
+
+      const response = await fetch(`${this.baseURL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: 'Medical assistant. Provide concise analysis with clear sections. Be brief but comprehensive for medical decision-making.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 600,  // Single response instead of two separate calls
+          temperature: 0.2
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
+      }
+
+      const data = await response.json()
+      const combinedAnalysis = data.choices[0]?.message?.content || 'No analysis available.'
+
+      // Track token usage
+      if (data.usage) {
+        aiTokenTracker.trackUsage(
+          'generateCombinedAnalysis',
+          data.usage.prompt_tokens,
+          data.usage.completion_tokens,
+          'gpt-3.5-turbo',
+          doctorId
+        )
+      }
+
+      console.log('✅ Combined AI analysis generated')
+
+      return {
+        combinedAnalysis,
+        recommendations: combinedAnalysis,
+        medicationSuggestions: combinedAnalysis
+      }
+
+    } catch (error) {
+      console.error('❌ Error generating combined analysis:', error)
+      throw error
+    }
+  }
 }
 
 // Create singleton instance
