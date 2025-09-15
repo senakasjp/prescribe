@@ -37,7 +37,7 @@ class AuthService {
   }
 
   // Register new doctor
-  async registerDoctor(email, password) {
+  async registerDoctor(email, password, doctorData = {}) {
     try {
       // Check if doctor already exists
       const existingDoctor = await jsonStorage.getDoctorByEmail(email)
@@ -49,7 +49,10 @@ class AuthService {
       const doctor = await jsonStorage.createDoctor({
         email,
         password, // In real app, this should be hashed
-        role: 'doctor'
+        role: 'doctor',
+        firstName: doctorData.firstName || '',
+        lastName: doctorData.lastName || '',
+        name: doctorData.firstName && doctorData.lastName ? `${doctorData.firstName} ${doctorData.lastName}` : ''
       })
 
       // Set as current user

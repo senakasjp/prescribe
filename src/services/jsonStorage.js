@@ -77,9 +77,13 @@ class JSONStorage {
 
   // Patient operations
   async createPatient(patientData) {
-    // Validate required fields
-    if (!patientData.firstName || !patientData.lastName || !patientData.email || !patientData.idNumber) {
-      throw new Error('Missing required patient data')
+    // Validate required fields - only first name and age are mandatory
+    if (!patientData.firstName || !patientData.firstName.trim()) {
+      throw new Error('First name is required')
+    }
+    
+    if (!patientData.age || !patientData.age.toString().trim()) {
+      throw new Error('Age is required')
     }
     
     const patient = {
@@ -89,8 +93,12 @@ class JSONStorage {
       email: patientData.email.trim(),
       phone: patientData.phone?.trim() || '',
       dateOfBirth: patientData.dateOfBirth,
+      age: patientData.age?.trim() || '',
+      weight: patientData.weight?.trim() || '',
+      bloodGroup: patientData.bloodGroup?.trim() || '',
       idNumber: patientData.idNumber.trim(),
       address: patientData.address?.trim() || '',
+      allergies: patientData.allergies?.trim() || '',
       emergencyContact: patientData.emergencyContact?.trim() || '',
       emergencyPhone: patientData.emergencyPhone?.trim() || '',
       doctorId: patientData.doctorId,
@@ -116,6 +124,46 @@ class JSONStorage {
 
   getPatientById(id) {
     return this.data.patients.find(patient => patient.id === id)
+  }
+
+  async updatePatient(id, updatedData) {
+    const patientIndex = this.data.patients.findIndex(patient => patient.id === id)
+    if (patientIndex === -1) {
+      throw new Error('Patient not found')
+    }
+
+    // Validate required fields - only first name and age are mandatory
+    if (!updatedData.firstName || !updatedData.firstName.trim()) {
+      throw new Error('First name is required')
+    }
+    
+    if (!updatedData.age || !updatedData.age.toString().trim()) {
+      throw new Error('Age is required')
+    }
+
+    // Update patient data
+    const updatedPatient = {
+      ...this.data.patients[patientIndex],
+      firstName: updatedData.firstName.trim(),
+      lastName: updatedData.lastName.trim(),
+      email: updatedData.email.trim(),
+      phone: updatedData.phone?.trim() || '',
+      dateOfBirth: updatedData.dateOfBirth,
+      age: updatedData.age?.trim() || '',
+      weight: updatedData.weight?.trim() || '',
+      bloodGroup: updatedData.bloodGroup?.trim() || '',
+      idNumber: updatedData.idNumber.trim(),
+      address: updatedData.address?.trim() || '',
+      allergies: updatedData.allergies?.trim() || '',
+      emergencyContact: updatedData.emergencyContact?.trim() || '',
+      emergencyPhone: updatedData.emergencyPhone?.trim() || '',
+      updatedAt: new Date().toISOString()
+    }
+
+    this.data.patients[patientIndex] = updatedPatient
+    this.saveData()
+    
+    return updatedPatient
   }
 
   // Illness operations

@@ -4,6 +4,8 @@
   
   const dispatch = createEventDispatcher()
   
+  let firstName = ''
+  let lastName = ''
   let email = ''
   let password = ''
   let confirmPassword = ''
@@ -15,6 +17,8 @@
   const toggleMode = () => {
     isRegistering = !isRegistering
     error = ''
+    firstName = ''
+    lastName = ''
     email = ''
     password = ''
     confirmPassword = ''
@@ -33,7 +37,11 @@
           throw new Error('Passwords do not match')
         }
         
-        const user = await authService.registerDoctor(email, password)
+        if (!firstName.trim() || !lastName.trim()) {
+          throw new Error('First name and last name are required')
+        }
+        
+        const user = await authService.registerDoctor(email, password, { firstName, lastName })
         console.log('Doctor registered successfully')
         
         // Dispatch event to parent to refresh user state
@@ -56,6 +64,33 @@
 </script>
 
 <form on:submit={handleSubmit}>
+  {#if isRegistering}
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <label for="firstName" class="form-label">First Name</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="firstName" 
+          bind:value={firstName}
+          required
+          disabled={loading}
+        >
+      </div>
+      <div class="col-md-6">
+        <label for="lastName" class="form-label">Last Name</label>
+        <input 
+          type="text" 
+          class="form-control" 
+          id="lastName" 
+          bind:value={lastName}
+          required
+          disabled={loading}
+        >
+      </div>
+    </div>
+  {/if}
+  
   <div class="mb-3">
     <label for="email" class="form-label">Email Address</label>
     <input 

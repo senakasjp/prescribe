@@ -114,7 +114,7 @@
         </span>
         <div class="navbar-nav ms-auto">
           <span class="navbar-text me-4">
-            <i class="fas fa-user me-1"></i>Dr. {user.email}
+            <i class="fas fa-user me-1"></i>Dr. {user.name || user.firstName || user.email}
             {#if doctorUsageStats}
               <span class="badge {doctorUsageStats.today.tokens > 0 ? 'bg-warning text-dark' : 'bg-secondary text-white'} me-3" 
                     title={doctorUsageStats.today.tokens > 0 ? "Today's AI Token Usage" : "AI Usage - No tokens used today"}>
@@ -210,5 +210,81 @@
   nav .btn {
     padding: 0.25rem 0.5rem !important;
     font-size: 0.8rem !important;
+  }
+  
+  /* Override Bootstrap primary color to dark blue */
+  :global(.bg-primary) {
+    background-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.text-primary) {
+    color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.border-primary) {
+    border-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.btn-primary) {
+    background-color: #0d6efd !important; /* Dark blue */
+    border-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.btn-primary:hover) {
+    background-color: #0b5ed7 !important; /* Darker blue on hover */
+    border-color: #0b5ed7 !important; /* Darker blue on hover */
+  }
+  
+  :global(.btn-outline-primary) {
+    color: #0d6efd !important; /* Dark blue */
+    border-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.btn-outline-primary:hover) {
+    background-color: #0d6efd !important; /* Dark blue */
+    border-color: #0d6efd !important; /* Dark blue */
+    color: white !important;
+  }
+  
+  :global(.navbar-dark .navbar-nav .nav-link) {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+  
+  :global(.navbar-dark .navbar-nav .nav-link:hover) {
+    color: rgba(255, 255, 255, 1) !important;
+  }
+  
+  /* Override Bootstrap info color to dark blue */
+  :global(.bg-info) {
+    background-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.text-info) {
+    color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.border-info) {
+    border-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.btn-info) {
+    background-color: #0d6efd !important; /* Dark blue */
+    border-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.btn-info:hover) {
+    background-color: #0b5ed7 !important; /* Darker blue on hover */
+    border-color: #0b5ed7 !important; /* Darker blue on hover */
+  }
+  
+  :global(.btn-outline-info) {
+    color: #0d6efd !important; /* Dark blue */
+    border-color: #0d6efd !important; /* Dark blue */
+  }
+  
+  :global(.btn-outline-info:hover) {
+    background-color: #0d6efd !important; /* Dark blue */
+    border-color: #0d6efd !important; /* Dark blue */
+    color: white !important;
   }
 </style>

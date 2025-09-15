@@ -8,12 +8,36 @@
   let email = ''
   let phone = ''
   let dateOfBirth = ''
+  let age = ''
+  let weight = ''
+  let bloodGroup = ''
   let idNumber = ''
   let address = ''
+  let allergies = ''
   let emergencyContact = ''
   let emergencyPhone = ''
   let error = ''
   let loading = false
+  
+  // Calculate age from date of birth
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return ''
+    const today = new Date()
+    const birth = new Date(birthDate)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age.toString()
+  }
+  
+  // Handle date of birth change to auto-calculate age
+  const handleDateOfBirthChange = () => {
+    if (dateOfBirth) {
+      age = calculateAge(dateOfBirth)
+    }
+  }
   
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -22,34 +46,52 @@
     loading = true
     
     try {
-      // Validate required fields
-      if (!firstName || !lastName || !email || !dateOfBirth || !idNumber) {
-        throw new Error('Please fill in all required fields')
+      // Validate required fields - only first name and age are mandatory
+      if (!firstName.trim()) {
+        throw new Error('First name is required')
       }
       
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(email)) {
-        throw new Error('Please enter a valid email address')
+      // Calculate age if date of birth is provided
+      let calculatedAge = age
+      if (dateOfBirth && !age) {
+        calculatedAge = calculateAge(dateOfBirth)
       }
       
-      // Validate date of birth
-      const birthDate = new Date(dateOfBirth)
-      const today = new Date()
-      if (birthDate >= today) {
-        throw new Error('Date of birth must be in the past')
+      if (!calculatedAge || calculatedAge === '') {
+        throw new Error('Age is required. Please provide either age or date of birth')
+      }
+      
+      // Validate email format only if email is provided
+      if (email && email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(email)) {
+          throw new Error('Please enter a valid email address')
+        }
+      }
+      
+      // Validate date of birth only if provided
+      if (dateOfBirth) {
+        const birthDate = new Date(dateOfBirth)
+        const today = new Date()
+        if (birthDate >= today) {
+          throw new Error('Date of birth must be in the past')
+        }
       }
       
       const patientData = {
         firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        dateOfBirth,
-        idNumber: idNumber.trim(),
-        address: address.trim(),
-        emergencyContact: emergencyContact.trim(),
-        emergencyPhone: emergencyPhone.trim()
+        lastName: lastName.trim() || '',
+        email: email.trim() || '',
+        phone: phone.trim() || '',
+        dateOfBirth: dateOfBirth || '',
+        age: calculatedAge,
+        weight: weight.trim() || '',
+        bloodGroup: bloodGroup.trim() || '',
+        idNumber: idNumber.trim() || '',
+        address: address.trim() || '',
+        allergies: allergies.trim() || '',
+        emergencyContact: emergencyContact.trim() || '',
+        emergencyPhone: emergencyPhone.trim() || ''
       }
       
       dispatch('patient-added', patientData)
@@ -60,8 +102,12 @@
       email = ''
       phone = ''
       dateOfBirth = ''
+      age = ''
+      weight = ''
+      bloodGroup = ''
       idNumber = ''
       address = ''
+      allergies = ''
       emergencyContact = ''
       emergencyPhone = ''
       
@@ -91,7 +137,7 @@
         <div class="col-12 col-md-6">
           <div class="mb-3">
             <label for="firstName" class="form-label">
-              <i class="fas fa-user me-1"></i>First Name *
+              <i class="fas fa-user me-1"></i>First Name <span class="text-danger">*</span>
             </label>
             <input 
               type="text" 
@@ -105,13 +151,12 @@
         </div>
         <div class="col-12 col-md-6">
           <div class="mb-3">
-            <label for="lastName" class="form-label">Last Name *</label>
+            <label for="lastName" class="form-label">Last Name</label>
             <input 
               type="text" 
               class="form-control" 
               id="lastName" 
               bind:value={lastName}
-              required
               disabled={loading}
             >
           </div>
@@ -122,14 +167,13 @@
         <div class="col-12 col-md-6">
           <div class="mb-3">
             <label for="email" class="form-label">
-              <i class="fas fa-envelope me-1"></i>Email Address *
+              <i class="fas fa-envelope me-1"></i>Email Address
             </label>
             <input 
               type="email" 
               class="form-control" 
               id="email" 
               bind:value={email}
-              required
               disabled={loading}
             >
           </div>
@@ -149,30 +193,93 @@
       </div>
       
       <div class="row g-3">
-        <div class="col-12 col-md-6">
+        <div class="col-12 col-md-3">
           <div class="mb-3">
             <label for="dateOfBirth" class="form-label">
-              <i class="fas fa-calendar me-1"></i>Date of Birth *
+              <i class="fas fa-calendar me-1"></i>Date of Birth
             </label>
             <input 
               type="date" 
               class="form-control" 
               id="dateOfBirth" 
               bind:value={dateOfBirth}
-              required
+              on:change={handleDateOfBirthChange}
               disabled={loading}
             >
           </div>
         </div>
+        <div class="col-12 col-md-3">
+          <div class="mb-3">
+            <label for="age" class="form-label">
+              <i class="fas fa-birthday-cake me-1"></i>Age <span class="text-danger">*</span>
+            </label>
+            <input 
+              type="number" 
+              class="form-control" 
+              id="age" 
+              bind:value={age}
+              min="0"
+              max="150"
+              placeholder="Auto-calculated"
+              disabled={loading}
+            >
+            <small class="form-text text-muted">Auto-calculated</small>
+          </div>
+        </div>
+        <div class="col-12 col-md-3">
+          <div class="mb-3">
+            <label for="weight" class="form-label">
+              <i class="fas fa-weight me-1"></i>Weight
+            </label>
+            <input 
+              type="number" 
+              class="form-control" 
+              id="weight" 
+              bind:value={weight}
+              min="0"
+              max="500"
+              step="0.1"
+              placeholder="kg"
+              disabled={loading}
+            >
+            <small class="form-text text-muted">Weight in kilograms</small>
+          </div>
+        </div>
+        <div class="col-12 col-md-3">
+          <div class="mb-3">
+            <label for="bloodGroup" class="form-label">
+              <i class="fas fa-tint me-1"></i>Blood Group
+            </label>
+            <select 
+              class="form-control" 
+              id="bloodGroup" 
+              bind:value={bloodGroup}
+              disabled={loading}
+            >
+              <option value="">Select Blood Group</option>
+              <option value="A+">A+</option>
+              <option value="A-">A-</option>
+              <option value="B+">B+</option>
+              <option value="B-">B-</option>
+              <option value="AB+">AB+</option>
+              <option value="AB-">AB-</option>
+              <option value="O+">O+</option>
+              <option value="O-">O-</option>
+            </select>
+            <small class="form-text text-muted">Important for medical procedures</small>
+          </div>
+        </div>
+      </div>
+      
+      <div class="row g-3">
         <div class="col-12 col-md-6">
           <div class="mb-3">
-            <label for="idNumber" class="form-label">ID Number *</label>
+            <label for="idNumber" class="form-label">ID Number</label>
             <input 
               type="text" 
               class="form-control" 
               id="idNumber" 
               bind:value={idNumber}
-              required
               disabled={loading}
             >
           </div>
@@ -188,6 +295,21 @@
           bind:value={address}
           disabled={loading}
         ></textarea>
+      </div>
+      
+      <div class="mb-3">
+        <label for="allergies" class="form-label">
+          <i class="fas fa-exclamation-triangle me-1"></i>Allergies
+        </label>
+        <textarea 
+          class="form-control" 
+          id="allergies" 
+          rows="3" 
+          bind:value={allergies}
+          placeholder="List any known allergies (e.g., Penicillin, Shellfish, Latex, etc.)"
+          disabled={loading}
+        ></textarea>
+        <small class="form-text text-muted">Important: List all known allergies to medications, foods, or other substances</small>
       </div>
       
       <div class="row g-3">

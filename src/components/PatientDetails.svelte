@@ -34,6 +34,26 @@
   let prescriptionsFinalized = false
   let printButtonClicked = false
   
+  // Patient edit mode
+  let isEditingPatient = false
+  let editPatientData = {
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    dateOfBirth: '',
+    age: '',
+    weight: '',
+    bloodGroup: '',
+    idNumber: '',
+    address: '',
+    allergies: '',
+    emergencyContact: '',
+    emergencyPhone: ''
+  }
+  let editError = ''
+  let savingPatient = false
+  
   // Drug interaction checking
   let drugInteractions = null
   let checkingInteractions = false
@@ -653,6 +673,134 @@
     editingMedication = null
   }
   
+  // Calculate age from date of birth
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return ''
+    const today = new Date()
+    const birth = new Date(birthDate)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age.toString()
+  }
+  
+  // Handle date of birth change to auto-calculate age
+  const handleEditDateOfBirthChange = () => {
+    if (editPatientData.dateOfBirth) {
+      editPatientData.age = calculateAge(editPatientData.dateOfBirth)
+    }
+  }
+  
+  // Patient edit functions
+  const startEditingPatient = () => {
+    // Populate edit form with current patient data
+    editPatientData = {
+      firstName: selectedPatient.firstName || '',
+      lastName: selectedPatient.lastName || '',
+      email: selectedPatient.email || '',
+      phone: selectedPatient.phone || '',
+      dateOfBirth: selectedPatient.dateOfBirth || '',
+      age: selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || '',
+      weight: selectedPatient.weight || '',
+      bloodGroup: selectedPatient.bloodGroup || '',
+      idNumber: selectedPatient.idNumber || '',
+      address: selectedPatient.address || '',
+      allergies: selectedPatient.allergies || '',
+      emergencyContact: selectedPatient.emergencyContact || '',
+      emergencyPhone: selectedPatient.emergencyPhone || ''
+    }
+    isEditingPatient = true
+    editError = ''
+  }
+  
+  const cancelEditingPatient = () => {
+    isEditingPatient = false
+    editError = ''
+    editPatientData = {
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      dateOfBirth: '',
+      age: '',
+      weight: '',
+      bloodGroup: '',
+      idNumber: '',
+      address: '',
+      allergies: '',
+      emergencyContact: '',
+      emergencyPhone: ''
+    }
+  }
+  
+  const savePatientChanges = async () => {
+    editError = ''
+    savingPatient = true
+    
+    try {
+      // Validate required fields - only first name and age are mandatory
+      if (!editPatientData.firstName.trim()) {
+        throw new Error('First name is required')
+      }
+      
+      // Calculate age if date of birth is provided
+      let calculatedAge = editPatientData.age
+      if (editPatientData.dateOfBirth && !editPatientData.age) {
+        calculatedAge = calculateAge(editPatientData.dateOfBirth)
+      }
+      
+      if (!calculatedAge || calculatedAge === '') {
+        throw new Error('Age is required. Please provide either age or date of birth')
+      }
+      
+      // Validate email format only if email is provided
+      if (editPatientData.email && editPatientData.email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(editPatientData.email)) {
+          throw new Error('Please enter a valid email address')
+        }
+      }
+      
+      // Validate date of birth only if provided
+      if (editPatientData.dateOfBirth) {
+        const birthDate = new Date(editPatientData.dateOfBirth)
+        const today = new Date()
+        if (birthDate >= today) {
+          throw new Error('Date of birth must be in the past')
+        }
+      }
+      
+      // Update patient data
+      const updatedPatient = {
+        ...selectedPatient,
+        ...editPatientData,
+        age: calculatedAge
+      }
+      
+      // Save to storage
+      await jsonStorage.updatePatient(selectedPatient.id, updatedPatient)
+      
+      // Update the selected patient reference
+      Object.assign(selectedPatient, updatedPatient)
+      
+      // Notify parent component
+      dispatch('dataUpdated', { type: 'patient', data: updatedPatient })
+      
+      // Exit edit mode
+      isEditingPatient = false
+      
+      console.log('✅ Patient data updated successfully')
+      
+    } catch (error) {
+      editError = error.message
+      console.error('❌ Error updating patient:', error)
+    } finally {
+      savingPatient = false
+    }
+  }
+  
   // Handle prescription actions
   const handleEditPrescription = (medication, index) => {
     editingMedication = medication
@@ -729,10 +877,10 @@
       <div class="btn-group" role="group">
         <button 
           class="btn btn-outline-primary btn-sm" 
-          on:click={() => showPrescriptionPDF = true}
-          disabled={loading}
+          on:click={startEditingPatient}
+          disabled={loading || isEditingPatient}
         >
-          <i class="fas fa-file-pdf me-1"></i>Generate PDF
+          <i class="fas fa-edit me-1"></i>Edit
         </button>
       </div>
     </div>
@@ -761,17 +909,285 @@
               </button>
             </div>
             <div class="card-body">
-              <div class="row">
-                <div class="col-md-6">
-                  <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
-                  <p><strong>Email:</strong> {selectedPatient.email}</p>
-                  <p><strong>Phone:</strong> {selectedPatient.phone || 'Not provided'}</p>
+              {#if isEditingPatient}
+                <!-- Edit Patient Form -->
+                <form on:submit|preventDefault={savePatientChanges}>
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editFirstName" class="form-label">
+                          <i class="fas fa-user me-1"></i>First Name <span class="text-danger">*</span>
+                        </label>
+                        <input 
+                          type="text" 
+                          class="form-control" 
+                          id="editFirstName" 
+                          bind:value={editPatientData.firstName}
+                          required
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editLastName" class="form-label">Last Name</label>
+                        <input 
+                          type="text" 
+                          class="form-control" 
+                          id="editLastName" 
+                          bind:value={editPatientData.lastName}
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editEmail" class="form-label">
+                          <i class="fas fa-envelope me-1"></i>Email Address
+                        </label>
+                        <input 
+                          type="email" 
+                          class="form-control" 
+                          id="editEmail" 
+                          bind:value={editPatientData.email}
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editPhone" class="form-label">Phone Number</label>
+                        <input 
+                          type="tel" 
+                          class="form-control" 
+                          id="editPhone" 
+                          bind:value={editPatientData.phone}
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="row g-3">
+                    <div class="col-12 col-md-3">
+                      <div class="mb-3">
+                        <label for="editDateOfBirth" class="form-label">
+                          <i class="fas fa-calendar me-1"></i>Date of Birth
+                        </label>
+                        <input 
+                          type="date" 
+                          class="form-control" 
+                          id="editDateOfBirth" 
+                          bind:value={editPatientData.dateOfBirth}
+                          on:change={handleEditDateOfBirthChange}
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <div class="mb-3">
+                        <label for="editAge" class="form-label">
+                          <i class="fas fa-birthday-cake me-1"></i>Age <span class="text-danger">*</span>
+                        </label>
+                        <input 
+                          type="number" 
+                          class="form-control" 
+                          id="editAge" 
+                          bind:value={editPatientData.age}
+                          min="0"
+                          max="150"
+                          placeholder="Auto-calculated"
+                          disabled={savingPatient}
+                        >
+                        <small class="form-text text-muted">Auto-calculated</small>
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <div class="mb-3">
+                        <label for="editWeight" class="form-label">
+                          <i class="fas fa-weight me-1"></i>Weight
+                        </label>
+                        <input 
+                          type="number" 
+                          class="form-control" 
+                          id="editWeight" 
+                          bind:value={editPatientData.weight}
+                          min="0"
+                          max="500"
+                          step="0.1"
+                          placeholder="kg"
+                          disabled={savingPatient}
+                        >
+                        <small class="form-text text-muted">Weight in kilograms</small>
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <div class="mb-3">
+                        <label for="editBloodGroup" class="form-label">
+                          <i class="fas fa-tint me-1"></i>Blood Group
+                        </label>
+                        <select 
+                          class="form-control" 
+                          id="editBloodGroup" 
+                          bind:value={editPatientData.bloodGroup}
+                          disabled={savingPatient}
+                        >
+                          <option value="">Select Blood Group</option>
+                          <option value="A+">A+</option>
+                          <option value="A-">A-</option>
+                          <option value="B+">B+</option>
+                          <option value="B-">B-</option>
+                          <option value="AB+">AB+</option>
+                          <option value="AB-">AB-</option>
+                          <option value="O+">O+</option>
+                          <option value="O-">O-</option>
+                        </select>
+                        <small class="form-text text-muted">Important for medical procedures</small>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editIdNumber" class="form-label">ID Number</label>
+                        <input 
+                          type="text" 
+                          class="form-control" 
+                          id="editIdNumber" 
+                          bind:value={editPatientData.idNumber}
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label for="editAddress" class="form-label">Address</label>
+                    <textarea 
+                      class="form-control" 
+                      id="editAddress" 
+                      rows="3" 
+                      bind:value={editPatientData.address}
+                      disabled={savingPatient}
+                    ></textarea>
+                  </div>
+                  
+                  <div class="mb-3">
+                    <label for="editAllergies" class="form-label">
+                      <i class="fas fa-exclamation-triangle me-1"></i>Allergies
+                    </label>
+                    <textarea 
+                      class="form-control" 
+                      id="editAllergies" 
+                      rows="3" 
+                      bind:value={editPatientData.allergies}
+                      placeholder="List any known allergies (e.g., Penicillin, Shellfish, Latex, etc.)"
+                      disabled={savingPatient}
+                    ></textarea>
+                    <small class="form-text text-muted">Important: List all known allergies to medications, foods, or other substances</small>
+                  </div>
+                  
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editEmergencyContact" class="form-label">Emergency Contact</label>
+                        <input 
+                          type="text" 
+                          class="form-control" 
+                          id="editEmergencyContact" 
+                          bind:value={editPatientData.emergencyContact}
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editEmergencyPhone" class="form-label">Emergency Phone</label>
+                        <input 
+                          type="tel" 
+                          class="form-control" 
+                          id="editEmergencyPhone" 
+                          bind:value={editPatientData.emergencyPhone}
+                          disabled={savingPatient}
+                        >
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {#if editError}
+                    <div class="alert alert-danger" role="alert">
+                      <i class="fas fa-exclamation-triangle me-2"></i>{editError}
+                    </div>
+                  {/if}
+                  
+                  <div class="d-flex flex-column flex-sm-row gap-2">
+                    <button 
+                      type="submit" 
+                      class="btn btn-primary flex-fill" 
+                      disabled={savingPatient}
+                    >
+                      {#if savingPatient}
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                      {/if}
+                      <i class="fas fa-save me-1"></i>Save Changes
+                    </button>
+                    <button 
+                      type="button" 
+                      class="btn btn-secondary flex-fill" 
+                      on:click={cancelEditingPatient}
+                      disabled={savingPatient}
+                    >
+                      <i class="fas fa-times me-1"></i>Cancel
+                    </button>
+                  </div>
+                </form>
+              {:else}
+                <!-- Display Patient Information -->
+                <div class="row">
+                  <div class="col-md-6">
+                    <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
+                    <p><strong>Email:</strong> {selectedPatient.email}</p>
+                    <p><strong>Phone:</strong> {selectedPatient.phone || 'Not provided'}</p>
+                    <p><strong>Date of Birth:</strong> {selectedPatient.dateOfBirth}</p>
+                    <p><strong>Age:</strong> {selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || 'Not calculated'}</p>
+                    {#if selectedPatient.weight}
+                      <p><strong>Weight:</strong> {selectedPatient.weight} kg</p>
+                    {/if}
+                    {#if selectedPatient.bloodGroup}
+                      <p><strong>Blood Group:</strong> <span class="badge bg-danger text-white">{selectedPatient.bloodGroup}</span></p>
+                    {/if}
+                  </div>
+                  <div class="col-md-6">
+                    <p><strong>ID Number:</strong> {selectedPatient.idNumber}</p>
+                    {#if selectedPatient.address}
+                      <p><strong>Address:</strong> {selectedPatient.address}</p>
+                    {/if}
+                    {#if selectedPatient.emergencyContact}
+                      <p><strong>Emergency Contact:</strong> {selectedPatient.emergencyContact}</p>
+                    {/if}
+                    {#if selectedPatient.emergencyPhone}
+                      <p><strong>Emergency Phone:</strong> {selectedPatient.emergencyPhone}</p>
+                    {/if}
+                  </div>
                 </div>
-                <div class="col-md-6">
-                  <p><strong>Date of Birth:</strong> {selectedPatient.dateOfBirth}</p>
-                  <p><strong>ID Number:</strong> {selectedPatient.idNumber}</p>
-                </div>
-              </div>
+                
+                {#if selectedPatient.allergies}
+                  <div class="row mt-3">
+                    <div class="col-12">
+                      <div class="alert alert-warning">
+                        <h6 class="alert-heading">
+                          <i class="fas fa-exclamation-triangle me-2"></i>Allergies
+                        </h6>
+                        <p class="mb-0">{selectedPatient.allergies}</p>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+              {/if}
             </div>
           </div>
         </div>

@@ -248,6 +248,38 @@ Format your response with clear headings and bullet points. Remember this is for
     ]
   }
 
+  // Database of known SAFE drug combinations to prevent false positives
+  getKnownSafeCombinations() {
+    return [
+      // Common safe combinations
+      {
+        drugs: ['paracetamol', 'acetaminophen'],
+        interactions: ['metformin', 'aspirin', 'ibuprofen', 'omeprazole', 'amoxicillin', 'amoxiclav'],
+        description: 'Safe combination - no significant interactions'
+      },
+      {
+        drugs: ['metformin'],
+        interactions: ['paracetamol', 'acetaminophen', 'aspirin', 'ibuprofen', 'omeprazole'],
+        description: 'Safe combination - no significant interactions'
+      },
+      {
+        drugs: ['aspirin'],
+        interactions: ['paracetamol', 'acetaminophen', 'metformin', 'omeprazole'],
+        description: 'Safe combination - no significant interactions'
+      },
+      {
+        drugs: ['ibuprofen'],
+        interactions: ['paracetamol', 'acetaminophen', 'metformin'],
+        description: 'Safe combination - no significant interactions'
+      },
+      {
+        drugs: ['omeprazole'],
+        interactions: ['paracetamol', 'acetaminophen', 'metformin', 'aspirin'],
+        description: 'Safe combination - no significant interactions'
+      }
+    ]
+  }
+
   // Check for known dangerous interactions locally first
   checkLocalDangerousInteractions(prescriptions) {
     const dangerousInteractions = this.getKnownDangerousInteractions()
@@ -274,28 +306,54 @@ Format your response with clear headings and bullet points. Remember this is for
     return null
   }
 
+  // Check for known safe combinations to prevent false positives
+  checkKnownSafeCombinations(prescriptions) {
+    const safeCombinations = this.getKnownSafeCombinations()
+    const medicationNames = prescriptions.map(p => p.name.toLowerCase().trim())
+
+    for (const combination of safeCombinations) {
+      const hasDrug = combination.drugs.some(drug => 
+        medicationNames.some(med => med.includes(drug))
+      )
+      const hasInteractionDrug = combination.interactions.some(drug => 
+        medicationNames.some(med => med.includes(drug))
+      )
+      
+      if (hasDrug && hasInteractionDrug) {
+        return {
+          isSafeCombination: true,
+          description: combination.description
+        }
+      }
+    }
+    
+    return null
+  }
+
   // Enhanced parsing for AI response to catch more interaction types
   parseAIInteractionResponse(analysis) {
     const lowerAnalysis = analysis.toLowerCase()
     
-    // More comprehensive interaction detection
+    // More conservative interaction detection - only flag if AI explicitly mentions interactions
     const hasInteractions = !lowerAnalysis.includes('no significant drug interactions detected') && 
                            !lowerAnalysis.includes('no interactions found') &&
                            !lowerAnalysis.includes('no known interactions') &&
                            !lowerAnalysis.includes('no drug interactions') &&
-                           (lowerAnalysis.includes('interaction') || 
+                           !lowerAnalysis.includes('no significant interactions') &&
+                           !lowerAnalysis.includes('no major interactions') &&
+                           !lowerAnalysis.includes('no dangerous interactions') &&
+                           (lowerAnalysis.includes('drug interaction') || 
                             lowerAnalysis.includes('contraindication') ||
-                            lowerAnalysis.includes('warning') ||
-                            lowerAnalysis.includes('caution') ||
-                            lowerAnalysis.includes('avoid') ||
-                            lowerAnalysis.includes('risk') ||
-                            lowerAnalysis.includes('dangerous') ||
-                            lowerAnalysis.includes('severe') ||
                             lowerAnalysis.includes('serotonin syndrome') ||
-                            lowerAnalysis.includes('toxicity') ||
-                            lowerAnalysis.includes('bleeding risk'))
+                            lowerAnalysis.includes('bleeding risk') ||
+                            lowerAnalysis.includes('toxicity risk') ||
+                            lowerAnalysis.includes('dangerous combination') ||
+                            lowerAnalysis.includes('avoid taking') ||
+                            lowerAnalysis.includes('do not combine') ||
+                            lowerAnalysis.includes('increased risk') ||
+                            lowerAnalysis.includes('monitor closely'))
 
-    // Enhanced severity detection
+    // More conservative severity detection
     let severity = 'low'
     if (lowerAnalysis.includes('critical') || 
         lowerAnalysis.includes('severe') || 
@@ -304,11 +362,12 @@ Format your response with clear headings and bullet points. Remember this is for
         lowerAnalysis.includes('serotonin syndrome') ||
         lowerAnalysis.includes('fatal') ||
         lowerAnalysis.includes('death') ||
-        lowerAnalysis.includes('emergency')) {
+        lowerAnalysis.includes('emergency') ||
+        lowerAnalysis.includes('life-threatening')) {
       severity = 'critical'
     } else if (lowerAnalysis.includes('major') || 
-               lowerAnalysis.includes('high') || 
-               lowerAnalysis.includes('significant') ||
+               lowerAnalysis.includes('high risk') || 
+               lowerAnalysis.includes('significant interaction') ||
                lowerAnalysis.includes('serious') ||
                lowerAnalysis.includes('toxicity') ||
                lowerAnalysis.includes('bleeding risk')) {
@@ -347,6 +406,18 @@ Format your response with clear headings and bullet points. Remember this is for
         return localDangerousInteraction
       }
 
+      // Check for known safe combinations to prevent false positives
+      const safeCombination = this.checkKnownSafeCombinations(prescriptions)
+      if (safeCombination) {
+        console.log('✅ Safe combination detected:', safeCombination)
+        return {
+          hasInteractions: false,
+          interactions: 'No significant drug interactions detected. These medications are commonly prescribed together and are considered safe.',
+          severity: 'none',
+          isSafeCombination: true
+        }
+      }
+
       const medicationNames = prescriptions.map(prescription => prescription.name).join(', ')
 
       const prompt = `As a medical AI assistant, analyze the following medications for potential drug interactions.
@@ -356,33 +427,37 @@ Current Prescriptions: ${medicationNames}
 Please analyze these medications and provide a structured response in the following format:
 
 **INTERACTION ANALYSIS:**
-- Check for known drug-drug interactions
-- Identify potential contraindications
+- Check for KNOWN, DOCUMENTED drug-drug interactions only
+- Identify SPECIFIC contraindications (not general warnings)
 - Assess severity levels (Minor, Moderate, Major, Severe, Critical)
 
 **SPECIFIC INTERACTIONS:**
-- List any specific interactions found
-- Explain the mechanism and potential effects
-- Provide monitoring recommendations
+- List ONLY confirmed interactions found in medical literature
+- Explain the specific mechanism and documented effects
+- Provide evidence-based monitoring recommendations
 
 **SEVERITY ASSESSMENT:**
-- Overall risk level (Low, Moderate, High, Critical)
-- Key warnings for healthcare providers
-- When to seek immediate medical attention
+- Overall risk level based on documented evidence (Low, Moderate, High, Critical)
+- Specific warnings for healthcare providers
+- Clear criteria for when to seek immediate medical attention
 
 **MONITORING RECOMMENDATIONS:**
-- What to watch for
+- Evidence-based monitoring guidelines
 - Recommended follow-up intervals
-- Signs of adverse reactions
+- Specific signs of adverse reactions to watch for
 
-IMPORTANT: If you find ANY interactions, contraindications, or warnings, clearly state them. Do not say "no significant interactions" if there are any concerns. Be thorough in checking for:
-- Serotonin syndrome risks (MAOI + SSRI combinations)
-- Bleeding risks (warfarin + NSAIDs)
-- Toxicity risks (lithium + diuretics)
-- Cardiovascular risks
-- CNS depressant combinations
+IMPORTANT CRITERIA FOR REPORTING INTERACTIONS:
+- Only report DOCUMENTED, CLINICALLY SIGNIFICANT interactions
+- Do NOT report theoretical or minor interactions
+- Be CONSERVATIVE - only flag interactions with clear evidence
+- Focus on these HIGH-RISK combinations:
+  - Serotonin syndrome risks (MAOI + SSRI combinations)
+  - Bleeding risks (warfarin + NSAIDs)
+  - Toxicity risks (lithium + diuretics)
+  - Cardiovascular risks
+  - CNS depressant combinations
 
-Format your response with clear headings and bullet points. If no significant interactions are found, state "No significant drug interactions detected" but still provide general monitoring advice. Remember this is for informational purposes only and should not replace professional medical consultation.`
+If NO documented, clinically significant interactions are found, clearly state "No significant drug interactions detected" and provide general safety monitoring advice. Remember this is for informational purposes only and should not replace professional medical consultation.`
 
       const response = await fetch(`${this.baseURL}/chat/completions`, {
         method: 'POST',
