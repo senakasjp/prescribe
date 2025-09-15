@@ -64,6 +64,10 @@
   let checkingInteractions = false
   let interactionError = ''
   let showInteractions = false
+  let aiCheckComplete = false
+  let aiCheckMessage = ''
+  let prescriptionFinished = false
+  let lastAnalyzedMedications = []
   
   // Load patient data
   const loadPatientData = async () => {
@@ -72,6 +76,7 @@
       
       // Reset finalized state when loading new patient data
       prescriptionsFinalized = false
+      prescriptionFinished = false
       printButtonClicked = false
       
       // Load illnesses
@@ -121,7 +126,7 @@
     if (mostRecentPrescription) {
       console.log('🔧 Found most recent prescription:', mostRecentPrescription.id)
       currentPrescription = mostRecentPrescription
-      currentMedications = mostRecentPrescription.medications || []
+      currentMedications = currentPrescription.medications || []
       console.log('📅 Set current medications:', currentMedications.length)
     } else {
       console.log('🔧 No existing prescriptions found - will create new one when needed')
@@ -129,13 +134,10 @@
       currentMedications = []
     }
     
-    // Check for drug interactions if we have multiple medications
-    if (currentMedications.length >= 2 && !checkingInteractions) {
-      checkDrugInteractions()
-    } else if (currentMedications.length < 2) {
-      drugInteractions = null
-      showInteractions = false
-    }
+    // Note: Drug interaction checking is now done when clicking action buttons
+    // Clear any existing interactions when loading data
+    drugInteractions = null
+    showInteractions = false
   }
   
   // Filter current prescriptions (show all medications from all prescriptions)
@@ -152,14 +154,10 @@
     currentMedications = currentPrescription ? currentPrescription.medications || [] : []
     console.log('📅 Current medications in prescription:', currentMedications.length)
     
-    // Check for drug interactions when prescriptions change
-    // Only check if not already checking (to avoid duplicate calls)
-    if (currentMedications.length >= 2 && !checkingInteractions) {
-      checkDrugInteractions()
-    } else if (currentMedications.length < 2) {
+    // Note: Drug interaction checking is now done when clicking action buttons
+    // Clear any existing interactions when filtering
       drugInteractions = null
       showInteractions = false
-    }
   }
   
   // Check for drug interactions
@@ -174,6 +172,16 @@
       return
     }
     
+    // Check if medications have changed since last analysis
+    const currentMedNames = currentMedications.map(m => m.name).sort()
+    const lastAnalyzedNames = lastAnalyzedMedications.map(m => m.name).sort()
+    
+    if (currentMedNames.length === lastAnalyzedNames.length && 
+        currentMedNames.every((name, index) => name === lastAnalyzedNames[index])) {
+      console.log('🔄 Medications unchanged - skipping AI analysis')
+      return
+    }
+    
     checkingInteractions = true
     interactionError = ''
     
@@ -181,6 +189,21 @@
       console.log('🔍 Checking drug interactions for:', currentMedications.map(p => p.name))
       drugInteractions = await openaiService.checkDrugInteractions(currentMedications, doctorId)
       console.log('✅ Drug interactions checked:', drugInteractions)
+      
+      // Set AI check completion message
+      aiCheckComplete = true
+      if (drugInteractions && drugInteractions.hasInteractions === false) {
+        aiCheckMessage = 'AI drug interaction test complete - No significant drug interactions detected'
+      } else if (drugInteractions && drugInteractions.hasInteractions === true) {
+        aiCheckMessage = `AI drug interaction test complete - ${drugInteractions.severity} interactions found`
+      } else {
+        aiCheckMessage = 'AI drug interaction test complete'
+      }
+      
+      // Update last analyzed medications to prevent re-analysis
+      lastAnalyzedMedications = [...currentMedications]
+      
+      // Keep message visible until manually dismissed (no auto-hide)
       
       // Notify parent that AI usage was updated
       if (addToPrescription) {
@@ -190,6 +213,9 @@
     } catch (error) {
       console.error('❌ Error checking drug interactions:', error)
       interactionError = error.message
+      aiCheckComplete = true
+      aiCheckMessage = 'AI analysis failed - Please check console for details'
+      // Keep error message visible until manually dismissed (no auto-hide)
     } finally {
       checkingInteractions = false
     }
@@ -330,6 +356,11 @@
           currentMedications[currentIndex] = updatedMedication
           currentMedications = [...currentMedications] // Trigger reactivity
         }
+        
+        // Reset AI analysis state when medications change
+        aiCheckComplete = false
+        aiCheckMessage = ''
+        lastAnalyzedMedications = []
       } else {
         // Add new medication to current prescription
         if (!currentPrescription) {
@@ -354,17 +385,18 @@
           prescriptions = [...prescriptions]
         }
         
-        // Update current medications array for display
-        currentMedications = [...currentMedications, newMedication]
+        // Update current medications array for display (reference to prescription medications)
+        currentMedications = currentPrescription.medications
         console.log('📋 Added medication to current prescription:', newMedication.name)
         console.log('📋 Current medications in prescription:', currentMedications.length)
         
-        // Check for drug interactions immediately after adding new medication
-        // This ensures immediate feedback when a new drug is added
-        if (currentMedications.length >= 2) {
-          console.log('🔍 New medication added - checking interactions immediately')
-          checkDrugInteractions()
-        }
+        // Reset AI analysis state when medications change
+        aiCheckComplete = false
+        aiCheckMessage = ''
+        lastAnalyzedMedications = []
+        
+        // Note: Drug interaction checking is now done when clicking action buttons
+        // (Complete, Send to Pharmacy, Print) instead of automatically when adding drugs
         
         // Notify parent component to refresh medical summary
         dispatch('dataUpdated', { 
@@ -462,6 +494,18 @@
     try {
       console.log('✅ Completing current prescriptions')
       
+      // Check AI drug interactions first
+      console.log('🔍 Current medications count:', currentMedications.length)
+      console.log('🔍 OpenAI configured:', openaiService.isConfigured())
+      console.log('🔍 Current medications:', currentMedications.map(m => m.name))
+      
+      if (currentMedications.length >= 2) {
+        console.log('🔍 Checking drug interactions before completing...')
+        await checkDrugInteractions()
+      } else {
+        console.log('⚠️ Not enough medications for interaction check (need at least 2)')
+      }
+      
       // Save current prescriptions first
       await saveCurrentPrescriptions()
       
@@ -492,6 +536,9 @@
       // Update prescriptions array to trigger reactivity
       prescriptions = [...prescriptions]
       
+      // Set prescription as finished to show action buttons
+      prescriptionFinished = true
+      
       console.log('🎉 Current prescriptions completed successfully')
     } catch (error) {
       console.error('❌ Error completing prescriptions:', error)
@@ -502,6 +549,18 @@
   const printPrescriptions = async () => {
     try {
       console.log('🖨️ Printing prescriptions to PDF')
+      
+      // Check AI drug interactions first
+      console.log('🔍 Current medications count:', currentMedications.length)
+      console.log('🔍 OpenAI configured:', openaiService.isConfigured())
+      console.log('🔍 Current medications:', currentMedications.map(m => m.name))
+      
+      if (currentMedications.length >= 2) {
+        console.log('🔍 Checking drug interactions before printing...')
+        await checkDrugInteractions()
+      } else {
+        console.log('⚠️ Not enough medications for interaction check (need at least 2)')
+      }
       
       // Save current prescriptions first
       await saveCurrentPrescriptions()
@@ -530,6 +589,18 @@
   const showPharmacySelection = async () => {
     try {
       console.log('📤 Opening pharmacy selection modal')
+      
+      // Check AI drug interactions first
+      console.log('🔍 Current medications count:', currentMedications.length)
+      console.log('🔍 OpenAI configured:', openaiService.isConfigured())
+      console.log('🔍 Current medications:', currentMedications.map(m => m.name))
+      
+      if (currentMedications.length >= 2) {
+        console.log('🔍 Checking drug interactions before sending to pharmacy...')
+        await checkDrugInteractions()
+      } else {
+        console.log('⚠️ Not enough medications for interaction check (need at least 2)')
+      }
       
       // Save current prescriptions first
       try {
@@ -1041,6 +1112,11 @@
           currentMedications = currentMedications.filter((_, i) => i !== currentIndex)
         }
         
+        // Reset AI analysis state when medications change
+        aiCheckComplete = false
+        aiCheckMessage = ''
+        lastAnalyzedMedications = []
+        
         console.log('🗑️ Deleted prescription:', medicationId)
       }
     } catch (error) {
@@ -1101,6 +1177,7 @@
             activeTab = 'prescriptions'; 
             showMedicationForm = false; 
             editingMedication = null;
+            prescriptionFinished = false;
             
             try {
               // Create a new prescription
@@ -1111,11 +1188,11 @@
               });
               console.log('📋 Created new prescription:', currentPrescription.id);
               
-              // Clear current medications to start fresh
-              currentMedications = [];
+              // Set current medications to reference the new prescription's medications array
+              currentMedications = currentPrescription.medications || [];
               prescriptionNotes = '';
               isNewPrescriptionSession = true;
-              console.log('🆕 Set isNewPrescriptionSession = true, cleared currentMedications');
+              console.log('🆕 Set isNewPrescriptionSession = true, initialized currentMedications');
               
               // Don't auto-show medication form - wait for "Add Drug" button
               console.log('✅ New prescription created - ready for "Add Drug" button');
@@ -1625,8 +1702,8 @@
                       });
                       console.log('📋 Created new prescription automatically:', currentPrescription.id);
                       
-                      // Clear current medications to start fresh
-                      currentMedications = [];
+                      // Set current medications to reference the new prescription's medications array
+                      currentMedications = currentPrescription.medications || [];
                       prescriptionNotes = '';
                       isNewPrescriptionSession = true;
                       notifySuccess('New prescription created - medication form opened');
@@ -1647,6 +1724,37 @@
             </button>
           </div>
             <div class="card-body">
+          
+          <!-- AI Check Status Message -->
+          {#if aiCheckComplete}
+            <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
+              <i class="fas fa-robot me-2"></i>
+              <strong>AI drug interaction test complete</strong>
+              <br>
+              <small>{aiCheckMessage}</small>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" on:click={() => { aiCheckComplete = false; aiCheckMessage = '' }}></button>
+            </div>
+            
+            <!-- Full AI Analysis Option -->
+            <div class="text-center mb-3">
+              <p class="text-muted mb-2">Need a full AI assisted prescription analysis?</p>
+              <button 
+                class="btn btn-outline-primary btn-sm"
+                on:click={() => {
+                  // TODO: Implement full AI analysis functionality
+                  console.log('🤖 Full AI analysis requested')
+                  dispatch('notification', { 
+                    type: 'info', 
+                    message: 'Full AI analysis feature coming soon!' 
+                  })
+                }}
+                title="Get comprehensive AI analysis of prescription"
+              >
+                <i class="fas fa-brain me-2"></i>
+                Full AI Analysis
+              </button>
+            </div>
+          {/if}
           
           <PatientForms 
             {showMedicationForm}
@@ -1803,41 +1911,36 @@
             {#if currentMedications.length > 0 || prescriptionNotes.trim() !== ''}
               <div class="mt-3 text-center">
                 <div class="d-flex gap-2 justify-content-center flex-wrap">
+                  {#if !prescriptionFinished}
+                    <!-- Show Finish button when not finished -->
                 <button 
-                    class="btn btn-primary flex-fill"
-                  on:click={finishCurrentPrescriptions}
-                    title="AI-powered drug interaction analysis"
-                  >
-                    <i class="fas fa-robot me-2"></i>
-                    🤖 AI Analysis
-                  </button>
-                  
-                  <button 
-                    class="btn btn-success flex-fill"
-                    on:click={completePrescriptions}
-                    title="Complete current prescriptions"
-                  >
-                    <i class="fas fa-check-circle me-2"></i>
-                    Complete
-                  </button>
-                  
-                  <button 
-                    class="btn btn-warning flex-fill"
-                    on:click={showPharmacySelection}
-                    title="Send prescriptions to connected pharmacy"
-                  >
-                    <i class="fas fa-paper-plane me-2"></i>
-                    Send to Pharmacy
-                  </button>
-                  
-                  <button 
-                    class="btn btn-outline-primary flex-fill"
-                    on:click={printPrescriptions}
-                    title="Print prescriptions to PDF"
-                  >
-                    <i class="fas fa-file-pdf me-2"></i>
-                    Print
+                      class="btn btn-success flex-fill"
+                      on:click={completePrescriptions}
+                      title="Finish current prescriptions"
+                    >
+                      <i class="fas fa-check-circle me-2"></i>
+                      Finish
                 </button>
+                  {:else}
+                    <!-- Show Send to Pharmacy and Print buttons when finished -->
+                    <button 
+                      class="btn btn-warning flex-fill"
+                      on:click={showPharmacySelection}
+                      title="Send prescriptions to connected pharmacy"
+                    >
+                      <i class="fas fa-paper-plane me-2"></i>
+                      Send to Pharmacy
+                    </button>
+                    
+                    <button 
+                      class="btn btn-outline-primary flex-fill"
+                      on:click={printPrescriptions}
+                      title="Print prescriptions to PDF"
+                    >
+                      <i class="fas fa-file-pdf me-2"></i>
+                      Print
+                    </button>
+                  {/if}
                 </div>
               </div>
             {/if}
