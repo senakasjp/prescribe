@@ -189,8 +189,9 @@
   }
 
   // Reactive statement to update stats when user changes
-  $: if (user?.id) {
-    doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+  $: if (user) {
+    const userId = user?.id || user?.uid || user?.email || 'default-user'
+    doctorUsageStats = aiTokenTracker.getDoctorUsageStats(userId)
     
     // Clear existing interval and set up new one
     if (refreshInterval) {
@@ -198,11 +199,13 @@
     }
     
     refreshInterval = setInterval(() => {
-      if (user?.id) {
-        doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+      if (user) {
+        const currentUserId = user?.id || user?.uid || user?.email || 'default-user'
+        doctorUsageStats = aiTokenTracker.getDoctorUsageStats(currentUserId)
       }
     }, 5000)
   }
+
 
   // Cleanup on destroy
   onDestroy(() => {
@@ -221,7 +224,7 @@
     <div class="d-flex justify-content-center align-items-center vh-100">
       <div class="text-center">
         <i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>
-        <p class="text-muted">Loading Prescribe...</p>
+        <p class="text-muted">Loading M-Prescribe...</p>
       </div>
     </div>
   {:else if user}
@@ -234,30 +237,62 @@
     {:else}
       <!-- Doctor is logged in - Show patient management -->
       <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container-fluid">
+        <div class="container-fluid px-2 px-md-3">
           <span class="navbar-brand">
-            <i class="fas fa-user-md me-2"></i>Prescribe
+            <i class="fas fa-user-md me-1 me-md-2"></i>
+            <span class="d-none d-sm-inline">M-Prescribe</span>
+            <span class="d-sm-none">M-P</span>
           </span>
-          <div class="navbar-nav ms-auto">
-            <span class="navbar-text me-4">
-              <i class="fas fa-user me-1"></i>Dr. {user.name || (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName) || user.email}
-              {#if doctorUsageStats}
-                <span class="badge {doctorUsageStats.today.tokens > 0 ? 'bg-warning text-dark' : 'bg-secondary text-white'} me-3" 
-                      title={doctorUsageStats.today.tokens > 0 ? "Today's AI Token Usage" : "AI Usage - No tokens used today"}>
-                  <i class="fas fa-robot me-1"></i>
-                  {doctorUsageStats.today.tokens.toLocaleString()} tokens
-                </span>
-              {/if}
-            </span>
-            <button class="btn btn-outline-light btn-sm me-2" on:click={handleEditProfile}>
-              <i class="fas fa-user-edit me-1"></i>Edit Profile
-            </button>
-            <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
-              <i class="fas fa-shield-alt me-1"></i>Admin
-            </button>
-            <button class="btn btn-outline-light btn-sm" on:click={handleLogout}>
-              <i class="fas fa-sign-out-alt me-1"></i>Logout
-            </button>
+          
+          <!-- Mobile Toggle Button -->
+          <button class="navbar-toggler d-lg-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          
+          <!-- Navbar Content -->
+          <div class="collapse navbar-collapse d-flex justify-content-end align-items-center" id="navbarNav">
+            <!-- User Info and Action Buttons - Right Side -->
+            <div class="d-flex align-items-center">
+              <!-- User Info -->
+              <div class="navbar-text me-4 d-flex align-items-center">
+                <i class="fas fa-user me-2"></i>
+                <span class="d-none d-md-inline me-3">Dr. {user.name || (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName) || user.email}</span>
+                <span class="d-md-none me-3">Dr. {user.firstName || user.email}</span>
+                
+                <!-- AI Health Bar - Progress Bar -->
+                <div class="d-flex align-items-center me-4">
+                  <i class="fas fa-robot me-2 text-white"></i>
+                  <div class="progress bg-danger border border-light" style="width: 120px; height: 20px;" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
+                    <div class="progress-bar bg-white progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%"
+                         aria-valuenow="{doctorUsageStats?.today?.tokens || 0}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100000">
+                      <span class="text-dark fw-bold" style="font-size: 0.7rem;">
+                        {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Action Buttons -->
+              <button class="btn btn-outline-light btn-sm me-1 me-md-2" on:click={handleEditProfile}>
+                <i class="fas fa-user-edit me-1"></i>
+                <span class="d-none d-sm-inline">Edit Profile</span>
+                <span class="d-sm-none">Edit</span>
+              </button>
+              <button class="btn btn-outline-light btn-sm me-1 me-md-2" on:click={handleAdminAccess}>
+                <i class="fas fa-shield-alt me-1"></i>
+                <span class="d-none d-sm-inline">Admin</span>
+              </button>
+              <button class="btn btn-outline-light btn-sm" on:click={handleLogout}>
+                <i class="fas fa-sign-out-alt me-1"></i>
+                <span class="d-none d-sm-inline">Logout</span>
+                <span class="d-sm-none">Exit</span>
+              </button>
+            </div>
           </div>
         </div>
       </nav>
@@ -267,70 +302,87 @@
       </div>
     {/if}
   {:else}
-    <!-- User is not logged in - Show stylish authentication -->
-    <div class="min-vh-100 d-flex align-items-center justify-content-center bg-gradient-primary px-2 px-sm-3 px-md-4">
+    <!-- User is not logged in - Show Bootstrap 5 authentication -->
+    <div class="min-vh-100 d-flex align-items-center justify-content-center bg-primary bg-gradient px-2 px-sm-3 px-md-4">
       <div class="container-fluid">
         <div class="row justify-content-center">
           <div class="col-12 col-sm-11 col-md-10 col-lg-8 col-xl-6 col-xxl-5">
             <!-- Main Auth Card -->
-            <div class="card shadow-lg border-0 rounded-4 auth-card">
-              <div class="card-body p-3 p-sm-4 p-md-5">
-                <!-- App Logo and Title -->
-                <div class="text-center mb-4">
-                  <div class="mb-3">
-                    <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
-                      <i class="fas fa-stethoscope fa-2x text-primary"></i>
+            <div class="card shadow-lg border-0 rounded-3 rounded-md-4 overflow-hidden">
+              <!-- Card Header -->
+              <div class="card-header bg-white border-0 py-3 py-md-4">
+                <div class="text-center">
+                  <div class="mb-2 mb-md-3">
+                    <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
+                      <i class="fas fa-stethoscope fa-lg text-primary"></i>
                     </div>
                   </div>
-                  <h1 class="card-title fw-bold text-dark mb-2">Prescribe</h1>
-                  <p class="text-muted mb-0">AI-Powered Medical Prescription System</p>
+                  <h1 class="card-title fw-bold text-dark mb-1 mb-md-2 fs-3 fs-md-2">M-Prescribe</h1>
+                  <p class="text-muted mb-0 small d-none d-sm-block">AI-Powered Medical Prescription System</p>
+                  <p class="text-muted mb-0 d-sm-none" style="font-size: 0.75rem;">AI-Powered Medical System</p>
                 </div>
-                
+              </div>
+              
+              <!-- Card Body -->
+              <div class="card-body p-3 p-md-4">
                 <!-- Auth Mode Toggle -->
-                <div class="text-center mb-4">
-                  <div class="single-toggle-button w-100 rounded-3" role="group">
-                    <div class="toggle-container">
-                      <div 
-                        class="toggle-option {authMode === 'doctor' ? 'active' : 'inactive'}"
-                        on:click={handleSwitchToDoctor}
-                      >
-                        <i class="fas fa-user-md me-2"></i>Doctor
-                      </div>
-                      <div 
-                        class="toggle-option {authMode === 'pharmacist' ? 'active' : 'inactive'}"
-                        on:click={handleSwitchToPharmacist}
-                      >
-                        <i class="fas fa-pills me-2"></i>Pharmacist
-                      </div>
-                    </div>
+                <div class="mb-3 mb-md-4">
+                  <div class="btn-group w-100" role="group" aria-label="Authentication mode">
+                    <button 
+                      type="button" 
+                      class="btn {authMode === 'doctor' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm btn-md"
+                      on:click={handleSwitchToDoctor}
+                    >
+                      <i class="fas fa-user-md me-1 me-md-2"></i>
+                      <span class="d-none d-sm-inline">Doctor</span>
+                      <span class="d-sm-none">Dr.</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      class="btn {authMode === 'pharmacist' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm btn-md"
+                      on:click={handleSwitchToPharmacist}
+                    >
+                      <i class="fas fa-pills me-1 me-md-2"></i>
+                      <span class="d-none d-sm-inline">Pharmacist</span>
+                      <span class="d-sm-none">Pharm.</span>
+                    </button>
                   </div>
                 </div>
                 
                 <!-- Auth Forms -->
-                {#if authMode === 'doctor'}
-                  <div class="auth-form-container">
-                    <h3 class="text-center mb-4 fw-semibold text-dark">
-                      <i class="fas fa-user-md text-primary me-2"></i>Doctor Portal
-                    </h3>
+                <div class="bg-light rounded-2 rounded-md-3 p-3 p-md-4">
+                  {#if authMode === 'doctor'}
+                    <div class="text-center mb-3 mb-md-4">
+                      <h4 class="fw-semibold text-dark mb-0 fs-5 fs-md-4">
+                        <i class="fas fa-user-md text-primary me-1 me-md-2"></i>
+                        <span class="d-none d-sm-inline">Doctor Portal</span>
+                        <span class="d-sm-none">Doctor</span>
+                      </h4>
+                    </div>
                     <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
-                  </div>
-                {:else}
-                  <div class="auth-form-container">
-                    <h3 class="text-center mb-4 fw-semibold text-dark">
-                      <i class="fas fa-pills text-primary me-2"></i>Pharmacist Portal
-                    </h3>
+                  {:else}
+                    <div class="text-center mb-3 mb-md-4">
+                      <h4 class="fw-semibold text-dark mb-0 fs-5 fs-md-4">
+                        <i class="fas fa-pills text-primary me-1 me-md-2"></i>
+                        <span class="d-none d-sm-inline">Pharmacist Portal</span>
+                        <span class="d-sm-none">Pharmacist</span>
+                      </h4>
+                    </div>
                     <PharmacistAuth 
                       on:pharmacist-login={handlePharmacistLogin}
                       on:switch-to-doctor={handleSwitchToDoctor}
                     />
-                  </div>
-                {/if}
-                
-                <!-- Footer -->
-                <div class="text-center mt-4">
+                  {/if}
+                </div>
+              </div>
+              
+              <!-- Card Footer -->
+              <div class="card-footer bg-light border-0 py-2 py-md-3">
+                <div class="text-center">
                   <small class="text-muted">
                     <i class="fas fa-shield-alt me-1"></i>
-                    Secure • HIPAA Compliant • AI-Enhanced
+                    <span class="d-none d-sm-inline">Secure • HIPAA Compliant • AI-Enhanced</span>
+                    <span class="d-sm-none">Secure • HIPAA • AI</span>
                   </small>
                 </div>
               </div>
@@ -398,134 +450,7 @@
     font-size: 0.8rem !important;
   }
   
-  /* Use Bootstrap 5 default colors only */
-  
-  /* Stylish Login Page Styles */
-  .bg-gradient-primary {
-    background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark) 50%, var(--bs-primary-darker) 100%);
-    min-height: 100vh;
-  }
-  
-  .auth-card {
-    backdrop-filter: blur(10px);
-    background-color: rgba(255, 255, 255, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  }
-  
-  .auth-form-container {
-    background: rgba(255, 255, 255, 0.5);
-    border-radius: 1rem;
-    padding: 1.5rem;
-    margin: 0.5rem 0;
-  }
-  
-  .btn-primary {
-    background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark) 100%);
-    border: none;
-    transition: all 0.3s ease;
-  }
-  
-  .btn-primary:hover {
-    background: linear-gradient(135deg, var(--bs-primary-dark) 0%, var(--bs-primary-darker) 100%);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.3);
-  }
-  
-  .btn-outline-primary {
-    border: 2px solid var(--bs-primary);
-    color: var(--bs-primary);
-    transition: all 0.3s ease;
-  }
-  
-  .btn-outline-primary:hover {
-    background: var(--bs-primary);
-    border-color: var(--bs-primary);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.3);
-  }
-  
-  .form-control {
-    transition: all 0.3s ease;
-    border-radius: 0.5rem;
-  }
-  
-  .form-control:focus {
-    border-color: var(--bs-primary);
-    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
-    transform: translateY(-1px);
-  }
-  
-  .rounded-4 {
-    border-radius: 1rem !important;
-  }
-  
-  .rounded-3 {
-    border-radius: 0.75rem !important;
-  }
-  
-  /* Single Toggle Button Styles */
-  .single-toggle-button {
-    background: #e9ecef;
-    border: 2px solid #dee2e6;
-    border-radius: 0.75rem;
-    overflow: hidden;
-    transition: all 0.3s ease;
-  }
-  
-  .toggle-container {
-    display: flex;
-    width: 100%;
-    height: 100%;
-  }
-  
-  .toggle-option {
-    flex: 1;
-    padding: 0.75rem 1rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 500;
-    border-radius: 0.5rem;
-    margin: 0.125rem;
-  }
-  
-  .toggle-option.active {
-    background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark) 100%);
-    color: white;
-    box-shadow: 0 2px 8px rgba(var(--bs-primary-rgb), 0.3);
-    transform: translateY(-1px);
-  }
-  
-  .toggle-option.inactive {
-    background: transparent;
-    color: var(--bs-secondary);
-    border: none;
-  }
-  
-  .toggle-option.inactive:hover {
-    background: rgba(var(--bs-primary-rgb), 0.1);
-    color: var(--bs-primary);
-  }
-  
-  .toggle-option i {
-    transition: all 0.3s ease;
-  }
-  
-  .toggle-option.active i {
-    color: white;
-  }
-  
-  .toggle-option.inactive i {
-    color: var(--bs-secondary);
-  }
-  
-  .toggle-option.inactive:hover i {
-    color: var(--bs-primary);
-  }
+  /* Bootstrap 5 styling only */
   
   /* Responsive adjustments */
   @media (max-width: 1200px) {

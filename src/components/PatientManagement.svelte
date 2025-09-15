@@ -21,6 +21,10 @@
   $: if (user) {
     console.log('PatientManagement: User updated:', user)
     console.log('PatientManagement: User country:', user.country)
+    console.log('PatientManagement: User name:', user.name)
+    console.log('PatientManagement: User firstName:', user.firstName)
+    console.log('PatientManagement: User lastName:', user.lastName)
+    console.log('PatientManagement: User email:', user.email)
   }
   
   let patients = []
@@ -211,7 +215,17 @@
     return total
   }
   
-  // Create responsive prescriptions per month chart using Chart.js
+  const getConnectedPharmacies = () => {
+    if (!user) return 0
+    
+    // Get doctor data from storage to access connectedPharmacists
+    const doctor = jsonStorage.getDoctorByEmail(user.email)
+    if (!doctor || !doctor.connectedPharmacists) return 0
+    
+    return doctor.connectedPharmacists.length
+  }
+  
+  // Create responsive prescriptions per day chart using Chart.js
   const createPrescriptionsChart = () => {
     try {
       // Destroy existing chart if it exists
@@ -220,36 +234,38 @@
         chartInstance = null
       }
       
-      // Calculate prescriptions per month for last 12 months
-      const last12Months = []
-      const prescriptionsPerMonth = []
+      // Calculate prescriptions per day for last 30 days
+      const last30Days = []
+      const prescriptionsPerDay = []
       
-      for (let i = 11; i >= 0; i--) {
+      for (let i = 29; i >= 0; i--) {
         const date = new Date()
-        date.setMonth(date.getMonth() - i)
+        date.setDate(date.getDate() - i)
         const year = date.getFullYear()
-        const month = date.getMonth()
-        const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`
+        const month = date.getMonth() + 1
+        const day = date.getDate()
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
         
-        last12Months.push(date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }))
+        last30Days.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
         
-        // Count prescriptions created in this month
-        let monthPrescriptions = 0
+        // Count prescriptions created on this day
+        let dayPrescriptions = 0
         patients.forEach(patient => {
           const patientPrescriptions = jsonStorage.getMedicationsByPatientId(patient.id) || []
           patientPrescriptions.forEach(prescription => {
             const createdDate = new Date(prescription.createdAt || prescription.dateCreated)
             const prescriptionYear = createdDate.getFullYear()
-            const prescriptionMonth = createdDate.getMonth()
-            const prescriptionMonthStr = `${prescriptionYear}-${String(prescriptionMonth + 1).padStart(2, '0')}`
+            const prescriptionMonth = createdDate.getMonth() + 1
+            const prescriptionDay = createdDate.getDate()
+            const prescriptionDateStr = `${prescriptionYear}-${String(prescriptionMonth).padStart(2, '0')}-${String(prescriptionDay).padStart(2, '0')}`
             
-            if (prescriptionMonthStr === monthStr) {
-              monthPrescriptions++
+            if (prescriptionDateStr === dateStr) {
+              dayPrescriptions++
             }
           })
         })
         
-        prescriptionsPerMonth.push(monthPrescriptions)
+        prescriptionsPerDay.push(dayPrescriptions)
       }
       
       // Create Chart.js chart
@@ -262,10 +278,10 @@
         chartInstance = new Chart(ctx, {
           type: 'bar',
           data: {
-            labels: last12Months,
+            labels: last30Days,
                      datasets: [{
                        label: 'Prescriptions',
-                       data: prescriptionsPerMonth,
+                       data: prescriptionsPerDay,
                        backgroundColor: 'rgba(var(--bs-primary-rgb), 0.8)',
                        borderColor: 'rgba(var(--bs-primary-rgb), 1)',
                        borderWidth: 1,
@@ -306,10 +322,11 @@
                          ticks: {
                            color: 'var(--bs-secondary)',
                            font: {
-                             size: 11
+                             size: 10
                            },
                            maxRotation: 45,
-                           minRotation: 0
+                           minRotation: 0,
+                           maxTicksLimit: 15
                          }
               },
               y: {
@@ -485,24 +502,26 @@
 
 <!-- Navigation Tabs -->
 <div class="card mb-3">
-  <div class="card-body py-2">
+  <div class="card-body py-2 px-2 px-md-3">
     <ul class="nav nav-pills nav-fill">
       <li class="nav-item">
         <button 
-          class="nav-link {currentView === 'patients' ? 'active' : ''}"
+          class="nav-link {currentView === 'patients' ? 'active' : ''} btn-sm"
           on:click={() => currentView = 'patients'}
         >
-          <i class="fas fa-users me-2"></i>
-          Patients
+          <i class="fas fa-users me-1 me-md-2"></i>
+          <span class="d-none d-sm-inline">Patients</span>
+          <span class="d-sm-none">Patients</span>
         </button>
       </li>
       <li class="nav-item">
         <button 
-          class="nav-link {currentView === 'pharmacists' ? 'active' : ''}"
+          class="nav-link {currentView === 'pharmacists' ? 'active' : ''} btn-sm"
           on:click={() => currentView = 'pharmacists'}
         >
-          <i class="fas fa-pills me-2"></i>
-          Pharmacists
+          <i class="fas fa-pills me-1 me-md-2"></i>
+          <span class="d-none d-sm-inline">Pharmacists</span>
+          <span class="d-sm-none">Pharmacy</span>
         </button>
       </li>
     </ul>
@@ -516,10 +535,12 @@
     <!-- Patients Card -->
     <div class="card mb-3">
       <!-- Fixed Header -->
-      <div class="card-header">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="mb-0">
-            <i class="fas fa-users me-2"></i>Patients
+      <div class="card-header px-2 px-md-3">
+        <div class="d-flex justify-content-between align-items-center mb-2 mb-md-3">
+          <h5 class="mb-0 fs-6 fs-md-5">
+            <i class="fas fa-users me-1 me-md-2"></i>
+            <span class="d-none d-sm-inline">Patients</span>
+            <span class="d-sm-none">Patients</span>
           </h5>
           <button 
             class="btn btn-primary btn-sm" 
@@ -527,18 +548,19 @@
           >
             <i class="fas fa-plus me-1"></i>
             <span class="d-none d-sm-inline">Add Patient</span>
+            <span class="d-sm-none">Add</span>
           </button>
         </div>
         
         <!-- Search Bar -->
-        <div class="input-group">
+        <div class="input-group input-group-sm">
           <span class="input-group-text">
             <i class="fas fa-search"></i>
           </span>
           <input 
             type="text" 
             class="form-control" 
-            placeholder="Search by name, ID, email, phone, or DOB..."
+            placeholder="Search patients..."
             bind:value={searchQuery}
           >
           {#if searchQuery}
@@ -723,6 +745,7 @@
           {addToPrescription} 
           {refreshTrigger} 
           doctorId={user?.uid || user?.id} 
+          currentUser={user}
           on:dataUpdated={handleDataUpdated}
         />
       {:else}
@@ -738,7 +761,7 @@
                          </div>
                          <div class="flex-grow-1 ms-3">
                            <h4 class="card-title mb-1 fw-bold text-dark">
-                             Welcome, Dr. {user?.name || user?.firstName || 'Doctor'}!
+                             Welcome, Dr. {user?.name || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName) || user?.email || 'Doctor'}!
                            </h4>
                            <p class="card-text mb-0 text-muted">
                              Ready to provide excellent patient care with AI-powered assistance
@@ -747,6 +770,9 @@
                            <p class="card-text mt-2 mb-0 text-muted small">
                              <i class="fas fa-map-marker-alt me-1"></i>
                              Country: {user?.country || 'Not specified'}
+                             {#if user}
+                               <br><small class="text-info">Debug: {JSON.stringify({name: user.name, firstName: user.firstName, lastName: user.lastName, country: user.country})}</small>
+                             {/if}
                            </p>
                          </div>
                        </div>
@@ -755,71 +781,94 @@
                  </div>
         
         <!-- Statistics Cards -->
-        <div class="col-md-4">
+        <div class="col-6 col-md-4">
           <div class="card border-0 shadow-sm h-100">
-            <div class="card-body bg-info text-white rounded-3">
+            <div class="card-body bg-info text-white rounded-3 p-2 p-md-3">
               <div class="d-flex align-items-center">
                 <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-2">
-                    <i class="fas fa-users fa-lg"></i>
+                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
+                    <i class="fas fa-users fa-sm fa-md-lg"></i>
                   </div>
                 </div>
-                <div class="flex-grow-1 ms-3">
-                  <h4 class="card-title mb-0 fw-bold" id="totalPatients">{patients.length}</h4>
-                  <small class="opacity-75">Patients Registered</small>
+                <div class="flex-grow-1 ms-2 ms-md-3">
+                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPatients">{patients.length}</h4>
+                  <small class="opacity-75 d-none d-sm-block">Patients Registered</small>
+                  <small class="opacity-75 d-sm-none">Patients</small>
                 </div>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-md-4">
+        <div class="col-6 col-md-4">
           <div class="card border-0 shadow-sm h-100">
-            <div class="card-body bg-warning text-dark rounded-3">
+            <div class="card-body bg-warning text-dark rounded-3 p-2 p-md-3">
               <div class="d-flex align-items-center">
                 <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-2">
-                    <i class="fas fa-prescription fa-lg"></i>
+                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
+                    <i class="fas fa-prescription fa-sm fa-md-lg"></i>
                   </div>
                 </div>
-                <div class="flex-grow-1 ms-3">
-                  <h4 class="card-title mb-0 fw-bold" id="totalPrescriptions">{getTotalPrescriptions()}</h4>
-                  <small class="opacity-75">Total Prescriptions</small>
+                <div class="flex-grow-1 ms-2 ms-md-3">
+                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPrescriptions">{getTotalPrescriptions()}</h4>
+                  <small class="opacity-75 d-none d-sm-block">Total Prescriptions</small>
+                  <small class="opacity-75 d-sm-none">Prescriptions</small>
                 </div>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-md-4">
+        <div class="col-6 col-md-4">
           <div class="card border-0 shadow-sm h-100">
-            <div class="card-body bg-secondary text-white rounded-3">
+            <div class="card-body bg-secondary text-white rounded-3 p-2 p-md-3">
               <div class="d-flex align-items-center">
                 <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-2">
-                    <i class="fas fa-pills fa-lg"></i>
+                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
+                    <i class="fas fa-pills fa-sm fa-md-lg"></i>
                   </div>
                 </div>
-                <div class="flex-grow-1 ms-3">
-                  <h4 class="card-title mb-0 fw-bold" id="totalDrugs">{getTotalDrugs()}</h4>
-                  <small class="opacity-75">Total Drugs</small>
+                <div class="flex-grow-1 ms-2 ms-md-3">
+                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalDrugs">{getTotalDrugs()}</h4>
+                  <small class="opacity-75 d-none d-sm-block">Total Drugs</small>
+                  <small class="opacity-75 d-sm-none">Drugs</small>
                 </div>
               </div>
             </div>
           </div>
         </div>
         
-        <!-- Prescriptions Per Month Chart -->
+        <div class="col-6 col-md-4">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body bg-success text-white rounded-3 p-2 p-md-3">
+              <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
+                    <i class="fas fa-store fa-sm fa-md-lg"></i>
+                  </div>
+                </div>
+                <div class="flex-grow-1 ms-2 ms-md-3">
+                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="connectedPharmacies">{getConnectedPharmacies()}</h4>
+                  <small class="opacity-75 d-none d-sm-block">Connected Pharmacies</small>
+                  <small class="opacity-75 d-sm-none">Pharmacies</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Prescriptions Per Day Chart -->
         <div class="col-12">
           <div class="card border-0 shadow-sm">
-            <div class="card-header bg-light border-0 py-3">
-              <h6 class="card-title mb-0 fw-bold text-dark">
-                <i class="fas fa-chart-line me-2 text-primary"></i>
-                Prescriptions Per Month (Last 12 Months)
+            <div class="card-header bg-light border-0 py-2 py-md-3 px-2 px-md-3">
+              <h6 class="card-title mb-0 fw-bold text-dark fs-6 fs-md-5">
+                <i class="fas fa-chart-line me-1 me-md-2 text-primary"></i>
+                <span class="d-none d-sm-inline">Prescriptions Per Day (Last 30 Days)</span>
+                <span class="d-sm-none">Prescriptions Per Day</span>
               </h6>
             </div>
-            <div class="card-body p-4">
-              <div class="chart-container position-relative w-100" style="height: 300px;">
+            <div class="card-body p-2 p-md-4">
+              <div class="chart-container position-relative w-100" style="height: 250px;">
                 <canvas id="prescriptionsChart" class="rounded"></canvas>
               </div>
             </div>

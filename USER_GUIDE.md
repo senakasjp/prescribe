@@ -145,7 +145,7 @@ Manage diagnosed conditions:
 - **Quick Overview** - Status and description summary
 
 ### Prescriptions Tab
-Prescribe and track prescriptions:
+M-Prescribe and track prescriptions:
 
 #### Adding Prescriptions
 1. **Click "Add Medication"** button

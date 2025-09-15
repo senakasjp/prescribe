@@ -97,7 +97,7 @@
     <div class="d-flex justify-content-between align-items-center px-3 w-100">
       <div class="d-flex align-items-center">
         <i class="fas fa-pills text-primary me-2"></i>
-        <span class="fw-bold text-primary">Prescribe - Pharmacist Portal</span>
+        <span class="fw-bold text-primary">M-Prescribe - Pharmacist Portal</span>
       </div>
       <div class="dropdown">
         <button class="btn btn-link dropdown-toggle d-flex align-items-center p-0" type="button" data-bs-toggle="dropdown">

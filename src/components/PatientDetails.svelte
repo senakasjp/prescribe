@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import jsonStorage from '../services/jsonStorage.js'
   import openaiService from '../services/openaiService.js'
+  import authService from '../services/authService.js'
   import { notifyError, notifySuccess } from '../stores/notifications.js'
   import PatientTabs from './PatientTabs.svelte'
   import PatientForms from './PatientForms.svelte'
@@ -13,6 +14,7 @@
   export const addToPrescription = null
   export let refreshTrigger = 0
   export let doctorId = null
+  export let currentUser = null
   
   // Event dispatcher to notify parent of data changes
   import { createEventDispatcher } from 'svelte'
@@ -114,13 +116,13 @@
           // Only filter out medications that have explicitly ended (before today)
           if (medication.endDate) {
             const endDate = new Date(medication.endDate)
-            const today = new Date()
-            today.setHours(0, 0, 0, 0) // Set to start of day for accurate comparison
-            endDate.setHours(0, 0, 0, 0)
-            
-            const hasEnded = endDate < today
-            
-            if (hasEnded) {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0) // Set to start of day for accurate comparison
+        endDate.setHours(0, 0, 0, 0)
+        
+        const hasEnded = endDate < today
+        
+        if (hasEnded) {
               console.log(`📋 ${medication.name}: ended on ${medication.endDate} - not showing`)
               return
             }
@@ -517,6 +519,186 @@
     } catch (error) {
       console.error('❌ Error printing prescriptions:', error)
     }
+  }
+  
+  // State for pharmacy selection modal
+  let showPharmacyModal = false
+  let availablePharmacies = []
+  let selectedPharmacies = []
+
+  // Show pharmacy selection modal
+  const showPharmacySelection = async () => {
+    try {
+      console.log('📤 Opening pharmacy selection modal')
+      
+      // Save current prescriptions first
+      try {
+        await saveCurrentPrescriptions()
+        console.log('✅ Prescriptions saved successfully')
+      } catch (error) {
+        console.error('❌ Error saving prescriptions:', error)
+        // Continue anyway - prescriptions might not be critical for pharmacy selection
+      }
+      
+      // Check if doctor has connected pharmacists
+      const firebaseUser = currentUser || authService.getCurrentUser()
+      console.log('🔍 Firebase user:', firebaseUser)
+      
+      if (!firebaseUser) {
+        console.log('❌ User not found')
+        alert('User not found. Please log in again.')
+        return
+      }
+      
+      // Get the actual doctor data from local storage (includes connectedPharmacists)
+      const doctor = await jsonStorage.getDoctorByEmail(firebaseUser.email)
+      console.log('🔍 Doctor from storage:', doctor)
+      console.log('🔍 Doctor connectedPharmacists:', doctor?.connectedPharmacists)
+      
+      if (!doctor) {
+        console.log('❌ Doctor not found in storage')
+        alert('Doctor profile not found. Please contact support.')
+        return
+      }
+      
+      if (!doctor.connectedPharmacists || doctor.connectedPharmacists.length === 0) {
+        console.log('❌ No connected pharmacists')
+        alert('No connected pharmacy found. Please connect a pharmacy first.')
+        return
+      }
+      
+      // Check if patient is selected
+      if (!selectedPatient) {
+        console.log('❌ No patient selected')
+        alert('Please select a patient first.')
+        return
+      }
+      
+      // Get current prescriptions
+      const prescriptions = jsonStorage.getPrescriptionsByPatientId(selectedPatient.id)
+      console.log('🔍 Current prescriptions:', prescriptions)
+      if (!prescriptions || prescriptions.length === 0) {
+        console.log('❌ No prescriptions to send')
+        alert('No prescriptions to send.')
+        return
+      }
+      
+      // Get available pharmacies
+      availablePharmacies = []
+      console.log('🔍 Loading pharmacists for IDs:', doctor.connectedPharmacists)
+      
+      for (const pharmacistId of doctor.connectedPharmacists) {
+        try {
+          console.log('🔍 Loading pharmacist with ID:', pharmacistId)
+          const pharmacist = await jsonStorage.getPharmacistById(pharmacistId)
+          console.log('🔍 Loaded pharmacist:', pharmacist)
+          
+          if (pharmacist) {
+            availablePharmacies.push({
+              id: pharmacist.id,
+              name: pharmacist.businessName,
+              email: pharmacist.email,
+              address: pharmacist.address || 'Address not provided'
+            })
+            console.log('✅ Added pharmacist to list:', pharmacist.businessName)
+          } else {
+            console.log('❌ Pharmacist not found for ID:', pharmacistId)
+          }
+        } catch (error) {
+          console.error('❌ Error loading pharmacist:', pharmacistId, error)
+        }
+      }
+      
+      console.log('🔍 Final available pharmacies:', availablePharmacies)
+      
+      // Check if any pharmacies were found
+      if (availablePharmacies.length === 0) {
+        console.log('❌ No pharmacies found after loading')
+        alert('No connected pharmacies found. Please connect a pharmacy first.')
+        return
+      }
+      
+      // Initialize selection (all selected by default)
+      selectedPharmacies = availablePharmacies.map(p => p.id)
+      console.log('🔍 Selected pharmacies:', selectedPharmacies)
+      
+      // Show modal
+      showPharmacyModal = true
+      console.log('✅ Modal should be showing now')
+      
+    } catch (error) {
+      console.error('❌ Error opening pharmacy selection:', error)
+      console.error('❌ Error stack:', error.stack)
+      alert('Error loading pharmacies. Please try again.')
+    }
+  }
+
+  // Send prescriptions to selected pharmacies
+  const sendToSelectedPharmacies = async () => {
+    try {
+      console.log('📤 Sending prescriptions to selected pharmacies:', selectedPharmacies)
+      
+      const firebaseUser = currentUser || authService.getCurrentUser()
+      const doctor = await jsonStorage.getDoctorByEmail(firebaseUser.email)
+      const prescriptions = jsonStorage.getPrescriptionsByPatientId(selectedPatient.id)
+      
+      let sentCount = 0
+      
+      // Send to selected pharmacists only
+      for (const pharmacistId of selectedPharmacies) {
+        const pharmacist = await jsonStorage.getPharmacistById(pharmacistId)
+        if (pharmacist) {
+          // Add prescription to pharmacist's received prescriptions
+          const pharmacistPrescriptions = await jsonStorage.getPharmacistPrescriptions(pharmacistId) || []
+          const prescriptionData = {
+            id: Date.now().toString() + '_' + pharmacistId,
+            doctorId: doctor.id,
+            doctorName: `${doctor.firstName} ${doctor.lastName}`,
+            patientId: selectedPatient.id,
+            patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
+            prescriptions: prescriptions,
+            sentAt: new Date().toISOString(),
+            status: 'pending'
+          }
+          
+          pharmacistPrescriptions.push(prescriptionData)
+          await jsonStorage.savePharmacistPrescriptions(pharmacistId, pharmacistPrescriptions)
+          
+          console.log(`📤 Prescription sent to pharmacist: ${pharmacist.businessName}`)
+          sentCount++
+        }
+      }
+      
+      // Close modal
+      showPharmacyModal = false
+      
+      // Show success message
+      alert(`Prescriptions sent to ${sentCount} pharmacy(ies) successfully!`)
+      console.log('🎉 Prescriptions sent to pharmacies successfully')
+      
+    } catch (error) {
+      console.error('❌ Error sending prescriptions to pharmacies:', error)
+      alert('Error sending prescriptions to pharmacies. Please try again.')
+    }
+  }
+
+  // Toggle pharmacy selection
+  const togglePharmacySelection = (pharmacistId) => {
+    if (selectedPharmacies.includes(pharmacistId)) {
+      selectedPharmacies = selectedPharmacies.filter(id => id !== pharmacistId)
+    } else {
+      selectedPharmacies.push(pharmacistId)
+    }
+  }
+
+  // Select all pharmacies
+  const selectAllPharmacies = () => {
+    selectedPharmacies = availablePharmacies.map(p => p.id)
+  }
+
+  // Deselect all pharmacies
+  const deselectAllPharmacies = () => {
+    selectedPharmacies = []
   }
   
   // Test jsPDF functionality
@@ -1189,7 +1371,7 @@
                   {/if}
                   
                   <div class="d-flex flex-column flex-sm-row gap-2">
-                    <button 
+              <button 
                       type="submit" 
                       class="btn btn-primary flex-fill" 
                       disabled={savingPatient}
@@ -1206,16 +1388,16 @@
                       disabled={savingPatient}
                     >
                       <i class="fas fa-times me-1"></i>Cancel
-                    </button>
-                  </div>
+              </button>
+            </div>
                 </form>
               {:else}
                 <!-- Display Patient Information -->
-                <div class="row">
-                  <div class="col-md-6">
-                    <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
-                    <p><strong>Email:</strong> {selectedPatient.email}</p>
-                    <p><strong>Phone:</strong> {selectedPatient.phone || 'Not provided'}</p>
+              <div class="row">
+                <div class="col-md-6">
+                  <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
+                  <p><strong>Email:</strong> {selectedPatient.email}</p>
+                  <p><strong>Phone:</strong> {selectedPatient.phone || 'Not provided'}</p>
                     <p><strong>Date of Birth:</strong> {selectedPatient.dateOfBirth}</p>
                     <p><strong>Age:</strong> {selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || 'Not calculated'}</p>
                     {#if selectedPatient.weight}
@@ -1224,9 +1406,9 @@
                     {#if selectedPatient.bloodGroup}
                       <p><strong>Blood Group:</strong> <span class="badge bg-danger text-white">{selectedPatient.bloodGroup}</span></p>
                     {/if}
-                  </div>
-                  <div class="col-md-6">
-                    <p><strong>ID Number:</strong> {selectedPatient.idNumber}</p>
+                </div>
+                <div class="col-md-6">
+                  <p><strong>ID Number:</strong> {selectedPatient.idNumber}</p>
                     {#if selectedPatient.address}
                       <p><strong>Address:</strong> {selectedPatient.address}</p>
                     {/if}
@@ -1236,8 +1418,8 @@
                     {#if selectedPatient.emergencyPhone}
                       <p><strong>Emergency Phone:</strong> {selectedPatient.emergencyPhone}</p>
                     {/if}
-                  </div>
                 </div>
+              </div>
                 
                 {#if selectedPatient.allergies}
                   <div class="row mt-3">
@@ -1490,8 +1672,8 @@
                         <i class="fas fa-exclamation-triangle me-2 text-danger"></i>
                         <strong class="text-danger">DANGEROUS INTERACTION DETECTED</strong>
                       {:else}
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Drug Interaction Warning</strong>
+                      <i class="fas fa-exclamation-triangle me-2"></i>
+                      <strong>Drug Interaction Warning</strong>
                       {/if}
                       <span class="badge bg-{drugInteractions.severity === 'critical' ? 'danger' : drugInteractions.severity === 'high' ? 'warning' : 'info'} ms-2">
                         {drugInteractions.severity.toUpperCase()}
@@ -1538,8 +1720,8 @@
                   </div>
                   <div class="card-body">
                     <div class="alert alert-success d-flex align-items-center mb-0">
-                      <i class="fas fa-check-circle me-2"></i>
-                      <span>No significant drug interactions detected between current medications.</span>
+                  <i class="fas fa-check-circle me-2"></i>
+                  <span>No significant drug interactions detected between current medications.</span>
                     </div>
                   </div>
                 </div>
@@ -1615,9 +1797,9 @@
             {#if currentPrescriptions.length > 0 || prescriptionNotes.trim() !== ''}
               <div class="mt-3 text-center">
                 <div class="d-flex gap-2 justify-content-center flex-wrap">
-                  <button 
+                <button 
                     class="btn btn-primary flex-fill"
-                    on:click={finishCurrentPrescriptions}
+                  on:click={finishCurrentPrescriptions}
                     title="AI-powered drug interaction analysis"
                   >
                     <i class="fas fa-robot me-2"></i>
@@ -1634,13 +1816,22 @@
                   </button>
                   
                   <button 
+                    class="btn btn-warning flex-fill"
+                    on:click={showPharmacySelection}
+                    title="Send prescriptions to connected pharmacy"
+                  >
+                    <i class="fas fa-paper-plane me-2"></i>
+                    Send to Pharmacy
+                  </button>
+                  
+                  <button 
                     class="btn btn-outline-primary flex-fill"
                     on:click={printPrescriptions}
                     title="Print prescriptions to PDF"
                   >
                     <i class="fas fa-file-pdf me-2"></i>
                     Print
-                  </button>
+                </button>
                 </div>
               </div>
             {/if}
@@ -1670,6 +1861,91 @@
     </div>
   </div>
 </div>
+
+<!-- Pharmacy Selection Modal -->
+{#if showPharmacyModal}
+  <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <i class="fas fa-paper-plane me-2"></i>
+            Send to Pharmacy
+          </h5>
+          <button type="button" class="btn-close" on:click={() => showPharmacyModal = false}></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted mb-3">
+            Select which pharmacies should receive this prescription:
+          </p>
+          
+          <!-- Select All / Deselect All Buttons -->
+          <div class="d-flex gap-2 mb-3">
+            <button class="btn btn-outline-primary btn-sm" on:click={selectAllPharmacies}>
+              <i class="fas fa-check-square me-1"></i>
+              Select All
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" on:click={deselectAllPharmacies}>
+              <i class="fas fa-square me-1"></i>
+              Deselect All
+            </button>
+          </div>
+          
+          <!-- Pharmacy List -->
+          <div class="list-group">
+            {#each availablePharmacies as pharmacy (pharmacy.id)}
+              <label class="list-group-item d-flex align-items-center">
+                <input 
+                  class="form-check-input me-3" 
+                  type="checkbox" 
+                  checked={selectedPharmacies.includes(pharmacy.id)}
+                  on:change={() => togglePharmacySelection(pharmacy.id)}
+                >
+                <div class="flex-grow-1">
+                  <div class="fw-bold">
+                    <i class="fas fa-store me-2"></i>
+                    {pharmacy.name}
+                  </div>
+                  <small class="text-muted">
+                    <i class="fas fa-envelope me-1"></i>
+                    {pharmacy.email}
+                  </small>
+                  <br>
+                  <small class="text-muted">
+                    <i class="fas fa-map-marker-alt me-1"></i>
+                    {pharmacy.address}
+                  </small>
+                </div>
+              </label>
+            {/each}
+          </div>
+          
+          {#if selectedPharmacies.length === 0}
+            <div class="alert alert-warning mt-3 mb-0">
+              <i class="fas fa-exclamation-triangle me-2"></i>
+              Please select at least one pharmacy to send the prescription.
+            </div>
+          {/if}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" on:click={() => showPharmacyModal = false}>
+            <i class="fas fa-times me-2"></i>
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-warning" 
+            on:click={sendToSelectedPharmacies}
+            disabled={selectedPharmacies.length === 0}
+          >
+            <i class="fas fa-paper-plane me-2"></i>
+            Send to {selectedPharmacies.length} Pharmacy{selectedPharmacies.length !== 1 ? 'ies' : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Prescription PDF Modal -->
 {#if showPrescriptionPDF}

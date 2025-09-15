@@ -29,7 +29,7 @@ A comprehensive patient management system built with Svelte 4 and Bootstrap 5, f
 ### Medical Data Management
 - **Symptoms Tracking** - Record patient symptoms with severity and duration
 - **Illness History** - Track diagnosed illnesses and their status
-- **Prescription Management** - Prescribe and track prescriptions with edit/delete functionality
+- **Prescription Management** - M-Prescribe and track prescriptions with edit/delete functionality
 - **Medical Summary** - Always-visible overview in prescriptions tab
 - **Drug Database** - Personal drug database with autocomplete for each doctor
 - **Smart Notifications** - Real-time feedback for all actions
@@ -144,7 +144,7 @@ src/
 ### Medical Data Entry
 - **Symptoms**: Record description, severity, duration, onset date
 - **Illnesses**: Track name, description, status, diagnosis date
-- **Prescriptions**: Prescribe name, dosage, instructions, duration with drug autocomplete
+- **Prescriptions**: M-Prescribe name, dosage, instructions, duration with drug autocomplete
 - **Drug Database**: Personal drug database with autocomplete suggestions
 - **Edit Functionality**: Edit existing prescriptions with pre-filled forms
 

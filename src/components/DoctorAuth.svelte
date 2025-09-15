@@ -125,27 +125,27 @@
 
 <form on:submit={handleSubmit}>
   {#if isRegistering}
-    <div class="row mb-3">
-      <div class="col-md-6">
-        <label for="firstName" class="form-label">First Name</label>
+    <div class="row g-2 mb-3">
+      <div class="col-12 col-sm-6">
+        <label for="firstName" class="form-label small">First Name</label>
         <input 
           type="text" 
-          class="form-control" 
+          class="form-control form-control-sm" 
           id="firstName" 
           bind:value={firstName}
-          placeholder="Enter your first name"
+          placeholder="Enter first name"
           required
           disabled={loading}
         >
       </div>
-      <div class="col-md-6">
-        <label for="lastName" class="form-label">Last Name</label>
+      <div class="col-12 col-sm-6">
+        <label for="lastName" class="form-label small">Last Name</label>
         <input 
           type="text" 
-          class="form-control" 
+          class="form-control form-control-sm" 
           id="lastName" 
           bind:value={lastName}
-          placeholder="Enter your last name"
+          placeholder="Enter last name"
           required
           disabled={loading}
         >
@@ -154,13 +154,13 @@
   {/if}
   
   <div class="mb-3">
-    <label for="email" class="form-label">Email Address</label>
+    <label for="email" class="form-label small">Email Address</label>
     <input 
       type="email" 
-      class="form-control" 
+      class="form-control form-control-sm" 
       id="email" 
       bind:value={email}
-      placeholder="Enter your email address"
+      placeholder="Enter email address"
       required
       disabled={loading}
     >
@@ -168,17 +168,17 @@
   
   {#if isRegistering}
     <div class="mb-3">
-      <label for="country" class="form-label">
+      <label for="country" class="form-label small">
         Country <span class="text-danger">*</span>
       </label>
       <select 
-        class="form-select" 
+        class="form-select form-select-sm" 
         id="country" 
         bind:value={country}
         required
         disabled={loading}
       >
-        <option value="">Select your country</option>
+        <option value="">Select country</option>
         {#each countries as countryOption}
           <option value={countryOption.name}>{countryOption.name}</option>
         {/each}
@@ -187,13 +187,13 @@
   {/if}
   
   <div class="mb-3">
-    <label for="password" class="form-label">Password</label>
+    <label for="password" class="form-label small">Password</label>
     <input 
       type="password" 
-      class="form-control" 
+      class="form-control form-control-sm" 
       id="password" 
       bind:value={password}
-      placeholder="Enter your password"
+      placeholder="Enter password"
       minlength="8"
       required
       disabled={loading}
@@ -208,13 +208,13 @@
   
   {#if isRegistering}
     <div class="mb-3">
-      <label for="confirmPassword" class="form-label">Confirm Password</label>
+      <label for="confirmPassword" class="form-label small">Confirm Password</label>
       <input 
         type="password" 
-        class="form-control" 
+        class="form-control form-control-sm" 
         id="confirmPassword" 
         bind:value={confirmPassword}
-        placeholder="Confirm your password"
+        placeholder="Confirm password"
         required
         disabled={loading}
       >
@@ -222,38 +222,38 @@
   {/if}
   
   {#if error}
-    <div class="alert alert-danger" role="alert">
-      <i class="fas fa-exclamation-triangle me-2"></i>{error}
+    <div class="alert alert-danger alert-sm" role="alert">
+      <i class="fas fa-exclamation-triangle me-1"></i>
+      <small>{error}</small>
     </div>
   {/if}
   
-  <div class="d-grid mb-3">
+  <div class="d-grid gap-2 mb-3">
     <button 
       type="submit" 
-      class="btn btn-primary" 
+      class="btn btn-primary btn-sm" 
       disabled={loading || googleLoading}
     >
       {#if loading}
-        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
       {/if}
       {isRegistering ? 'Register' : 'Login'}
     </button>
-  </div>
-  
-  <!-- Google Login Button -->
-  <div class="d-grid mb-3">
+    
+    <!-- Google Login Button -->
     <button 
       type="button" 
-      class="btn btn-outline-danger" 
+      class="btn btn-outline-danger btn-sm" 
       on:click={handleGoogleLogin}
       disabled={loading || googleLoading}
     >
       {#if googleLoading}
-        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
       {:else}
-        <i class="fab fa-google me-2"></i>
+        <i class="fab fa-google me-1"></i>
       {/if}
-      Continue with Google
+      <span class="d-none d-sm-inline">Continue with Google</span>
+      <span class="d-sm-none">Google</span>
     </button>
   </div>
   

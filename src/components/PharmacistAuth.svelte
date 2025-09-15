@@ -140,64 +140,64 @@
 {#if isLogin}
   <form on:submit|preventDefault={handleLogin}>
     <div class="mb-3">
-      <label for="loginEmail" class="form-label">Email Address</label>
+      <label for="loginEmail" class="form-label small">Email Address</label>
       <input
         type="email"
         id="loginEmail"
-        class="form-control"
+        class="form-control form-control-sm"
         bind:value={loginEmail}
-        placeholder="Enter your email address"
+        placeholder="Enter email address"
         required
         disabled={loading}
       />
     </div>
     
     <div class="mb-3">
-      <label for="loginPassword" class="form-label">Password</label>
+      <label for="loginPassword" class="form-label small">Password</label>
       <input
         type="password"
         id="loginPassword"
-        class="form-control"
+        class="form-control form-control-sm"
         bind:value={loginPassword}
-        placeholder="Enter your password"
+        placeholder="Enter password"
         required
         disabled={loading}
       />
     </div>
     
     {#if error}
-      <div class="alert alert-danger" role="alert">
-        <i class="fas fa-exclamation-triangle me-2"></i>{error}
+      <div class="alert alert-danger alert-sm" role="alert">
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        <small>{error}</small>
       </div>
     {/if}
     
-    <div class="d-grid mb-3">
+    <div class="d-grid gap-2 mb-3">
       <button
         type="submit"
-        class="btn btn-primary"
+        class="btn btn-primary btn-sm"
         disabled={loading || googleLoading}
       >
         {#if loading}
-          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
         {/if}
         Login
       </button>
-    </div>
-    
-    <!-- Google Login Button -->
-    <div class="d-grid mb-3">
+      
+      <!-- Google Login Button -->
       <button
         type="button"
-        class="btn btn-outline-danger"
+        class="btn btn-outline-danger btn-sm"
         on:click={handleGoogleLogin}
         disabled={loading || googleLoading}
       >
         {#if googleLoading}
-          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+          <span class="spinner-border spinner-border-sm me-1" role="status"></span>
         {:else}
-          <i class="fab fa-google me-2"></i>
+          <i class="fab fa-google me-1"></i>
         {/if}
-        Continue with Google
+        <span class="d-none d-sm-inline">Continue with Google</span>
+        <span class="d-sm-none">Google</span>
       </button>
     </div>
     

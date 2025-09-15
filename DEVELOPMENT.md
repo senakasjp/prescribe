@@ -12,7 +12,7 @@
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd Prescribe
+cd M-Prescribe
 
 # Install dependencies
 npm install
@@ -29,7 +29,7 @@ npm run dev
 ## 📁 Project Structure
 
 ```
-Prescribe/
+M-Prescribe/
 ├── src/
 │   ├── components/           # Svelte components
 │   │   ├── App.svelte       # Main application

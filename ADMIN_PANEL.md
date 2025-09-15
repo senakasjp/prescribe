@@ -2,13 +2,13 @@
 
 ## Overview
 
-The Admin Panel provides system administrators with comprehensive access to manage and monitor the Prescribe Patient Management System.
+The Admin Panel provides system administrators with comprehensive access to manage and monitor the M-Prescribe Patient Management System.
 
 ## 🔐 Admin Access
 
 ### Admin Credentials
 - **Email**: `senakahks@gmail.com`
-- **Password**: `PrescribeAdmin2024!`
+- **Password**: `M-PrescribeAdmin2024!`
 
 ### Access Methods
 1. **From Doctor Login Page**: Click "Admin Panel" button
@@ -163,7 +163,7 @@ The admin panel is fully responsive and works on:
 ### Common Issues
 1. **Cannot Access Admin Panel**
    - Verify email is exactly `senakahks@gmail.com`
-   - Check password is `PrescribeAdmin2024!`
+   - Check password is `M-PrescribeAdmin2024!`
    - Clear browser cache and try again
 
 2. **Data Not Loading**

@@ -1,6 +1,6 @@
 # AI-Powered Medical Recommendations
 
-This document describes the AI features integrated into the Prescribe Patient Management System.
+This document describes the AI features integrated into the M-Prescribe Patient Management System.
 
 ## 🤖 Features
 

@@ -34,7 +34,7 @@
 ### Medical Data Management
 - **Symptoms Tracking** - Record and track patient symptoms
 - **Illness History** - Manage diagnosed conditions
-- **Prescription Management** - Prescribe and track prescriptions with edit/delete functionality
+- **Prescription Management** - M-Prescribe and track prescriptions with edit/delete functionality
 - **Medical Summary** - Always-visible overview in prescriptions tab
 - **Drug Database** - Personal drug database with autocomplete for each doctor
 - **Smart Notifications** - Real-time feedback system for all actions

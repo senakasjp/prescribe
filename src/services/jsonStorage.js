@@ -28,6 +28,27 @@ class JSONStorage {
       if (!data.medications) {
         data.medications = []
       }
+      if (!data.pharmacistPrescriptions) {
+        data.pharmacistPrescriptions = {}
+      }
+      
+      // Migrate existing doctors to have connectedPharmacists field
+      if (data.doctors) {
+        data.doctors.forEach(doctor => {
+          if (!doctor.connectedPharmacists) {
+            doctor.connectedPharmacists = []
+          }
+        })
+      }
+      
+      // Migrate existing pharmacists to have connectedDoctors field
+      if (data.pharmacists) {
+        data.pharmacists.forEach(pharmacist => {
+          if (!pharmacist.connectedDoctors) {
+            pharmacist.connectedDoctors = []
+          }
+        })
+      }
       if (!data.doctors) {
         data.doctors = []
       }
@@ -86,6 +107,7 @@ class JSONStorage {
     const doctor = {
       id: this.generateId(),
       ...doctorData,
+      connectedPharmacists: [], // Initialize empty array for connected pharmacists
       createdAt: new Date().toISOString()
     }
     this.data.doctors.push(doctor)
@@ -174,12 +196,42 @@ class JSONStorage {
       throw new Error('Pharmacist not found')
     }
     
-    if (!pharmacist.connectedDoctors.includes(doctorId)) {
-      pharmacist.connectedDoctors.push(doctorId)
-      this.saveData()
+    // Add pharmacist to doctor's connectedPharmacists
+    const doctor = await this.getDoctorById(doctorId)
+    if (doctor) {
+      if (!doctor.connectedPharmacists) {
+        doctor.connectedPharmacists = []
+      }
+      if (!doctor.connectedPharmacists.includes(pharmacist.id)) {
+        doctor.connectedPharmacists.push(pharmacist.id)
+      }
     }
     
+    // Add doctor to pharmacist's connectedDoctors
+    if (!pharmacist.connectedDoctors) {
+      pharmacist.connectedDoctors = []
+    }
+    if (!pharmacist.connectedDoctors.includes(doctorId)) {
+      pharmacist.connectedDoctors.push(doctorId)
+    }
+    
+    this.saveData()
     return pharmacist
+  }
+
+  // Pharmacist prescription operations
+  async getPharmacistPrescriptions(pharmacistId) {
+    const data = this.loadData()
+    return data.pharmacistPrescriptions?.[pharmacistId] || []
+  }
+
+  async savePharmacistPrescriptions(pharmacistId, prescriptions) {
+    const data = this.loadData()
+    if (!data.pharmacistPrescriptions) {
+      data.pharmacistPrescriptions = {}
+    }
+    data.pharmacistPrescriptions[pharmacistId] = prescriptions
+    this.saveData()
   }
 
   // Patient operations
