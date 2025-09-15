@@ -101,6 +101,30 @@ class JSONStorage {
     return this.data.doctors.find(doctor => doctor.id === id)
   }
 
+  async updateDoctor(updatedDoctor) {
+    console.log('Updating doctor with data:', updatedDoctor)
+    console.log('Available doctors:', this.data.doctors.map(d => ({ id: d.id, email: d.email })))
+    
+    // Try to find by ID first
+    let index = this.data.doctors.findIndex(doctor => doctor.id === updatedDoctor.id)
+    
+    // If not found by ID, try to find by email (for Firebase users or other cases)
+    if (index === -1 && updatedDoctor.email) {
+      index = this.data.doctors.findIndex(doctor => doctor.email === updatedDoctor.email)
+      console.log('Found doctor by email at index:', index)
+    }
+    
+    if (index !== -1) {
+      this.data.doctors[index] = { ...this.data.doctors[index], ...updatedDoctor }
+      this.saveData()
+      console.log('Successfully updated doctor:', this.data.doctors[index])
+      return this.data.doctors[index]
+    }
+    
+    console.error('Doctor not found. Searched by ID:', updatedDoctor.id, 'and email:', updatedDoctor.email)
+    throw new Error('Doctor not found')
+  }
+
   // Pharmacist operations
   async createPharmacist(pharmacistData) {
     const pharmacist = {
@@ -128,6 +152,16 @@ class JSONStorage {
 
   async getPharmacistByNumber(pharmacistNumber) {
     return this.data.pharmacists.find(pharmacist => pharmacist.pharmacistNumber === pharmacistNumber)
+  }
+
+  async updatePharmacist(updatedPharmacist) {
+    const index = this.data.pharmacists.findIndex(pharmacist => pharmacist.id === updatedPharmacist.id)
+    if (index !== -1) {
+      this.data.pharmacists[index] = { ...this.data.pharmacists[index], ...updatedPharmacist }
+      this.saveData()
+      return this.data.pharmacists[index]
+    }
+    throw new Error('Pharmacist not found')
   }
 
   async getAllPharmacists() {

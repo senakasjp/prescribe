@@ -1,12 +1,14 @@
 <script>
   import { createEventDispatcher } from 'svelte'
   import authService from '../services/authService.js'
+  import firebaseAuthService from '../services/firebaseAuth.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   
   const dispatch = createEventDispatcher()
   
   let isLogin = true
   let loading = false
+  let googleLoading = false
   let error = ''
   
   // Login form
@@ -91,6 +93,26 @@
       loading = false
     }
   }
+
+  // Handle Google login
+  const handleGoogleLogin = async () => {
+    error = ''
+    googleLoading = true
+    
+    try {
+      const pharmacist = await firebaseAuthService.signInWithGoogle('pharmacist')
+      console.log('Pharmacist signed in with Google successfully')
+      
+      notifySuccess('Google login successful!')
+      dispatch('pharmacist-login', pharmacist)
+    } catch (err) {
+      error = err.message || 'Failed to sign in with Google'
+      notifyError(error)
+      console.error('Google authentication error:', err)
+    } finally {
+      googleLoading = false
+    }
+  }
   
   const toggleMode = () => {
     isLogin = !isLogin
@@ -149,16 +171,33 @@
       </div>
     {/if}
     
-    <div class="d-grid">
+    <div class="d-grid mb-3">
       <button
         type="submit"
         class="btn btn-primary"
-        disabled={loading}
+        disabled={loading || googleLoading}
       >
         {#if loading}
           <span class="spinner-border spinner-border-sm me-2" role="status"></span>
         {/if}
         Login
+      </button>
+    </div>
+    
+    <!-- Google Login Button -->
+    <div class="d-grid mb-3">
+      <button
+        type="button"
+        class="btn btn-outline-danger"
+        on:click={handleGoogleLogin}
+        disabled={loading || googleLoading}
+      >
+        {#if googleLoading}
+          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+        {:else}
+          <i class="fab fa-google me-2"></i>
+        {/if}
+        Continue with Google
       </button>
     </div>
     

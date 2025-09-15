@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte'
   import authService from './services/authService.js'
+  import firebaseAuthService from './services/firebaseAuth.js'
   import adminAuthService from './services/adminAuthService.js'
   import aiTokenTracker from './services/aiTokenTracker.js'
   import DoctorAuth from './components/DoctorAuth.svelte'
@@ -8,26 +9,57 @@
   import PharmacistDashboard from './components/PharmacistDashboard.svelte'
   import PatientManagement from './components/PatientManagement.svelte'
   import AdminPanel from './components/AdminPanel.svelte'
+  import EditProfile from './components/EditProfile.svelte'
   import NotificationContainer from './components/NotificationContainer.svelte'
   
   let user = null
   let loading = true
   let showAdminPanel = false
+  let showEditProfileModal = false
   let doctorUsageStats = null
   let refreshInterval = null
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
+  let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
   
   onMount(() => {
     try {
-      // Get current user from auth service only if not already set
-      if (!user) {
-        user = authService.getCurrentUser()
-        console.log('Current user in App:', user)
-        console.log('User ID:', user?.id)
-        console.log('User UID:', user?.uid)
-        console.log('User email:', user?.email)
-        console.log('User role:', user?.role)
-      }
+      // Set up Firebase auth state listener
+      const unsubscribe = firebaseAuthService.onAuthStateChanged((firebaseUser) => {
+        console.log('Firebase auth state changed:', firebaseUser)
+        console.log('User just updated flag:', userJustUpdated)
+        
+        // Don't override user data if it was just updated
+        if (userJustUpdated) {
+          console.log('Skipping Firebase auth update - user was just updated')
+          userJustUpdated = false // Reset the flag
+          return
+        }
+        
+        if (firebaseUser) {
+          // Firebase user is authenticated, but preserve any local updates
+          const localUser = authService.getCurrentUser()
+          if (localUser && localUser.email === firebaseUser.email) {
+            // Merge Firebase data with local user data to preserve updates
+            user = { ...firebaseUser, ...localUser }
+            console.log('Merged Firebase and local user data:', user)
+          } else {
+            user = firebaseUser
+            console.log('Using Firebase user:', firebaseUser)
+          }
+        } else if (!user) {
+          // No Firebase user, check local auth service
+          user = authService.getCurrentUser()
+          console.log('Current user in App:', user)
+          console.log('User ID:', user?.id)
+          console.log('User UID:', user?.uid)
+          console.log('User email:', user?.email)
+          console.log('User role:', user?.role)
+          console.log('User country:', user?.country)
+        }
+      })
+      
+      // Store unsubscribe function for cleanup
+      window.firebaseUnsubscribe = unsubscribe
       
       // Load doctor's AI usage stats only for doctors
       if (user?.id && user?.role === 'doctor') {
@@ -50,6 +82,14 @@
     }, 2000)
   })
   
+  // Cleanup Firebase auth listener on destroy
+  onDestroy(() => {
+    if (window.firebaseUnsubscribe) {
+      window.firebaseUnsubscribe()
+      window.firebaseUnsubscribe = null
+    }
+  })
+  
   // Handle user authentication events
   const handleUserAuthenticated = (event) => {
     user = event.detail
@@ -64,12 +104,36 @@
         refreshInterval = null
       }
       
+      // Sign out from both services
       await authService.signOut()
+      await firebaseAuthService.signOut()
       user = null
       doctorUsageStats = null
     } catch (error) {
       console.error('Error signing out:', error)
     }
+  }
+  
+  // Handle edit profile
+  const handleEditProfile = () => {
+    showEditProfileModal = true
+  }
+  
+  // Handle close edit profile modal
+  const handleCloseEditProfile = () => {
+    showEditProfileModal = false
+  }
+  
+  // Handle profile update
+  const handleProfileUpdate = (updatedUser) => {
+    console.log('App: Profile updated, new user data:', updatedUser)
+    user = updatedUser
+    // Ensure authService also has the updated user
+    authService.saveCurrentUser(updatedUser)
+    // Set flag to prevent Firebase from overriding this update
+    userJustUpdated = true
+    showEditProfileModal = false
+    console.log('App: Profile update complete, user country:', user.country)
   }
   
   // Handle admin panel access
@@ -166,6 +230,9 @@
                 </span>
               {/if}
             </span>
+            <button class="btn btn-outline-light btn-sm me-2" on:click={handleEditProfile}>
+              <i class="fas fa-user-edit me-1"></i>Edit Profile
+            </button>
             <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
               <i class="fas fa-shield-alt me-1"></i>Admin
             </button>
@@ -255,6 +322,15 @@
     </div>
   {/if}
   
+  <!-- Edit Profile Modal -->
+  {#if showEditProfileModal}
+    <EditProfile 
+      {user} 
+      on:profile-updated={handleProfileUpdate}
+      on:profile-cancelled={handleCloseEditProfile}
+    />
+  {/if}
+  
   <!-- Notification Container -->
   <NotificationContainer />
 </main>
@@ -303,85 +379,11 @@
     font-size: 0.8rem !important;
   }
   
-  /* Override Bootstrap primary color to dark blue */
-  :global(.bg-primary) {
-    background-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.text-primary) {
-    color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.border-primary) {
-    border-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.btn-primary) {
-    background-color: #0d6efd !important; /* Dark blue */
-    border-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.btn-primary:hover) {
-    background-color: #0b5ed7 !important; /* Darker blue on hover */
-    border-color: #0b5ed7 !important; /* Darker blue on hover */
-  }
-  
-  :global(.btn-outline-primary) {
-    color: #0d6efd !important; /* Dark blue */
-    border-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.btn-outline-primary:hover) {
-    background-color: #0d6efd !important; /* Dark blue */
-    border-color: #0d6efd !important; /* Dark blue */
-    color: white !important;
-  }
-  
-  :global(.navbar-dark .navbar-nav .nav-link) {
-    color: rgba(255, 255, 255, 0.9) !important;
-  }
-  
-  :global(.navbar-dark .navbar-nav .nav-link:hover) {
-    color: rgba(255, 255, 255, 1) !important;
-  }
-  
-  /* Override Bootstrap info color to dark blue */
-  :global(.bg-info) {
-    background-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.text-info) {
-    color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.border-info) {
-    border-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.btn-info) {
-    background-color: #0d6efd !important; /* Dark blue */
-    border-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.btn-info:hover) {
-    background-color: #0b5ed7 !important; /* Darker blue on hover */
-    border-color: #0b5ed7 !important; /* Darker blue on hover */
-  }
-  
-  :global(.btn-outline-info) {
-    color: #0d6efd !important; /* Dark blue */
-    border-color: #0d6efd !important; /* Dark blue */
-  }
-  
-  :global(.btn-outline-info:hover) {
-    background-color: #0d6efd !important; /* Dark blue */
-    border-color: #0d6efd !important; /* Dark blue */
-    color: white !important;
-  }
+  /* Use Bootstrap 5 default colors only */
   
   /* Stylish Login Page Styles */
   .bg-gradient-primary {
-    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 50%, #0a58ca 100%);
+    background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark) 50%, var(--bs-primary-darker) 100%);
     min-height: 100vh;
   }
   
@@ -400,28 +402,28 @@
   }
   
   .btn-primary {
-    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark) 100%);
     border: none;
     transition: all 0.3s ease;
   }
   
   .btn-primary:hover {
-    background: linear-gradient(135deg, #0b5ed7 0%, #0a58ca 100%);
+    background: linear-gradient(135deg, var(--bs-primary-dark) 0%, var(--bs-primary-darker) 100%);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.3);
   }
   
   .btn-outline-primary {
-    border: 2px solid #0d6efd;
-    color: #0d6efd;
+    border: 2px solid var(--bs-primary);
+    color: var(--bs-primary);
     transition: all 0.3s ease;
   }
   
   .btn-outline-primary:hover {
-    background: #0d6efd;
-    border-color: #0d6efd;
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+    box-shadow: 0 4px 12px rgba(var(--bs-primary-rgb), 0.3);
   }
   
   .form-control {
@@ -430,8 +432,8 @@
   }
   
   .form-control:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
     transform: translateY(-1px);
   }
   
@@ -473,21 +475,21 @@
   }
   
   .toggle-option.active {
-    background: linear-gradient(135deg, #0d6efd 0%, #0b5ed7 100%);
+    background: linear-gradient(135deg, var(--bs-primary) 0%, var(--bs-primary-dark) 100%);
     color: white;
-    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.3);
+    box-shadow: 0 2px 8px rgba(var(--bs-primary-rgb), 0.3);
     transform: translateY(-1px);
   }
   
   .toggle-option.inactive {
     background: transparent;
-    color: #6c757d;
+    color: var(--bs-secondary);
     border: none;
   }
   
   .toggle-option.inactive:hover {
-    background: rgba(13, 110, 253, 0.1);
-    color: #0d6efd;
+    background: rgba(var(--bs-primary-rgb), 0.1);
+    color: var(--bs-primary);
   }
   
   .toggle-option i {
@@ -499,11 +501,11 @@
   }
   
   .toggle-option.inactive i {
-    color: #6c757d;
+    color: var(--bs-secondary);
   }
   
   .toggle-option.inactive:hover i {
-    color: #0d6efd;
+    color: var(--bs-primary);
   }
   
   /* Responsive adjustments */

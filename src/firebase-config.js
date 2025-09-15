@@ -2,7 +2,7 @@
 // Uses environment variables for security
 
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
 // Firebase configuration from environment variables
@@ -21,5 +21,8 @@ const app = initializeApp(firebaseConfig)
 // Initialize Firebase services
 export const auth = getAuth(app)
 export const db = getFirestore(app)
+
+// Initialize Google Auth Provider
+export const googleProvider = new GoogleAuthProvider()
 
 export default app

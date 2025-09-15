@@ -8,6 +8,5 @@ Do not change any other methods or anything in the files I sent unless it's abso
 Do not fix style in the existing code unless I ask for that. . 
 Do not remove existing comments unless I explicitly ask for it or we're removing that code completely.
 Always use Bootstrap 5 "sm" theme.
-Never user Light Blue, instead user dark blue.
 Use free Font Awesome icons
 Any new component should strictly follow Bootstrap 5.

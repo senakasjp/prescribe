@@ -14,6 +14,10 @@ class AuthService {
     try {
       const stored = localStorage.getItem('prescribe-current-user')
       this.currentUser = stored ? JSON.parse(stored) : null
+      console.log('AuthService: Loaded current user from localStorage:', this.currentUser)
+      if (this.currentUser) {
+        console.log('AuthService: User country from localStorage:', this.currentUser.country)
+      }
     } catch (error) {
       console.error('Error loading current user:', error)
       this.currentUser = null
@@ -23,8 +27,10 @@ class AuthService {
   // Save current user to localStorage
   saveCurrentUser(user) {
     try {
+      console.log('AuthService: Saving current user to localStorage:', user)
       localStorage.setItem('prescribe-current-user', JSON.stringify(user))
       this.currentUser = user
+      console.log('AuthService: User saved successfully to localStorage')
     } catch (error) {
       console.error('Error saving current user:', error)
     }
@@ -52,6 +58,7 @@ class AuthService {
         role: 'doctor',
         firstName: doctorData.firstName || '',
         lastName: doctorData.lastName || '',
+        country: doctorData.country || '',
         name: doctorData.firstName && doctorData.lastName ? `${doctorData.firstName} ${doctorData.lastName}` : ''
       })
 
@@ -81,6 +88,25 @@ class AuthService {
       return doctor
     } catch (error) {
       console.error('Error signing in doctor:', error)
+      throw error
+    }
+  }
+
+  // Update doctor profile
+  async updateDoctor(updatedDoctorData) {
+    try {
+      console.log('AuthService: Updating doctor with data:', updatedDoctorData)
+      console.log('AuthService: Current user:', this.currentUser)
+      
+      // Update in jsonStorage
+      const updatedDoctor = await jsonStorage.updateDoctor(updatedDoctorData)
+      
+      // Update current user
+      this.saveCurrentUser(updatedDoctor)
+      console.log('AuthService: Successfully updated doctor:', updatedDoctor)
+      return updatedDoctor
+    } catch (error) {
+      console.error('AuthService: Error updating doctor:', error)
       throw error
     }
   }

@@ -14,6 +14,15 @@
   const dispatch = createEventDispatcher()
   export let user
   
+  // Reactive statement to ensure component updates when user changes
+  $: userKey = user?.id || user?.email || 'default'
+  
+  // Reactive statement to log user changes for debugging
+  $: if (user) {
+    console.log('PatientManagement: User updated:', user)
+    console.log('PatientManagement: User country:', user.country)
+  }
+  
   let patients = []
   let selectedPatient = null
   let showPatientForm = false
@@ -254,15 +263,15 @@
           type: 'bar',
           data: {
             labels: last12Months,
-            datasets: [{
-              label: 'Prescriptions',
-              data: prescriptionsPerMonth,
-              backgroundColor: 'rgba(13, 110, 253, 0.8)',
-              borderColor: 'rgba(13, 110, 253, 1)',
-              borderWidth: 1,
-              borderRadius: 4,
-              borderSkipped: false,
-            }]
+                     datasets: [{
+                       label: 'Prescriptions',
+                       data: prescriptionsPerMonth,
+                       backgroundColor: 'rgba(var(--bs-primary-rgb), 0.8)',
+                       borderColor: 'rgba(var(--bs-primary-rgb), 1)',
+                       borderWidth: 1,
+                       borderRadius: 4,
+                       borderSkipped: false,
+                     }]
           },
           options: {
             responsive: true,
@@ -271,14 +280,14 @@
               legend: {
                 display: false
               },
-              tooltip: {
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                titleColor: '#fff',
-                bodyColor: '#fff',
-                borderColor: 'rgba(13, 110, 253, 1)',
-                borderWidth: 1,
-                cornerRadius: 6,
-                displayColors: false,
+                       tooltip: {
+                         backgroundColor: 'rgba(var(--bs-dark-rgb), 0.8)',
+                         titleColor: 'var(--bs-light)',
+                         bodyColor: 'var(--bs-light)',
+                         borderColor: 'rgba(var(--bs-primary-rgb), 1)',
+                         borderWidth: 1,
+                         cornerRadius: 6,
+                         displayColors: false,
                 callbacks: {
                   title: function(context) {
                     return context[0].label
@@ -294,23 +303,23 @@
                 grid: {
                   display: false
                 },
-                ticks: {
-                  color: '#6c757d',
-                  font: {
-                    size: 11
-                  },
-                  maxRotation: 45,
-                  minRotation: 0
-                }
+                         ticks: {
+                           color: 'var(--bs-secondary)',
+                           font: {
+                             size: 11
+                           },
+                           maxRotation: 45,
+                           minRotation: 0
+                         }
               },
               y: {
                 beginAtZero: true,
                 grid: {
-                  color: 'rgba(0, 0, 0, 0.1)',
+                  color: 'rgba(var(--bs-dark-rgb), 0.1)',
                   drawBorder: false
                 },
                 ticks: {
-                  color: '#6c757d',
+                  color: 'var(--bs-secondary)',
                   font: {
                     size: 11
                   },
@@ -719,26 +728,31 @@
       {:else}
       <!-- Welcome Dashboard -->
       <div class="row g-3">
-        <!-- Welcome Message -->
-        <div class="col-12">
-          <div class="card border-primary shadow-sm">
-            <div class="card-body bg-transparent text-dark rounded-3">
-              <div class="d-flex align-items-center">
-                <div class="flex-shrink-0">
-                  <i class="fas fa-user-md fa-2x text-primary"></i>
-                </div>
-                <div class="flex-grow-1 ms-3">
-                  <h4 class="card-title mb-1 fw-bold text-dark">
-                    Welcome, {user?.name || user?.firstName || 'Doctor'}!
-                  </h4>
-                  <p class="card-text mb-0 text-muted">
-                    Ready to provide excellent patient care with AI-powered assistance
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+                 <!-- Welcome Message -->
+                 <div class="col-12" key={userKey}>
+                   <div class="card border-primary shadow-sm">
+                     <div class="card-body bg-transparent text-dark rounded-3">
+                       <div class="d-flex align-items-center">
+                         <div class="flex-shrink-0">
+                           <i class="fas fa-user-md fa-2x text-primary"></i>
+                         </div>
+                         <div class="flex-grow-1 ms-3">
+                           <h4 class="card-title mb-1 fw-bold text-dark">
+                             Welcome, Dr. {user?.name || user?.firstName || 'Doctor'}!
+                           </h4>
+                           <p class="card-text mb-0 text-muted">
+                             Ready to provide excellent patient care with AI-powered assistance
+                           </p>
+                           <!-- Added Country Information -->
+                           <p class="card-text mt-2 mb-0 text-muted small">
+                             <i class="fas fa-map-marker-alt me-1"></i>
+                             Country: {user?.country || 'Not specified'}
+                           </p>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
         
         <!-- Statistics Cards -->
         <div class="col-md-4">

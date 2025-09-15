@@ -1,6 +1,8 @@
 <script>
   import { createEventDispatcher } from 'svelte'
   import authService from '../services/authService.js'
+  import firebaseAuthService from '../services/firebaseAuth.js'
+  import { countries } from '../data/countries.js'
   
   const dispatch = createEventDispatcher()
   
@@ -9,9 +11,11 @@
   let email = ''
   let password = ''
   let confirmPassword = ''
+  let country = ''
   let isRegistering = false
   let error = ''
   let loading = false
+  let googleLoading = false
   
   // Toggle between login and register modes
   const toggleMode = () => {
@@ -22,6 +26,7 @@
     email = ''
     password = ''
     confirmPassword = ''
+    country = ''
   }
   
   // Handle form submission
@@ -39,6 +44,10 @@
         
         if (!firstName.trim() || !lastName.trim()) {
           throw new Error('First name and last name are required')
+        }
+        
+        if (!country.trim()) {
+          throw new Error('Country is required')
         }
         
         // Password security validation
@@ -73,7 +82,7 @@
           throw new Error('Password cannot contain repeated characters')
         }
         
-        const user = await authService.registerDoctor(email, password, { firstName, lastName })
+        const user = await authService.registerDoctor(email, password, { firstName, lastName, country })
         console.log('Doctor registered successfully')
         
         // Dispatch event to parent to refresh user state
@@ -91,6 +100,25 @@
       console.error('Authentication error:', err)
     } finally {
       loading = false
+    }
+  }
+
+  // Handle Google login
+  const handleGoogleLogin = async () => {
+    error = ''
+    googleLoading = true
+    
+    try {
+      const user = await firebaseAuthService.signInWithGoogle('doctor')
+      console.log('Doctor signed in with Google successfully')
+      
+      // Dispatch event to parent to refresh user state
+      dispatch('user-authenticated', user)
+    } catch (err) {
+      error = err.message || 'Failed to sign in with Google'
+      console.error('Google authentication error:', err)
+    } finally {
+      googleLoading = false
     }
   }
 </script>
@@ -138,6 +166,26 @@
     >
   </div>
   
+  {#if isRegistering}
+    <div class="mb-3">
+      <label for="country" class="form-label">
+        Country <span class="text-danger">*</span>
+      </label>
+      <select 
+        class="form-select" 
+        id="country" 
+        bind:value={country}
+        required
+        disabled={loading}
+      >
+        <option value="">Select your country</option>
+        {#each countries as countryOption}
+          <option value={countryOption.name}>{countryOption.name}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
+  
   <div class="mb-3">
     <label for="password" class="form-label">Password</label>
     <input 
@@ -179,16 +227,33 @@
     </div>
   {/if}
   
-  <div class="d-grid">
+  <div class="d-grid mb-3">
     <button 
       type="submit" 
       class="btn btn-primary" 
-      disabled={loading}
+      disabled={loading || googleLoading}
     >
       {#if loading}
         <span class="spinner-border spinner-border-sm me-2" role="status"></span>
       {/if}
       {isRegistering ? 'Register' : 'Login'}
+    </button>
+  </div>
+  
+  <!-- Google Login Button -->
+  <div class="d-grid mb-3">
+    <button 
+      type="button" 
+      class="btn btn-outline-danger" 
+      on:click={handleGoogleLogin}
+      disabled={loading || googleLoading}
+    >
+      {#if googleLoading}
+        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+      {:else}
+        <i class="fab fa-google me-2"></i>
+      {/if}
+      Continue with Google
     </button>
   </div>
   
