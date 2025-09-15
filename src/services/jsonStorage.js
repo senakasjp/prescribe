@@ -13,6 +13,7 @@ class JSONStorage {
       const stored = localStorage.getItem(this.storageKey)
       const data = stored ? JSON.parse(stored) : {
         doctors: [],
+        pharmacists: [],
         patients: [],
         illnesses: [],
         medications: [], // Legacy - will be migrated
@@ -29,6 +30,9 @@ class JSONStorage {
       }
       if (!data.doctors) {
         data.doctors = []
+      }
+      if (!data.pharmacists) {
+        data.pharmacists = []
       }
       if (!data.patients) {
         data.patients = []
@@ -95,6 +99,53 @@ class JSONStorage {
 
   async getDoctorById(id) {
     return this.data.doctors.find(doctor => doctor.id === id)
+  }
+
+  // Pharmacist operations
+  async createPharmacist(pharmacistData) {
+    const pharmacist = {
+      id: this.generateId(),
+      email: pharmacistData.email,
+      password: pharmacistData.password,
+      role: pharmacistData.role,
+      businessName: pharmacistData.businessName,
+      pharmacistNumber: pharmacistData.pharmacistNumber,
+      createdAt: pharmacistData.createdAt,
+      connectedDoctors: [] // Array of doctor IDs who have connected with this pharmacist
+    }
+    this.data.pharmacists.push(pharmacist)
+    this.saveData()
+    return pharmacist
+  }
+
+  async getPharmacistByEmail(email) {
+    return this.data.pharmacists.find(pharmacist => pharmacist.email === email)
+  }
+
+  async getPharmacistById(id) {
+    return this.data.pharmacists.find(pharmacist => pharmacist.id === id)
+  }
+
+  async getPharmacistByNumber(pharmacistNumber) {
+    return this.data.pharmacists.find(pharmacist => pharmacist.pharmacistNumber === pharmacistNumber)
+  }
+
+  async getAllPharmacists() {
+    return this.data.pharmacists
+  }
+
+  async connectPharmacistToDoctor(pharmacistNumber, doctorId) {
+    const pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+    if (!pharmacist) {
+      throw new Error('Pharmacist not found')
+    }
+    
+    if (!pharmacist.connectedDoctors.includes(doctorId)) {
+      pharmacist.connectedDoctors.push(doctorId)
+      this.saveData()
+    }
+    
+    return pharmacist
   }
 
   // Patient operations

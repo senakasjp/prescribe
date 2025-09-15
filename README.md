@@ -1,8 +1,22 @@
 # 🤖 AI-Powered Patient Management System
 
-A comprehensive patient management system built with Svelte 4 and Bootstrap 5, featuring advanced AI capabilities for medical recommendations and drug interaction analysis. Designed for doctors to manage patient records, track medical history, and generate prescriptions with intelligent safety features.
+A comprehensive patient management system built with Svelte 4 and Bootstrap 5, featuring advanced AI capabilities for medical recommendations and drug interaction analysis. Designed for doctors and pharmacists to manage patient records, track medical history, and coordinate prescription management with intelligent safety features.
 
 ## 🏥 Features
+
+### User Authentication
+- **Doctor Authentication** - Secure login and registration for medical professionals
+- **Pharmacist Authentication** - Separate authentication system for pharmacists
+- **Role-Based Access** - Different interfaces and permissions based on user role
+- **Secure Sessions** - Persistent login sessions with proper logout functionality
+
+### Pharmacist System
+- **Pharmacist Registration** - Create pharmacist accounts with business name and email
+- **Unique Pharmacist Numbers** - Auto-generated 6-digit identification numbers
+- **Doctor-Pharmacist Connection** - Doctors can connect with pharmacists using their unique numbers
+- **Prescription Sharing** - Connected pharmacists can view prescriptions from doctors
+- **Pharmacist Dashboard** - Dedicated interface for viewing and managing prescriptions
+- **Business Information** - Track pharmacy business names and contact information
 
 ### Patient Management
 - **Patient Registration** - Add new patients with simplified mandatory fields (First Name and Age only)

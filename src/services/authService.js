@@ -85,7 +85,54 @@ class AuthService {
     }
   }
 
-  // Sign out doctor
+  // Register new pharmacist
+  async registerPharmacist(pharmacistData) {
+    try {
+      // Check if pharmacist already exists
+      const existingPharmacist = await jsonStorage.getPharmacistByEmail(pharmacistData.email)
+      if (existingPharmacist) {
+        throw new Error('Pharmacist with this email already exists')
+      }
+
+      // Create new pharmacist
+      const pharmacist = await jsonStorage.createPharmacist({
+        email: pharmacistData.email,
+        password: pharmacistData.password, // In real app, this should be hashed
+        role: 'pharmacist',
+        businessName: pharmacistData.businessName,
+        pharmacistNumber: pharmacistData.pharmacistNumber,
+        createdAt: new Date().toISOString()
+      })
+
+      return { success: true, pharmacist }
+    } catch (error) {
+      console.error('Error registering pharmacist:', error)
+      return { success: false, message: error.message }
+    }
+  }
+
+  // Login pharmacist
+  async loginPharmacist(email, password) {
+    try {
+      const pharmacist = await jsonStorage.getPharmacistByEmail(email)
+      if (!pharmacist) {
+        return { success: false, message: 'Pharmacist not found' }
+      }
+
+      if (pharmacist.password !== password) {
+        return { success: false, message: 'Invalid password' }
+      }
+
+      // Set as current user
+      this.saveCurrentUser(pharmacist)
+      return { success: true, pharmacist }
+    } catch (error) {
+      console.error('Error logging in pharmacist:', error)
+      return { success: false, message: error.message }
+    }
+  }
+
+  // Sign out doctor/pharmacist
   async signOut() {
     this.clearCurrentUser()
   }
@@ -98,6 +145,16 @@ class AuthService {
   // Check if user is authenticated
   isAuthenticated() {
     return this.currentUser !== null
+  }
+
+  // Check if current user is a doctor
+  isDoctor() {
+    return this.currentUser && this.currentUser.role === 'doctor'
+  }
+
+  // Check if current user is a pharmacist
+  isPharmacist() {
+    return this.currentUser && this.currentUser.role === 'pharmacist'
   }
 
   // Listen for auth state changes (simplified version)

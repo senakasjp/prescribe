@@ -2,6 +2,20 @@
 
 ## 🏥 Core Features
 
+### User Authentication
+- **Doctor Authentication** - Secure login and registration for medical professionals
+- **Pharmacist Authentication** - Separate authentication system for pharmacists
+- **Role-Based Access** - Different interfaces and permissions based on user role
+- **Secure Sessions** - Persistent login sessions with proper logout functionality
+
+### Pharmacist System
+- **Pharmacist Registration** - Create pharmacist accounts with business name and email
+- **Unique Pharmacist Numbers** - Auto-generated 6-digit identification numbers
+- **Doctor-Pharmacist Connection** - Doctors can connect with pharmacists using their unique numbers
+- **Prescription Sharing** - Connected pharmacists can view prescriptions from doctors
+- **Pharmacist Dashboard** - Dedicated interface for viewing and managing prescriptions
+- **Business Information** - Track pharmacy business names and contact information
+
 ### Patient Management
 - **Patient Registration** - Complete patient information entry with simplified mandatory fields
 - **Patient Search** - Multi-criteria search with 20-result limit

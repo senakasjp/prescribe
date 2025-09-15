@@ -8,3 +8,12 @@ A patient has a symptoms, ilnesses, tests and prescription hostory
 Doctor and register/select a patient
 Under patient symptoms and prescriptions can be entered
 Prescription can be printed as PDF 
+
+Make another account type pharmacist.
+Pharmacist should login to the system separately
+It has a email add and business name
+When create the account, a unique 6 digit number is generated
+Doctors can add pharmacist using the number give
+When doctor send a prescription pharmacist can view it 
+
+

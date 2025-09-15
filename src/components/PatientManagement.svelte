@@ -5,6 +5,7 @@
   import PatientDetails from './PatientDetails.svelte'
   import PatientList from './PatientList.svelte'
   import MedicalSummary from './MedicalSummary.svelte'
+  import PharmacistManagement from './PharmacistManagement.svelte'
   import { Chart, registerables } from 'chart.js'
   
   // Register Chart.js components
@@ -20,6 +21,7 @@
   let loading = true
   let searchQuery = ''
   let filteredPatients = []
+  let currentView = 'patients' // 'patients' or 'pharmacists'
   
   // Medical data for selected patient
   let illnesses = []
@@ -472,6 +474,33 @@
   })
 </script>
 
+<!-- Navigation Tabs -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <ul class="nav nav-pills nav-fill">
+      <li class="nav-item">
+        <button 
+          class="nav-link {currentView === 'patients' ? 'active' : ''}"
+          on:click={() => currentView = 'patients'}
+        >
+          <i class="fas fa-users me-2"></i>
+          Patients
+        </button>
+      </li>
+      <li class="nav-item">
+        <button 
+          class="nav-link {currentView === 'pharmacists' ? 'active' : ''}"
+          on:click={() => currentView = 'pharmacists'}
+        >
+          <i class="fas fa-pills me-2"></i>
+          Pharmacists
+        </button>
+      </li>
+    </ul>
+  </div>
+</div>
+
+{#if currentView === 'patients'}
 <div class="row g-3">
   <!-- Patient List Sidebar -->
   <div class="col-12 col-lg-4">
@@ -786,3 +815,7 @@
     {/if}
   </div>
 </div>
+{:else}
+<!-- Pharmacist Management View -->
+<PharmacistManagement {user} />
+{/if}

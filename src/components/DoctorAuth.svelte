@@ -41,6 +41,38 @@
           throw new Error('First name and last name are required')
         }
         
+        // Password security validation
+        if (password.length < 8) {
+          throw new Error('Password must be at least 8 characters long')
+        }
+        
+        if (!/(?=.*[a-z])/.test(password)) {
+          throw new Error('Password must contain at least one lowercase letter')
+        }
+        
+        if (!/(?=.*[A-Z])/.test(password)) {
+          throw new Error('Password must contain at least one uppercase letter')
+        }
+        
+        if (!/(?=.*\d)/.test(password)) {
+          throw new Error('Password must contain at least one number')
+        }
+        
+        if (!/(?=.*[@$!%*?&])/.test(password)) {
+          throw new Error('Password must contain at least one special character (@$!%*?&)')
+        }
+        
+        // Check for common weak passwords
+        const commonPasswords = ['password', '123456', 'password123', 'admin', 'doctor', 'medical', 'healthcare']
+        if (commonPasswords.some(weak => password.toLowerCase().includes(weak))) {
+          throw new Error('Password contains common words and is not secure')
+        }
+        
+        // Check for sequential characters
+        if (/(.)\1{2,}/.test(password)) {
+          throw new Error('Password cannot contain repeated characters')
+        }
+        
         const user = await authService.registerDoctor(email, password, { firstName, lastName })
         console.log('Doctor registered successfully')
         
@@ -73,6 +105,7 @@
           class="form-control" 
           id="firstName" 
           bind:value={firstName}
+          placeholder="Enter your first name"
           required
           disabled={loading}
         >
@@ -84,6 +117,7 @@
           class="form-control" 
           id="lastName" 
           bind:value={lastName}
+          placeholder="Enter your last name"
           required
           disabled={loading}
         >
@@ -98,6 +132,7 @@
       class="form-control" 
       id="email" 
       bind:value={email}
+      placeholder="Enter your email address"
       required
       disabled={loading}
     >
@@ -110,9 +145,15 @@
       class="form-control" 
       id="password" 
       bind:value={password}
+      placeholder="Enter your password"
+      minlength="8"
       required
       disabled={loading}
     >
+    <div class="form-text">
+      <i class="fas fa-shield-alt me-1"></i>
+      Password must be at least 8 characters with uppercase, lowercase, number, and special character
+    </div>
   </div>
   
   {#if isRegistering}
@@ -123,6 +164,7 @@
         class="form-control" 
         id="confirmPassword" 
         bind:value={confirmPassword}
+        placeholder="Confirm your password"
         required
         disabled={loading}
       >

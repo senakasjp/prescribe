@@ -4,6 +4,37 @@
 
 This guide will help you navigate and use the Patient Management System effectively.
 
+## 💊 For Pharmacists
+
+This guide will help pharmacists connect with doctors and manage prescriptions.
+
+### Pharmacist Registration
+1. **Select Pharmacist Mode** - Click the "Pharmacist" tab on the login screen
+2. **Create Account** - Click "Register" to create your pharmacist account
+3. **Fill in Your Details**:
+   - Business Name (Pharmacy Name)
+   - Email Address
+   - Password (minimum 6 characters)
+   - Confirm Password
+4. **Get Your Number** - After registration, you'll receive a unique 6-digit pharmacist number
+5. **Share Your Number** - Give this number to doctors who want to connect with your pharmacy
+
+### Pharmacist Dashboard
+Once logged in, you'll see:
+- **Pharmacy Information** - Your business details and pharmacist ID
+- **Connected Doctors** - List of doctors who have connected with your pharmacy
+- **Prescriptions List** - All prescriptions from connected doctors
+- **Prescription Details** - View detailed prescription information including medications
+
+### Managing Prescriptions
+1. **View Prescriptions** - All prescriptions from connected doctors appear in your dashboard
+2. **Check Details** - Click "View" to see complete prescription information
+3. **Patient Information** - See patient details, doctor information, and prescription date
+4. **Medication List** - View all prescribed medications with dosages and instructions
+5. **Mark as Dispensed** - Update prescription status when medications are dispensed
+
+## 👨‍⚕️ For Doctors
+
 ## 🚀 Getting Started
 
 ### First Time Setup
@@ -211,6 +242,35 @@ Each doctor has their own personal drug database that stores frequently used med
 - **Persistent Data** - Database survives browser restarts
 - **Doctor-Specific** - Each doctor has their own database
 - **No Internet Required** - Works completely offline
+
+## 💊 Pharmacist Management
+
+### Connecting with Pharmacists
+Doctors can connect with pharmacists to share prescriptions and improve patient care coordination.
+
+#### Adding Pharmacists
+1. **Go to Pharmacists Tab** - Click the "Pharmacists" tab in the main navigation
+2. **Connect Pharmacist** - Click "Connect Pharmacist" button
+3. **Enter Pharmacist Number** - Input the 6-digit number provided by the pharmacist
+4. **Confirm Connection** - Click "Connect" to establish the relationship
+5. **View Connected Pharmacists** - See all connected pharmacists in the "Connected Pharmacists" section
+
+#### Managing Connections
+- **View Connected Pharmacists** - See all pharmacists you're connected with
+- **Pharmacist Information** - View business name, email, and connection date
+- **Disconnect** - Remove pharmacist connections if needed
+- **Search Pharmacists** - Find available pharmacists by name, email, or ID
+
+#### Prescription Sharing
+- **Automatic Sharing** - Prescriptions are automatically shared with connected pharmacists
+- **Real-time Updates** - Pharmacists see new prescriptions immediately
+- **Complete Information** - Pharmacists receive full prescription details including medications and patient information
+
+### Benefits of Pharmacist Integration
+- **Improved Coordination** - Better communication between doctors and pharmacists
+- **Reduced Errors** - Clear prescription details reduce medication errors
+- **Patient Safety** - Pharmacists can verify prescriptions and provide additional safety checks
+- **Efficient Workflow** - Streamlined prescription management process
 
 ## 🖨️ Generating Prescriptions
 
