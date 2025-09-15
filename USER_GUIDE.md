@@ -1,5 +1,22 @@
 # User Guide
 
+## 🆕 Recent Updates (January 15, 2025)
+
+### **🔧 Prescription System Improvements**
+- **Persistent Medications**: Previously added medications now stay visible when you refresh the page or navigate away and come back
+- **Prescription Cards**: Prescription functionality is now organized in a professional card design
+- **Optional Start Date**: When adding medications, the start date is now optional (defaults to today if not specified)
+
+### **🎨 User Interface Enhancements**
+- **Responsive Design**: The header now works perfectly on mobile devices and tablets
+- **Enhanced Patient Editing**: Patient information can be edited with comprehensive validation
+- **Professional Layout**: Improved visual organization with card-based design
+
+### **📱 Mobile Experience**
+- **Mobile Header**: Optimized header layout for mobile devices
+- **Touch-Friendly**: Better button sizes and spacing for mobile interaction
+- **Responsive Forms**: All forms now work seamlessly on mobile devices
+
 ## 👨‍⚕️ For Doctors
 
 This guide will help you navigate and use the Patient Management System effectively.

@@ -2,6 +2,19 @@
 
 This document describes the AI features integrated into the M-Prescribe Patient Management System.
 
+## 🆕 Recent Updates (January 15, 2025)
+
+### **🔧 AI System Improvements**
+- **Enhanced Drug Interaction Analysis**: Improved analysis of medications within prescription containers
+- **Better Data Integration**: AI now properly analyzes medications from the correct prescription structure
+- **Improved Token Tracking**: Enhanced monitoring of AI usage costs and token consumption
+- **Real-time Analysis**: Drug interactions are checked immediately when medications are added to prescriptions
+
+### **📊 Data Structure Enhancements**
+- **Prescription-Medication Hierarchy**: AI now works with proper prescription containers containing multiple medications
+- **Persistent Analysis**: Drug interaction analysis persists correctly across page refreshes
+- **Smart Loading**: AI analysis automatically triggers when prescription data is loaded
+
 ## 🤖 Features
 
 ### 1. 🤖 AI-Powered Medical Intelligence

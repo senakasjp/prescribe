@@ -1,5 +1,25 @@
 # Features Overview
 
+## 🆕 Recent Updates (January 15, 2025)
+
+### **🔧 Prescription System Enhancements**
+- **Prescription Data Persistence** - Medications now persist correctly across page refreshes
+- **Proper Prescription Structure** - Medications are stored within prescription containers (one prescription = multiple medications)
+- **Smart Data Loading** - Automatic setup of current prescription from existing data
+- **Prescription Card UI** - Professional card design for prescription management
+
+### **🎨 User Interface Improvements**
+- **Responsive Header** - Fixed mobile responsiveness with proper Bootstrap 5 layout
+- **Optional Start Date** - Medication start date is now optional with smart defaults
+- **Enhanced Patient Editing** - Comprehensive patient data editing with validation
+- **Professional Card Design** - Prescription functionality wrapped in Bootstrap cards
+
+### **📊 Data Model Improvements**
+- **Hierarchical Data Structure** - Proper prescription-medication relationships
+- **Data Migration** - Automatic migration for existing data structures
+- **Storage Optimization** - Improved data persistence and loading mechanisms
+- **Backward Compatibility** - Maintained compatibility with existing data
+
 ## 🏥 Core Features
 
 ### User Authentication

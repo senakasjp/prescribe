@@ -87,6 +87,9 @@
       symptoms = await jsonStorage.getSymptomsByPatientId(selectedPatient.id) || []
       console.log('✅ Loaded symptoms:', symptoms.length)
       
+      // Set up current prescription and medications
+      setupCurrentPrescription()
+      
     } catch (error) {
       console.error('Error loading patient data:', error)
       // Ensure arrays are always defined
@@ -95,6 +98,43 @@
       symptoms = []
     } finally {
       loading = false
+    }
+  }
+  
+  // Set up current prescription and medications from loaded data
+  const setupCurrentPrescription = () => {
+    console.log('🔧 Setting up current prescription from loaded data...')
+    
+    // If we already have a current prescription (from new prescription session), keep it
+    if (currentPrescription && isNewPrescriptionSession) {
+      console.log('🔧 Keeping existing current prescription (new session)')
+      return
+    }
+    
+    // Find the most recent prescription for this patient
+    const mostRecentPrescription = prescriptions.find(p => 
+      p.patientId === selectedPatient.id && 
+      p.medications && 
+      p.medications.length > 0
+    )
+    
+    if (mostRecentPrescription) {
+      console.log('🔧 Found most recent prescription:', mostRecentPrescription.id)
+      currentPrescription = mostRecentPrescription
+      currentMedications = mostRecentPrescription.medications || []
+      console.log('📅 Set current medications:', currentMedications.length)
+    } else {
+      console.log('🔧 No existing prescriptions found - will create new one when needed')
+      currentPrescription = null
+      currentMedications = []
+    }
+    
+    // Check for drug interactions if we have multiple medications
+    if (currentMedications.length >= 2 && !checkingInteractions) {
+      checkDrugInteractions()
+    } else if (currentMedications.length < 2) {
+      drugInteractions = null
+      showInteractions = false
     }
   }
   
@@ -107,32 +147,6 @@
     }
     
     console.log('🔍 Showing all medications from', prescriptions.length, 'total prescriptions')
-    
-    // Flatten all medications from all prescriptions
-    const allMedications = []
-    prescriptions.forEach(prescription => {
-      if (prescription.medications && prescription.medications.length > 0) {
-        prescription.medications.forEach(medication => {
-          // Only filter out medications that have explicitly ended (before today)
-          if (medication.endDate) {
-            const endDate = new Date(medication.endDate)
-        const today = new Date()
-        today.setHours(0, 0, 0, 0) // Set to start of day for accurate comparison
-        endDate.setHours(0, 0, 0, 0)
-        
-        const hasEnded = endDate < today
-        
-        if (hasEnded) {
-              console.log(`📋 ${medication.name}: ended on ${medication.endDate} - not showing`)
-              return
-            }
-          }
-          
-          console.log(`📋 ${medication.name}: showing in current prescriptions`)
-          allMedications.push(medication)
-        })
-      }
-    })
     
     // Get medications from the current prescription
     currentMedications = currentPrescription ? currentPrescription.medications || [] : []
@@ -1587,46 +1601,52 @@
       <!-- Prescriptions Tab -->
       {#if activeTab === 'prescriptions'}
         <div class="tab-pane active">
-          <!-- Add Drug Button -->
-          <div class="mb-3 text-end">
+          <!-- Prescription Card -->
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="card-title mb-0">
+                <i class="fas fa-prescription-bottle-alt me-2"></i>Prescription
+              </h5>
+              <!-- Add Drug Button -->
             <button 
-              class="btn btn-primary btn-sm" 
-              on:click={async () => { 
-                console.log('🔍 Add Drug clicked - currentPrescription:', currentPrescription);
-                console.log('🔍 showMedicationForm:', showMedicationForm);
-                
-                try {
-                  // If no current prescription exists, create one automatically
-                  if (!currentPrescription) {
-                    console.log('📋 No current prescription - creating new one automatically');
-                    currentPrescription = await jsonStorage.createPrescription({
-                      patientId: selectedPatient.id,
-                      doctorId: doctorId,
-                      notes: ''
-                    });
-                    console.log('📋 Created new prescription automatically:', currentPrescription.id);
-                    
-                    // Clear current medications to start fresh
-                    currentMedications = [];
-                    prescriptionNotes = '';
-                    isNewPrescriptionSession = true;
-                    notifySuccess('New prescription created - medication form opened');
-                  } else {
-                    notifySuccess('Medication form opened - add drug details');
-                  }
+                class="btn btn-primary btn-sm" 
+                on:click={async () => { 
+                  console.log('🔍 Add Drug clicked - currentPrescription:', currentPrescription);
+                  console.log('🔍 showMedicationForm:', showMedicationForm);
                   
-                  showMedicationForm = true;
-                  editingMedication = null;
-                } catch (error) {
-                  console.error('❌ Error creating prescription:', error);
-                  notifyError('Failed to create prescription: ' + error.message);
-                }
-              }}
-              disabled={showMedicationForm}
+                  try {
+                    // If no current prescription exists, create one automatically
+                    if (!currentPrescription) {
+                      console.log('📋 No current prescription - creating new one automatically');
+                      currentPrescription = await jsonStorage.createPrescription({
+                        patientId: selectedPatient.id,
+                        doctorId: doctorId,
+                        notes: ''
+                      });
+                      console.log('📋 Created new prescription automatically:', currentPrescription.id);
+                      
+                      // Clear current medications to start fresh
+                      currentMedications = [];
+                      prescriptionNotes = '';
+                      isNewPrescriptionSession = true;
+                      notifySuccess('New prescription created - medication form opened');
+                    } else {
+                      notifySuccess('Medication form opened - add drug details');
+                    }
+                    
+                    showMedicationForm = true;
+                    editingMedication = null;
+                  } catch (error) {
+                    console.error('❌ Error creating prescription:', error);
+                    notifyError('Failed to create prescription: ' + error.message);
+                  }
+                }}
+                disabled={showMedicationForm}
             >
               <i class="fas fa-plus me-1"></i>Add Drug
             </button>
           </div>
+            <div class="card-body">
           
           <PatientForms 
             {showMedicationForm}
@@ -1827,6 +1847,8 @@
               <p>No current prescriptions for today</p>
             </div>
           {/if}
+            </div>
+          </div>
         </div>
       {/if}
 

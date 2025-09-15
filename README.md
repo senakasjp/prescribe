@@ -2,6 +2,24 @@
 
 A comprehensive patient management system built with Svelte 4 and Bootstrap 5, featuring advanced AI capabilities for medical recommendations and drug interaction analysis. Designed for doctors and pharmacists to manage patient records, track medical history, and coordinate prescription management with intelligent safety features.
 
+## 🆕 Recent Updates (January 15, 2025)
+
+### **🔧 Critical Fixes**
+- **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
+- **Prescription Structure**: Implemented proper prescription-medication hierarchy
+- **Data Loading**: Enhanced data initialization for existing prescriptions
+
+### **🎨 UI/UX Improvements**
+- **Responsive Header**: Fixed mobile responsiveness with proper Bootstrap 5 layout
+- **Prescription Card**: Professional card design for prescription management
+- **Optional Start Date**: Medication start date now optional with smart defaults
+- **Enhanced Patient Editing**: Comprehensive patient data editing with validation
+
+### **📊 Data Model Enhancements**
+- **Hierarchical Structure**: Proper prescription containers with multiple medications
+- **Data Migration**: Automatic migration for existing data structures
+- **Storage Optimization**: Improved data persistence and loading mechanisms
+
 ## 🏥 Features
 
 ### User Authentication

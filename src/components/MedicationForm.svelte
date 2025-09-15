@@ -82,7 +82,7 @@
       }
       
       // Validate dates
-      const startDateObj = new Date(startDate)
+      const startDateObj = startDate ? new Date(startDate) : new Date() // Default to today if no start date
       
       if (endDate) {
         const endDateObj = new Date(endDate)
@@ -97,7 +97,7 @@
         instructions: instructions.trim(),
         frequency,
         duration: duration.trim(),
-        startDate,
+        startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
         endDate: endDate || null,
         notes: notes.trim()
       }
@@ -271,13 +271,12 @@
         </div>
         <div class="col-md-4">
           <div class="mb-3">
-            <label for="medicationStartDate" class="form-label">Start Date</label>
+            <label for="medicationStartDate" class="form-label">Start Date <small class="text-muted">(Optional)</small></label>
             <input 
               type="date" 
               class="form-control" 
               id="medicationStartDate" 
               bind:value={startDate}
-              required
               disabled={loading}
             >
           </div>
