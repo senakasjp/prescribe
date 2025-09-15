@@ -24,7 +24,7 @@
   let prescriptions = [] // Array of prescription objects (each containing medications)
   let symptoms = []
   let currentPrescription = null // Current prescription being worked on
-  let currentPrescriptions = [] // Current medications in the working prescription (for display)
+  let currentMedications = [] // Current medications in the working prescription (for display)
   let activeTab = 'overview'
   let isNewPrescriptionSession = false
   let showIllnessForm = false
@@ -134,14 +134,15 @@
       }
     })
     
-    currentPrescriptions = allMedications
-    console.log('📅 Current medications (all active):', currentPrescriptions.length)
+    // Get medications from the current prescription
+    currentMedications = currentPrescription ? currentPrescription.medications || [] : []
+    console.log('📅 Current medications in prescription:', currentMedications.length)
     
     // Check for drug interactions when prescriptions change
     // Only check if not already checking (to avoid duplicate calls)
-    if (currentPrescriptions.length >= 2 && !checkingInteractions) {
+    if (currentMedications.length >= 2 && !checkingInteractions) {
       checkDrugInteractions()
-    } else if (currentPrescriptions.length < 2) {
+    } else if (currentMedications.length < 2) {
       drugInteractions = null
       showInteractions = false
     }
@@ -154,7 +155,7 @@
       return
     }
     
-    if (currentPrescriptions.length < 2) {
+    if (currentMedications.length < 2) {
       drugInteractions = null
       return
     }
@@ -163,8 +164,8 @@
     interactionError = ''
     
     try {
-      console.log('🔍 Checking drug interactions for:', currentPrescriptions.map(p => p.name))
-      drugInteractions = await openaiService.checkDrugInteractions(currentPrescriptions, doctorId)
+      console.log('🔍 Checking drug interactions for:', currentMedications.map(p => p.name))
+      drugInteractions = await openaiService.checkDrugInteractions(currentMedications, doctorId)
       console.log('✅ Drug interactions checked:', drugInteractions)
       
       // Notify parent that AI usage was updated
@@ -309,11 +310,11 @@
           prescriptions = [...prescriptions] // Trigger reactivity
         }
         
-        // Also update in current prescriptions if it exists there
-        const currentIndex = currentPrescriptions.findIndex(p => p.id === medicationData.id)
+        // Also update in current medications if it exists there
+        const currentIndex = currentMedications.findIndex(p => p.id === medicationData.id)
         if (currentIndex !== -1) {
-          currentPrescriptions[currentIndex] = updatedMedication
-          currentPrescriptions = [...currentPrescriptions] // Trigger reactivity
+          currentMedications[currentIndex] = updatedMedication
+          currentMedications = [...currentMedications] // Trigger reactivity
         }
       } else {
         // Add new medication to current prescription
@@ -339,29 +340,14 @@
           prescriptions = [...prescriptions]
         }
         
-        // Add to current prescriptions array (this will show the new prescription)
-        if (isNewPrescriptionSession) {
-          // For new prescription sessions, start with just this medication
-          console.log('📋 NEW SESSION: Starting fresh prescription list')
-          currentPrescriptions = [newMedication]
-          console.log('📋 New prescription session - starting fresh with:', newMedication.name)
-          console.log('📋 Current prescriptions after new session:', currentPrescriptions.length)
-          
-          // Reset the flag AFTER setting currentPrescriptions to prevent reactive overwrite
-          setTimeout(() => {
-            isNewPrescriptionSession = false;
-            console.log('📋 Reset isNewPrescriptionSession flag')
-          }, 100);
-        } else {
-          // For existing sessions, add to current list
-          console.log('📋 EXISTING SESSION: Adding to current list')
-          currentPrescriptions = [...currentPrescriptions, newMedication]
-          console.log('📋 Updated current prescriptions array:', currentPrescriptions.length)
-        }
+        // Update current medications array for display
+        currentMedications = [...currentMedications, newMedication]
+        console.log('📋 Added medication to current prescription:', newMedication.name)
+        console.log('📋 Current medications in prescription:', currentMedications.length)
         
         // Check for drug interactions immediately after adding new medication
         // This ensures immediate feedback when a new drug is added
-        if (currentPrescriptions.length >= 2) {
+        if (currentMedications.length >= 2) {
           console.log('🔍 New medication added - checking interactions immediately')
           checkDrugInteractions()
         }
@@ -387,52 +373,54 @@
     showIllnessForm = false
   }
   
-  // Save or update current prescriptions to ensure they are persisted
+  // Save or update current prescription to ensure it is persisted
   const saveCurrentPrescriptions = async () => {
     try {
-      console.log('💾 Saving/updating current prescriptions...')
+      console.log('💾 Saving/updating current prescription...')
       
-      // Ensure all current prescriptions are saved or updated in the database
-      for (const prescription of currentPrescriptions) {
-        // Check if prescription already exists in database
-        const existingPrescription = prescriptions.find(p => p.id === prescription.id)
+      if (!currentPrescription) {
+        console.log('⚠️ No current prescription to save')
+        return
+      }
+      
+      // Check if prescription already exists in database
+      const existingPrescription = prescriptions.find(p => p.id === currentPrescription.id)
+      
+      if (!existingPrescription) {
+        // This is a new prescription that needs to be saved
+        const savedPrescription = await jsonStorage.createPrescription({
+          ...currentPrescription,
+          patientId: selectedPatient.id,
+          doctorId: doctorId
+        })
+        console.log('✅ Saved new prescription with', currentPrescription.medications.length, 'medications')
         
-        if (!existingPrescription) {
-          // This is a new prescription that needs to be saved
-          const savedPrescription = await jsonStorage.createMedication({
-            ...prescription,
-            patientId: selectedPatient.id,
-            doctorId: doctorId
-          })
-          console.log('✅ Saved new prescription:', prescription.name)
-          
-          // Add to prescriptions array
-          prescriptions = [...prescriptions, savedPrescription]
-        } else {
-          // Always update existing prescription to ensure latest data is saved
-          const updatedPrescription = {
-            ...prescription,
-            patientId: selectedPatient.id,
-            doctorId: doctorId
-          }
-          
-          await jsonStorage.updatePrescription(prescription.id, updatedPrescription)
-          console.log('✅ Updated existing prescription:', prescription.name)
-          
-          // Update the prescription in the local array
-          const prescriptionIndex = prescriptions.findIndex(p => p.id === prescription.id)
-          if (prescriptionIndex !== -1) {
-            prescriptions[prescriptionIndex] = updatedPrescription
-          }
+        // Add to prescriptions array
+        prescriptions = [...prescriptions, savedPrescription]
+      } else {
+        // Always update existing prescription to ensure latest data is saved
+        const updatedPrescription = {
+          ...currentPrescription,
+          patientId: selectedPatient.id,
+          doctorId: doctorId
+        }
+        
+        await jsonStorage.updatePrescription(currentPrescription.id, updatedPrescription)
+        console.log('✅ Updated existing prescription with', currentPrescription.medications.length, 'medications')
+        
+        // Update the prescription in the local array
+        const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id)
+        if (prescriptionIndex !== -1) {
+          prescriptions[prescriptionIndex] = updatedPrescription
         }
       }
       
       // Update prescriptions array to trigger reactivity
       prescriptions = [...prescriptions]
       
-      console.log('💾 All current prescriptions saved/updated successfully')
+      console.log('💾 Current prescription saved/updated successfully')
     } catch (error) {
-      console.error('❌ Error saving/updating current prescriptions:', error)
+      console.error('❌ Error saving/updating current prescription:', error)
     }
   }
   
@@ -442,7 +430,7 @@
       console.log('🤖 Checking prescriptions with AI...')
       
       // Only perform AI drug interaction check - no saving or printing
-      if (currentPrescriptions.length >= 2) {
+      if (currentMedications.length >= 2) {
         console.log('🔍 Triggering AI drug interaction check...')
         await checkDrugInteractions()
       } else {
@@ -466,26 +454,24 @@
       // Set finalized state to hide edit/delete buttons
       prescriptionsFinalized = true
       
-      // Mark all current prescriptions as completed by setting end date to today
+      // Mark current prescription as completed by setting end date to today
       const today = new Date().toISOString().split('T')[0]
       
-      for (const prescription of currentPrescriptions) {
-        if (!prescription.endDate) {
+      if (currentPrescription && !currentPrescription.endDate) {
           // Update prescription with end date
           const updatedPrescription = {
-            ...prescription,
+          ...currentPrescription,
             endDate: today
           }
           
           // Update in database
-          await jsonStorage.updatePrescription(prescription.id, updatedPrescription)
-          console.log('✅ Marked prescription as completed:', prescription.name)
+        await jsonStorage.updatePrescription(currentPrescription.id, updatedPrescription)
+        console.log('✅ Marked prescription as completed with', currentPrescription.medications.length, 'medications')
           
           // Update the prescription in the local array
-          const prescriptionIndex = prescriptions.findIndex(p => p.id === prescription.id)
+        const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id)
           if (prescriptionIndex !== -1) {
             prescriptions[prescriptionIndex] = updatedPrescription
-          }
         }
       }
       
@@ -754,7 +740,7 @@
       
       console.log('📄 Creating PDF content...')
       console.log('Patient:', selectedPatient.firstName, selectedPatient.lastName)
-      console.log('Current prescriptions:', currentPrescriptions.length)
+      console.log('Current medications:', currentMedications.length)
       console.log('Prescription notes:', prescriptionNotes)
       
       // Set up fonts and styles
@@ -798,8 +784,8 @@
       // Medications section
       let yPos = 120
       
-      if (currentPrescriptions && currentPrescriptions.length > 0) {
-        currentPrescriptions.forEach((medication, index) => {
+      if (currentMedications && currentMedications.length > 0) {
+        currentMedications.forEach((medication, index) => {
           if (yPos > 250) {
             doc.addPage()
             yPos = 30
@@ -1035,10 +1021,10 @@
         // Remove from prescriptions list
         prescriptions = prescriptions.filter((_, i) => i !== index)
         
-        // Also remove from current prescriptions if it exists there
-        const currentIndex = currentPrescriptions.findIndex(p => p.id === medicationId)
+        // Also remove from current medications if it exists there
+        const currentIndex = currentMedications.findIndex(p => p.id === medicationId)
         if (currentIndex !== -1) {
-          currentPrescriptions = currentPrescriptions.filter((_, i) => i !== currentIndex)
+          currentMedications = currentMedications.filter((_, i) => i !== currentIndex)
         }
         
         console.log('🗑️ Deleted prescription:', medicationId)
@@ -1112,10 +1098,10 @@
               console.log('📋 Created new prescription:', currentPrescription.id);
               
               // Clear current medications to start fresh
-              currentPrescriptions = [];
+              currentMedications = [];
               prescriptionNotes = '';
               isNewPrescriptionSession = true;
-              console.log('🆕 Set isNewPrescriptionSession = true, cleared currentPrescriptions');
+              console.log('🆕 Set isNewPrescriptionSession = true, cleared currentMedications');
               
               // Don't auto-show medication form - wait for "Add Drug" button
               console.log('✅ New prescription created - ready for "Add Drug" button');
@@ -1464,7 +1450,7 @@
           <!-- AI Recommendations Component -->
           <AIRecommendations 
             {symptoms} 
-            currentMedications={currentPrescriptions}
+            currentMedications={currentMedications}
             patientAge={selectedPatient ? (() => {
               const birthDate = new Date(selectedPatient.dateOfBirth)
               const today = new Date()
@@ -1621,7 +1607,7 @@
                     console.log('📋 Created new prescription automatically:', currentPrescription.id);
                     
                     // Clear current medications to start fresh
-                    currentPrescriptions = [];
+                    currentMedications = [];
                     prescriptionNotes = '';
                     isNewPrescriptionSession = true;
                     notifySuccess('New prescription created - medication form opened');
@@ -1652,7 +1638,7 @@
           />
           
           <!-- Drug Interactions Warning -->
-          {#if currentPrescriptions && currentPrescriptions.length >= 2}
+          {#if currentMedications && currentMedications.length >= 2}
             <div class="drug-interactions-section mb-3">
               {#if checkingInteractions}
                 <div class="alert alert-info d-flex align-items-center">
@@ -1661,7 +1647,7 @@
                   <div>
                     <strong>Checking for drug interactions...</strong>
                     <br>
-                    <small class="text-muted">Analyzing {currentPrescriptions.length} medications for potential interactions</small>
+                    <small class="text-muted">Analyzing {currentMedications.length} medications for potential interactions</small>
                   </div>
                 </div>
               {:else if drugInteractions && drugInteractions.hasInteractions}
@@ -1735,9 +1721,9 @@
           {/if}
           
           <!-- Current Prescriptions List -->
-          {#if currentPrescriptions && currentPrescriptions.length > 0}
+          {#if currentMedications && currentMedications.length > 0}
             <div class="list-group">
-              {#each currentPrescriptions as medication, index}
+              {#each currentMedications as medication, index}
                 <div class="list-group-item d-flex justify-content-between align-items-start">
                   <div class="ms-2 me-auto">
                     <div class="fw-bold fs-5">{medication.name}</div>
@@ -1794,7 +1780,7 @@
             </div>
             
             <!-- Action Buttons - Show only if there are drugs or notes -->
-            {#if currentPrescriptions.length > 0 || prescriptionNotes.trim() !== ''}
+            {#if currentMedications.length > 0 || prescriptionNotes.trim() !== ''}
               <div class="mt-3 text-center">
                 <div class="d-flex gap-2 justify-content-center flex-wrap">
                 <button 
