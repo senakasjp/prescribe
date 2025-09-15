@@ -1,10 +1,14 @@
 <script>
-  import { createEventDispatcher, onMount } from 'svelte'
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte'
   import jsonStorage from '../services/jsonStorage.js'
   import PatientForm from './PatientForm.svelte'
   import PatientDetails from './PatientDetails.svelte'
   import PatientList from './PatientList.svelte'
   import MedicalSummary from './MedicalSummary.svelte'
+  import { Chart, registerables } from 'chart.js'
+  
+  // Register Chart.js components
+  Chart.register(...registerables)
   
   const dispatch = createEventDispatcher()
   export let user
@@ -12,6 +16,7 @@
   let patients = []
   let selectedPatient = null
   let showPatientForm = false
+  let chartInstance = null
   let loading = true
   let searchQuery = ''
   let filteredPatients = []
@@ -50,6 +55,13 @@
   
   $: if (prescriptions) {
     prescriptions = prescriptions || []
+  }
+  
+  // Update chart when patients data changes
+  $: if (patients.length > 0) {
+    setTimeout(() => {
+      createPrescriptionsChart()
+    }, 100)
   }
   
   // Reactive tab counts
@@ -160,6 +172,168 @@
     // If AI usage was updated, notify parent
     if (type === 'ai-usage') {
       dispatch('ai-usage-updated')
+    }
+  }
+  
+  // Statistics functions for dashboard
+  const getTotalPrescriptions = () => {
+    let total = 0
+    patients.forEach(patient => {
+      const patientPrescriptions = jsonStorage.getMedicationsByPatientId(patient.id) || []
+      total += patientPrescriptions.length
+    })
+    return total
+  }
+  
+  const getTotalDrugs = () => {
+    let total = 0
+    patients.forEach(patient => {
+      const patientPrescriptions = jsonStorage.getMedicationsByPatientId(patient.id) || []
+      patientPrescriptions.forEach(prescription => {
+        if (prescription.medications && Array.isArray(prescription.medications)) {
+          total += prescription.medications.length
+        } else {
+          total += 1 // Single medication prescription
+        }
+      })
+    })
+    return total
+  }
+  
+  // Create responsive prescriptions per month chart using Chart.js
+  const createPrescriptionsChart = () => {
+    try {
+      // Destroy existing chart if it exists
+      if (chartInstance) {
+        chartInstance.destroy()
+        chartInstance = null
+      }
+      
+      // Calculate prescriptions per month for last 12 months
+      const last12Months = []
+      const prescriptionsPerMonth = []
+      
+      for (let i = 11; i >= 0; i--) {
+        const date = new Date()
+        date.setMonth(date.getMonth() - i)
+        const year = date.getFullYear()
+        const month = date.getMonth()
+        const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`
+        
+        last12Months.push(date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }))
+        
+        // Count prescriptions created in this month
+        let monthPrescriptions = 0
+        patients.forEach(patient => {
+          const patientPrescriptions = jsonStorage.getMedicationsByPatientId(patient.id) || []
+          patientPrescriptions.forEach(prescription => {
+            const createdDate = new Date(prescription.createdAt || prescription.dateCreated)
+            const prescriptionYear = createdDate.getFullYear()
+            const prescriptionMonth = createdDate.getMonth()
+            const prescriptionMonthStr = `${prescriptionYear}-${String(prescriptionMonth + 1).padStart(2, '0')}`
+            
+            if (prescriptionMonthStr === monthStr) {
+              monthPrescriptions++
+            }
+          })
+        })
+        
+        prescriptionsPerMonth.push(monthPrescriptions)
+      }
+      
+      // Create Chart.js chart
+      setTimeout(() => {
+        const canvas = document.getElementById('prescriptionsChart')
+        if (!canvas) return
+        
+        const ctx = canvas.getContext('2d')
+        
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: last12Months,
+            datasets: [{
+              label: 'Prescriptions',
+              data: prescriptionsPerMonth,
+              backgroundColor: 'rgba(13, 110, 253, 0.8)',
+              borderColor: 'rgba(13, 110, 253, 1)',
+              borderWidth: 1,
+              borderRadius: 4,
+              borderSkipped: false,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: false
+              },
+              tooltip: {
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                titleColor: '#fff',
+                bodyColor: '#fff',
+                borderColor: 'rgba(13, 110, 253, 1)',
+                borderWidth: 1,
+                cornerRadius: 6,
+                displayColors: false,
+                callbacks: {
+                  title: function(context) {
+                    return context[0].label
+                  },
+                  label: function(context) {
+                    return `${context.parsed.y} prescription${context.parsed.y !== 1 ? 's' : ''}`
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: {
+                  display: false
+                },
+                ticks: {
+                  color: '#6c757d',
+                  font: {
+                    size: 11
+                  },
+                  maxRotation: 45,
+                  minRotation: 0
+                }
+              },
+              y: {
+                beginAtZero: true,
+                grid: {
+                  color: 'rgba(0, 0, 0, 0.1)',
+                  drawBorder: false
+                },
+                ticks: {
+                  color: '#6c757d',
+                  font: {
+                    size: 11
+                  },
+                  stepSize: 1,
+                  callback: function(value) {
+                    return Number.isInteger(value) ? value : ''
+                  }
+                }
+              }
+            },
+            interaction: {
+              intersect: false,
+              mode: 'index'
+            },
+            animation: {
+              duration: 750,
+              easing: 'easeInOutQuart'
+            }
+          }
+        })
+        
+      }, 200)
+      
+    } catch (error) {
+      console.error('Error creating prescriptions chart:', error)
     }
   }
   
@@ -283,6 +457,18 @@
   
   onMount(() => {
     loadPatients()
+    // Create chart after a short delay to ensure DOM is ready
+    setTimeout(() => {
+      createPrescriptionsChart()
+    }, 500)
+  })
+  
+  // Cleanup chart instance when component is destroyed
+  onDestroy(() => {
+    if (chartInstance) {
+      chartInstance.destroy()
+      chartInstance = null
+    }
   })
 </script>
 
@@ -502,11 +688,99 @@
           on:dataUpdated={handleDataUpdated}
         />
       {:else}
-      <div class="card">
-        <div class="card-body text-center">
-          <i class="fas fa-user-md fa-3x text-muted mb-3"></i>
-          <h4>Welcome to Prescribe</h4>
-          <p class="text-muted">Select a patient from the list to view their details, or add a new patient to get started.</p>
+      <!-- Welcome Dashboard -->
+      <div class="row g-3">
+        <!-- Welcome Message -->
+        <div class="col-12">
+          <div class="card border-primary shadow-sm">
+            <div class="card-body bg-transparent text-dark rounded-3">
+              <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                  <i class="fas fa-user-md fa-2x text-primary"></i>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                  <h4 class="card-title mb-1 fw-bold text-dark">
+                    Welcome, {user?.name || user?.firstName || 'Doctor'}!
+                  </h4>
+                  <p class="card-text mb-0 text-muted">
+                    Ready to provide excellent patient care with AI-powered assistance
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Statistics Cards -->
+        <div class="col-md-4">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body bg-info text-white rounded-3">
+              <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-white bg-opacity-25 rounded-circle p-2">
+                    <i class="fas fa-users fa-lg"></i>
+                  </div>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                  <h4 class="card-title mb-0 fw-bold" id="totalPatients">{patients.length}</h4>
+                  <small class="opacity-75">Patients Registered</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="col-md-4">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body bg-warning text-dark rounded-3">
+              <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-white bg-opacity-25 rounded-circle p-2">
+                    <i class="fas fa-prescription fa-lg"></i>
+                  </div>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                  <h4 class="card-title mb-0 fw-bold" id="totalPrescriptions">{getTotalPrescriptions()}</h4>
+                  <small class="opacity-75">Total Prescriptions</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="col-md-4">
+          <div class="card border-0 shadow-sm h-100">
+            <div class="card-body bg-secondary text-white rounded-3">
+              <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                  <div class="bg-white bg-opacity-25 rounded-circle p-2">
+                    <i class="fas fa-pills fa-lg"></i>
+                  </div>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                  <h4 class="card-title mb-0 fw-bold" id="totalDrugs">{getTotalDrugs()}</h4>
+                  <small class="opacity-75">Total Drugs</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Prescriptions Per Month Chart -->
+        <div class="col-12">
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-light border-0 py-3">
+              <h6 class="card-title mb-0 fw-bold text-dark">
+                <i class="fas fa-chart-line me-2 text-primary"></i>
+                Prescriptions Per Month (Last 12 Months)
+              </h6>
+            </div>
+            <div class="card-body p-4">
+              <div class="chart-container" style="position: relative; height: 300px; width: 100%;">
+                <canvas id="prescriptionsChart" class="rounded"></canvas>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     {/if}
