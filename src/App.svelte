@@ -19,16 +19,18 @@
   
   onMount(() => {
     try {
-      // Get current user from auth service
-      user = authService.getCurrentUser()
-      console.log('Current user in App:', user)
-      console.log('User ID:', user?.id)
-      console.log('User UID:', user?.uid)
-      console.log('User email:', user?.email)
-      console.log('User role:', user?.role)
+      // Get current user from auth service only if not already set
+      if (!user) {
+        user = authService.getCurrentUser()
+        console.log('Current user in App:', user)
+        console.log('User ID:', user?.id)
+        console.log('User UID:', user?.uid)
+        console.log('User email:', user?.email)
+        console.log('User role:', user?.role)
+      }
       
-      // Load doctor's AI usage stats
-      if (user?.id) {
+      // Load doctor's AI usage stats only for doctors
+      if (user?.id && user?.role === 'doctor') {
         doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
       }
       
@@ -82,7 +84,11 @@
   
   const handlePharmacistLogin = (pharmacistData) => {
     console.log('Pharmacist login:', pharmacistData)
-    user = pharmacistData
+    // Ensure the pharmacist data has the correct role
+    user = {
+      ...pharmacistData,
+      role: 'pharmacist'
+    }
     loading = false
   }
   

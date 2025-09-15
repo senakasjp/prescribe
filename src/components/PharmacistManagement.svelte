@@ -9,8 +9,10 @@
   let connectedPharmacists = []
   let loading = true
   let showAddForm = false
+  let showConnectModal = false
   let pharmacistNumber = ''
   let searchQuery = ''
+  let isOwnPharmacy = false
   
   // Load pharmacists data
   const loadPharmacists = async () => {
@@ -47,15 +49,37 @@
       return
     }
     
+    // Log the checkbox state for debugging
+    console.log('Connecting to pharmacist:', pharmacistNumber, 'Is own pharmacy:', isOwnPharmacy)
+    
     try {
       await jsonStorage.connectPharmacistToDoctor(pharmacistNumber, user.id)
-      notifySuccess('Successfully connected to pharmacist!')
+      const message = isOwnPharmacy 
+        ? 'Successfully connected to your own pharmacy!'
+        : 'Successfully connected to pharmacist!'
+      notifySuccess(message)
       pharmacistNumber = ''
+      isOwnPharmacy = false
       showAddForm = false
+      showConnectModal = false
       loadPharmacists()
     } catch (error) {
       notifyError(error.message || 'Failed to connect to pharmacist')
     }
+  }
+  
+  // Open connect modal
+  const openConnectModal = () => {
+    pharmacistNumber = ''
+    isOwnPharmacy = false
+    showConnectModal = true
+  }
+  
+  // Close connect modal
+  const closeConnectModal = () => {
+    showConnectModal = false
+    pharmacistNumber = ''
+    isOwnPharmacy = false
   }
   
   // Disconnect pharmacist
@@ -97,7 +121,9 @@
     </div>
     <button 
       class="btn btn-primary"
-      on:click={() => showAddForm = !showAddForm}
+      on:click={openConnectModal}
+      type="button"
+      style="pointer-events: auto; cursor: pointer; z-index: 1000; position: relative;"
     >
       <i class="fas fa-plus me-2"></i>
       Connect Pharmacist
@@ -281,20 +307,10 @@
                         <i class="fas fa-hashtag me-1"></i>
                         ID: {pharmacist.pharmacistNumber}
                       </p>
-                      <p class="text-muted small mb-3">
+                      <p class="text-muted small mb-0">
                         <i class="fas fa-calendar me-1"></i>
                         Registered: {new Date(pharmacist.createdAt).toLocaleDateString()}
                       </p>
-                      <button 
-                        class="btn btn-outline-info btn-sm w-100"
-                        on:click={() => {
-                          pharmacistNumber = pharmacist.pharmacistNumber
-                          showAddForm = true
-                        }}
-                      >
-                        <i class="fas fa-link me-1"></i>
-                        Connect
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -306,6 +322,84 @@
     </div>
   </div>
 </div>
+
+<!-- Connect Pharmacist Modal -->
+{#if showConnectModal}
+  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title">
+            <i class="fas fa-link me-2"></i>
+            Connect to Pharmacist
+          </h5>
+          <button type="button" class="btn-close btn-close-white" on:click={closeConnectModal}></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="modalPharmacistNumber" class="form-label fw-bold">
+              Pharmacist Number <span class="text-danger">*</span>
+            </label>
+            <div class="input-group">
+              <span class="input-group-text">
+                <i class="fas fa-hashtag"></i>
+              </span>
+              <input
+                type="text"
+                id="modalPharmacistNumber"
+                class="form-control"
+                bind:value={pharmacistNumber}
+                placeholder="Enter 6-digit pharmacist number"
+                maxlength="6"
+                pattern="[0-9]{6}"
+                autofocus
+              />
+            </div>
+            <div class="form-text">
+              <i class="fas fa-info-circle me-1"></i>
+              Ask the pharmacist for their unique 6-digit number to connect.
+            </div>
+          </div>
+          
+          <!-- Own Pharmacy Checkbox -->
+          <div class="mb-3">
+            <div class="form-check">
+              <input 
+                class="form-check-input" 
+                type="checkbox" 
+                id="isOwnPharmacy"
+                bind:checked={isOwnPharmacy}
+              />
+              <label class="form-check-label fw-semibold" for="isOwnPharmacy">
+                <i class="fas fa-home me-2 text-primary"></i>
+                This is my own pharmacy
+              </label>
+            </div>
+            <div class="form-text">
+              <i class="fas fa-info-circle me-1"></i>
+              Check this if you are connecting to your own pharmacy/pharmacy business.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" on:click={closeConnectModal}>
+            <i class="fas fa-times me-1"></i>
+            Cancel
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-primary"
+            on:click={connectPharmacist}
+            disabled={!pharmacistNumber || pharmacistNumber.length !== 6}
+          >
+            <i class="fas fa-link me-1"></i>
+            Connect
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .card {
@@ -324,5 +418,16 @@
   .form-control:focus {
     border-color: #0d6efd;
     box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+  }
+  
+  /* Ensure button is clickable */
+  .btn {
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+  
+  .btn:disabled {
+    cursor: not-allowed !important;
+    opacity: 0.6;
   }
 </style>

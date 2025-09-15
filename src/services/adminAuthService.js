@@ -50,7 +50,7 @@ class AdminAuthService {
 
       // For demo purposes, using a simple password check
       // In production, this should use proper authentication
-      const adminPassword = 'admin123' // This should be more secure in production
+      const adminPassword = 'PrescribeAdmin2024!' // Reset admin password
       
       if (password !== adminPassword) {
         throw new Error('Invalid admin credentials')

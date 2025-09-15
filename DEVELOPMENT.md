@@ -399,6 +399,34 @@ chore: maintenance tasks
 - **Import Errors** - Verify import paths
 - **Configuration Issues** - Check vite.config.js
 
+#### Svelte CSS Conflicts
+**Issue**: Svelte adds random scoped CSS classes (e.g., `s-2QWXzUdsvRnh`) that can conflict with Bootstrap classes, causing layout issues like extremely tall headers.
+
+**Solution**: Use custom CSS classes instead of Bootstrap classes for critical layout elements:
+```svelte
+<!-- Instead of Bootstrap classes that get scoped -->
+<div class="container-fluid d-flex justify-content-between align-items-center">
+
+<!-- Use custom classes -->
+<div class="header-content">
+```
+
+**CSS Implementation**:
+```css
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1rem;
+  max-width: 100%;
+}
+```
+
+**Best Practices**:
+- Use custom classes for layout-critical elements
+- Avoid mixing Bootstrap classes with Svelte scoped CSS
+- Test components after Svelte compilation to ensure no conflicts
+
 #### Runtime Errors
 - **JavaScript Errors** - Check browser console
 - **Data Errors** - Check localStorage data

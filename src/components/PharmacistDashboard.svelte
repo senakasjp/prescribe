@@ -92,32 +92,29 @@
 </script>
 
 <div class="container-fluid">
-  <!-- Header -->
-  <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm mb-4">
-    <div class="container-fluid">
-      <a class="navbar-brand fw-bold text-primary" href="#">
-        <i class="fas fa-pills me-2"></i>
-        Prescribe - Pharmacist Portal
-      </a>
-      
-      <div class="navbar-nav ms-auto">
-        <div class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
-            <i class="fas fa-user-circle fa-lg me-2"></i>
-            <span class="d-none d-md-inline">{pharmacist.businessName}</span>
-          </a>
-          <ul class="dropdown-menu dropdown-menu-end">
-            <li><h6 class="dropdown-header">{pharmacist.businessName}</h6></li>
-            <li><span class="dropdown-item-text small text-muted">ID: {pharmacist.pharmacistNumber}</span></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><button class="dropdown-item" on:click={handleSignOut}>
-              <i class="fas fa-sign-out-alt me-2"></i>Sign Out
-            </button></li>
-          </ul>
-        </div>
+  <!-- Compact Header -->
+  <div class="compact-header">
+    <div class="header-content">
+      <div class="header-left">
+        <i class="fas fa-pills text-primary me-2"></i>
+        <span class="fw-bold text-primary">Prescribe - Pharmacist Portal</span>
+      </div>
+      <div class="dropdown">
+        <button class="btn btn-link dropdown-toggle d-flex align-items-center p-0" type="button" data-bs-toggle="dropdown">
+          <i class="fas fa-user-circle me-2"></i>
+          <span class="d-none d-md-inline">{pharmacist.businessName}</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><h6 class="dropdown-header">{pharmacist.businessName}</h6></li>
+          <li><span class="dropdown-item-text small text-muted">ID: {pharmacist.pharmacistNumber}</span></li>
+          <li><hr class="dropdown-divider"></li>
+          <li><button class="dropdown-item" on:click={handleSignOut}>
+            <i class="fas fa-sign-out-alt me-2"></i>Sign Out
+          </button></li>
+        </ul>
       </div>
     </div>
-  </nav>
+  </div>
   
   <!-- Main Content -->
   <div class="row">
@@ -377,4 +374,26 @@
   .modal-header {
     border-radius: 10px 10px 0 0;
   }
+  
+  /* Compact header styles */
+  .compact-header {
+    background-color: white;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+  }
+  
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1rem;
+    max-width: 100%;
+  }
+  
+  .header-left {
+    display: flex;
+    align-items: center;
+  }
+  
 </style>

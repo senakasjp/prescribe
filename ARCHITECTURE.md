@@ -262,6 +262,33 @@ App.svelte
 - **CSS Processing** - Scoped styles
 - **Asset Optimization** - Minification and bundling
 
+### CSS Architecture & Svelte Conflicts
+**Issue**: Svelte's scoped CSS system adds random class names (e.g., `s-2QWXzUdsvRnh`) to elements, which can conflict with Bootstrap classes and cause layout issues.
+
+**Solution Strategy**:
+- **Custom Classes**: Use custom CSS classes for critical layout elements
+- **Avoid Bootstrap Conflicts**: Don't mix Bootstrap classes with Svelte scoped elements
+- **Component Isolation**: Keep layout-critical styles in custom classes
+
+**Implementation Pattern**:
+```svelte
+<!-- Problematic: Bootstrap classes get scoped -->
+<div class="container-fluid d-flex justify-content-between">
+
+<!-- Solution: Custom classes -->
+<div class="header-content">
+```
+
+**CSS Structure**:
+```css
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  /* Custom styles that won't conflict */
+}
+```
+
 ### Code Organization
 - **Modular Components** - Single responsibility
 - **Service Layer** - Business logic separation
