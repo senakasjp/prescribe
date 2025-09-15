@@ -48,12 +48,12 @@
   }
 </script>
 
-<div class="admin-login-container">
+<div class="min-vh-100">
   <div class="container-fluid vh-100 d-flex align-items-center justify-content-center bg-light">
     <div class="row w-100 justify-content-center">
       <div class="col-12 col-sm-8 col-md-6 col-lg-4">
-        <div class="card shadow-lg border-0">
-          <div class="card-header bg-danger text-white text-center py-4">
+        <div class="card shadow-lg border-0 rounded">
+          <div class="card-header bg-danger text-white text-center py-4 rounded-top">
             <div class="mb-3">
               <i class="fas fa-shield-alt fa-3x"></i>
             </div>
@@ -149,26 +149,4 @@
   </div>
 </div>
 
-<style>
-  .admin-login-container {
-    min-height: 100vh;
-  }
-  
-  .card {
-    border-radius: 0.5rem;
-  }
-  
-  .card-header {
-    border-radius: 0.5rem 0.5rem 0 0 !important;
-  }
-  
-  .form-control:focus {
-    border-color: #dc3545;
-    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
-  }
-  
-  .btn-danger:hover {
-    background-color: #b02a37;
-    border-color: #a02834;
-  }
-</style>
+<!-- Bootstrap 5 styling handled by utility classes -->

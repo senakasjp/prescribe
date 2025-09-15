@@ -60,7 +60,7 @@
 </script>
 
 <!-- Edit Profile Modal -->
-<div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+<div class="modal fade show d-block" style="background-color: rgba(var(--bs-dark-rgb), 0.5);" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">

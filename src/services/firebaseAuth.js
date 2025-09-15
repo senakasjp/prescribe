@@ -41,14 +41,40 @@ class FirebaseAuthService {
       const result = await signInWithPopup(auth, googleProvider)
       const user = result.user
       
+      // Check if this is the admin email
+      const isAdmin = user.email.toLowerCase() === 'senakahks@gmail.com'
+      
       // Extract user data
       const userData = {
         uid: user.uid,
         email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        role: userType,
-        provider: 'google'
+        role: isAdmin ? 'admin' : userType,
+        provider: 'google',
+        isAdmin: isAdmin
+      }
+
+      // Handle admin user specially
+      if (isAdmin) {
+        // For admin users, create/update admin profile
+        const adminData = {
+          id: 'admin-001',
+          email: user.email.toLowerCase(),
+          name: user.displayName || 'System Administrator',
+          role: 'admin',
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          provider: 'google',
+          permissions: ['read_all', 'write_all', 'delete_all', 'manage_users', 'view_analytics'],
+          lastLogin: new Date().toISOString(),
+          createdAt: new Date().toISOString()
+        }
+        
+        // Save admin to localStorage (similar to adminAuthService)
+        localStorage.setItem('prescribe-current-admin', JSON.stringify(adminData))
+        return adminData
       }
 
       // Check if user exists in our system

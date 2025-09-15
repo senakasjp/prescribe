@@ -36,15 +36,29 @@
         }
         
         if (firebaseUser) {
-          // Firebase user is authenticated, but preserve any local updates
-          const localUser = authService.getCurrentUser()
-          if (localUser && localUser.email === firebaseUser.email) {
-            // Merge Firebase data with local user data to preserve updates
-            user = { ...firebaseUser, ...localUser }
-            console.log('Merged Firebase and local user data:', user)
+          // Check if this is an admin user
+          if (firebaseUser.role === 'admin' || firebaseUser.isAdmin) {
+            // Handle admin user - check admin auth service
+            const adminUser = adminAuthService.getCurrentAdmin()
+            if (adminUser && adminUser.email === firebaseUser.email) {
+              user = { ...firebaseUser, ...adminUser }
+              console.log('Merged Firebase admin user:', user)
+            } else {
+              user = firebaseUser
+              console.log('Using Firebase admin user:', firebaseUser)
+            }
+            showAdminPanel = true
           } else {
-            user = firebaseUser
-            console.log('Using Firebase user:', firebaseUser)
+            // Regular user - preserve any local updates
+            const localUser = authService.getCurrentUser()
+            if (localUser && localUser.email === firebaseUser.email) {
+              // Merge Firebase data with local user data to preserve updates
+              user = { ...firebaseUser, ...localUser }
+              console.log('Merged Firebase and local user data:', user)
+            } else {
+              user = firebaseUser
+              console.log('Using Firebase user:', firebaseUser)
+            }
           }
         } else if (!user) {
           // No Firebase user, check local auth service
@@ -104,11 +118,13 @@
         refreshInterval = null
       }
       
-      // Sign out from both services
+      // Sign out from all services
       await authService.signOut()
       await firebaseAuthService.signOut()
+      await adminAuthService.signOut()
       user = null
       doctorUsageStats = null
+      showAdminPanel = false
     } catch (error) {
       console.error('Error signing out:', error)
     }
@@ -209,7 +225,10 @@
       </div>
     </div>
   {:else if user}
-    {#if user.role === 'pharmacist'}
+    {#if user.role === 'admin' || user.isAdmin}
+      <!-- Admin Panel -->
+      <AdminPanel on:back-to-app={handleBackFromAdmin} />
+    {:else if user.role === 'pharmacist'}
       <!-- Pharmacist Dashboard -->
         <PharmacistDashboard pharmacist={user} />
     {:else}
@@ -346,7 +365,7 @@
     min-height: 50px !important;
     max-height: 50px !important;
     padding: 0.25rem 1rem !important;
-    background-color: #0d6efd !important;
+    background-color: var(--bs-primary) !important;
     display: flex !important;
     align-items: center !important;
   }
@@ -354,7 +373,7 @@
   nav .navbar-brand {
     font-size: 1.1rem !important;
     font-weight: 600 !important;
-    color: #fff !important;
+    color: var(--bs-white) !important;
     padding: 0.25rem 0 !important;
     margin: 0 !important;
   }

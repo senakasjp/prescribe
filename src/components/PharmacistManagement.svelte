@@ -120,10 +120,10 @@
       <p class="text-muted mb-0">Connect with pharmacists to share prescriptions</p>
     </div>
     <button 
-      class="btn btn-primary"
+      class="btn btn-primary position-relative"
       on:click={openConnectModal}
       type="button"
-      style="pointer-events: auto; cursor: pointer; z-index: 1000; position: relative;"
+      style="z-index: 1000;"
     >
       <i class="fas fa-plus me-2"></i>
       Connect Pharmacist
@@ -325,7 +325,7 @@
 
 <!-- Connect Pharmacist Modal -->
 {#if showConnectModal}
-  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+  <div class="modal fade show d-block" style="background-color: rgba(var(--bs-dark-rgb), 0.5);" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header bg-primary text-white">
@@ -411,13 +411,13 @@
   }
   
   .input-group-text {
-    background-color: #f8f9fa;
-    border-color: #dee2e6;
+    background-color: var(--bs-light);
+    border-color: var(--bs-border-color);
   }
   
   .form-control:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
   }
   
   /* Ensure button is clickable */

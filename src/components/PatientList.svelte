@@ -52,7 +52,7 @@
     </div>
 
     <!-- Patient List -->
-    <div class="p-0" style="overflow-y: auto; max-height: calc(100vh - 200px);">
+    <div class="p-0 overflow-auto" style="max-height: calc(100vh - 200px);">
       {#if loading}
         <div class="text-center p-4">
           <div class="spinner-border text-primary" role="status">

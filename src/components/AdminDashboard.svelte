@@ -151,7 +151,7 @@
   }
 </script>
 
-<div class="admin-dashboard">
+<div class="min-vh-100 bg-light">
   {#if loading}
     <div class="d-flex justify-content-center align-items-center vh-100">
       <div class="text-center">
@@ -163,16 +163,16 @@
     </div>
   {:else}
     <!-- Admin Header -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark admin-navbar-compact">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark" style="height: 50px; min-height: 50px; max-height: 50px; padding: 0.25rem 1rem;">
       <div class="container-fluid">
-        <span class="navbar-brand">
+        <span class="navbar-brand fs-5 fw-semibold text-white py-1 my-0">
           <i class="fas fa-shield-alt me-2"></i>
           Admin Panel
         </span>
         
-        <div class="navbar-nav ms-auto">
+        <div class="navbar-nav ms-auto d-flex flex-row align-items-center m-0 p-0">
           <div class="nav-item dropdown">
-            <button class="nav-link dropdown-toggle text-white border-0 bg-transparent" type="button" data-bs-toggle="dropdown">
+            <button class="nav-link dropdown-toggle text-white border-0 bg-transparent py-1 px-2 small" type="button" data-bs-toggle="dropdown">
               <i class="fas fa-user-shield me-2"></i>
               {currentAdmin?.name || 'Admin'}
             </button>
@@ -604,54 +604,4 @@
   {/if}
 </div>
 
-<style>
-  .admin-dashboard {
-    min-height: 100vh;
-    background-color: #f8f9fa;
-  }
-  
-  /* Compact navbar styling - following Bootstrap 5 sm theme */
-  .admin-navbar-compact {
-    height: 50px !important;
-    min-height: 50px !important;
-    max-height: 50px !important;
-    padding: 0.25rem 1rem !important;
-  }
-  
-  .admin-navbar-compact .navbar-brand {
-    font-size: 1.1rem !important;
-    font-weight: 600 !important;
-    color: #fff !important;
-    padding: 0.25rem 0 !important;
-    margin: 0 !important;
-  }
-  
-  .admin-navbar-compact .navbar-nav {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  
-  .admin-navbar-compact .nav-link {
-    padding: 0.25rem 0.5rem !important;
-    font-size: 0.9rem !important;
-    color: #fff !important;
-  }
-  
-  .list-group-item.active {
-    background-color: #dc3545;
-    border-color: #dc3545;
-  }
-  
-  .card {
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    border: 1px solid rgba(0, 0, 0, 0.125);
-  }
-  
-  .table th {
-    border-top: none;
-    font-weight: 600;
-  }
-</style>
+<!-- Bootstrap 5 styling handled by utility classes -->

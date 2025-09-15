@@ -62,9 +62,4 @@
   
 </div>
 
-<style>
-  .admin-panel {
-    min-height: 100vh;
-  }
-  
-</style>
+<!-- Bootstrap 5 styling handled by utility classes -->

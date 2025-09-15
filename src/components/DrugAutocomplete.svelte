@@ -168,7 +168,7 @@
   
   <!-- Dropdown Results -->
   {#if showDropdown && searchResults.length > 0}
-    <div class="dropdown-menu show w-100" style="position: absolute; top: 100%; left: 0; z-index: 1000;">
+    <div class="dropdown-menu show w-100 position-absolute top-100 start-0" style="z-index: 1000;">
       {#each searchResults as drug, index}
         <button 
           class="dropdown-item {selectedIndex === index ? 'active' : ''}" 
@@ -206,6 +206,6 @@
   
   .dropdown-item:hover,
   .dropdown-item.active {
-    background-color: #e9ecef;
+    background-color: var(--bs-light);
   }
 </style>

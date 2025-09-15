@@ -1558,7 +1558,7 @@
               {#each currentPrescriptions as medication, index}
                 <div class="list-group-item d-flex justify-content-between align-items-start">
                   <div class="ms-2 me-auto">
-                    <div class="fw-bold" style="font-size: 1.1rem;">{medication.name}</div>
+                    <div class="fw-bold fs-5">{medication.name}</div>
                     <small class="text-muted">
                       {medication.dosage} • {medication.frequency} • {medication.duration}
                     </small>
@@ -1673,7 +1673,7 @@
 
 <!-- Prescription PDF Modal -->
 {#if showPrescriptionPDF}
-  <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+  <div class="modal show d-block" tabindex="-1" style="background-color: rgba(var(--bs-dark-rgb), 0.5);">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
         <div class="modal-header">
@@ -1704,31 +1704,31 @@
   }
   
   .drug-interactions-section .alert-danger {
-    border-left-color: #dc3545;
+    border-left-color: var(--bs-danger);
   }
   
   .drug-interactions-section .alert-warning {
-    border-left-color: #ffc107;
+    border-left-color: var(--bs-warning);
   }
   
   .drug-interactions-section .alert-info {
-    border-left-color: #0dcaf0;
+    border-left-color: var(--bs-info);
   }
   
   .drug-interactions-section .alert-success {
-    border-left-color: #198754;
+    border-left-color: var(--bs-success);
   }
   
   .drug-interactions-section .alert-dangerous {
-    border: 3px solid #dc3545 !important;
-    background-color: #f8d7da !important;
+    border: 3px solid var(--bs-danger) !important;
+    background-color: var(--bs-danger-bg-subtle) !important;
     animation: pulse-danger 2s infinite;
   }
 
   @keyframes pulse-danger {
-    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    0% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(var(--bs-danger-rgb), 0); }
+    100% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0); }
   }
   
   .interaction-content {
@@ -1737,28 +1737,28 @@
   }
   
   .interaction-content h6 {
-    color: #0d6efd !important;
+    color: var(--bs-primary) !important;
     font-weight: 600;
     font-size: 0.95rem;
     margin-top: 1rem !important;
     margin-bottom: 0.5rem !important;
-    border-bottom: 1px solid #e9ecef;
+    border-bottom: 1px solid var(--bs-border-color);
     padding-bottom: 0.25rem;
   }
   
   .interaction-content strong {
-    color: #495057;
+    color: var(--bs-body-color);
     font-weight: 600;
   }
   
   .interaction-content em {
-    color: #6c757d;
+    color: var(--bs-secondary);
     font-style: italic;
   }
 
   /* Critical interaction styling */
   .interaction-content .text-danger {
-    color: #dc3545 !important;
+    color: var(--bs-danger) !important;
     font-weight: bold;
   }
 </style>

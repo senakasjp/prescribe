@@ -7,7 +7,7 @@
     {#each prescriptions as prescription, index}
       <div class="list-group-item">
         <div class="w-100">
-          <h6 class="mb-1" style="font-size: 1.1rem;">
+          <h6 class="mb-1 fs-5">
             <i class="fas fa-pills me-2"></i>
             {prescription.name || 'Unknown Prescription'}
           </h6>

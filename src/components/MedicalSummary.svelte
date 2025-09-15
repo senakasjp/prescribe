@@ -55,7 +55,7 @@
             role="tab"
           >
             <i class="fas fa-thermometer-half me-1"></i>Symptoms
-            <span class="badge bg-warning text-dark ms-1" style="font-size: 0.6rem;">{symptomsCount}</span>
+            <span class="badge bg-warning text-dark ms-1 small">{symptomsCount}</span>
           </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -65,7 +65,7 @@
             role="tab"
           >
             <i class="fas fa-heartbeat me-1"></i>Illnesses
-            <span class="badge bg-danger ms-1" style="font-size: 0.6rem;">{illnessesCount}</span>
+            <span class="badge bg-danger ms-1 small">{illnessesCount}</span>
           </button>
         </li>
         <li class="nav-item" role="presentation">
@@ -75,7 +75,7 @@
             role="tab"
           >
             <i class="fas fa-pills me-1"></i>Prescriptions
-            <span class="badge bg-success ms-1" style="font-size: 0.6rem;">{prescriptionsCount}</span>
+            <span class="badge bg-success ms-1 small">{prescriptionsCount}</span>
           </button>
         </li>
       </ul>
@@ -91,13 +91,13 @@
                 <div class="mt-2">
                   {#each groupByDate(symptoms).slice(0, 2) as group}
                     <div class="mb-2">
-                      <small class="text-muted fw-bold" style="font-size: 0.75rem;">
+                      <small class="text-muted fw-bold small">
                         <i class="fas fa-calendar me-1"></i>{group.date}
                       </small>
                       {#each group.items.slice(0, 3) as symptom}
                         <div class="d-flex justify-content-between align-items-center mb-1 mt-1">
                           <div class="flex-grow-1">
-                            <span class="small" style="font-size: 0.85rem;">
+                            <span class="small">
                               {#if symptom.description}
                                 {symptom.description.length > 20 ? symptom.description.substring(0, 20) + '...' : symptom.description}
                               {:else}
@@ -105,18 +105,18 @@
                               {/if}
                             </span>
                           </div>
-                          <span class="badge bg-{symptom.severity === 'mild' ? 'success' : symptom.severity === 'moderate' ? 'warning' : symptom.severity === 'severe' ? 'danger' : 'dark'} text-capitalize" style="font-size: 0.7rem;">
+                          <span class="badge bg-{symptom.severity === 'mild' ? 'success' : symptom.severity === 'moderate' ? 'warning' : symptom.severity === 'severe' ? 'danger' : 'dark'} text-capitalize small">
                             {symptom.severity || 'unknown'}
                           </span>
                         </div>
                       {/each}
                       {#if group.items.length > 3}
-                        <small class="text-muted" style="font-size: 0.75rem;">+{group.items.length - 3} more on this date</small>
+                        <small class="text-muted small">+{group.items.length - 3} more on this date</small>
                       {/if}
                     </div>
                   {/each}
                   {#if groupByDate(symptoms).length > 2}
-                    <small class="text-muted" style="font-size: 0.7rem;">+{groupByDate(symptoms).length - 2} more days</small>
+                    <small class="text-muted small">+{groupByDate(symptoms).length - 2} more days</small>
                   {/if}
                 </div>
               </div>
@@ -125,8 +125,7 @@
               {#if hasNotes(symptoms, 'notes')}
                 <div class="mt-2">
                   <button 
-                    class="btn btn-outline-warning btn-sm" 
-                    style="font-size: 0.8rem; padding: 0.25rem 0.5rem;"
+                    class="btn btn-outline-warning btn-sm small"
                     on:click={toggleSymptomsNotes}
                   >
                     <i class="fas fa-sticky-note me-1"></i>
@@ -141,7 +140,7 @@
                   <small class="text-muted fw-bold">Notes:</small>
                   <div class="mt-1">
                     {#each symptoms.filter(s => s.notes && s.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as symptom}
-                      <div class="mb-1 p-2 bg-warning bg-opacity-10 rounded" style="font-size: 0.8rem;">
+                      <div class="mb-1 p-2 bg-warning bg-opacity-10 rounded small">
                         <div class="fw-bold">{symptom.description || 'Symptom'}</div>
                         <div class="text-muted">{symptom.notes}</div>
                         <small class="text-muted">
@@ -153,7 +152,7 @@
                 </div>
               {/if}
             {:else}
-              <p class="text-muted mb-0 small" style="font-size: 0.75rem;">
+              <p class="text-muted mb-0 small">
                 <i class="fas fa-info-circle me-1"></i>No symptoms
               </p>
             {/if}
@@ -169,13 +168,13 @@
                 <div class="mt-2">
                   {#each groupByDate(illnesses).slice(0, 2) as group}
                     <div class="mb-2">
-                      <small class="text-muted fw-bold" style="font-size: 0.75rem;">
+                      <small class="text-muted fw-bold small">
                         <i class="fas fa-calendar me-1"></i>{group.date}
                       </small>
                       {#each group.items.slice(0, 3) as illness}
                         <div class="d-flex justify-content-between align-items-center mb-1 mt-1">
                           <div class="flex-grow-1">
-                            <span class="small fw-bold" style="font-size: 0.85rem;">
+                            <span class="small fw-bold small">
                               {#if illness.name}
                                 {illness.name.length > 20 ? illness.name.substring(0, 20) + '...' : illness.name}
                               {:else}
@@ -183,18 +182,18 @@
                               {/if}
                             </span>
                           </div>
-                          <span class="badge bg-{illness.status === 'active' ? 'danger' : illness.status === 'chronic' ? 'warning' : illness.status === 'resolved' ? 'success' : 'secondary'} text-capitalize" style="font-size: 0.7rem;">
+                          <span class="badge bg-{illness.status === 'active' ? 'danger' : illness.status === 'chronic' ? 'warning' : illness.status === 'resolved' ? 'success' : 'secondary'} text-capitalize small">
                             {illness.status || 'unknown'}
                           </span>
                         </div>
                       {/each}
                       {#if group.items.length > 3}
-                        <small class="text-muted" style="font-size: 0.75rem;">+{group.items.length - 3} more on this date</small>
+                        <small class="text-muted small">+{group.items.length - 3} more on this date</small>
                       {/if}
                     </div>
                   {/each}
                   {#if groupByDate(illnesses).length > 2}
-                    <small class="text-muted" style="font-size: 0.7rem;">+{groupByDate(illnesses).length - 2} more days</small>
+                    <small class="text-muted small">+{groupByDate(illnesses).length - 2} more days</small>
                   {/if}
                 </div>
               </div>
@@ -203,8 +202,7 @@
               {#if hasNotes(illnesses, 'notes')}
                 <div class="mt-2">
                   <button 
-                    class="btn btn-outline-danger btn-sm" 
-                    style="font-size: 0.8rem; padding: 0.25rem 0.5rem;"
+                    class="btn btn-outline-danger btn-sm small"
                     on:click={toggleIllnessesNotes}
                   >
                     <i class="fas fa-sticky-note me-1"></i>
@@ -219,7 +217,7 @@
                   <small class="text-muted fw-bold">Notes:</small>
                   <div class="mt-1">
                     {#each illnesses.filter(i => i.notes && i.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as illness}
-                      <div class="mb-1 p-2 bg-danger bg-opacity-10 rounded" style="font-size: 0.8rem;">
+                      <div class="mb-1 p-2 bg-danger bg-opacity-10 rounded small">
                         <div class="fw-bold">{illness.name || 'Illness'}</div>
                         <div class="text-muted">{illness.notes}</div>
                         <small class="text-muted">
@@ -231,7 +229,7 @@
                 </div>
               {/if}
             {:else}
-              <p class="text-muted mb-0 small" style="font-size: 0.75rem;">
+              <p class="text-muted mb-0 small">
                 <i class="fas fa-info-circle me-1"></i>No illnesses
               </p>
             {/if}
@@ -247,13 +245,13 @@
                 <div class="mt-2">
                   {#each groupByDate(prescriptions).slice(0, 2) as group}
                     <div class="mb-2">
-                      <small class="text-muted fw-bold" style="font-size: 0.75rem;">
+                      <small class="text-muted fw-bold small">
                         <i class="fas fa-calendar me-1"></i>{group.date}
                       </small>
                       {#each group.items.slice(0, 3) as medication}
                         <div class="d-flex justify-content-between align-items-center mb-1 mt-1">
                           <div class="flex-grow-1">
-                            <span class="small fw-bold" style="font-size: 1.1rem;">
+                            <span class="small fw-bold fs-5">
                               {#if medication.name}
                                 {medication.name.length > 20 ? medication.name.substring(0, 20) + '...' : medication.name}
                               {:else}
@@ -261,16 +259,15 @@
                               {/if}
                             </span>
                           </div>
-                          <span class="badge bg-primary" style="font-size: 0.7rem;">{medication.dosage || 'No dosage'}</span>
+                          <span class="badge bg-primary small">{medication.dosage || 'No dosage'}</span>
                         </div>
                         <div class="d-flex justify-content-between align-items-center">
-                          <small class="text-muted" style="font-size: 0.75rem;">
+                          <small class="text-muted small">
                             <i class="fas fa-weight me-1"></i>{medication.dosage || 'No dosage'} • 
                             <i class="fas fa-clock me-1"></i>{medication.duration || 'No duration'}
                           </small>
                           <button 
-                            class="btn btn-outline-success btn-sm" 
-                            style="font-size: 0.7rem; padding: 0.2rem 0.4rem;"
+                            class="btn btn-outline-success btn-sm small"
                             on:click={() => addToPrescription(medication)}
                             title="Add to today's prescription"
                           >
@@ -280,12 +277,12 @@
                         </div>
                       {/each}
                       {#if group.items.length > 3}
-                        <small class="text-muted" style="font-size: 0.75rem;">+{group.items.length - 3} more on this date</small>
+                        <small class="text-muted small">+{group.items.length - 3} more on this date</small>
                       {/if}
                     </div>
                   {/each}
                   {#if groupByDate(prescriptions).length > 2}
-                    <small class="text-muted" style="font-size: 0.7rem;">+{groupByDate(prescriptions).length - 2} more days</small>
+                    <small class="text-muted small">+{groupByDate(prescriptions).length - 2} more days</small>
                   {/if}
                 </div>
               </div>
@@ -294,8 +291,7 @@
               {#if hasNotes(prescriptions, 'notes')}
                 <div class="mt-2">
                   <button 
-                    class="btn btn-outline-success btn-sm" 
-                    style="font-size: 0.8rem; padding: 0.25rem 0.5rem;"
+                    class="btn btn-outline-success btn-sm small"
                     on:click={togglePrescriptionsNotes}
                   >
                     <i class="fas fa-sticky-note me-1"></i>
@@ -310,8 +306,8 @@
                   <small class="text-muted fw-bold">Notes:</small>
                   <div class="mt-1">
                     {#each prescriptions.filter(m => m.notes && m.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as medication}
-                      <div class="mb-1 p-2 bg-success bg-opacity-10 rounded" style="font-size: 0.8rem;">
-                        <div class="fw-bold" style="font-size: 1.1rem;">{medication.name || 'Prescription'}</div>
+                      <div class="mb-1 p-2 bg-success bg-opacity-10 rounded small">
+                        <div class="fw-bold fs-5">{medication.name || 'Prescription'}</div>
                         <div class="text-muted">{medication.notes}</div>
                         <small class="text-muted">
                           <i class="fas fa-calendar me-1"></i>{medication.createdAt ? new Date(medication.createdAt).toLocaleDateString() : 'No date'}
@@ -322,7 +318,7 @@
                 </div>
               {/if}
             {:else}
-              <p class="text-muted mb-0 small" style="font-size: 0.75rem;">
+              <p class="text-muted mb-0 small">
                 <i class="fas fa-info-circle me-1"></i>No prescriptions
               </p>
             {/if}

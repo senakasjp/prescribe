@@ -590,7 +590,7 @@
       </div>
       
       <!-- Scrollable Content Area -->
-      <div class="card-body p-0" style="overflow-y: auto; max-height: 300px;">
+      <div class="card-body p-0 overflow-auto" style="max-height: 300px;">
         {#if searchQuery}
           {#if loading}
             <div class="text-center p-3">
@@ -819,7 +819,7 @@
               </h6>
             </div>
             <div class="card-body p-4">
-              <div class="chart-container" style="position: relative; height: 300px; width: 100%;">
+              <div class="chart-container position-relative w-100" style="height: 300px;">
                 <canvas id="prescriptionsChart" class="rounded"></canvas>
               </div>
             </div>

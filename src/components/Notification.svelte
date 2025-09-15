@@ -31,11 +31,11 @@
 
 {#if visible}
   <div 
-    class="toast show position-fixed" 
+    class="toast show position-fixed top-0 end-0 m-3" 
     role="alert" 
     aria-live="assertive" 
     aria-atomic="true"
-    style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;"
+    style="z-index: 9999; min-width: 300px;"
   >
     <div class="toast-header bg-{type === 'success' ? 'success' : type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'info'} text-white">
       <i class="fas fa-{type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
@@ -49,25 +49,11 @@
         aria-label="Close"
       ></button>
     </div>
-    <div class="toast-body">
+    <div class="toast-body bg-white text-dark">
       {message}
     </div>
   </div>
 {/if}
 
-<style>
-  .toast {
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-    border: none;
-  }
-  
-  .toast-header {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  }
-  
-  .toast-body {
-    background-color: white;
-    color: #212529;
-  }
-</style>
+<!-- Bootstrap 5 toast styling is handled by Bootstrap classes -->
 

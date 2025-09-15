@@ -93,9 +93,9 @@
 
 <div class="container-fluid">
   <!-- Compact Header -->
-  <div class="compact-header">
-    <div class="header-content">
-      <div class="header-left">
+  <div class="bg-white shadow-sm mb-3 py-2">
+    <div class="d-flex justify-content-between align-items-center px-3 w-100">
+      <div class="d-flex align-items-center">
         <i class="fas fa-pills text-primary me-2"></i>
         <span class="fw-bold text-primary">Prescribe - Pharmacist Portal</span>
       </div>
@@ -259,7 +259,7 @@
 
 <!-- Prescription Details Modal -->
 {#if showPrescriptionDetails && selectedPrescription}
-  <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.5);" tabindex="-1">
+  <div class="modal fade show d-block" style="background-color: rgba(var(--bs-dark-rgb), 0.5);" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
         <div class="modal-header bg-primary text-white">
@@ -375,25 +375,6 @@
     border-radius: 10px 10px 0 0;
   }
   
-  /* Compact header styles */
-  .compact-header {
-    background-color: white;
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    margin-bottom: 1rem;
-    padding: 0.5rem 0;
-  }
-  
-  .header-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 1rem;
-    max-width: 100%;
-  }
-  
-  .header-left {
-    display: flex;
-    align-items: center;
-  }
+  /* Compact header styles - using Bootstrap 5 utility classes */
   
 </style>
