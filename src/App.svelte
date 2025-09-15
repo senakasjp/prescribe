@@ -1,7 +1,8 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import authService from './services/authService.js'
   import adminAuthService from './services/adminAuthService.js'
+  import aiTokenTracker from './services/aiTokenTracker.js'
   import DoctorAuth from './components/DoctorAuth.svelte'
   import PatientManagement from './components/PatientManagement.svelte'
   import AdminPanel from './components/AdminPanel.svelte'
@@ -10,6 +11,8 @@
   let user = null
   let loading = true
   let showAdminPanel = false
+  let doctorUsageStats = null
+  let refreshInterval = null
   
   onMount(() => {
     // Get current user from auth service
@@ -18,6 +21,12 @@
     console.log('User ID:', user?.id)
     console.log('User UID:', user?.uid)
     console.log('User email:', user?.email)
+    
+    // Load doctor's AI usage stats
+    if (user?.id) {
+      doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+    }
+    
     loading = false
   })
   
@@ -29,8 +38,15 @@
   // Handle doctor logout
   const handleLogout = async () => {
     try {
+      // Clear refresh interval
+      if (refreshInterval) {
+        clearInterval(refreshInterval)
+        refreshInterval = null
+      }
+      
       await authService.signOut()
       user = null
+      doctorUsageStats = null
     } catch (error) {
       console.error('Error signing out:', error)
     }
@@ -45,6 +61,37 @@
   const handleBackFromAdmin = () => {
     showAdminPanel = false
   }
+  
+  // Refresh doctor's AI usage stats (immediate refresh)
+  const refreshDoctorUsageStats = () => {
+    if (user?.id) {
+      doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+      console.log('🔄 Doctor usage stats refreshed:', doctorUsageStats)
+    }
+  }
+
+  // Reactive statement to update stats when user changes
+  $: if (user?.id) {
+    doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+    
+    // Clear existing interval and set up new one
+    if (refreshInterval) {
+      clearInterval(refreshInterval)
+    }
+    
+    refreshInterval = setInterval(() => {
+      if (user?.id) {
+        doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+      }
+    }, 5000)
+  }
+
+  // Cleanup on destroy
+  onDestroy(() => {
+    if (refreshInterval) {
+      clearInterval(refreshInterval)
+    }
+  })
 </script>
 
 <main class="container-fluid">
@@ -66,8 +113,15 @@
           <i class="fas fa-user-md me-2"></i>Prescribe
         </span>
         <div class="navbar-nav ms-auto">
-          <span class="navbar-text me-3">
+          <span class="navbar-text me-4">
             <i class="fas fa-user me-1"></i>Dr. {user.email}
+            {#if doctorUsageStats}
+              <span class="badge {doctorUsageStats.today.tokens > 0 ? 'bg-warning text-dark' : 'bg-secondary text-white'} me-3" 
+                    title={doctorUsageStats.today.tokens > 0 ? "Today's AI Token Usage" : "AI Usage - No tokens used today"}>
+                <i class="fas fa-robot me-1"></i>
+                {doctorUsageStats.today.tokens.toLocaleString()} tokens
+              </span>
+            {/if}
           </span>
           <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
             <i class="fas fa-shield-alt me-1"></i>Admin
@@ -80,7 +134,7 @@
     </nav>
     
     <div class="container-fluid mt-3 mt-md-4 px-3 px-md-4">
-      <PatientManagement {user} />
+      <PatientManagement {user} on:ai-usage-updated={refreshDoctorUsageStats} />
     </div>
   {:else}
     <!-- Doctor is not logged in - Show authentication -->

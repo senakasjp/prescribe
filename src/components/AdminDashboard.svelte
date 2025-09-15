@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte'
   import adminAuthService from '../services/adminAuthService.js'
   import jsonStorage from '../services/jsonStorage.js'
+  import aiTokenTracker from '../services/aiTokenTracker.js'
   
   const dispatch = createEventDispatcher()
   
@@ -13,6 +14,7 @@
     totalSymptoms: 0,
     totalIllnesses: 0
   }
+  let aiUsageStats = null
   let doctors = []
   let patients = []
   let loading = true
@@ -36,6 +38,9 @@
       
       // Load statistics
       await loadStatistics()
+      
+      // Load AI usage statistics
+      loadAIUsageStats()
       
       // Load doctors and patients data
       await loadDoctorsAndPatients()
@@ -82,6 +87,17 @@
       
     } catch (error) {
       console.error('❌ Error loading statistics:', error)
+    }
+  }
+  
+  // Load AI usage statistics
+  const loadAIUsageStats = () => {
+    try {
+      aiUsageStats = aiTokenTracker.getUsageStats()
+      console.log('📊 AI usage stats loaded:', aiUsageStats)
+    } catch (error) {
+      console.error('❌ Error loading AI usage stats:', error)
+      aiUsageStats = null
     }
   }
   
@@ -200,6 +216,12 @@
               <i class="fas fa-users me-2"></i>Patients
             </button>
             <button
+              class="list-group-item list-group-item-action {activeTab === 'ai-usage' ? 'active' : ''}"
+              on:click={() => handleTabChange('ai-usage')}
+            >
+              <i class="fas fa-robot me-2"></i>AI Usage
+            </button>
+            <button
               class="list-group-item list-group-item-action {activeTab === 'system' ? 'active' : ''}"
               on:click={() => handleTabChange('system')}
             >
@@ -221,7 +243,7 @@
             
             <!-- Statistics Cards -->
             <div class="row mb-4">
-              <div class="col-md-6 col-lg-3 mb-3">
+              <div class="col-md-6 col-lg-2 mb-3">
                 <div class="card border-primary">
                   <div class="card-body text-center">
                     <i class="fas fa-user-md fa-2x text-primary mb-2"></i>
@@ -231,7 +253,7 @@
                 </div>
               </div>
               
-              <div class="col-md-6 col-lg-3 mb-3">
+              <div class="col-md-6 col-lg-2 mb-3">
                 <div class="card border-success">
                   <div class="card-body text-center">
                     <i class="fas fa-users fa-2x text-success mb-2"></i>
@@ -241,7 +263,7 @@
                 </div>
               </div>
               
-              <div class="col-md-6 col-lg-3 mb-3">
+              <div class="col-md-6 col-lg-2 mb-3">
                 <div class="card border-warning">
                   <div class="card-body text-center">
                     <i class="fas fa-pills fa-2x text-warning mb-2"></i>
@@ -251,12 +273,28 @@
                 </div>
               </div>
               
-              <div class="col-md-6 col-lg-3 mb-3">
+              <div class="col-md-6 col-lg-2 mb-3">
                 <div class="card border-info">
                   <div class="card-body text-center">
                     <i class="fas fa-heartbeat fa-2x text-info mb-2"></i>
                     <h5 class="card-title">{statistics.totalSymptoms}</h5>
                     <p class="card-text text-muted">Total Symptoms</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="col-md-6 col-lg-2 mb-3">
+                <div class="card border-danger">
+                  <div class="card-body text-center">
+                    <i class="fas fa-robot fa-2x text-danger mb-2"></i>
+                    <h5 class="card-title">
+                      {#if aiUsageStats}
+                        ${aiUsageStats.total.cost.toFixed(3)}
+                      {:else}
+                        $0.000
+                      {/if}
+                    </h5>
+                    <p class="card-text text-muted">AI Cost <small>(Est.)</small></p>
                   </div>
                 </div>
               </div>
@@ -357,6 +395,159 @@
                 {/if}
               </div>
             </div>
+            
+          {:else if activeTab === 'ai-usage'}
+            <!-- AI Usage Tab -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h2><i class="fas fa-robot me-2 text-danger"></i>AI Usage Analytics</h2>
+              <button class="btn btn-outline-danger btn-sm" on:click={loadAIUsageStats}>
+                <i class="fas fa-sync-alt me-1"></i>Refresh
+              </button>
+            </div>
+            
+            {#if aiUsageStats}
+              <!-- Cost Disclaimer -->
+              <div class="alert alert-warning mb-4" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Cost Disclaimer:</strong> These cost estimates are approximate and may not reflect actual OpenAI billing. 
+                Actual costs may be higher due to taxes, fees, or pricing changes. 
+                Check your <a href="https://platform.openai.com/usage" target="_blank" class="alert-link">OpenAI dashboard</a> for exact billing amounts.
+              </div>
+              
+              <!-- Usage Overview Cards -->
+              <div class="row mb-4">
+                <div class="col-md-3">
+                  <div class="card text-center">
+                    <div class="card-body">
+                      <h5 class="card-title text-primary">
+                        <i class="fas fa-coins me-2"></i>Total Cost
+                      </h5>
+                      <h3 class="text-primary">${aiUsageStats.total.cost.toFixed(4)}</h3>
+                      <small class="text-muted">All Time</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="card text-center">
+                    <div class="card-body">
+                      <h5 class="card-title text-success">
+                        <i class="fas fa-hashtag me-2"></i>Total Tokens
+                      </h5>
+                      <h3 class="text-success">{aiUsageStats.total.tokens.toLocaleString()}</h3>
+                      <small class="text-muted">All Time</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="card text-center">
+                    <div class="card-body">
+                      <h5 class="card-title text-info">
+                        <i class="fas fa-bolt me-2"></i>Total Requests
+                      </h5>
+                      <h3 class="text-info">{aiUsageStats.total.requests}</h3>
+                      <small class="text-muted">All Time</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <div class="card text-center">
+                    <div class="card-body">
+                      <h5 class="card-title text-warning">
+                        <i class="fas fa-calendar-day me-2"></i>Today
+                      </h5>
+                      <h3 class="text-warning">${aiUsageStats.today.cost.toFixed(4)}</h3>
+                      <small class="text-muted">{aiUsageStats.today.requests} requests</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Daily Usage Chart -->
+              <div class="row mb-4">
+                <div class="col-12">
+                  <div class="card">
+                    <div class="card-header">
+                      <h5 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>Daily Usage (Last 7 Days)
+                      </h5>
+                    </div>
+                    <div class="card-body">
+                      <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Requests</th>
+                              <th>Tokens</th>
+                              <th>Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {#each aiTokenTracker.getWeeklyUsage() as day}
+                              <tr>
+                                <td>{new Date(day.date).toLocaleDateString()}</td>
+                                <td>{day.requests}</td>
+                                <td>{day.tokens.toLocaleString()}</td>
+                                <td>${day.cost.toFixed(4)}</td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Recent Requests -->
+              <div class="row">
+                <div class="col-12">
+                  <div class="card">
+                    <div class="card-header">
+                      <h5 class="mb-0">
+                        <i class="fas fa-history me-2"></i>Recent AI Requests
+                      </h5>
+                    </div>
+                    <div class="card-body">
+                      <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                          <thead>
+                            <tr>
+                              <th>Time</th>
+                              <th>Type</th>
+                              <th>Tokens</th>
+                              <th>Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {#each aiTokenTracker.getRecentRequests(10) as request}
+                              <tr>
+                                <td>{new Date(request.timestamp).toLocaleString()}</td>
+                                <td>
+                                  <span class="badge bg-primary">
+                                    {request.type.replace('generate', '').replace('check', '')}
+                                  </span>
+                                </td>
+                                <td>{request.totalTokens.toLocaleString()}</td>
+                                <td>${request.cost.toFixed(4)}</td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {:else}
+              <div class="card">
+                <div class="card-body text-center py-5">
+                  <i class="fas fa-robot fa-3x text-muted mb-3"></i>
+                  <h5 class="text-muted">No AI Usage Data Available</h5>
+                  <p class="text-muted">AI usage statistics will appear here once AI features are used.</p>
+                </div>
+              </div>
+            {/if}
             
           {:else if activeTab === 'system'}
             <!-- System Tab -->

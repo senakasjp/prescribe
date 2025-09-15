@@ -7,6 +7,7 @@
   export let symptoms = []
   export let currentMedications = []
   export let patientAge = null
+  export let doctorId = null
   
   let recommendations = ''
   let medicationSuggestions = ''
@@ -33,8 +34,8 @@
       
       // Generate both recommendations and medication suggestions
       const [recommendationsResult, medicationSuggestionsResult] = await Promise.all([
-        openaiService.generateRecommendations(symptoms, patientAge),
-        openaiService.generateMedicationSuggestions(symptoms, currentMedications)
+        openaiService.generateRecommendations(symptoms, patientAge, doctorId),
+        openaiService.generateMedicationSuggestions(symptoms, currentMedications, doctorId)
       ])
       
       recommendations = recommendationsResult
@@ -42,6 +43,13 @@
       showCombinedAnalysis = true
       showRecommendationsInline = false
       showMedicationSuggestionsInline = false
+      
+      // Dispatch event to notify parent of AI usage
+      dispatch('ai-usage-updated', { 
+        type: 'comprehensive-analysis', 
+        timestamp: new Date().toISOString(),
+        doctorId 
+      })
       
       console.log('✅ Comprehensive AI analysis generated')
     } catch (err) {

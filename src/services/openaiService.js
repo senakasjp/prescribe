@@ -1,6 +1,8 @@
 // OpenAI Service for AI-powered medical recommendations
 // This service provides AI-generated recommendations based on patient symptoms
 
+import aiTokenTracker from './aiTokenTracker.js'
+
 class OpenAIService {
   constructor() {
     this.apiKey = import.meta.env.VITE_OPENAI_API_KEY
@@ -13,7 +15,7 @@ class OpenAIService {
   }
 
   // Generate AI recommendations based on symptoms
-  async generateRecommendations(symptoms, patientAge = null) {
+  async generateRecommendations(symptoms, patientAge = null, doctorId = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured. Please add VITE_OPENAI_API_KEY to your environment variables.')
     }
@@ -83,6 +85,17 @@ Format your response with clear headings and bullet points. Be concise but compr
       const data = await response.json()
       const recommendations = data.choices[0]?.message?.content || 'No recommendations available.'
 
+      // Track token usage
+      if (data.usage) {
+        aiTokenTracker.trackUsage(
+          'generateRecommendations',
+          data.usage.prompt_tokens,
+          data.usage.completion_tokens,
+          'gpt-3.5-turbo',
+          doctorId
+        )
+      }
+
       console.log('✅ AI recommendations generated successfully')
       return recommendations
 
@@ -93,7 +106,7 @@ Format your response with clear headings and bullet points. Be concise but compr
   }
 
   // Generate medication suggestions based on symptoms
-  async generateMedicationSuggestions(symptoms, currentMedications = []) {
+  async generateMedicationSuggestions(symptoms, currentMedications = [], doctorId = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured.')
     }
@@ -173,6 +186,17 @@ Format your response with clear headings and bullet points. Remember this is for
 
       const data = await response.json()
       const suggestions = data.choices[0]?.message?.content || 'No medication suggestions available.'
+
+      // Track token usage
+      if (data.usage) {
+        aiTokenTracker.trackUsage(
+          'generateMedicationSuggestions',
+          data.usage.prompt_tokens,
+          data.usage.completion_tokens,
+          'gpt-3.5-turbo',
+          doctorId
+        )
+      }
 
       console.log('✅ Medication suggestions generated successfully')
       return suggestions
@@ -300,7 +324,7 @@ Format your response with clear headings and bullet points. Remember this is for
   }
 
   // Check for drug interactions between current prescriptions
-  async checkDrugInteractions(prescriptions) {
+  async checkDrugInteractions(prescriptions, doctorId = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured.')
     }
@@ -390,6 +414,17 @@ Format your response with clear headings and bullet points. If no significant in
 
       const data = await response.json()
       const analysis = data.choices[0]?.message?.content || 'Unable to analyze drug interactions.'
+
+      // Track token usage
+      if (data.usage) {
+        aiTokenTracker.trackUsage(
+          'checkDrugInteractions',
+          data.usage.prompt_tokens,
+          data.usage.completion_tokens,
+          'gpt-3.5-turbo',
+          doctorId
+        )
+      }
 
       // Enhanced parsing of AI response
       const { hasInteractions, severity } = this.parseAIInteractionResponse(analysis)

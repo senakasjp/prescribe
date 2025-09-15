@@ -33,7 +33,14 @@ The Admin Panel provides system administrators with comprehensive access to mana
 - **Cross-Doctor View**: See patients from all doctors
 - **Creation Tracking**: When patients were registered
 
-### 4. System Settings
+### 4. AI Usage Analytics
+- **Cost Tracking**: Monitor OpenAI API usage and costs
+- **Token Statistics**: Track total tokens, requests, and daily usage
+- **Usage History**: View recent AI requests and detailed analytics
+- **Weekly Reports**: Daily usage breakdown for the last 7 days
+- **Cost Management**: Monitor spending and optimize AI usage
+
+### 5. System Settings
 - **System Information**: Version, last updated, admin email
 - **Quick Actions**: Export data, backup system, refresh data
 - **Admin Account Management**: View current admin details
@@ -51,7 +58,8 @@ src/components/
 ### Services
 ```
 src/services/
-└── adminAuthService.js        # Admin authentication service
+├── adminAuthService.js        # Admin authentication service
+└── aiTokenTracker.js          # AI token usage tracking service
 ```
 
 ### Key Features
@@ -73,6 +81,7 @@ src/services/
 - **Overview Tab**: System statistics and recent activity
 - **Doctors Tab**: Manage and view all registered doctors
 - **Patients Tab**: View all patients across the system
+- **AI Usage Tab**: Monitor AI token usage and costs
 - **System Tab**: System settings and quick actions
 
 ### 3. Admin Actions
@@ -132,6 +141,9 @@ src/services/
 - **System Backup**: Automated backup functionality
 - **Audit Logs**: Detailed activity tracking
 - **Advanced Analytics**: Charts and graphs for data visualization
+- **AI Cost Budgets**: Set spending limits and alerts
+- **Usage Reports**: Monthly/quarterly AI usage reports
+- **Performance Metrics**: AI response times and accuracy tracking
 
 ### Security Improvements
 - **Two-Factor Authentication**: Enhanced security

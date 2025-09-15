@@ -126,8 +126,14 @@
     
     try {
       console.log('🔍 Checking drug interactions for:', currentPrescriptions.map(p => p.name))
-      drugInteractions = await openaiService.checkDrugInteractions(currentPrescriptions)
+      drugInteractions = await openaiService.checkDrugInteractions(currentPrescriptions, doctorId)
       console.log('✅ Drug interactions checked:', drugInteractions)
+      
+      // Notify parent that AI usage was updated
+      if (addToPrescription) {
+        addToPrescription('ai-usage', { type: 'drug-interactions', timestamp: new Date().toISOString() })
+        console.log('📊 AI usage updated - drug interactions checked')
+      }
     } catch (error) {
       console.error('❌ Error checking drug interactions:', error)
       interactionError = error.message
@@ -804,6 +810,12 @@
               const monthDiff = today.getMonth() - birthDate.getMonth()
               return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
             })() : null}
+            {doctorId}
+            on:ai-usage-updated={(event) => {
+              if (addToPrescription) {
+                addToPrescription('ai-usage', event.detail)
+              }
+            }}
           />
           
           {#if symptoms && symptoms.length > 0}

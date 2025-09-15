@@ -1,11 +1,12 @@
 <script>
-  import { onMount } from 'svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
   import jsonStorage from '../services/jsonStorage.js'
   import PatientForm from './PatientForm.svelte'
   import PatientDetails from './PatientDetails.svelte'
   import PatientList from './PatientList.svelte'
   import MedicalSummary from './MedicalSummary.svelte'
   
+  const dispatch = createEventDispatcher()
   export let user
   
   let patients = []
@@ -154,6 +155,11 @@
     // Refresh medical data to update MedicalSummary
     if (selectedPatient) {
       await loadMedicalData(selectedPatient.id)
+    }
+    
+    // If AI usage was updated, notify parent
+    if (type === 'ai-usage') {
+      dispatch('ai-usage-updated')
     }
   }
   
