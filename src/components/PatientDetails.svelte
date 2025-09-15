@@ -551,7 +551,7 @@
       }
       
       // Get the actual doctor data from local storage (includes connectedPharmacists)
-      const doctor = await jsonStorage.getDoctorByEmail(firebaseUser.email)
+      const doctor = jsonStorage.getDoctorByEmail(firebaseUser.email)
       console.log('🔍 Doctor from storage:', doctor)
       console.log('🔍 Doctor connectedPharmacists:', doctor?.connectedPharmacists)
       
@@ -639,7 +639,7 @@
       console.log('📤 Sending prescriptions to selected pharmacies:', selectedPharmacies)
       
       const firebaseUser = currentUser || authService.getCurrentUser()
-      const doctor = await jsonStorage.getDoctorByEmail(firebaseUser.email)
+      const doctor = jsonStorage.getDoctorByEmail(firebaseUser.email)
       const prescriptions = jsonStorage.getPrescriptionsByPatientId(selectedPatient.id)
       
       let sentCount = 0

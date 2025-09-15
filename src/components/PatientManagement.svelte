@@ -193,25 +193,35 @@
   // Statistics functions for dashboard
   const getTotalPrescriptions = () => {
     let total = 0
+    console.log('🔍 getTotalPrescriptions: Patients count:', patients.length)
     patients.forEach(patient => {
-      const patientPrescriptions = jsonStorage.getMedicationsByPatientId(patient.id) || []
+      const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
+      console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
+      console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
       total += patientPrescriptions.length
     })
+    console.log('🔍 getTotalPrescriptions: Total prescriptions:', total)
     return total
   }
   
   const getTotalDrugs = () => {
     let total = 0
+    console.log('🔍 getTotalDrugs: Patients count:', patients.length)
     patients.forEach(patient => {
-      const patientPrescriptions = jsonStorage.getMedicationsByPatientId(patient.id) || []
+      const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
+      console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
       patientPrescriptions.forEach(prescription => {
+        console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
         if (prescription.medications && Array.isArray(prescription.medications)) {
+          console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
           total += prescription.medications.length
         } else {
+          console.log(`🔍 getTotalDrugs: Prescription has no medications array, counting as 1`)
           total += 1 // Single medication prescription
         }
       })
     })
+    console.log('🔍 getTotalDrugs: Total drugs:', total)
     return total
   }
   
@@ -224,6 +234,7 @@
     
     return doctor.connectedPharmacists.length
   }
+
   
   // Create responsive prescriptions per day chart using Chart.js
   const createPrescriptionsChart = () => {

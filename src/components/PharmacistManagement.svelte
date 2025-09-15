@@ -20,13 +20,17 @@
       loading = true
       const allPharmacists = await jsonStorage.getAllPharmacists()
       
+      // Get the actual doctor data from storage to get the correct doctor ID
+      const doctor = jsonStorage.getDoctorByEmail(user.email)
+      const doctorId = doctor?.id
+      
       // Separate connected and unconnected pharmacists
       connectedPharmacists = allPharmacists.filter(pharmacist => 
-        pharmacist.connectedDoctors.includes(user.id)
+        pharmacist.connectedDoctors.includes(doctorId)
       )
       
       pharmacists = allPharmacists.filter(pharmacist => 
-        !pharmacist.connectedDoctors.includes(user.id)
+        !pharmacist.connectedDoctors.includes(doctorId)
       )
       
     } catch (error) {
@@ -53,7 +57,7 @@
     console.log('Connecting to pharmacist:', pharmacistNumber, 'Is own pharmacy:', isOwnPharmacy)
     
     try {
-      await jsonStorage.connectPharmacistToDoctor(pharmacistNumber, user.id)
+      await jsonStorage.connectPharmacistToDoctor(pharmacistNumber, user.email)
       const message = isOwnPharmacy 
         ? 'Successfully connected to your own pharmacy!'
         : 'Successfully connected to pharmacist!'
@@ -86,8 +90,17 @@
   const disconnectPharmacist = async (pharmacistId) => {
     try {
       const pharmacist = await jsonStorage.getPharmacistById(pharmacistId)
-      if (pharmacist) {
-        pharmacist.connectedDoctors = pharmacist.connectedDoctors.filter(id => id !== user.id)
+      const doctor = jsonStorage.getDoctorByEmail(user.email)
+      
+      if (pharmacist && doctor) {
+        // Remove doctor from pharmacist's connectedDoctors
+        pharmacist.connectedDoctors = pharmacist.connectedDoctors.filter(id => id !== doctor.id)
+        
+        // Remove pharmacist from doctor's connectedPharmacists
+        if (doctor.connectedPharmacists) {
+          doctor.connectedPharmacists = doctor.connectedPharmacists.filter(id => id !== pharmacistId)
+        }
+        
         await jsonStorage.saveData()
         notifySuccess('Pharmacist disconnected successfully')
         loadPharmacists()

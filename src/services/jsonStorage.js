@@ -115,7 +115,7 @@ class JSONStorage {
     return doctor
   }
 
-  async getDoctorByEmail(email) {
+  getDoctorByEmail(email) {
     return this.data.doctors.find(doctor => doctor.email === email)
   }
 
@@ -190,29 +190,37 @@ class JSONStorage {
     return this.data.pharmacists
   }
 
-  async connectPharmacistToDoctor(pharmacistNumber, doctorId) {
+  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier) {
     const pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
     if (!pharmacist) {
       throw new Error('Pharmacist not found')
     }
     
+    // Find doctor by ID first, then by email if not found
+    let doctor = await this.getDoctorById(doctorIdentifier)
+    if (!doctor) {
+      // Try to find by email (for Firebase users)
+      doctor = await this.getDoctorByEmail(doctorIdentifier)
+    }
+    
+    if (!doctor) {
+      throw new Error('Doctor not found')
+    }
+    
     // Add pharmacist to doctor's connectedPharmacists
-    const doctor = await this.getDoctorById(doctorId)
-    if (doctor) {
-      if (!doctor.connectedPharmacists) {
-        doctor.connectedPharmacists = []
-      }
-      if (!doctor.connectedPharmacists.includes(pharmacist.id)) {
-        doctor.connectedPharmacists.push(pharmacist.id)
-      }
+    if (!doctor.connectedPharmacists) {
+      doctor.connectedPharmacists = []
+    }
+    if (!doctor.connectedPharmacists.includes(pharmacist.id)) {
+      doctor.connectedPharmacists.push(pharmacist.id)
     }
     
     // Add doctor to pharmacist's connectedDoctors
     if (!pharmacist.connectedDoctors) {
       pharmacist.connectedDoctors = []
     }
-    if (!pharmacist.connectedDoctors.includes(doctorId)) {
-      pharmacist.connectedDoctors.push(doctorId)
+    if (!pharmacist.connectedDoctors.includes(doctor.id)) {
+      pharmacist.connectedDoctors.push(doctor.id)
     }
     
     this.saveData()
