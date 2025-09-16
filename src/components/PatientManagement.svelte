@@ -520,7 +520,7 @@
       console.log('Loaded illnesses:', illnesses.length)
       
       // Load prescriptions
-      prescriptions = await firebaseStorage.getMedicationsByPatientId(patientId) || []
+      prescriptions = await firebaseStorage.getPrescriptionsByPatientId(patientId) || []
       console.log('Loaded prescriptions:', prescriptions.length)
       
       // Load symptoms

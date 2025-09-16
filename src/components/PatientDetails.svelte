@@ -376,6 +376,9 @@
         console.log('💾 Medication added to prescription:', newMedication)
         
         // Update the current prescription object
+        if (!currentPrescription.medications) {
+          currentPrescription.medications = [];
+        }
         currentPrescription.medications.push(newMedication)
         currentPrescription.updatedAt = new Date().toISOString()
         
@@ -389,7 +392,6 @@
         // Update current medications array for display (reference to prescription medications)
         currentMedications = currentPrescription.medications
         console.log('📋 Added medication to current prescription:', newMedication.name)
-        console.log('📋 Current medications in prescription:', currentMedications.length)
         
         // Reset AI analysis state when medications change
         aiCheckComplete = false
@@ -1744,6 +1746,11 @@
                       currentMedications = currentPrescription.medications || [];
                       prescriptionNotes = '';
                       isNewPrescriptionSession = true;
+                      // Ensure the prescription has a medications array
+                      if (!currentPrescription.medications) {
+                        currentPrescription.medications = [];
+                        currentMedications = [];
+                      }
                       notifySuccess('New prescription created - medication form opened');
                     } else {
                       notifySuccess('Medication form opened - add drug details');

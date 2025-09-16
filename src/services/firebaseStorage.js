@@ -282,8 +282,6 @@ class FirebaseStorageService {
   // Add medication to prescription
   async addMedicationToPrescription(prescriptionId, medicationData) {
     try {
-      console.log('💊 Adding medication to prescription:', prescriptionId)
-      
       // Get the current prescription
       const prescriptionRef = doc(db, this.collections.medications, prescriptionId)
       const prescriptionDoc = await getDoc(prescriptionRef)
@@ -293,6 +291,8 @@ class FirebaseStorageService {
       }
       
       const prescriptionData = prescriptionDoc.data()
+      
+      // Initialize medications array if it doesn't exist
       const medications = prescriptionData.medications || []
       
       // Add the new medication
@@ -303,10 +303,12 @@ class FirebaseStorageService {
       }
       medications.push(newMedication)
       
-      // Update the prescription
-      await updateDoc(prescriptionRef, { medications })
+      // Update the prescription with the new medications array
+      await updateDoc(prescriptionRef, { 
+        medications: medications,
+        updatedAt: new Date().toISOString()
+      })
       
-      console.log('✅ Medication added to prescription successfully')
       return newMedication
     } catch (error) {
       console.error('Error adding medication to prescription:', error)
@@ -423,15 +425,19 @@ class FirebaseStorageService {
     try {
       const q = query(
         collection(db, this.collections.patients), 
-        where('doctorId', '==', doctorId),
-        orderBy('createdAt', 'desc')
+        where('doctorId', '==', doctorId)
       )
       const querySnapshot = await getDocs(q)
       
-      return querySnapshot.docs.map(doc => ({
+      const patients = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+      
+      // Sort by createdAt in JavaScript instead of Firestore
+      patients.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
+      return patients
     } catch (error) {
       console.error('Error getting patients by doctor ID:', error)
       throw error
@@ -473,15 +479,19 @@ class FirebaseStorageService {
     try {
       const q = query(
         collection(db, this.collections.illnesses), 
-        where('patientId', '==', patientId),
-        orderBy('createdAt', 'desc')
+        where('patientId', '==', patientId)
       )
       const querySnapshot = await getDocs(q)
       
-      return querySnapshot.docs.map(doc => ({
+      const illnesses = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+      
+      // Sort by createdAt in JavaScript instead of Firestore
+      illnesses.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
+      return illnesses
     } catch (error) {
       console.error('Error getting illnesses by patient ID:', error)
       throw error
@@ -493,6 +503,7 @@ class FirebaseStorageService {
     try {
       const medication = {
         ...medicationData,
+        medications: medicationData.medications || [], // Ensure medications array exists
         createdAt: new Date().toISOString()
       }
       
@@ -513,15 +524,19 @@ class FirebaseStorageService {
     try {
       const q = query(
         collection(db, this.collections.medications), 
-        where('patientId', '==', patientId),
-        orderBy('createdAt', 'desc')
+        where('patientId', '==', patientId)
       )
       const querySnapshot = await getDocs(q)
       
-      return querySnapshot.docs.map(doc => ({
+      const prescriptions = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+      
+      // Sort by createdAt in JavaScript instead of Firestore
+      prescriptions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
+      return prescriptions
     } catch (error) {
       console.error('Error getting prescriptions by patient ID:', error)
       throw error
@@ -566,15 +581,19 @@ class FirebaseStorageService {
     try {
       const q = query(
         collection(db, this.collections.symptoms), 
-        where('patientId', '==', patientId),
-        orderBy('createdAt', 'desc')
+        where('patientId', '==', patientId)
       )
       const querySnapshot = await getDocs(q)
       
-      return querySnapshot.docs.map(doc => ({
+      const symptoms = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+      
+      // Sort by createdAt in JavaScript instead of Firestore
+      symptoms.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
+      return symptoms
     } catch (error) {
       console.error('Error getting symptoms by patient ID:', error)
       throw error
