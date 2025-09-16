@@ -1210,6 +1210,10 @@
               prescriptionNotes = '';
               isNewPrescriptionSession = true;
               
+              // Add the new prescription to the prescriptions array immediately
+              prescriptions = [...prescriptions, currentPrescription];
+              console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
+              
               console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
               notifySuccess('New prescription created! Click "Add Drug" to add medications.');
             } catch (error) {
