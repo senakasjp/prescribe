@@ -623,20 +623,13 @@ import firebaseStorage from '../services/firebaseStorage.js'
         return
       }
       
-      // Get the actual doctor data from local storage (includes connectedPharmacists)
-      const doctor = jsonStorage.getDoctorByEmail(firebaseUser.email)
-      console.log('🔍 Doctor from storage:', doctor)
-      console.log('🔍 Doctor connectedPharmacists:', doctor?.connectedPharmacists)
+      // Get the actual doctor data from Firebase
+      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      console.log('🔍 Doctor from Firebase:', doctor)
       
       if (!doctor) {
-        console.log('❌ Doctor not found in storage')
+        console.log('❌ Doctor not found in Firebase')
         alert('Doctor profile not found. Please contact support.')
-        return
-      }
-      
-      if (!doctor.connectedPharmacists || doctor.connectedPharmacists.length === 0) {
-        console.log('❌ No connected pharmacists')
-        alert('No connected pharmacy found. Please connect a pharmacy first.')
         return
       }
       
@@ -656,31 +649,32 @@ import firebaseStorage from '../services/firebaseStorage.js'
         return
       }
       
-      // Get available pharmacies
-      availablePharmacies = []
-      console.log('🔍 Loading pharmacists for IDs:', doctor.connectedPharmacists)
+      // Get all pharmacists and find those connected to this doctor
+      const allPharmacists = await firebaseStorage.getAllPharmacists()
+      console.log('🔍 All pharmacists:', allPharmacists.length)
       
-      for (const pharmacistId of doctor.connectedPharmacists) {
-        try {
-          console.log('🔍 Loading pharmacist with ID:', pharmacistId)
-          const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
-          console.log('🔍 Loaded pharmacist:', pharmacist)
-          
-          if (pharmacist) {
-            availablePharmacies.push({
-              id: pharmacist.id,
-              name: pharmacist.businessName,
-              email: pharmacist.email,
-              address: pharmacist.address || 'Address not provided'
-            })
-            console.log('✅ Added pharmacist to list:', pharmacist.businessName)
-          } else {
-            console.log('❌ Pharmacist not found for ID:', pharmacistId)
-          }
-        } catch (error) {
-          console.error('❌ Error loading pharmacist:', pharmacistId, error)
-        }
+      // Find pharmacists connected to this doctor
+      const connectedPharmacists = allPharmacists.filter(pharmacist => 
+        pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
+      )
+      
+      console.log('🔍 Connected pharmacists for doctor:', connectedPharmacists.length)
+      
+      if (connectedPharmacists.length === 0) {
+        console.log('❌ No connected pharmacists')
+        alert('No connected pharmacy found. Please connect a pharmacy first.')
+        return
       }
+      
+      // Build available pharmacies list
+      availablePharmacies = connectedPharmacists.map(pharmacist => ({
+        id: pharmacist.id,
+        name: pharmacist.businessName,
+        email: pharmacist.email,
+        address: pharmacist.address || 'Address not provided'
+      }))
+      
+      console.log('✅ Available pharmacies:', availablePharmacies)
       
       console.log('🔍 Final available pharmacies:', availablePharmacies)
       

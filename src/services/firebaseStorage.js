@@ -596,12 +596,11 @@ class FirebaseStorageService {
 
       const allPrescriptions = []
       
-      // Get prescriptions from each connected doctor
+      // Get prescriptions from each connected doctor (without orderBy to avoid index requirement)
       for (const doctorId of pharmacist.connectedDoctors) {
         const q = query(
           collection(db, this.collections.medications), 
-          where('doctorId', '==', doctorId),
-          orderBy('createdAt', 'desc')
+          where('doctorId', '==', doctorId)
         )
         const querySnapshot = await getDocs(q)
         
@@ -613,7 +612,12 @@ class FirebaseStorageService {
         allPrescriptions.push(...doctorPrescriptions)
       }
       
-      return allPrescriptions
+      // Sort in JavaScript instead of Firestore to avoid index requirement
+      return allPrescriptions.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0)
+        const dateB = new Date(b.createdAt || 0)
+        return dateB - dateA // Descending order
+      })
     } catch (error) {
       console.error('Error getting pharmacist prescriptions:', error)
       throw error
@@ -622,13 +626,21 @@ class FirebaseStorageService {
 
   async getAllPrescriptions() {
     try {
-      const q = query(collection(db, this.collections.medications), orderBy('createdAt', 'desc'))
+      // Get all prescriptions without orderBy to avoid index requirement
+      const q = query(collection(db, this.collections.medications))
       const querySnapshot = await getDocs(q)
       
-      return querySnapshot.docs.map(doc => ({
+      const prescriptions = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+      
+      // Sort in JavaScript instead of Firestore to avoid index requirement
+      return prescriptions.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0)
+        const dateB = new Date(b.createdAt || 0)
+        return dateB - dateA // Descending order
+      })
     } catch (error) {
       console.error('Error getting all prescriptions:', error)
       throw error
