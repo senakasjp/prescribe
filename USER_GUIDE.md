@@ -14,6 +14,7 @@
 - **Optional Start Date**: When adding medications, the start date is now optional (defaults to today if not specified)
 - **AI Drug Interaction Analysis**: Automatic drug interaction checking when completing prescriptions
 - **Simplified Workflow**: Clear prescription creation process - click "New Prescription" to create a new prescription
+- **MedicalSummary Data Display**: Fixed display issues showing actual medication names, dosages, and durations instead of "Unknown prescription"
 
 ### **🎯 New Prescription Logic**
 - **Simple Rule**: Click "New Prescription" button = Always creates a new prescription
@@ -27,6 +28,10 @@
 - **Professional Layout**: Improved visual organization with card-based design
 - **Gender Selection**: Added gender field to patient forms
 - **City Field**: Added compulsory city field to doctor profiles with country-based dropdown
+- **Enhanced Card Borders**: All cards now have consistent light blue borders for better visual separation
+- **Colored Navigation Tabs**: Patient tabs converted to colored buttons with black border container for enhanced visibility
+- **Dashboard Card Styling**: Statistics cards have neutral borders for cleaner appearance
+- **Prescription History**: Enhanced display showing "Prescription #X on date" with professional styling
 
 ### **📱 Mobile Experience**
 - **Mobile Header**: Optimized header layout for mobile devices

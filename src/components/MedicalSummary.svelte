@@ -23,6 +23,15 @@
   $: illnessesCount = illnesses?.length || 0
   $: prescriptionsCount = prescriptions?.length || 0
   
+  // Extract all medications from prescriptions for display
+  $: allMedications = prescriptions?.flatMap(prescription => 
+    prescription.medications?.map(medication => ({
+      ...medication,
+      prescriptionId: prescription.id,
+      prescriptionDate: prescription.createdAt
+    })) || []
+  ) || []
+  
   // Handle tab change
   const handleTabChange = (tab) => {
     dispatch('tabChange', { tab })
@@ -239,11 +248,11 @@
         <!-- Prescriptions Tab -->
         {#if activeMedicalTab === 'prescriptions'}
           <div class="tab-pane active">
-            {#if prescriptions && prescriptions.length > 0}
+            {#if allMedications && allMedications.length > 0}
               <div class="mb-2">
                 <small class="text-muted">Recent:</small>
                 <div class="mt-2">
-                  {#each groupByDate(prescriptions).slice(0, 2) as group}
+                  {#each groupByDate(allMedications).slice(0, 2) as group}
                     <div class="mb-2">
                       <small class="text-muted fw-bold small">
                         <i class="fas fa-calendar me-1"></i>{group.date}
@@ -255,7 +264,7 @@
                               {#if medication.name}
                                 {medication.name.length > 20 ? medication.name.substring(0, 20) + '...' : medication.name}
                               {:else}
-                                <small class="text-muted">Unknown prescription</small>
+                                <small class="text-muted">Unknown medication</small>
                               {/if}
                             </span>
                           </div>
@@ -281,14 +290,14 @@
                       {/if}
                     </div>
                   {/each}
-                  {#if groupByDate(prescriptions).length > 2}
-                    <small class="text-muted small">+{groupByDate(prescriptions).length - 2} more days</small>
+                  {#if groupByDate(allMedications).length > 2}
+                    <small class="text-muted small">+{groupByDate(allMedications).length - 2} more days</small>
                   {/if}
                 </div>
               </div>
               
               <!-- Show Notes Button -->
-              {#if hasNotes(prescriptions, 'notes')}
+              {#if hasNotes(allMedications, 'notes')}
                 <div class="mt-2">
                   <button 
                     class="btn btn-outline-success btn-sm small"
@@ -301,13 +310,13 @@
               {/if}
               
               <!-- Notes Display -->
-              {#if showPrescriptionsNotes && hasNotes(prescriptions, 'notes')}
+              {#if showPrescriptionsNotes && hasNotes(allMedications, 'notes')}
                 <div class="mt-2">
                   <small class="text-muted fw-bold">Notes:</small>
                   <div class="mt-1">
-                    {#each prescriptions.filter(m => m.notes && m.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as medication}
+                    {#each allMedications.filter(m => m.notes && m.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as medication}
                       <div class="mb-1 p-2 bg-success bg-opacity-10 rounded small">
-                        <div class="fw-bold fs-5">{medication.name || 'Prescription'}</div>
+                        <div class="fw-bold fs-5">{medication.name || 'Medication'}</div>
                         <div class="text-muted">{medication.notes}</div>
                         <small class="text-muted">
                           <i class="fas fa-calendar me-1"></i>{medication.createdAt ? new Date(medication.createdAt).toLocaleDateString() : 'No date'}

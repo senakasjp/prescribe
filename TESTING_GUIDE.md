@@ -8,6 +8,7 @@ This guide will help you test the Firebase-only implementation step by step.
 - **Firebase Index Issues**: Resolved Firebase compound query index errors by removing orderBy clauses
 - **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
 - **Simplified Prescription Logic**: New Prescription button always creates a new prescription
+- **MedicalSummary Data Display**: Fixed "Unknown prescription" and "No dosage" issues by properly extracting medications from prescriptions
 
 ### **🎯 New Prescription Workflow**
 - **Simple Rule**: Click "New Prescription" button = Always creates a new prescription
@@ -34,6 +35,8 @@ Open http://localhost:5173 in your browser
 - ✅ AI drug interaction analysis works
 - ✅ Prescriptions persist on page refresh
 - ✅ New prescription workflow works correctly
+- ✅ MedicalSummary shows actual medication data instead of "Unknown prescription"
+- ✅ Enhanced card borders and colored navigation tabs display correctly
 
 ### Step 1.5: Test Profile Management
 

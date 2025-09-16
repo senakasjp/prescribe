@@ -15,6 +15,7 @@
 - **Prescription Structure**: Implemented proper prescription-medication hierarchy
 - **Data Loading**: Enhanced data initialization for existing prescriptions
 - **Doctor-Patient Isolation**: Doctors only see patients they created
+- **MedicalSummary Data Display**: Fixed "Unknown prescription" and "No dosage" issues by properly extracting medications from prescriptions
 
 ### **🎯 Simplified Prescription Logic**
 - **New Prescription Button**: Always creates a new prescription when clicked (simple rule)
@@ -30,6 +31,9 @@
 - **Patient Editing**: Enhanced patient data editing with comprehensive validation
 - **Gender Selection**: Added gender field to patient forms
 - **City Field**: Added compulsory city field to doctor profiles with country-based dropdown
+- **Enhanced Card Borders**: Applied consistent light blue borders to all card components for better visual separation
+- **Colored Navigation Tabs**: Converted patient tabs to colored buttons with black border container for enhanced visibility
+- **Dashboard Card Styling**: Neutralized dashboard statistics card borders for cleaner appearance
 
 ### **📊 Data Model Enhancements**
 - **Prescription Containers**: Medications now properly stored within prescription objects
@@ -37,6 +41,7 @@
 - **Storage Optimization**: Improved data persistence and loading mechanisms
 - **Pharmacist Integration**: Complete Firebase-based pharmacist-doctor connection system
 - **Sri Lanka Districts**: Added all 25 districts of Sri Lanka to city selection
+- **Prescription History Display**: Enhanced prescription history with grouped display showing "Prescription #X on date" with Bootstrap 5 styling
 
 ### **👤 Profile Management Fixes**
 - **User Object Integration**: Fixed issue where EditProfile component received incomplete user data
