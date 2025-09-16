@@ -1,6 +1,6 @@
 # Development Guide
 
-## 📋 Recent Updates (January 15, 2025)
+## 📋 Recent Updates (January 16, 2025)
 
 ### **🔥 Firebase-Only Migration**
 - **Complete Migration**: All data operations now use Firebase Firestore exclusively
@@ -11,9 +11,17 @@
 
 ### **🔧 Critical Fixes**
 - **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
+- **Firebase Index Issues**: Resolved Firebase compound query index errors by removing orderBy clauses from queries
 - **Prescription Structure**: Implemented proper prescription-medication hierarchy
-- **Data Loading**: Enhanced `setupCurrentPrescription()` function for proper data initialization
+- **Data Loading**: Enhanced data initialization for existing prescriptions
 - **Doctor-Patient Isolation**: Doctors only see patients they created
+
+### **🎯 Simplified Prescription Logic**
+- **New Prescription Button**: Always creates a new prescription when clicked (simple rule)
+- **Clear Workflow**: Removed automatic prescription creation from "Add Drug" button
+- **User-Friendly Messages**: Added helpful error messages and success notifications
+- **Button States**: "Add Drug" button disabled until prescription exists
+- **Consistent Behavior**: Predictable prescription management workflow
 
 ### **🎨 UI/UX Improvements**
 - **Responsive Header**: Fixed mobile responsiveness with proper Bootstrap 5 layout
@@ -21,12 +29,14 @@
 - **Optional Start Date**: Made medication start date optional with smart defaults
 - **Patient Editing**: Enhanced patient data editing with comprehensive validation
 - **Gender Selection**: Added gender field to patient forms
+- **City Field**: Added compulsory city field to doctor profiles with country-based dropdown
 
 ### **📊 Data Model Enhancements**
 - **Prescription Containers**: Medications now properly stored within prescription objects
 - **Firebase Integration**: All CRUD operations use Firebase Firestore
 - **Storage Optimization**: Improved data persistence and loading mechanisms
 - **Pharmacist Integration**: Complete Firebase-based pharmacist-doctor connection system
+- **Sri Lanka Districts**: Added all 25 districts of Sri Lanka to city selection
 
 ### **👤 Profile Management Fixes**
 - **User Object Integration**: Fixed issue where EditProfile component received incomplete user data

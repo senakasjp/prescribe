@@ -1189,35 +1189,36 @@
         <button 
           class="btn btn-success btn-sm me-2" 
           on:click={async () => { 
-            console.log('🆕 New Prescription button clicked');
+            console.log('🆕 New Prescription button clicked - Creating NEW prescription');
             activeTab = 'prescriptions'; 
             showMedicationForm = false; 
             editingMedication = null;
             prescriptionFinished = false;
             
             try {
-              // Create a new prescription
+              // ALWAYS create a new prescription when button is clicked
               currentPrescription = await firebaseStorage.createPrescription({
                 patientId: selectedPatient.id,
                 doctorId: doctorId,
-                notes: ''
+                notes: '',
+                isNew: true  // Mark as new prescription
               });
-              console.log('📋 Created new prescription:', currentPrescription.id);
+              console.log('📋 Created NEW prescription:', currentPrescription.id);
               
-              // Set current medications to reference the new prescription's medications array
-              currentMedications = currentPrescription.medications || [];
+              // Initialize new prescription
+              currentMedications = [];
               prescriptionNotes = '';
               isNewPrescriptionSession = true;
-              console.log('🆕 Set isNewPrescriptionSession = true, initialized currentMedications');
               
-              // Don't auto-show medication form - wait for "Add Drug" button
-              console.log('✅ New prescription created - ready for "Add Drug" button');
+              console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
+              notifySuccess('New prescription created! Click "Add Drug" to add medications.');
             } catch (error) {
               console.error('❌ Error creating new prescription:', error);
+              notifyError('Failed to create new prescription: ' + error.message);
             }
           }}
           disabled={loading || isEditingPatient}
-          title="Add new prescription"
+          title="Create a new prescription"
         >
           <i class="fas fa-plus me-1"></i>New Prescription
         </button>
@@ -1727,43 +1728,20 @@
               <!-- Add Drug Button -->
             <button 
                 class="btn btn-primary btn-sm" 
-                on:click={async () => { 
-                  console.log('🔍 Add Drug clicked - currentPrescription:', currentPrescription);
-                  console.log('🔍 showMedicationForm:', showMedicationForm);
+                on:click={() => { 
+                  console.log('💊 Add Drug clicked');
                   
-                  try {
-                    // If no current prescription exists, create one automatically
-                    if (!currentPrescription) {
-                      console.log('📋 No current prescription - creating new one automatically');
-                      currentPrescription = await firebaseStorage.createPrescription({
-                        patientId: selectedPatient.id,
-                        doctorId: doctorId,
-                        notes: ''
-                      });
-                      console.log('📋 Created new prescription automatically:', currentPrescription.id);
-                      
-                      // Set current medications to reference the new prescription's medications array
-                      currentMedications = currentPrescription.medications || [];
-                      prescriptionNotes = '';
-                      isNewPrescriptionSession = true;
-                      // Ensure the prescription has a medications array
-                      if (!currentPrescription.medications) {
-                        currentPrescription.medications = [];
-                        currentMedications = [];
-                      }
-                      notifySuccess('New prescription created - medication form opened');
-                    } else {
-                      notifySuccess('Medication form opened - add drug details');
-                    }
-                    
-                    showMedicationForm = true;
-                    editingMedication = null;
-                  } catch (error) {
-                    console.error('❌ Error creating prescription:', error);
-                    notifyError('Failed to create prescription: ' + error.message);
+                  if (!currentPrescription) {
+                    notifyError('Please click "New Prescription" first to create a prescription.');
+                    return;
                   }
+                  
+                  showMedicationForm = true;
+                  editingMedication = null;
+                  notifySuccess('Medication form opened - add drug details');
                 }}
-                disabled={showMedicationForm}
+                disabled={showMedicationForm || !currentPrescription}
+                title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
             >
               <i class="fas fa-plus me-1"></i>Add Drug
             </button>

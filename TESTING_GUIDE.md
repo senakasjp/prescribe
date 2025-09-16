@@ -2,6 +2,18 @@
 
 This guide will help you test the Firebase-only implementation step by step.
 
+## 🆕 Recent Updates (January 16, 2025)
+
+### **🔧 Critical Fixes**
+- **Firebase Index Issues**: Resolved Firebase compound query index errors by removing orderBy clauses
+- **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
+- **Simplified Prescription Logic**: New Prescription button always creates a new prescription
+
+### **🎯 New Prescription Workflow**
+- **Simple Rule**: Click "New Prescription" button = Always creates a new prescription
+- **Clear Workflow**: Must create prescription before adding medications
+- **User-Friendly**: Helpful error messages guide users through the process
+
 ## 🚀 Quick Start Testing
 
 ### Step 1: Test Firebase-Only App
@@ -15,11 +27,13 @@ Open http://localhost:5173 in your browser
 - ✅ Doctor login/registration works (both Google and local auth)
 - ✅ Patient management functions work
 - ✅ Data persists in Firebase Firestore
-- ✅ Profile editing works correctly
+- ✅ Profile editing works correctly (including city field)
 - ✅ Firebase doctor creation works for both auth methods
 - ✅ Pharmacist connection works
 - ✅ Doctor-patient isolation (doctors only see their own patients)
 - ✅ AI drug interaction analysis works
+- ✅ Prescriptions persist on page refresh
+- ✅ New prescription workflow works correctly
 
 ### Step 1.5: Test Profile Management
 
@@ -33,13 +47,16 @@ Open http://localhost:5173 in your browser
    - ✅ First Name field shows current first name
    - ✅ Last Name field shows current last name
    - ✅ Country dropdown shows current country
+   - ✅ City dropdown shows current city (based on selected country)
    - ✅ Email field shows current email (read-only)
 
 3. **Form Editing**
    - ✅ Can type in First Name field
    - ✅ Can type in Last Name field
    - ✅ Can change country selection
-   - ✅ Form validation works (required fields)
+   - ✅ City dropdown updates when country changes
+   - ✅ Can select city from dropdown (Sri Lanka districts available)
+   - ✅ Form validation works (required fields including city)
 
 4. **Save Changes**
    - ✅ Click "Save Changes" button
@@ -109,6 +126,42 @@ Test that both authentication methods create Firebase doctor records:
    ✅ Successfully connected pharmacist to doctor
    ```
 4. **Verify**: Connection should succeed (no "Doctor not found" error)
+
+### Step 2.5: Test New Prescription Workflow
+
+#### Prescription Creation Testing
+Test the simplified prescription creation workflow:
+
+**Test 2.5.1: New Prescription Button**
+1. **Select a patient** from the patient list
+2. **Go to Prescriptions tab**
+3. **Click "New Prescription" button**
+4. **Check console** for success message:
+   ```
+   🆕 New Prescription button clicked - Creating NEW prescription
+   📋 Created NEW prescription: [prescription-id]
+   ✅ NEW prescription ready - click "Add Drug" to add medications
+   ```
+5. **Verify**: Success notification appears
+6. **Verify**: "Add Drug" button is now enabled
+
+**Test 2.5.2: Add Drug Button**
+1. **With prescription created**, click "Add Drug" button
+2. **Verify**: Medication form opens
+3. **Fill in medication details** and save
+4. **Verify**: Medication is added to prescription
+5. **Refresh page** and verify prescription persists
+
+**Test 2.5.3: Add Drug Without Prescription**
+1. **Without creating prescription**, try clicking "Add Drug"
+2. **Verify**: Error message appears: "Please click 'New Prescription' first to create a prescription."
+3. **Verify**: "Add Drug" button is disabled
+
+**Test 2.5.4: Prescription Persistence**
+1. **Create a prescription** with medications
+2. **Refresh the page**
+3. **Verify**: Prescription and medications are still visible
+4. **Verify**: No Firebase index errors in console
 
 ### Step 3: Test Firebase Integration
 

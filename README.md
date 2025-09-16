@@ -2,7 +2,7 @@
 
 A comprehensive patient management system built with Svelte 4, Bootstrap 5, and Firebase, featuring advanced AI capabilities for medical recommendations and drug interaction analysis. Designed for doctors and pharmacists to manage patient records, track medical history, and coordinate prescription management with intelligent safety features.
 
-## 🆕 Recent Updates (January 15, 2025)
+## 🆕 Recent Updates (January 16, 2025)
 
 ### **🔥 Firebase-Only Implementation**
 - **Complete Migration**: All data operations now use Firebase Firestore exclusively
@@ -12,9 +12,16 @@ A comprehensive patient management system built with Svelte 4, Bootstrap 5, and 
 
 ### **🔧 Critical Fixes**
 - **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
+- **Firebase Index Issues**: Resolved Firebase compound query index errors by removing orderBy clauses
 - **Prescription Structure**: Implemented proper prescription-medication hierarchy
 - **Data Loading**: Enhanced data initialization for existing prescriptions
 - **Doctor-Patient Isolation**: Doctors only see patients they created
+
+### **🎯 Simplified Prescription Logic**
+- **New Prescription Button**: Always creates a new prescription when clicked
+- **Clear Workflow**: Simple and intuitive prescription creation process
+- **User-Friendly**: Helpful error messages and button states
+- **Consistent Behavior**: Predictable prescription management workflow
 
 ### **🎨 UI/UX Improvements**
 - **Responsive Header**: Fixed mobile responsiveness with proper Bootstrap 5 layout
@@ -22,12 +29,14 @@ A comprehensive patient management system built with Svelte 4, Bootstrap 5, and 
 - **Optional Start Date**: Medication start date now optional with smart defaults
 - **Enhanced Patient Editing**: Comprehensive patient data editing with validation
 - **Profile Management**: Real-time profile editing with immediate UI updates
+- **City Field**: Added compulsory city field to doctor profiles with country-based dropdown
 
 ### **📊 Data Model Enhancements**
 - **Hierarchical Structure**: Proper prescription containers with multiple medications
 - **Firebase Integration**: All CRUD operations use Firebase Firestore
 - **Storage Optimization**: Improved data persistence and loading mechanisms
 - **Pharmacist Integration**: Complete Firebase-based pharmacist-doctor connection system
+- **Sri Lanka Districts**: Added all 25 districts of Sri Lanka to city selection
 
 ## 🏥 Features
 

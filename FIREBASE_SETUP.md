@@ -2,6 +2,18 @@
 
 This guide will help you set up Firebase for the M-Prescribe application.
 
+## 🆕 Recent Updates (January 16, 2025)
+
+### **🔧 Critical Fixes**
+- **Firebase Index Issues**: Resolved Firebase compound query index errors by removing orderBy clauses
+- **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
+- **Simplified Prescription Logic**: New Prescription button always creates a new prescription
+
+### **🎯 New Prescription Workflow**
+- **Simple Rule**: Click "New Prescription" button = Always creates a new prescription
+- **Clear Workflow**: Must create prescription before adding medications
+- **User-Friendly**: Helpful error messages guide users through the process
+
 ## 🔥 Firebase Project Setup
 
 ### Step 1: Create Firebase Project

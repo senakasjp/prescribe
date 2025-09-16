@@ -8,6 +8,7 @@ A prescription has one or more drugs (medicines)
 A patient has a symptoms, ilnesses, tests and prescription hostory
 Doctor and register/select a patient
 Under patient symptoms and prescriptions can be entered
+To indentify new prescripiton just consider click "+ New Prescripton" as a start of new prescription
 Prescription can be printed as PDF 
 
 Make another account type pharmacist.

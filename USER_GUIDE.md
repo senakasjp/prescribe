@@ -1,6 +1,6 @@
 # User Guide
 
-## 🆕 Recent Updates (January 15, 2025)
+## 🆕 Recent Updates (January 16, 2025)
 
 ### **🔥 Firebase-Only Implementation**
 - **Cloud Storage**: All patient data, prescriptions, and medical records are now stored in Firebase
@@ -13,12 +13,20 @@
 - **Prescription Cards**: Prescription functionality is now organized in a professional card design
 - **Optional Start Date**: When adding medications, the start date is now optional (defaults to today if not specified)
 - **AI Drug Interaction Analysis**: Automatic drug interaction checking when completing prescriptions
+- **Simplified Workflow**: Clear prescription creation process - click "New Prescription" to create a new prescription
+
+### **🎯 New Prescription Logic**
+- **Simple Rule**: Click "New Prescription" button = Always creates a new prescription
+- **Clear Workflow**: Must create prescription before adding medications
+- **User-Friendly**: Helpful error messages guide you through the process
+- **Consistent**: Predictable behavior every time
 
 ### **🎨 User Interface Enhancements**
 - **Responsive Design**: The header now works perfectly on mobile devices and tablets
 - **Enhanced Patient Editing**: Patient information can be edited with comprehensive validation
 - **Professional Layout**: Improved visual organization with card-based design
 - **Gender Selection**: Added gender field to patient forms
+- **City Field**: Added compulsory city field to doctor profiles with country-based dropdown
 
 ### **📱 Mobile Experience**
 - **Mobile Header**: Optimized header layout for mobile devices
@@ -26,10 +34,11 @@
 - **Responsive Forms**: All forms now work seamlessly on mobile devices
 
 ### **👤 Profile Management**
-- **Edit Profile**: Update your personal information including name and country
+- **Edit Profile**: Update your personal information including name, country, and city
 - **Real-time Updates**: Profile changes are reflected immediately in the UI
 - **Form Pre-population**: Edit form automatically shows your current values
 - **Data Persistence**: Profile changes are saved to Firebase and persist across sessions
+- **Sri Lanka Districts**: All 25 districts of Sri Lanka available for city selection
 
 ### **🔥 Firebase Integration**
 - **Dual Authentication**: Both Google and local authentication methods are supported
@@ -214,19 +223,22 @@ Manage diagnosed conditions:
 ### Prescriptions Tab
 M-Prescribe and track prescriptions:
 
-#### Adding Prescriptions
-1. **Click "Add Medication"** button
-2. **Enter Medication Details**:
+#### Creating New Prescriptions
+1. **Click "New Prescription"** button (creates a new prescription)
+2. **Click "Add Drug"** button (opens medication form)
+3. **Enter Medication Details**:
    - **Name** - Medication name (with autocomplete suggestions)
    - **Dosage** - Amount and frequency
    - **Instructions** - How to take the medication
    - **Duration** - Treatment length
    - **Notes** - Additional instructions
-3. **Use Drug Database**:
+4. **Use Drug Database**:
    - Type medication name to see suggestions
    - Click "To database" to add new drugs
    - Select from dropdown to auto-fill form
-4. **Click "Save Medication"**
+5. **Click "Save Medication"** (adds medication to current prescription)
+6. **Repeat steps 2-5** to add more medications to the same prescription
+7. **Complete/Send/Print** the prescription when finished
 
 #### Editing Prescriptions
 1. **Click "Edit" button** next to any prescription
