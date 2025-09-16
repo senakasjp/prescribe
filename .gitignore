@@ -65,5 +65,16 @@ node_modules/
 # dotenv environment variables file
 .env
 
+# Build output directories
+dist/
+build/
+out/
+
+# Vite build cache
+.vite/
+
+# Svelte build cache
+.svelte-kit/
+
 # dataconnect generated files
 .dataconnect

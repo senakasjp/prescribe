@@ -46,6 +46,7 @@
     lastName: '',
     email: '',
     phone: '',
+    gender: '',
     dateOfBirth: '',
     age: '',
     weight: '',
@@ -985,12 +986,16 @@
   
   // Patient edit functions
   const startEditingPatient = () => {
+    console.log('Edit button clicked, starting patient edit mode')
+    console.log('Selected patient:', selectedPatient)
+    
     // Populate edit form with current patient data
     editPatientData = {
       firstName: selectedPatient.firstName || '',
       lastName: selectedPatient.lastName || '',
       email: selectedPatient.email || '',
       phone: selectedPatient.phone || '',
+      gender: selectedPatient.gender || '',
       dateOfBirth: selectedPatient.dateOfBirth || '',
       age: selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || '',
       weight: selectedPatient.weight || '',
@@ -1001,8 +1006,11 @@
       emergencyContact: selectedPatient.emergencyContact || '',
       emergencyPhone: selectedPatient.emergencyPhone || ''
     }
+    
+    console.log('Edit patient data populated:', editPatientData)
     isEditingPatient = true
     editError = ''
+    console.log('Edit mode enabled, isEditingPatient:', isEditingPatient)
   }
   
   const cancelEditingPatient = () => {
@@ -1013,6 +1021,7 @@
       lastName: '',
       email: '',
       phone: '',
+      gender: '',
       dateOfBirth: '',
       age: '',
       weight: '',
@@ -1209,6 +1218,7 @@
           class="btn btn-outline-primary btn-sm" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
+          title="Edit patient information"
         >
           <i class="fas fa-edit me-1"></i>Edit
         </button>
@@ -1290,6 +1300,28 @@
                           bind:value={editPatientData.phone}
                           disabled={savingPatient}
                         >
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <div class="mb-3">
+                        <label for="editGender" class="form-label">
+                          <i class="fas fa-venus-mars me-1"></i>Gender
+                        </label>
+                        <select 
+                          class="form-select" 
+                          id="editGender" 
+                          bind:value={editPatientData.gender}
+                          disabled={savingPatient}
+                        >
+                          <option value="">Select Gender</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                          <option value="Prefer not to say">Prefer not to say</option>
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -1475,6 +1507,7 @@
                   <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
                   <p><strong>Email:</strong> {selectedPatient.email}</p>
                   <p><strong>Phone:</strong> {selectedPatient.phone || 'Not provided'}</p>
+                  <p><strong>Gender:</strong> {selectedPatient.gender || 'Not specified'}</p>
                     <p><strong>Date of Birth:</strong> {selectedPatient.dateOfBirth}</p>
                     <p><strong>Age:</strong> {selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || 'Not calculated'}</p>
                     {#if selectedPatient.weight}
@@ -1850,11 +1883,11 @@
           
           <!-- Current Prescriptions List -->
           {#if currentMedications && currentMedications.length > 0}
-            <div class="list-group">
+            <div class="medication-list">
               {#each currentMedications as medication, index}
-                <div class="list-group-item d-flex justify-content-between align-items-start">
-                  <div class="ms-2 me-auto">
-                    <div class="fw-bold fs-5">{medication.name}</div>
+                <div class="medication-item d-flex justify-content-between align-items-center py-2 border-bottom">
+                  <div class="flex-grow-1">
+                    <div class="fw-bold fs-6">{medication.name}</div>
                     <small class="text-muted">
                       {medication.dosage} • {medication.frequency} • {medication.duration}
                     </small>
@@ -2147,5 +2180,26 @@
   .interaction-content .text-danger {
     color: var(--bs-danger) !important;
     font-weight: bold;
+  }
+
+  /* Medication list styling - compact without cards */
+  .medication-list {
+    background: transparent;
+  }
+  
+  .medication-item {
+    background: transparent;
+    border: none !important;
+    border-radius: 0;
+    padding: 0.5rem 0;
+    transition: background-color 0.2s ease;
+  }
+  
+  .medication-item:hover {
+    background-color: var(--bs-light);
+  }
+  
+  .medication-item:last-child {
+    border-bottom: none !important;
   }
 </style>

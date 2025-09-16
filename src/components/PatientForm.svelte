@@ -7,6 +7,7 @@
   let lastName = ''
   let email = ''
   let phone = ''
+  let gender = ''
   let dateOfBirth = ''
   let age = ''
   let weight = ''
@@ -83,6 +84,7 @@
         lastName: lastName.trim() || '',
         email: email.trim() || '',
         phone: phone.trim() || '',
+        gender: gender || '',
         dateOfBirth: dateOfBirth || '',
         age: calculatedAge,
         weight: weight.trim() || '',
@@ -101,6 +103,7 @@
       lastName = ''
       email = ''
       phone = ''
+      gender = ''
       dateOfBirth = ''
       age = ''
       weight = ''
@@ -188,6 +191,28 @@
               bind:value={phone}
               disabled={loading}
             >
+          </div>
+        </div>
+      </div>
+      
+      <div class="row g-3">
+        <div class="col-12 col-md-6">
+          <div class="mb-3">
+            <label for="gender" class="form-label">
+              <i class="fas fa-venus-mars me-1"></i>Gender
+            </label>
+            <select 
+              class="form-select" 
+              id="gender" 
+              bind:value={gender}
+              disabled={loading}
+            >
+              <option value="">Select Gender</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+              <option value="Prefer not to say">Prefer not to say</option>
+            </select>
           </div>
         </div>
       </div>
