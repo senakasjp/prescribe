@@ -4,6 +4,7 @@
   import firebaseAuthService from './services/firebaseAuth.js'
   import adminAuthService from './services/adminAuthService.js'
   import aiTokenTracker from './services/aiTokenTracker.js'
+  import jsonStorage from './services/jsonStorage.js'
   import DoctorAuth from './components/DoctorAuth.svelte'
   import PharmacistAuth from './components/PharmacistAuth.svelte'
   import PharmacistDashboard from './components/PharmacistDashboard.svelte'
@@ -131,7 +132,38 @@
   }
   
   // Handle edit profile
-  const handleEditProfile = () => {
+  const handleEditProfile = async () => {
+    console.log('App: Opening edit profile modal for user:', user)
+    console.log('App: User firstName:', user?.firstName)
+    console.log('App: User lastName:', user?.lastName)
+    console.log('App: User country:', user?.country)
+    console.log('App: User name:', user?.name)
+    console.log('App: User displayName:', user?.displayName)
+    console.log('App: User email:', user?.email)
+    
+    // If user doesn't have profile data, fetch it from database
+    if (!user?.firstName || !user?.lastName || !user?.country) {
+      console.log('App: User missing profile data, fetching from database...')
+      try {
+        const doctorData = jsonStorage.getDoctorByEmail(user.email)
+        console.log('App: Retrieved doctor data from database:', doctorData)
+        
+        if (doctorData) {
+          // Merge database data with current user - create new object reference
+          user = {
+            ...user,
+            ...doctorData
+          }
+          console.log('App: Merged user data:', user)
+          console.log('App: User firstName after merge:', user.firstName)
+          console.log('App: User lastName after merge:', user.lastName)
+          console.log('App: User country after merge:', user.country)
+        }
+      } catch (error) {
+        console.error('App: Error fetching doctor data:', error)
+      }
+    }
+    
     showEditProfileModal = true
   }
   
@@ -141,15 +173,33 @@
   }
   
   // Handle profile update
-  const handleProfileUpdate = (updatedUser) => {
+  const handleProfileUpdate = (event) => {
+    const updatedUser = event.detail
     console.log('App: Profile updated, new user data:', updatedUser)
-    user = updatedUser
+    console.log('App: Updated user firstName:', updatedUser.firstName)
+    console.log('App: Updated user lastName:', updatedUser.lastName)
+    console.log('App: Updated user name:', updatedUser.name)
+    console.log('App: Updated user country:', updatedUser.country)
+    
+    // Force reactive update by creating a new object reference
+    user = { ...updatedUser }
+    
     // Ensure authService also has the updated user
     authService.saveCurrentUser(updatedUser)
+    
     // Set flag to prevent Firebase from overriding this update
     userJustUpdated = true
-    showEditProfileModal = false
+    
+    // Close modal after a small delay to ensure UI updates
+    setTimeout(() => {
+      showEditProfileModal = false
+    }, 100)
+    
+    console.log('App: Profile update complete, user firstName:', user.firstName)
+    console.log('App: Profile update complete, user lastName:', user.lastName)
+    console.log('App: Profile update complete, user name:', user.name)
     console.log('App: Profile update complete, user country:', user.country)
+    console.log('App: Profile update complete, full user object:', user)
   }
   
   // Handle admin panel access
@@ -256,7 +306,7 @@
               <!-- User Info -->
               <div class="navbar-text me-3 d-flex align-items-center">
                 <i class="fas fa-user me-2"></i>
-                <span class="me-3">Dr. {user.name || (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.firstName) || user.email}</span>
+                <span class="me-3">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
                 
                 <!-- AI Health Bar - Progress Bar -->
                 <div class="d-flex align-items-center me-3">
@@ -296,7 +346,7 @@
               <!-- User Info Row -->
               <div class="d-flex align-items-center mb-2">
                 <i class="fas fa-user me-2"></i>
-                <span class="text-light">Dr. {user.firstName || user.email}</span>
+                <span class="text-light">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
               </div>
               
               <!-- AI Health Bar Row -->
@@ -337,7 +387,7 @@
       </nav>
       
       <div class="container-fluid mt-3 mt-md-4 px-3 px-md-4">
-        <PatientManagement {user} on:ai-usage-updated={refreshDoctorUsageStats} />
+        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} />
       </div>
     {/if}
   {:else}

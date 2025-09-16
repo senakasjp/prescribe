@@ -16,6 +16,16 @@
   
   // Reactive statement to ensure component updates when user changes
   $: userKey = user?.id || user?.email || 'default'
+  $: userUpdated = user ? `${user.firstName}-${user.lastName}-${user.country}` : 'default'
+  $: userProfileKey = user ? `${user.firstName || ''}-${user.lastName || ''}-${user.country || ''}-${user.email || ''}` : 'default'
+  
+  // Force component re-render when user profile data changes
+  $: userProfileData = user ? {
+    firstName: user.firstName,
+    lastName: user.lastName,
+    country: user.country,
+    email: user.email
+  } : {}
   
   // Reactive statement to log user changes for debugging
   $: if (user) {
@@ -27,10 +37,23 @@
     console.log('PatientManagement: User email:', user.email)
   }
 
-  // Get doctor's data from storage
+  // Get doctor's data from storage - reactive to user changes
   $: doctorData = user ? jsonStorage.getDoctorByEmail(user.email) : null
-  $: doctorName = doctorData ? (doctorData.displayName || (doctorData.firstName && doctorData.lastName ? `${doctorData.firstName} ${doctorData.lastName}` : doctorData.firstName) || user?.displayName || user?.email || 'Doctor') : (user?.displayName || user?.email || 'Doctor')
-  $: doctorCountry = doctorData?.country || 'Not specified'
+  $: doctorName = userProfileData.firstName && userProfileData.lastName ? 
+    `${userProfileData.firstName} ${userProfileData.lastName}` : 
+    userProfileData.firstName || user?.displayName || user?.name || user?.email || 'Doctor'
+  $: doctorCountry = userProfileData.country || 'Not specified'
+  
+  // Force reactive updates when user properties change
+  $: userDisplayName = userProfileData.firstName && userProfileData.lastName ? 
+    `${userProfileData.firstName}-${userProfileData.lastName}-${userProfileData.country}` : 'default'
+  
+  // Debug reactive updates
+  $: if (user) {
+    console.log('PatientManagement: User changed - firstName:', user.firstName, 'lastName:', user.lastName, 'country:', user.country)
+    console.log('PatientManagement: doctorName updated to:', doctorName)
+    console.log('PatientManagement: doctorCountry updated to:', doctorCountry)
+  }
   
   let patients = []
   let selectedPatient = null

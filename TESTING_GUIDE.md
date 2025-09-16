@@ -15,6 +15,50 @@ Open http://localhost:5173 in your browser
 - ✅ Doctor login/registration works
 - ✅ Patient management functions work
 - ✅ Data persists in localStorage
+- ✅ Profile editing works correctly
+
+### Step 1.5: Test Profile Management
+
+#### Profile Editing Test Cases
+1. **Access Profile Edit Form**
+   - ✅ Click "Edit Profile" button in header
+   - ✅ Modal opens with form fields
+   - ✅ Form shows current user values (first name, last name, country)
+
+2. **Form Field Population**
+   - ✅ First Name field shows current first name
+   - ✅ Last Name field shows current last name
+   - ✅ Country dropdown shows current country
+   - ✅ Email field shows current email (read-only)
+
+3. **Form Editing**
+   - ✅ Can type in First Name field
+   - ✅ Can type in Last Name field
+   - ✅ Can change country selection
+   - ✅ Form validation works (required fields)
+
+4. **Save Changes**
+   - ✅ Click "Save Changes" button
+   - ✅ Success message appears
+   - ✅ Modal closes automatically
+   - ✅ UI updates immediately without page refresh
+
+5. **UI Updates Verification**
+   - ✅ Header shows "Dr. [New Name]" instead of "Dr. undefined"
+   - ✅ Welcome message shows "Welcome, Dr. [New Name]!" instead of "Welcome, Dr. Doctor!"
+   - ✅ Country information updates in welcome card
+   - ✅ Changes persist after page refresh
+
+#### Console Debugging
+Open browser developer tools (F12) and check console for:
+```
+App: Opening edit profile modal for user: [user object]
+App: User missing profile data, fetching from database...
+App: Retrieved doctor data from database: [doctor object]
+App: Merged user data: [complete user object]
+EditProfile: Manually initialized form fields
+EditProfile: firstName: [value], lastName: [value], country: [value]
+```
 
 ### Step 2: Test Firebase Integration
 

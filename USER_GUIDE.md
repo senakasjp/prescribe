@@ -17,6 +17,12 @@
 - **Touch-Friendly**: Better button sizes and spacing for mobile interaction
 - **Responsive Forms**: All forms now work seamlessly on mobile devices
 
+### **👤 Profile Management**
+- **Edit Profile**: Update your personal information including name and country
+- **Real-time Updates**: Profile changes are reflected immediately in the UI
+- **Form Pre-population**: Edit form automatically shows your current values
+- **Data Persistence**: Profile changes are saved to the database and persist across sessions
+
 ## 👨‍⚕️ For Doctors
 
 This guide will help you navigate and use the Patient Management System effectively.
@@ -70,6 +76,24 @@ Once logged in, you'll see:
 - **Search Bar** - Find patients quickly
 - **Add Patient Button** - Register new patients
 - **Patient Details** - Selected patient information on the right
+
+### 👤 Managing Your Profile
+
+#### Editing Your Profile Information
+1. **Access Profile Settings** - Click the "Edit Profile" button in the header
+2. **Update Your Information**:
+   - **First Name**: Your given name
+   - **Last Name**: Your family name
+   - **Country**: Your practice location
+   - **Email**: Cannot be changed (for security)
+3. **Save Changes** - Click "Save Changes" to update your profile
+4. **Real-time Updates** - Changes appear immediately in the header and welcome message
+
+#### Profile Features
+- **Auto-population**: Edit form shows your current values when opened
+- **Validation**: Required fields are validated before saving
+- **Data Persistence**: Changes are saved to the database
+- **UI Integration**: Profile updates reflect throughout the application
 
 ## 👥 Managing Patients
 

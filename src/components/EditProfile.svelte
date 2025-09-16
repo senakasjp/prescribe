@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher } from 'svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
   import authService from '../services/authService.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import { countries } from '../data/countries.js'
@@ -7,16 +7,55 @@
   const dispatch = createEventDispatcher()
   export let user
   
-  let firstName = user?.firstName || ''
-  let lastName = user?.lastName || ''
-  let email = user?.email || ''
-  let country = user?.country || ''
+  let firstName = ''
+  let lastName = ''
+  let email = ''
+  let country = ''
   let loading = false
   let error = ''
+  
+  // Function to initialize form fields
+  const initializeForm = () => {
+    if (user) {
+      console.log('EditProfile: Initializing form with user data:', user)
+      firstName = user.firstName || ''
+      lastName = user.lastName || ''
+      email = user.email || ''
+      country = user.country || ''
+      console.log('EditProfile: Manually initialized form fields')
+      console.log('EditProfile: firstName:', firstName, 'lastName:', lastName, 'country:', country)
+    } else {
+      console.log('EditProfile: No user data available for initialization')
+    }
+  }
+  
+  // Initialize form fields when component mounts
+  onMount(() => {
+    initializeForm()
+  })
+  
+  // Initialize form fields when user data changes
+  $: if (user) {
+    initializeForm()
+  }
+  
+  // Debug user data
+  $: if (user) {
+    console.log('EditProfile: User data received:', user)
+    console.log('EditProfile: firstName:', firstName)
+    console.log('EditProfile: lastName:', lastName)
+    console.log('EditProfile: email:', email)
+    console.log('EditProfile: country:', country)
+  }
   
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault()
+    console.log('EditProfile: Form submitted')
+    console.log('EditProfile: Form data - firstName:', firstName, 'lastName:', lastName, 'country:', country)
+    console.log('EditProfile: Form data types - firstName type:', typeof firstName, 'lastName type:', typeof lastName, 'country type:', typeof country)
+    console.log('EditProfile: Form data lengths - firstName length:', firstName?.length, 'lastName length:', lastName?.length, 'country length:', country?.length)
+    
     error = ''
     loading = true
     
@@ -30,6 +69,8 @@
         throw new Error('Country is required')
       }
       
+      console.log('EditProfile: Validation passed, proceeding with update')
+      
       // Update user data
       const updatedUser = {
         ...user,
@@ -39,9 +80,15 @@
         name: `${firstName.trim()} ${lastName.trim()}`
       }
       
-      // Update in auth service
-      await authService.updateDoctor(updatedUser)
+      console.log('EditProfile: Form values - firstName:', firstName, 'lastName:', lastName, 'country:', country)
+      console.log('EditProfile: Creating updatedUser object:', updatedUser)
       
+      // Update in auth service
+      console.log('EditProfile: Calling authService.updateDoctor with:', updatedUser)
+      await authService.updateDoctor(updatedUser)
+      console.log('EditProfile: authService.updateDoctor completed successfully')
+      
+      console.log('EditProfile: Dispatching profile-updated event with:', updatedUser)
       notifySuccess('Profile updated successfully!')
       dispatch('profile-updated', updatedUser)
       
@@ -68,7 +115,12 @@
           <i class="fas fa-user-edit me-2"></i>
           Edit Profile
         </h5>
-        <button type="button" class="btn-close btn-close-white" on:click={handleCancel}></button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-light" on:click={initializeForm} title="Reload current values">
+            <i class="fas fa-sync-alt"></i>
+          </button>
+          <button type="button" class="btn-close btn-close-white" on:click={handleCancel}></button>
+        </div>
       </div>
       
       <form on:submit={handleSubmit}>
