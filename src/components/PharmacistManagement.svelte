@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import jsonStorage from '../services/jsonStorage.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   
   export let user
@@ -18,19 +18,19 @@
   const loadPharmacists = async () => {
     try {
       loading = true
-      const allPharmacists = await jsonStorage.getAllPharmacists()
+      const allPharmacists = await firebaseStorage.getAllPharmacists()
       
-      // Get the actual doctor data from storage to get the correct doctor ID
-      const doctor = jsonStorage.getDoctorByEmail(user.email)
+      // Get the actual doctor data from Firebase to get the correct doctor ID
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
       const doctorId = doctor?.id
       
       // Separate connected and unconnected pharmacists
       connectedPharmacists = allPharmacists.filter(pharmacist => 
-        pharmacist.connectedDoctors.includes(doctorId)
+        pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctorId)
       )
       
       pharmacists = allPharmacists.filter(pharmacist => 
-        !pharmacist.connectedDoctors.includes(doctorId)
+        !pharmacist.connectedDoctors || !pharmacist.connectedDoctors.includes(doctorId)
       )
       
     } catch (error) {
@@ -57,7 +57,7 @@
     console.log('Connecting to pharmacist:', pharmacistNumber, 'Is own pharmacy:', isOwnPharmacy)
     
     try {
-      await jsonStorage.connectPharmacistToDoctor(pharmacistNumber, user.email)
+      await firebaseStorage.connectPharmacistToDoctor(pharmacistNumber, user.email)
       const message = isOwnPharmacy 
         ? 'Successfully connected to your own pharmacy!'
         : 'Successfully connected to pharmacist!'

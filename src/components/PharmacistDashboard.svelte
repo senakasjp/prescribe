@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import authService from '../services/authService.js'
-  import jsonStorage from '../services/jsonStorage.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   
   export let pharmacist
@@ -17,18 +17,13 @@
     try {
       loading = true
       
-      // Get all prescriptions from connected doctors
-      const allPrescriptions = await jsonStorage.getAllPrescriptions()
+      // Get prescriptions from connected doctors using Firebase
+      prescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacist.id)
       
-      // Filter prescriptions from connected doctors only
-      prescriptions = allPrescriptions.filter(prescription => 
-        pharmacist.connectedDoctors.includes(prescription.doctorId)
-      )
-      
-      // Load connected doctors info
+      // Load connected doctors info from Firebase
       connectedDoctors = []
       for (const doctorId of pharmacist.connectedDoctors) {
-        const doctor = await jsonStorage.getDoctorById(doctorId)
+        const doctor = await firebaseStorage.getDoctorById(doctorId)
         if (doctor) {
           connectedDoctors.push(doctor)
         }

@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import jsonStorage from '../services/jsonStorage.js'
+import firebaseStorage from '../services/firebaseStorage.js'
   import openaiService from '../services/openaiService.js'
   import authService from '../services/authService.js'
   import { notifyError, notifySuccess } from '../stores/notifications.js'
@@ -662,7 +663,7 @@
       for (const pharmacistId of doctor.connectedPharmacists) {
         try {
           console.log('🔍 Loading pharmacist with ID:', pharmacistId)
-          const pharmacist = await jsonStorage.getPharmacistById(pharmacistId)
+          const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
           console.log('🔍 Loaded pharmacist:', pharmacist)
           
           if (pharmacist) {
@@ -718,10 +719,10 @@
       
       // Send to selected pharmacists only
       for (const pharmacistId of selectedPharmacies) {
-        const pharmacist = await jsonStorage.getPharmacistById(pharmacistId)
+        const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
         if (pharmacist) {
           // Add prescription to pharmacist's received prescriptions
-          const pharmacistPrescriptions = await jsonStorage.getPharmacistPrescriptions(pharmacistId) || []
+          const pharmacistPrescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacistId) || []
           const prescriptionData = {
             id: Date.now().toString() + '_' + pharmacistId,
             doctorId: doctor.id,
@@ -734,7 +735,7 @@
           }
           
           pharmacistPrescriptions.push(prescriptionData)
-          await jsonStorage.savePharmacistPrescriptions(pharmacistId, pharmacistPrescriptions)
+          await firebaseStorage.savePharmacistPrescriptions(pharmacistId, pharmacistPrescriptions)
           
           console.log(`📤 Prescription sent to pharmacist: ${pharmacist.businessName}`)
           sentCount++

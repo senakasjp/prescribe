@@ -23,7 +23,8 @@ class FirebaseStorageService {
       illnesses: 'illnesses',
       medications: 'medications',
       symptoms: 'symptoms',
-      drugDatabase: 'drugDatabase'
+      drugDatabase: 'drugDatabase',
+      pharmacists: 'pharmacists'
     }
   }
 
@@ -74,6 +75,200 @@ class FirebaseStorageService {
       return null
     } catch (error) {
       console.error('Error getting doctor by ID:', error)
+      throw error
+    }
+  }
+
+  async updateDoctor(updatedDoctor) {
+    try {
+      const docRef = doc(db, this.collections.doctors, updatedDoctor.id)
+      await updateDoc(docRef, {
+        ...updatedDoctor,
+        updatedAt: new Date().toISOString()
+      })
+      return { id: updatedDoctor.id, ...updatedDoctor }
+    } catch (error) {
+      console.error('Error updating doctor:', error)
+      throw error
+    }
+  }
+
+  async getAllDoctors() {
+    try {
+      const q = query(collection(db, this.collections.doctors), orderBy('createdAt', 'desc'))
+      const querySnapshot = await getDocs(q)
+      
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+    } catch (error) {
+      console.error('Error getting all doctors:', error)
+      throw error
+    }
+  }
+
+  // Pharmacist operations
+  async createPharmacist(pharmacistData) {
+    try {
+      console.log('🏥 Creating pharmacist with Firebase:', pharmacistData)
+      
+      const pharmacist = {
+        email: pharmacistData.email,
+        password: pharmacistData.password,
+        role: pharmacistData.role,
+        businessName: pharmacistData.businessName,
+        pharmacistNumber: pharmacistData.pharmacistNumber,
+        connectedDoctors: [], // Array of doctor IDs who have connected with this pharmacist
+        createdAt: new Date().toISOString()
+      }
+      
+      const docRef = await addDoc(collection(db, this.collections.pharmacists), pharmacist)
+      const createdPharmacist = { id: docRef.id, ...pharmacist }
+      
+      console.log('🏥 Created pharmacist in Firebase:', createdPharmacist)
+      return createdPharmacist
+    } catch (error) {
+      console.error('Error creating pharmacist:', error)
+      throw error
+    }
+  }
+
+  async getPharmacistByEmail(email) {
+    try {
+      const q = query(collection(db, this.collections.pharmacists), where('email', '==', email))
+      const querySnapshot = await getDocs(q)
+      
+      if (querySnapshot.empty) {
+        return null
+      }
+      
+      const doc = querySnapshot.docs[0]
+      return { id: doc.id, ...doc.data() }
+    } catch (error) {
+      console.error('Error getting pharmacist by email:', error)
+      throw error
+    }
+  }
+
+  async getPharmacistById(id) {
+    try {
+      const docRef = doc(db, this.collections.pharmacists, id)
+      const docSnap = await getDoc(docRef)
+      
+      if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() }
+      }
+      return null
+    } catch (error) {
+      console.error('Error getting pharmacist by ID:', error)
+      throw error
+    }
+  }
+
+  async getPharmacistByNumber(pharmacistNumber) {
+    try {
+      console.log('🔍 Searching for pharmacist number in Firebase:', pharmacistNumber)
+      
+      const q = query(collection(db, this.collections.pharmacists), where('pharmacistNumber', '==', pharmacistNumber))
+      const querySnapshot = await getDocs(q)
+      
+      if (querySnapshot.empty) {
+        console.log('❌ Pharmacist not found with number:', pharmacistNumber)
+        return null
+      }
+      
+      const doc = querySnapshot.docs[0]
+      const pharmacist = { id: doc.id, ...doc.data() }
+      console.log('✅ Found pharmacist in Firebase:', pharmacist.businessName, 'with number:', pharmacist.pharmacistNumber)
+      
+      return pharmacist
+    } catch (error) {
+      console.error('Error getting pharmacist by number:', error)
+      throw error
+    }
+  }
+
+  async getAllPharmacists() {
+    try {
+      const q = query(collection(db, this.collections.pharmacists), orderBy('createdAt', 'desc'))
+      const querySnapshot = await getDocs(q)
+      
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+    } catch (error) {
+      console.error('Error getting all pharmacists:', error)
+      throw error
+    }
+  }
+
+  async updatePharmacist(updatedPharmacist) {
+    try {
+      const docRef = doc(db, this.collections.pharmacists, updatedPharmacist.id)
+      await updateDoc(docRef, {
+        ...updatedPharmacist,
+        updatedAt: new Date().toISOString()
+      })
+      return { id: updatedPharmacist.id, ...updatedPharmacist }
+    } catch (error) {
+      console.error('Error updating pharmacist:', error)
+      throw error
+    }
+  }
+
+  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier) {
+    try {
+      console.log('🔍 Looking for pharmacist with number in Firebase:', pharmacistNumber)
+      
+      const pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+      if (!pharmacist) {
+        console.log('❌ Pharmacist not found with number:', pharmacistNumber)
+        throw new Error('Pharmacist not found')
+      }
+      
+      console.log('✅ Found pharmacist:', pharmacist.businessName, 'with number:', pharmacist.pharmacistNumber)
+      
+      // Find doctor by ID first, then by email if not found
+      console.log('🔍 Looking for doctor with identifier:', doctorIdentifier)
+      let doctor = await this.getDoctorById(doctorIdentifier)
+      if (!doctor) {
+        console.log('🔍 Doctor not found by ID, trying email lookup...')
+        // Try to find by email (for Firebase users)
+        doctor = await this.getDoctorByEmail(doctorIdentifier)
+      }
+      
+      if (!doctor) {
+        console.log('❌ Doctor not found with identifier:', doctorIdentifier)
+        console.log('🔍 Available doctors in Firebase:')
+        const allDoctors = await this.getAllDoctors()
+        console.log('All doctors:', allDoctors.map(d => ({ id: d.id, email: d.email, name: d.firstName })))
+        throw new Error('Doctor not found')
+      }
+      
+      console.log('✅ Found doctor:', doctor.firstName || doctor.email)
+      
+      // Check if already connected
+      if (pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)) {
+        console.log('ℹ️ Doctor already connected to pharmacist')
+        return pharmacist
+      }
+      
+      // Add doctor to pharmacist's connected doctors
+      const updatedConnectedDoctors = [...(pharmacist.connectedDoctors || []), doctor.id]
+      
+      // Update pharmacist
+      await this.updatePharmacist({
+        id: pharmacist.id,
+        connectedDoctors: updatedConnectedDoctors
+      })
+      
+      console.log('✅ Successfully connected pharmacist to doctor')
+      return pharmacist
+      
+    } catch (error) {
+      console.error('Error connecting pharmacist to doctor:', error)
       throw error
     }
   }
@@ -378,6 +573,84 @@ class FirebaseStorageService {
       }))
       callback(prescriptions)
     })
+  }
+
+  // Pharmacist prescription operations
+  async getPharmacistPrescriptions(pharmacistId) {
+    try {
+      // Get all prescriptions and filter by pharmacist's connected doctors
+      const pharmacist = await this.getPharmacistById(pharmacistId)
+      if (!pharmacist || !pharmacist.connectedDoctors) {
+        return []
+      }
+
+      const allPrescriptions = []
+      
+      // Get prescriptions from each connected doctor
+      for (const doctorId of pharmacist.connectedDoctors) {
+        const q = query(
+          collection(db, this.collections.medications), 
+          where('doctorId', '==', doctorId),
+          orderBy('createdAt', 'desc')
+        )
+        const querySnapshot = await getDocs(q)
+        
+        const doctorPrescriptions = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        
+        allPrescriptions.push(...doctorPrescriptions)
+      }
+      
+      return allPrescriptions
+    } catch (error) {
+      console.error('Error getting pharmacist prescriptions:', error)
+      throw error
+    }
+  }
+
+  async getAllPrescriptions() {
+    try {
+      const q = query(collection(db, this.collections.medications), orderBy('createdAt', 'desc'))
+      const querySnapshot = await getDocs(q)
+      
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+    } catch (error) {
+      console.error('Error getting all prescriptions:', error)
+      throw error
+    }
+  }
+
+  async savePharmacistPrescriptions(pharmacistId, prescriptions) {
+    try {
+      // This would typically save to a separate collection for pharmacist-specific data
+      // For now, we'll store it in a pharmacist-specific subcollection
+      const pharmacistRef = doc(db, this.collections.pharmacists, pharmacistId)
+      const prescriptionsRef = collection(pharmacistRef, 'receivedPrescriptions')
+      
+      // Clear existing prescriptions first
+      const existingPrescriptions = await getDocs(prescriptionsRef)
+      for (const docSnapshot of existingPrescriptions.docs) {
+        await deleteDoc(docSnapshot.ref)
+      }
+      
+      // Add new prescriptions
+      for (const prescription of prescriptions) {
+        await addDoc(prescriptionsRef, {
+          ...prescription,
+          receivedAt: new Date().toISOString()
+        })
+      }
+      
+      return true
+    } catch (error) {
+      console.error('Error saving pharmacist prescriptions:', error)
+      throw error
+    }
   }
 
   // Debug and utility methods

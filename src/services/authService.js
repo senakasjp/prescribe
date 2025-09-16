@@ -2,6 +2,7 @@
 // This can be easily converted to Firebase Auth later
 
 import jsonStorage from './jsonStorage.js'
+import firebaseStorage from './firebaseStorage.js'
 
 class AuthService {
   constructor() {
@@ -114,14 +115,14 @@ class AuthService {
   // Register new pharmacist
   async registerPharmacist(pharmacistData) {
     try {
-      // Check if pharmacist already exists
-      const existingPharmacist = await jsonStorage.getPharmacistByEmail(pharmacistData.email)
+      // Check if pharmacist already exists in Firebase
+      const existingPharmacist = await firebaseStorage.getPharmacistByEmail(pharmacistData.email)
       if (existingPharmacist) {
         throw new Error('Pharmacist with this email already exists')
       }
 
-      // Create new pharmacist
-      const pharmacist = await jsonStorage.createPharmacist({
+      // Create new pharmacist in Firebase
+      const pharmacist = await firebaseStorage.createPharmacist({
         email: pharmacistData.email,
         password: pharmacistData.password, // In real app, this should be hashed
         role: 'pharmacist',
@@ -140,7 +141,7 @@ class AuthService {
   // Login pharmacist
   async loginPharmacist(email, password) {
     try {
-      const pharmacist = await jsonStorage.getPharmacistByEmail(email)
+      const pharmacist = await firebaseStorage.getPharmacistByEmail(email)
       if (!pharmacist) {
         return { success: false, message: 'Pharmacist not found' }
       }

@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth'
 import { auth, googleProvider } from '../firebase-config.js'
 import jsonStorage from './jsonStorage.js'
+import firebaseStorage from './firebaseStorage.js'
 
 class FirebaseAuthService {
   constructor() {
@@ -80,9 +81,9 @@ class FirebaseAuthService {
       // Check if user exists in our system
       let existingUser = null
       if (userType === 'doctor') {
-        existingUser = await jsonStorage.getDoctorByEmail(user.email)
+        existingUser = await firebaseStorage.getDoctorByEmail(user.email)
       } else if (userType === 'pharmacist') {
-        existingUser = await jsonStorage.getPharmacistByEmail(user.email)
+        existingUser = await firebaseStorage.getPharmacistByEmail(user.email)
       }
 
       if (existingUser) {
@@ -96,9 +97,9 @@ class FirebaseAuthService {
         }
         
         if (userType === 'doctor') {
-          await jsonStorage.updateDoctor(updatedUser)
+          await firebaseStorage.updateDoctor(updatedUser)
         } else if (userType === 'pharmacist') {
-          await jsonStorage.updatePharmacist(updatedUser)
+          await firebaseStorage.updatePharmacist(updatedUser)
         }
         
         return updatedUser
@@ -118,7 +119,7 @@ class FirebaseAuthService {
             createdAt: new Date().toISOString()
           }
           
-          const newDoctor = await jsonStorage.createDoctor(doctorData)
+          const newDoctor = await firebaseStorage.createDoctor(doctorData)
           return newDoctor
         } else if (userType === 'pharmacist') {
           // For pharmacists, we need additional data
@@ -134,7 +135,7 @@ class FirebaseAuthService {
             createdAt: new Date().toISOString()
           }
           
-          const newPharmacist = await jsonStorage.createPharmacist(pharmacistData)
+          const newPharmacist = await firebaseStorage.createPharmacist(pharmacistData)
           return newPharmacist
         }
       }
@@ -169,9 +170,9 @@ class FirebaseAuthService {
     // Check if user exists in our system
     let existingUser = null
     if (userType === 'doctor') {
-      existingUser = await jsonStorage.getDoctorByEmail(mockEmail)
+      existingUser = await firebaseStorage.getDoctorByEmail(mockEmail)
     } else if (userType === 'pharmacist') {
-      existingUser = await jsonStorage.getPharmacistByEmail(mockEmail)
+      existingUser = await firebaseStorage.getPharmacistByEmail(mockEmail)
     }
 
     if (existingUser) {
@@ -185,9 +186,9 @@ class FirebaseAuthService {
       }
       
       if (userType === 'doctor') {
-        await jsonStorage.updateDoctor(updatedUser)
+        await firebaseStorage.updateDoctor(updatedUser)
       } else if (userType === 'pharmacist') {
-        await jsonStorage.updatePharmacist(updatedUser)
+        await firebaseStorage.updatePharmacist(updatedUser)
       }
       
       return updatedUser
@@ -207,7 +208,7 @@ class FirebaseAuthService {
           createdAt: new Date().toISOString()
         }
         
-        const newDoctor = await jsonStorage.createDoctor(doctorData)
+        const newDoctor = await firebaseStorage.createDoctor(doctorData)
         return newDoctor
       } else if (userType === 'pharmacist') {
         const pharmacistData = {
@@ -222,7 +223,7 @@ class FirebaseAuthService {
           createdAt: new Date().toISOString()
         }
         
-        const newPharmacist = await jsonStorage.createPharmacist(pharmacistData)
+        const newPharmacist = await firebaseStorage.createPharmacist(pharmacistData)
         return newPharmacist
       }
     }
