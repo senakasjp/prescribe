@@ -23,14 +23,28 @@
   $: illnessesCount = illnesses?.length || 0
   $: prescriptionsCount = prescriptions?.length || 0
   
-  // Extract all medications from prescriptions for display
-  $: allMedications = prescriptions?.flatMap(prescription => 
+  // Extract all medications from prescriptions and group by drug name
+  $: groupedMedications = prescriptions?.flatMap(prescription => 
     prescription.medications?.map(medication => ({
       ...medication,
       prescriptionId: prescription.id,
-      prescriptionDate: prescription.createdAt
+      prescriptionDate: prescription.createdAt,
+      daysAgo: medication.createdAt ? Math.floor((new Date() - new Date(medication.createdAt)) / (1000 * 60 * 60 * 24)) : null
     })) || []
-  ) || []
+  ).reduce((groups, medication) => {
+    const drugName = medication.name || 'Unknown medication'
+    if (!groups[drugName]) {
+      groups[drugName] = []
+    }
+    groups[drugName].push(medication)
+    return groups
+  }, {}) || {}
+  
+  // Convert grouped medications to array and sort by most recent dose
+  $: allMedications = Object.entries(groupedMedications).map(([drugName, doses]) => ({
+    drugName,
+    doses: doses.sort((a, b) => new Date(b.createdAt || b.prescriptionDate || 0) - new Date(a.createdAt || a.prescriptionDate || 0))
+  })).sort((a, b) => new Date(b.doses[0].createdAt || b.doses[0].prescriptionDate || 0) - new Date(a.doses[0].createdAt || a.doses[0].prescriptionDate || 0))
   
   // Handle tab change
   const handleTabChange = (tab) => {
@@ -250,54 +264,56 @@
           <div class="tab-pane active">
             {#if allMedications && allMedications.length > 0}
               <div class="mb-2">
-                <small class="text-muted">Recent:</small>
+                <small class="text-muted">Medications by drug name (latest first):</small>
                 <div class="mt-2">
-                  {#each groupByDate(allMedications).slice(0, 2) as group}
-                    <div class="mb-2">
-                      <small class="text-muted fw-bold small">
-                        <i class="fas fa-calendar me-1"></i>{group.date}
-                      </small>
-                      {#each group.items.slice(0, 3) as medication}
-                        <div class="d-flex justify-content-between align-items-center mb-1 mt-1">
-                          <div class="flex-grow-1">
-                            <span class="small fw-bold fs-5">
-                              {#if medication.name}
-                                {medication.name.length > 20 ? medication.name.substring(0, 20) + '...' : medication.name}
-                              {:else}
-                                <small class="text-muted">Unknown medication</small>
-                              {/if}
-                            </span>
-                          </div>
-                          <span class="badge bg-primary small">{medication.dosage || 'No dosage'}</span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                          <small class="text-muted small">
-                            <i class="fas fa-weight me-1"></i>{medication.dosage || 'No dosage'} • 
-                            <i class="fas fa-clock me-1"></i>{medication.duration || 'No duration'}
-                          </small>
-                          <button 
-                            class="btn btn-outline-success btn-sm small"
-                            on:click={() => addToPrescription(medication)}
-                            title="Add to today's prescription"
-                          >
-                            <i class="fas fa-plus me-1"></i>
-                            Add Today
-                          </button>
-                        </div>
-                      {/each}
-                      {#if group.items.length > 3}
-                        <small class="text-muted small">+{group.items.length - 3} more on this date</small>
-                      {/if}
+                  {#each allMedications.slice(0, 10) as drugGroup}
+                    <div class="mb-3 p-2 border rounded">
+                      <div class="d-flex align-items-center mb-2">
+                        <h6 class="mb-0 fw-bold text-primary me-2">
+                          {drugGroup.drugName}
+                        </h6>
+                        <span class="badge bg-secondary small">{drugGroup.doses.length} dose{drugGroup.doses.length !== 1 ? 's' : ''}</span>
+                      </div>
+                     <div class="ms-3">
+                       {#each drugGroup.doses as dose}
+                         <div class="d-flex justify-content-between align-items-center mb-1 p-1 border-bottom">
+                           <div class="flex-grow-1">
+                             <div class="d-flex align-items-center">
+                               <span class="badge bg-primary small me-2">{dose.dosage || 'No dosage'}</span>
+                               <small class="text-muted me-3">
+                                 <i class="fas fa-clock me-1"></i>{dose.duration || 'No duration'}
+                               </small>
+                               <small class="text-muted">
+                                 <i class="fas fa-calendar me-1"></i>
+                                 {#if dose.daysAgo !== null}
+                                   {dose.daysAgo === 0 ? 'Today' : dose.daysAgo === 1 ? '1 day ago' : `${dose.daysAgo} days ago`}
+                                 {:else}
+                                   {dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
+                                 {/if}
+                               </small>
+                             </div>
+                           </div>
+                           <button 
+                             class="btn btn-outline-success btn-sm"
+                             on:click={() => addToPrescription(dose)}
+                             title="Add to today's prescription"
+                           >
+                             <i class="fas fa-plus me-1"></i>
+                             Add
+                           </button>
+                         </div>
+                       {/each}
+                     </div>
                     </div>
                   {/each}
-                  {#if groupByDate(allMedications).length > 2}
-                    <small class="text-muted small">+{groupByDate(allMedications).length - 2} more days</small>
+                  {#if allMedications.length > 10}
+                    <small class="text-muted small">+{allMedications.length - 10} more drug groups</small>
                   {/if}
                 </div>
               </div>
               
               <!-- Show Notes Button -->
-              {#if hasNotes(allMedications, 'notes')}
+              {#if allMedications.some(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim()))}
                 <div class="mt-2">
                   <button 
                     class="btn btn-outline-success btn-sm small"
@@ -310,18 +326,20 @@
               {/if}
               
               <!-- Notes Display -->
-              {#if showPrescriptionsNotes && hasNotes(allMedications, 'notes')}
+              {#if showPrescriptionsNotes && allMedications.some(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim()))}
                 <div class="mt-2">
                   <small class="text-muted fw-bold">Notes:</small>
                   <div class="mt-1">
-                    {#each allMedications.filter(m => m.notes && m.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as medication}
-                      <div class="mb-1 p-2 bg-success bg-opacity-10 rounded small">
-                        <div class="fw-bold fs-5">{medication.name || 'Medication'}</div>
-                        <div class="text-muted">{medication.notes}</div>
-                        <small class="text-muted">
-                          <i class="fas fa-calendar me-1"></i>{medication.createdAt ? new Date(medication.createdAt).toLocaleDateString() : 'No date'}
-                        </small>
-                      </div>
+                    {#each allMedications.filter(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim())) as drugGroup}
+                      {#each drugGroup.doses.filter(dose => dose.notes && dose.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as dose}
+                        <div class="mb-1 p-2 bg-success bg-opacity-10 rounded small">
+                          <div class="fw-bold fs-5">{drugGroup.drugName}</div>
+                          <div class="text-muted">{dose.notes}</div>
+                          <small class="text-muted">
+                            <i class="fas fa-calendar me-1"></i>{dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
+                          </small>
+                        </div>
+                      {/each}
                     {/each}
                   </div>
                 </div>
