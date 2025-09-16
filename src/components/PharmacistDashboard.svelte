@@ -146,7 +146,7 @@
   <div class="row">
     <!-- Sidebar -->
     <div class="col-lg-3 mb-4">
-      <div class="card border-0 shadow-sm">
+      <div class="card border-2 border-info shadow-sm">
         <div class="card-header bg-primary text-white">
           <h6 class="card-title mb-0">
             <i class="fas fa-info-circle me-2"></i>
@@ -175,7 +175,7 @@
       
       <!-- Connected Doctors -->
       {#if connectedDoctors.length > 0}
-        <div class="card border-0 shadow-sm mt-3">
+        <div class="card border-2 border-info shadow-sm mt-3">
           <div class="card-header bg-info text-white">
             <h6 class="card-title mb-0">
               <i class="fas fa-user-md me-2"></i>

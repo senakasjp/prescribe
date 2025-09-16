@@ -678,7 +678,7 @@
   <!-- Patient List Sidebar -->
   <div class="col-12 col-lg-4">
     <!-- Patients Card -->
-    <div class="card mb-3">
+    <div class="card border-2 border-info mb-3 shadow-sm">
       <!-- Fixed Header -->
       <div class="card-header px-2 px-md-3">
         <div class="d-flex justify-content-between align-items-center mb-2 mb-md-3">
@@ -898,7 +898,7 @@
       <div class="row g-3">
                  <!-- Welcome Message -->
                  <div class="col-12" key={userKey}>
-                   <div class="card border-primary shadow-sm">
+                   <div class="card border-2 border-info shadow-sm">
                      <div class="card-body bg-transparent text-dark rounded-3">
                        <div class="d-flex align-items-center">
                          <div class="flex-shrink-0">
@@ -962,7 +962,7 @@
         </div>
         
         <div class="col-6 col-md-4">
-          <div class="card border-0 shadow-sm h-100">
+          <div class="card border border-light shadow-sm h-100">
             <div class="card-body bg-secondary text-white rounded-3 p-2 p-md-3">
               <div class="d-flex align-items-center">
                 <div class="flex-shrink-0">
@@ -981,7 +981,7 @@
         </div>
         
         <div class="col-6 col-md-4">
-          <div class="card border-0 shadow-sm h-100">
+          <div class="card border border-light shadow-sm h-100">
             <div class="card-body bg-success text-white rounded-3 p-2 p-md-3">
               <div class="d-flex align-items-center">
                 <div class="flex-shrink-0">
@@ -1001,7 +1001,7 @@
         
         <!-- Prescriptions Per Day Chart -->
         <div class="col-12">
-          <div class="card border-0 shadow-sm">
+          <div class="card border border-light shadow-sm">
             <div class="card-header bg-light border-0 py-2 py-md-3 px-2 px-md-3">
               <h6 class="card-title mb-0 fw-bold text-dark fs-6 fs-md-5">
                 <i class="fas fa-chart-line me-1 me-md-2 text-primary"></i>

@@ -30,7 +30,7 @@
 </script>
 
 {#if selectedPatient}
-  <div class="card mt-3">
+  <div class="card border-2 border-info mt-3 shadow-sm">
     <div class="card-header bg-light">
       <div class="d-flex justify-content-between align-items-center">
         <h6 class="mb-0">

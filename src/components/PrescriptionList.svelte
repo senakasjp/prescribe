@@ -26,7 +26,7 @@
 {#if prescriptionsWithMedications && prescriptionsWithMedications.length > 0}
   <div class="prescription-history">
     {#each prescriptionsWithMedications as prescription, prescriptionIndex}
-      <div class="card mb-3 shadow-sm">
+      <div class="card mb-3 shadow-sm border-2 {prescriptionIndex % 2 === 0 ? 'border-primary' : 'border-success'}">
         <!-- Prescription Header -->
         <div class="card-header bg-primary text-white py-2">
           <div class="d-flex align-items-center">
@@ -46,7 +46,7 @@
         <!-- Medications List -->
         <div class="card-body p-0">
           {#each prescription.medications as medication, medicationIndex}
-            <div class="border-bottom p-3 {medicationIndex === prescription.medications.length - 1 ? 'border-bottom-0' : ''}">
+            <div class="border-bottom p-3 {medicationIndex === prescription.medications.length - 1 ? 'border-bottom-0' : ''} {prescriptionIndex % 2 === 0 ? 'border-primary' : 'border-success'}">
               <div class="row g-2">
                 <div class="col-12">
                   <h6 class="mb-2 text-primary">

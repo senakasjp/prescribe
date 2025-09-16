@@ -158,7 +158,7 @@
   <!-- Inline AI Recommendations -->
   {#if showRecommendationsInline}
     <div class="ai-recommendations-inline mt-3">
-      <div class="card">
+      <div class="card border-2 border-info shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h6 class="mb-0 text-danger">
             <i class="fas fa-robot me-2"></i>AI-Powered Medical Intelligence
@@ -192,7 +192,7 @@
   <!-- Inline Medication Suggestions -->
   {#if showMedicationSuggestionsInline}
     <div class="ai-medication-suggestions-inline mt-3">
-      <div class="card">
+      <div class="card border-2 border-info shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h6 class="mb-0">
             <i class="fas fa-pills me-2 text-success"></i>AI Medication Suggestions
@@ -226,7 +226,7 @@
   <!-- Combined AI Analysis -->
   {#if showCombinedAnalysis}
     <div class="ai-combined-analysis mt-3">
-      <div class="card">
+      <div class="card border-2 border-info shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h6 class="mb-0 text-danger">
             <i class="fas fa-robot me-2"></i>AI-Powered Medical Intelligence

@@ -10,7 +10,7 @@
   export let onShowAddPatientForm
 </script>
 
-<div class="card">
+<div class="card border-2 border-info shadow-sm">
   <div class="card-header bg-light">
     <div class="d-flex justify-content-between align-items-center">
       <h6 class="mb-0">

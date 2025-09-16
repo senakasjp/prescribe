@@ -1178,7 +1178,7 @@
   })
 </script>
 
-<div class="card">
+<div class="card border-2 border-info shadow-sm">
   <div class="card-header">
     <div class="d-flex justify-content-between align-items-center">
       <h5 class="mb-0">
@@ -1724,7 +1724,7 @@
       {#if activeTab === 'prescriptions'}
         <div class="tab-pane active">
           <!-- Prescription Card -->
-          <div class="card">
+          <div class="card border-2 border-info shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
               <h5 class="card-title mb-0">
                 <i class="fas fa-prescription-bottle-alt me-2"></i>Prescription
@@ -1853,7 +1853,7 @@
                   </div>
                 {/if}
               {:else if drugInteractions && !drugInteractions.hasInteractions}
-                <div class="card">
+                <div class="card border-2 border-info shadow-sm">
                   <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 text-danger">
                       <i class="fas fa-robot me-2"></i>AI-Powered Safety Analysis

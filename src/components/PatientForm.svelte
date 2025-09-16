@@ -128,7 +128,7 @@
   }
 </script>
 
-<div class="card">
+<div class="card border-2 border-info shadow-sm">
   <div class="card-header">
     <h5 class="mb-0">
       <i class="fas fa-user-plus me-2"></i>Add New Patient

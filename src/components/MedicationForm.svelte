@@ -185,7 +185,7 @@
   })
 </script>
 
-<div class="card">
+<div class="card border-2 border-info shadow-sm">
   <div class="card-header">
     <h6 class="mb-0">
       <i class="fas fa-pills me-2"></i>Add New Medication

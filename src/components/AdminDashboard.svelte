@@ -303,7 +303,7 @@
             </div>
             
             <!-- Recent Activity -->
-            <div class="card">
+            <div class="card border-2 border-info shadow-sm">
               <div class="card-header">
                 <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Recent Activity</h5>
               </div>
@@ -319,7 +319,7 @@
               <span class="badge bg-primary fs-6">{doctors.length} Doctors</span>
             </div>
             
-            <div class="card">
+            <div class="card border-2 border-info shadow-sm">
               <div class="card-header">
                 <h5 class="mb-0">All Registered Doctors</h5>
               </div>
@@ -362,7 +362,7 @@
               <span class="badge bg-success fs-6">{patients.length} Patients</span>
             </div>
             
-            <div class="card">
+            <div class="card border-2 border-info shadow-sm">
               <div class="card-header">
                 <h5 class="mb-0">All Patients</h5>
               </div>
@@ -419,7 +419,7 @@
               <!-- Usage Overview Cards -->
               <div class="row mb-4">
                 <div class="col-md-3">
-                  <div class="card text-center">
+                  <div class="card border-2 border-info text-center shadow-sm">
                     <div class="card-body">
                       <h5 class="card-title text-primary">
                         <i class="fas fa-coins me-2"></i>Total Cost
@@ -430,7 +430,7 @@
                   </div>
                 </div>
                 <div class="col-md-3">
-                  <div class="card text-center">
+                  <div class="card border-2 border-info text-center shadow-sm">
                     <div class="card-body">
                       <h5 class="card-title text-success">
                         <i class="fas fa-hashtag me-2"></i>Total Tokens
@@ -441,7 +441,7 @@
                   </div>
                 </div>
                 <div class="col-md-3">
-                  <div class="card text-center">
+                  <div class="card border-2 border-info text-center shadow-sm">
                     <div class="card-body">
                       <h5 class="card-title text-info">
                         <i class="fas fa-bolt me-2"></i>Total Requests
@@ -452,7 +452,7 @@
                   </div>
                 </div>
                 <div class="col-md-3">
-                  <div class="card text-center">
+                  <div class="card border-2 border-info text-center shadow-sm">
                     <div class="card-body">
                       <h5 class="card-title text-warning">
                         <i class="fas fa-calendar-day me-2"></i>Today
