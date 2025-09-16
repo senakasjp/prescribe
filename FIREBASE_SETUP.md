@@ -1,40 +1,91 @@
 # Firebase Setup Guide
 
-This guide will help you connect your patient management system to Firebase for cloud storage and authentication.
+This guide will help you set up Firebase for the M-Prescribe application.
 
-## Prerequisites
+## 🔥 Firebase Project Setup
 
-- Node.js installed
-- Firebase account
-- Basic understanding of Firebase services
-
-## Step 1: Create Firebase Project
-
+### Step 1: Create Firebase Project
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Click "Create a project"
-3. Enter project name: `prescribe-patient-management`
+3. Enter project name: `m-prescribe` (or your preferred name)
 4. Enable Google Analytics (optional)
 5. Click "Create project"
 
-## Step 2: Enable Authentication
+### Step 2: Enable Firestore Database
+1. In Firebase Console, go to "Firestore Database"
+2. Click "Create database"
+3. Choose "Start in test mode" (for development)
+4. Select a location (choose closest to your users)
+5. Click "Done"
 
+### Step 3: Enable Authentication
 1. In Firebase Console, go to "Authentication"
 2. Click "Get started"
 3. Go to "Sign-in method" tab
 4. Enable "Email/Password" provider
-5. Click "Save"
+5. Enable "Google" provider
+6. Configure Google provider with your domain (for production)
 
-## Step 3: Create Firestore Database
+### Step 4: Configure Firebase Config
+1. In Firebase Console, go to "Project settings" (gear icon)
+2. Scroll down to "Your apps" section
+3. Click "Web" icon (`</>`) to add a web app
+4. Enter app nickname: `M-Prescribe Web`
+5. Check "Also set up Firebase Hosting" (optional)
+6. Click "Register app"
+7. Copy the Firebase configuration object
 
-1. In Firebase Console, go to "Firestore Database"
-2. Click "Create database"
-3. Choose "Start in test mode" (for development)
-4. Select a location close to your users
-5. Click "Done"
+### Step 5: Update Firebase Config File
+Replace the content in `src/firebase-config.js` with your Firebase configuration:
 
-## Step 4: Configure Security Rules
+```javascript
+import { initializeApp } from 'firebase/app'
+import { getAuth } from 'firebase/auth'
+import { getFirestore } from 'firebase/firestore'
+import { GoogleAuthProvider } from 'firebase/auth'
 
-Replace the default Firestore rules with these:
+const firebaseConfig = {
+  apiKey: "your-api-key",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "your-sender-id",
+  appId: "your-app-id"
+}
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig)
+
+// Initialize Firebase services
+export const auth = getAuth(app)
+export const db = getFirestore(app)
+export const googleProvider = new GoogleAuthProvider()
+
+// Configure Google provider
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+})
+```
+
+## 🔒 Firestore Security Rules
+
+### Development Rules (Test Mode)
+For development, you can use these permissive rules:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to all documents for authenticated users
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+
+### Production Rules (Recommended)
+For production, use these more restrictive rules:
 
 ```javascript
 rules_version = '2';
@@ -45,34 +96,41 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == doctorId;
     }
     
-    // Patients belong to doctors
+    // Patients can only be accessed by their assigned doctor
     match /patients/{patientId} {
       allow read, write: if request.auth != null && 
         resource.data.doctorId == request.auth.uid;
     }
     
-    // Illnesses belong to patients
+    // Medical data can only be accessed by the patient's doctor
     match /illnesses/{illnessId} {
       allow read, write: if request.auth != null && 
-        exists(/databases/$(database)/documents/patients/$(resource.data.patientId)) &&
-        get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.doctorId == request.auth.uid;
+        resource.data.doctorId == request.auth.uid;
     }
     
-    // Medications belong to patients
     match /medications/{medicationId} {
       allow read, write: if request.auth != null && 
-        exists(/databases/$(database)/documents/patients/$(resource.data.patientId)) &&
-        get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.doctorId == request.auth.uid;
+        resource.data.doctorId == request.auth.uid;
     }
     
-    // Symptoms belong to patients
     match /symptoms/{symptomId} {
       allow read, write: if request.auth != null && 
-        exists(/databases/$(database)/documents/patients/$(resource.data.patientId)) &&
-        get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.doctorId == request.auth.uid;
+        resource.data.doctorId == request.auth.uid;
     }
     
-    // Drug database belongs to doctors
+    // Pharmacists can access their own data and prescriptions
+    match /pharmacists/{pharmacistId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid == pharmacistId;
+      
+      // Allow access to received prescriptions subcollection
+      match /receivedPrescriptions/{prescriptionId} {
+        allow read, write: if request.auth != null && 
+          request.auth.uid == pharmacistId;
+      }
+    }
+    
+    // Drug database is doctor-specific
     match /drugDatabase/{drugId} {
       allow read, write: if request.auth != null && 
         resource.data.doctorId == request.auth.uid;
@@ -81,136 +139,127 @@ service cloud.firestore {
 }
 ```
 
-## Step 5: Get Firebase Configuration
+## 🚀 Firebase Hosting (Optional)
 
-1. In Firebase Console, go to "Project Settings" (gear icon)
-2. Scroll down to "Your apps" section
-3. Click "Add app" and select "Web" (</> icon)
-4. Register your app with a nickname
-5. Copy the configuration object
-
-## Step 6: Configure Environment Variables
-
-1. Copy `env.example` to `.env`:
+### Deploy to Firebase Hosting
+1. Install Firebase CLI:
    ```bash
-   cp env.example .env
+   npm install -g firebase-tools
    ```
 
-2. Edit `.env` and replace the placeholder values:
-   ```env
-   VITE_FIREBASE_API_KEY=your-actual-api-key
-   VITE_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
-   VITE_FIREBASE_PROJECT_ID=your-project-id
-   VITE_FIREBASE_STORAGE_BUCKET=your-project-id.appspot.com
-   VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-   VITE_FIREBASE_APP_ID=your-app-id
-   VITE_USE_FIREBASE=true
-   VITE_ENABLE_MIGRATION=true
+2. Login to Firebase:
+   ```bash
+   firebase login
    ```
 
-## Step 7: Install Dependencies
+3. Initialize Firebase in your project:
+   ```bash
+   firebase init hosting
+   ```
 
-```bash
-npm install firebase
+4. Build your project:
+   ```bash
+   npm run build
+   ```
+
+5. Deploy to Firebase:
+   ```bash
+   firebase deploy
+   ```
+
+## 🔧 Environment Variables
+
+Create a `.env` file in your project root:
+
+```env
+# Firebase Configuration (if needed)
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+VITE_FIREBASE_APP_ID=your-app-id
+
+# OpenAI API Key (for AI features)
+VITE_OPENAI_API_KEY=your-openai-api-key
 ```
 
-## Step 8: Test the Setup
+## 📊 Firebase Collections Structure
 
-1. Start the development server:
-   ```bash
-   npm run dev
-   ```
+The application uses the following Firestore collections:
 
-2. Open the application in your browser
-3. Try to create a new doctor account
-4. Check Firebase Console to see if data appears
+### Collections
+- `doctors` - Doctor profiles and authentication data
+- `patients` - Patient information (linked to doctors via `doctorId`)
+- `illnesses` - Patient illness records (linked to patients and doctors)
+- `medications` - Prescription and medication data (linked to patients and doctors)
+- `symptoms` - Patient symptom records (linked to patients and doctors)
+- `pharmacists` - Pharmacist profiles and business information
+- `drugDatabase` - Doctor-specific drug databases
 
-## Step 9: Migrate Existing Data
+### Subcollections
+- `pharmacists/{pharmacistId}/receivedPrescriptions` - Prescriptions sent to pharmacists
 
-If you have existing data in localStorage:
+## 🧪 Testing Firebase Integration
 
-1. Log in with your doctor account
-2. The app will automatically detect if migration is needed
-3. Follow the migration prompts to move data to Firebase
+### Test Authentication
+1. Try Google authentication
+2. Try email/password authentication
+3. Verify user data is created in Firestore
 
-## Firebase Services Used
+### Test Data Operations
+1. Create a patient
+2. Add medical data (symptoms, illnesses, prescriptions)
+3. Verify data appears in Firebase Console
+4. Test data persistence across browser sessions
 
-### Authentication
-- **Email/Password**: Doctor login system
-- **User Management**: Secure doctor accounts
+### Test Doctor Isolation
+1. Create two different doctor accounts
+2. Add patients to each doctor
+3. Verify each doctor only sees their own patients
 
-### Firestore Database
-- **Collections**:
-  - `doctors`: Doctor profiles
-  - `patients`: Patient information
-  - `illnesses`: Patient illness records
-  - `medications`: Prescription data
-  - `symptoms`: Patient symptoms
-  - `drugDatabase`: Doctor-specific drug database
+### Test Pharmacist Integration
+1. Create a pharmacist account
+2. Connect pharmacist to doctor
+3. Send prescription from doctor to pharmacist
+4. Verify prescription appears in pharmacist dashboard
 
-### Security Features
-- **Row-level Security**: Doctors can only access their own data
-- **Authentication Required**: All operations require valid login
-- **Data Validation**: Server-side validation of data access
-
-## Development vs Production
-
-### Development Mode
-- Uses test mode Firestore rules
-- Allows easy testing and development
-- Data is not production-ready
-
-### Production Mode
-- Update Firestore rules for production
-- Enable additional security features
-- Set up proper backup and monitoring
-
-## Troubleshooting
+## 🚨 Troubleshooting
 
 ### Common Issues
 
-1. **Authentication Errors**
-   - Check if email/password authentication is enabled
-   - Verify Firebase configuration values
+1. **Firebase Config Error**
+   - Verify your Firebase configuration is correct
+   - Check that all required fields are present
 
-2. **Permission Denied**
-   - Check Firestore security rules
-   - Ensure user is properly authenticated
+2. **Authentication Issues**
+   - Ensure Authentication is enabled in Firebase Console
+   - Check that sign-in methods are properly configured
 
-3. **Data Not Appearing**
+3. **Firestore Permission Denied**
+   - Verify Firestore security rules
+   - Check that user is properly authenticated
+
+4. **Data Not Persisting**
    - Check browser console for errors
-   - Verify Firebase project configuration
-   - Check if user is logged in
+   - Verify Firestore is enabled and accessible
 
-4. **Migration Issues**
-   - Ensure user is authenticated before migration
-   - Check if localStorage has data to migrate
-   - Verify Firebase permissions
+### Debug Mode
+Enable debug mode by adding this to your Firebase config:
 
-### Debug Commands
-
-Open browser console and run:
 ```javascript
-// Check Firebase connection
-window.firebaseDebug = true
-
-// Check data state
-storageService.debugDataState()
-
-// Check migration status
-dataMigrationService.needsMigration()
+// Enable debug mode (development only)
+if (import.meta.env.DEV) {
+  import('firebase/firestore').then(({ enableNetwork, disableNetwork }) => {
+    // Enable offline persistence
+    enableNetwork(db)
+  })
+}
 ```
 
-## Next Steps
+## 📚 Additional Resources
 
-1. **Deploy to Firebase Hosting** (optional)
-2. **Set up monitoring and analytics**
-3. **Configure backup strategies**
-4. **Add additional security features**
-
-## Support
-
-For issues with Firebase setup:
-- Check [Firebase Documentation](https://firebase.google.com/docs)
-- Review browser console for error messages
-- Verify all configuration values are correct
+- [Firebase Documentation](https://firebase.google.com/docs)
+- [Firestore Security Rules](https://firebase.google.com/docs/firestore/security/get-started)
+- [Firebase Authentication](https://firebase.google.com/docs/auth)
+- [Firebase Hosting](https://firebase.google.com/docs/hosting)

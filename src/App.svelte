@@ -4,7 +4,7 @@
   import firebaseAuthService from './services/firebaseAuth.js'
   import adminAuthService from './services/adminAuthService.js'
   import aiTokenTracker from './services/aiTokenTracker.js'
-  import jsonStorage from './services/jsonStorage.js'
+  import firebaseStorage from './services/firebaseStorage.js'
   import DoctorAuth from './components/DoctorAuth.svelte'
   import PharmacistAuth from './components/PharmacistAuth.svelte'
   import PharmacistDashboard from './components/PharmacistDashboard.svelte'
@@ -148,7 +148,7 @@
     if (!user?.firstName || !user?.lastName || !user?.country) {
       console.log('App: User missing profile data, fetching from database...')
       try {
-        const doctorData = jsonStorage.getDoctorByEmail(user.email)
+        const doctorData = await firebaseStorage.getDoctorByEmail(user.email)
         console.log('App: Retrieved doctor data from database:', doctorData)
         
         if (doctorData) {

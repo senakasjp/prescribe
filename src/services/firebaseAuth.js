@@ -7,7 +7,6 @@ import {
   onAuthStateChanged as firebaseOnAuthStateChanged
 } from 'firebase/auth'
 import { auth, googleProvider } from '../firebase-config.js'
-import jsonStorage from './jsonStorage.js'
 import firebaseStorage from './firebaseStorage.js'
 
 class FirebaseAuthService {

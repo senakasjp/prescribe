@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy } from 'svelte'
-  import jsonStorage from '../services/jsonStorage.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   import PatientForm from './PatientForm.svelte'
   import PatientDetails from './PatientDetails.svelte'
   import PatientList from './PatientList.svelte'
@@ -24,6 +24,7 @@
     firstName: user.firstName,
     lastName: user.lastName,
     country: user.country,
+    city: user.city,
     email: user.email
   } : {}
   
@@ -38,11 +39,26 @@
   }
 
   // Get doctor's data from storage - reactive to user changes
-  $: doctorData = user ? jsonStorage.getDoctorByEmail(user.email) : null
+  let doctorData = null
+  
+  // Load doctor data when user changes
+  $: if (user?.email) {
+    loadDoctorData()
+  }
+  
+  const loadDoctorData = async () => {
+    try {
+      doctorData = await firebaseStorage.getDoctorByEmail(user.email)
+    } catch (error) {
+      console.error('Error loading doctor data:', error)
+      doctorData = null
+    }
+  }
   $: doctorName = userProfileData.firstName && userProfileData.lastName ? 
     `${userProfileData.firstName} ${userProfileData.lastName}` : 
     userProfileData.firstName || user?.displayName || user?.name || user?.email || 'Doctor'
   $: doctorCountry = userProfileData.country || 'Not specified'
+  $: doctorCity = userProfileData.city || 'Not specified'
   
   // Force reactive updates when user properties change
   $: userDisplayName = userProfileData.firstName && userProfileData.lastName ? 
@@ -83,9 +99,19 @@
   // Refresh trigger for right side updates
   let refreshTrigger = 0
   
+  // Statistics variables
+  let totalPrescriptions = 0
+  let totalDrugs = 0
+  let connectedPharmacies = 0
+  
   // Reactive statements to ensure component updates when data changes
   $: if (selectedPatient) {
     loadMedicalData(selectedPatient.id)
+  }
+  
+  // Reload statistics when patients change
+  $: if (patients.length >= 0) {
+    loadStatistics()
   }
   
   $: if (symptoms) {
@@ -116,15 +142,32 @@
   const loadPatients = async () => {
     try {
       loading = true
-      patients = await jsonStorage.getPatients()
+      patients = await firebaseStorage.getPatients()
       filteredPatients = [...patients]
       console.log('Loaded patients:', patients.length)
+      
+      // Load statistics after loading patients
+      await loadStatistics()
     } catch (error) {
       console.error('Error loading patients:', error)
       patients = []
       filteredPatients = []
     } finally {
       loading = false
+    }
+  }
+  
+  // Load all statistics
+  const loadStatistics = async () => {
+    try {
+      totalPrescriptions = await getTotalPrescriptions()
+      totalDrugs = await getTotalDrugs()
+      connectedPharmacies = await getConnectedPharmacies()
+    } catch (error) {
+      console.error('Error loading statistics:', error)
+      totalPrescriptions = 0
+      totalDrugs = 0
+      connectedPharmacies = 0
     }
   }
   
@@ -186,7 +229,7 @@
       console.log('Adding patient with doctor ID:', doctorId)
       console.log('Patient data:', patientData)
       
-      const newPatient = await jsonStorage.createPatient({
+      const newPatient = await firebaseStorage.createPatient({
         ...patientData,
         doctorId: doctorId
       })
@@ -219,7 +262,7 @@
   }
   
   // Statistics functions for dashboard
-  const getTotalPrescriptions = () => {
+  const getTotalPrescriptions = async () => {
     let total = 0
     console.log('🔍 getTotalPrescriptions: Patients count:', patients.length)
     
@@ -227,23 +270,23 @@
     if (patients.length === 0) {
       console.log('🔍 getTotalPrescriptions: No patients found, checking all prescriptions in storage')
       // If no patients, check all prescriptions in storage
-      const allPrescriptions = jsonStorage.data.prescriptions || []
+      const allPrescriptions = await firebaseStorage.getAllPrescriptions()
       console.log('🔍 getTotalPrescriptions: All prescriptions in storage:', allPrescriptions)
       total = allPrescriptions.length
     } else {
-      patients.forEach(patient => {
-        const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
+      for (const patient of patients) {
+        const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
         console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
         console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
         total += patientPrescriptions.length
-      })
+      }
     }
     
     console.log('🔍 getTotalPrescriptions: Total prescriptions:', total)
     return total
   }
   
-  const getTotalDrugs = () => {
+  const getTotalDrugs = async () => {
     let total = 0
     console.log('🔍 getTotalDrugs: Patients count:', patients.length)
     
@@ -251,7 +294,7 @@
     if (patients.length === 0) {
       console.log('🔍 getTotalDrugs: No patients found, checking all prescriptions in storage')
       // If no patients, check all prescriptions in storage
-      const allPrescriptions = jsonStorage.data.prescriptions || []
+      const allPrescriptions = await firebaseStorage.getAllPrescriptions()
       console.log('🔍 getTotalDrugs: All prescriptions in storage:', allPrescriptions)
       
       allPrescriptions.forEach(prescription => {
@@ -265,8 +308,8 @@
         }
       })
     } else {
-      patients.forEach(patient => {
-        const patientPrescriptions = jsonStorage.getPrescriptionsByPatientId(patient.id) || []
+      for (const patient of patients) {
+        const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
         console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
         patientPrescriptions.forEach(prescription => {
           console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
@@ -278,26 +321,44 @@
             total += 1 // Single medication prescription
           }
         })
-      })
+      }
     }
     
     console.log('🔍 getTotalDrugs: Total drugs:', total)
     return total
   }
   
-  const getConnectedPharmacies = () => {
+  const getConnectedPharmacies = async () => {
     if (!user) return 0
     
-    // Get doctor data from storage to access connectedPharmacists
-    const doctor = jsonStorage.getDoctorByEmail(user.email)
-    if (!doctor || !doctor.connectedPharmacists) return 0
-    
-    return doctor.connectedPharmacists.length
+    try {
+      // Get doctor data to get the doctor's ID
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor) return 0
+      
+      // Get all pharmacists and count those that have this doctor in their connectedDoctors array
+      const allPharmacists = await firebaseStorage.getAllPharmacists()
+      const connectedCount = allPharmacists.filter(pharmacist => 
+        pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
+      ).length
+      
+      console.log('🔍 Connected pharmacies count:', connectedCount)
+      console.log('🔍 Doctor ID:', doctor.id)
+      console.log('🔍 All pharmacists:', allPharmacists.map(p => ({ 
+        name: p.businessName, 
+        connectedDoctors: p.connectedDoctors 
+      })))
+      
+      return connectedCount
+    } catch (error) {
+      console.error('Error getting connected pharmacies:', error)
+      return 0
+    }
   }
 
   
   // Create responsive prescriptions per day chart using Chart.js
-  const createPrescriptionsChart = () => {
+  const createPrescriptionsChart = async () => {
     try {
       // Destroy existing chart if it exists
       if (chartInstance) {
@@ -321,8 +382,8 @@
         
         // Count prescriptions created on this day
         let dayPrescriptions = 0
-        patients.forEach(patient => {
-          const patientPrescriptions = jsonStorage.getMedicationsByPatientId(patient.id) || []
+        for (const patient of patients) {
+          const patientPrescriptions = await firebaseStorage.getMedicationsByPatientId(patient.id) || []
           patientPrescriptions.forEach(prescription => {
             const createdDate = new Date(prescription.createdAt || prescription.dateCreated)
             const prescriptionYear = createdDate.getFullYear()
@@ -334,15 +395,25 @@
               dayPrescriptions++
             }
           })
-        })
+        }
         
         prescriptionsPerDay.push(dayPrescriptions)
       }
       
-      // Create Chart.js chart
+      // Create Chart.js chart with proper error handling
       setTimeout(() => {
         const canvas = document.getElementById('prescriptionsChart')
-        if (!canvas) return
+        if (!canvas) {
+          console.log('Canvas not found, skipping chart creation')
+          return
+        }
+        
+        // Check if canvas is already in use
+        if (canvas.chart) {
+          console.log('Canvas already has a chart, destroying it first')
+          canvas.chart.destroy()
+          canvas.chart = null
+        }
         
         const ctx = canvas.getContext('2d')
         
@@ -429,6 +500,9 @@
           }
         })
         
+        // Store chart reference on canvas for cleanup
+        canvas.chart = chartInstance
+        
       }, 200)
       
     } catch (error) {
@@ -442,15 +516,15 @@
       console.log('Loading medical data for patient:', patientId)
       
       // Load illnesses
-      illnesses = await jsonStorage.getIllnessesByPatientId(patientId) || []
+      illnesses = await firebaseStorage.getIllnessesByPatientId(patientId) || []
       console.log('Loaded illnesses:', illnesses.length)
       
       // Load prescriptions
-      prescriptions = await jsonStorage.getMedicationsByPatientId(patientId) || []
+      prescriptions = await firebaseStorage.getMedicationsByPatientId(patientId) || []
       console.log('Loaded prescriptions:', prescriptions.length)
       
       // Load symptoms
-      symptoms = await jsonStorage.getSymptomsByPatientId(patientId) || []
+      symptoms = await firebaseStorage.getSymptomsByPatientId(patientId) || []
       console.log('Loaded symptoms:', symptoms.length)
       
     } catch (error) {
@@ -514,7 +588,7 @@
       }
       
       // Add to the prescriptions list for the selected patient
-      const newPrescription = await jsonStorage.createMedication({
+      const newPrescription = await firebaseStorage.createMedication({
         ...todayMedication,
         patientId: selectedPatient.id
       })
@@ -840,7 +914,7 @@
                            <!-- Added Country Information -->
                            <p class="card-text mt-2 mb-0 text-muted small">
                              <i class="fas fa-map-marker-alt me-1"></i>
-                             Country: {doctorCountry || 'Not specified'}
+                             Location: {doctorCity || 'Not specified'}, {doctorCountry || 'Not specified'}
                            </p>
                          </div>
                        </div>
@@ -878,7 +952,7 @@
                   </div>
                 </div>
                 <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPrescriptions">{getTotalPrescriptions()}</h4>
+                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPrescriptions">{totalPrescriptions}</h4>
                   <small class="opacity-75 d-none d-sm-block">Total Prescriptions</small>
                   <small class="opacity-75 d-sm-none">Prescriptions</small>
                 </div>
@@ -897,7 +971,7 @@
                   </div>
                 </div>
                 <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalDrugs">{getTotalDrugs()}</h4>
+                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalDrugs">{totalDrugs}</h4>
                   <small class="opacity-75 d-none d-sm-block">Total Drugs</small>
                   <small class="opacity-75 d-sm-none">Drugs</small>
                 </div>
@@ -916,7 +990,7 @@
                   </div>
                 </div>
                 <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="connectedPharmacies">{getConnectedPharmacies()}</h4>
+                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="connectedPharmacies">{connectedPharmacies}</h4>
                   <small class="opacity-75 d-none d-sm-block">Connected Pharmacies</small>
                   <small class="opacity-75 d-sm-none">Pharmacies</small>
                 </div>

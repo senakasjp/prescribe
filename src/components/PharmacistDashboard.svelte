@@ -20,6 +20,22 @@
       // Get prescriptions from connected doctors using Firebase
       prescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacist.id)
       
+      console.log('🔍 PharmacistDashboard: Loaded prescriptions:', prescriptions.length)
+      console.log('🔍 PharmacistDashboard: Prescription data:', prescriptions)
+      
+      // Count total prescriptions across all prescription objects
+      let totalPrescriptions = 0
+      prescriptions.forEach(prescription => {
+        if (prescription.prescriptions && Array.isArray(prescription.prescriptions)) {
+          totalPrescriptions += prescription.prescriptions.length
+          console.log(`🔍 Prescription ${prescription.id} has ${prescription.prescriptions.length} sub-prescriptions`)
+        } else {
+          totalPrescriptions += 1
+          console.log(`🔍 Prescription ${prescription.id} is a single prescription`)
+        }
+      })
+      console.log('🔍 Total prescriptions count:', totalPrescriptions)
+      
       // Load connected doctors info from Firebase
       connectedDoctors = []
       for (const doctorId of pharmacist.connectedDoctors) {
@@ -50,6 +66,21 @@
   const closePrescriptionDetails = () => {
     showPrescriptionDetails = false
     selectedPrescription = null
+  }
+
+  // Clear all prescriptions (for testing/cleanup)
+  const clearAllPrescriptions = async () => {
+    if (confirm('Are you sure you want to clear all prescriptions? This action cannot be undone.')) {
+      try {
+        await firebaseStorage.clearPharmacistPrescriptions(pharmacist.id)
+        notifySuccess('All prescriptions cleared successfully')
+        // Reload the data
+        await loadPharmacistData()
+      } catch (error) {
+        console.error('Error clearing prescriptions:', error)
+        notifyError('Failed to clear prescriptions')
+      }
+    }
   }
   
   // Format date
@@ -175,10 +206,16 @@
               <i class="fas fa-prescription me-2 text-primary"></i>
               Prescriptions
             </h5>
-            <button class="btn btn-outline-primary btn-sm" on:click={loadPharmacistData}>
-              <i class="fas fa-sync-alt me-1"></i>
-              Refresh
-            </button>
+            <div class="btn-group" role="group">
+              <button class="btn btn-outline-primary btn-sm" on:click={loadPharmacistData}>
+                <i class="fas fa-sync-alt me-1"></i>
+                Refresh
+              </button>
+              <button class="btn btn-outline-danger btn-sm" on:click={clearAllPrescriptions}>
+                <i class="fas fa-trash me-1"></i>
+                Clear All
+              </button>
+            </div>
           </div>
         </div>
         
@@ -213,23 +250,23 @@
                   {#each prescriptions as prescription}
                     <tr>
                       <td>
-                        <div class="fw-bold">{prescription.patientName}</div>
-                        <small class="text-muted">{prescription.patientEmail}</small>
+                        <div class="fw-bold">{prescription.patientName || 'Unknown Patient'}</div>
+                        <small class="text-muted">{prescription.patientEmail || 'No email'}</small>
                       </td>
                       <td>
-                        <div class="fw-bold">{getDoctorName(prescription.doctorId)}</div>
+                        <div class="fw-bold">{prescription.doctorName || getDoctorName(prescription.doctorId)}</div>
                         <small class="text-muted">ID: {prescription.doctorId}</small>
                       </td>
                       <td>
                         <span class="badge bg-primary">
-                          {prescription.medications ? prescription.medications.length : 1} medication(s)
+                          {prescription.prescriptions ? prescription.prescriptions.length : 0} prescription(s)
                         </span>
                       </td>
                       <td>
-                        <small>{formatDate(prescription.createdAt || prescription.dateCreated)}</small>
+                        <small>{formatDate(prescription.receivedAt || prescription.sentAt || prescription.createdAt)}</small>
                       </td>
                       <td>
-                        <span class="badge bg-warning text-dark">Pending</span>
+                        <span class="badge bg-warning text-dark">{prescription.status || 'Pending'}</span>
                       </td>
                       <td>
                         <button 
@@ -269,52 +306,69 @@
           <div class="row mb-4">
             <div class="col-md-6">
               <h6 class="fw-bold text-primary">Patient Information</h6>
-              <p><strong>Name:</strong> {selectedPrescription.patientName}</p>
-              <p><strong>Email:</strong> {selectedPrescription.patientEmail}</p>
+              <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
+              <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
               {#if selectedPrescription.patientAge}
                 <p><strong>Age:</strong> {selectedPrescription.patientAge}</p>
               {/if}
             </div>
             <div class="col-md-6">
               <h6 class="fw-bold text-primary">Prescription Information</h6>
-              <p><strong>Doctor:</strong> {getDoctorName(selectedPrescription.doctorId)}</p>
-              <p><strong>Date:</strong> {formatDate(selectedPrescription.createdAt || selectedPrescription.dateCreated)}</p>
-              <p><strong>Prescription ID:</strong> {selectedPrescription.id}</p>
+              <p><strong>Doctor:</strong> {selectedPrescription.doctorName || getDoctorName(selectedPrescription.doctorId)}</p>
+              <p><strong>Date:</strong> {formatDate(selectedPrescription.receivedAt || selectedPrescription.sentAt || selectedPrescription.createdAt)}</p>
+              <p><strong>Status:</strong> <span class="badge bg-warning text-dark">{selectedPrescription.status || 'Pending'}</span></p>
             </div>
           </div>
           
-          <!-- Medications -->
+          <!-- Prescriptions -->
           <div class="mb-4">
-            <h6 class="fw-bold text-primary">Medications</h6>
-            {#if selectedPrescription.medications && selectedPrescription.medications.length > 0}
-              <div class="table-responsive">
-                <table class="table table-bordered">
-                  <thead class="table-light">
-                    <tr>
-                      <th>Medication</th>
-                      <th>Dosage</th>
-                      <th>Frequency</th>
-                      <th>Duration</th>
-                      <th>Instructions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each selectedPrescription.medications as medication}
-                      <tr>
-                        <td class="fw-bold">{medication.name}</td>
-                        <td>{medication.dosage}</td>
-                        <td>{medication.frequency}</td>
-                        <td>{medication.duration}</td>
-                        <td>{medication.instructions}</td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
+            <h6 class="fw-bold text-primary">Prescriptions</h6>
+            {#if selectedPrescription.prescriptions && selectedPrescription.prescriptions.length > 0}
+              {#each selectedPrescription.prescriptions as prescription}
+                <div class="card mb-3">
+                  <div class="card-header">
+                    <h6 class="mb-0">Prescription ID: {prescription.id}</h6>
+                  </div>
+                  <div class="card-body">
+                    <!-- Medications for this prescription -->
+                    {#if prescription.medications && prescription.medications.length > 0}
+                      <div class="table-responsive">
+                        <table class="table table-bordered">
+                          <thead class="table-light">
+                            <tr>
+                              <th>Medication</th>
+                              <th>Dosage</th>
+                              <th>Frequency</th>
+                              <th>Duration</th>
+                              <th>Instructions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {#each prescription.medications as medication}
+                              <tr>
+                                <td class="fw-bold">{medication.name}</td>
+                                <td>{medication.dosage}</td>
+                                <td>{medication.frequency}</td>
+                                <td>{medication.duration}</td>
+                                <td>{medication.instructions}</td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                    {:else}
+                      <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No medications found in this prescription.
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
             {:else}
               <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                No medications found in this prescription.
+                No prescriptions found.
               </div>
             {/if}
           </div>

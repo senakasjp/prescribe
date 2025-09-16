@@ -118,6 +118,29 @@ class FirebaseStorageService {
     }
   }
 
+  // Clear all prescriptions for a pharmacist (for testing/cleanup)
+  async clearPharmacistPrescriptions(pharmacistId) {
+    try {
+      console.log('🧹 Clearing all prescriptions for pharmacist:', pharmacistId)
+      const pharmacistRef = doc(db, this.collections.pharmacists, pharmacistId)
+      const prescriptionsRef = collection(pharmacistRef, 'receivedPrescriptions')
+      
+      const existingPrescriptions = await getDocs(prescriptionsRef)
+      console.log('🧹 Found prescriptions to clear:', existingPrescriptions.size)
+      
+      for (const docSnapshot of existingPrescriptions.docs) {
+        await deleteDoc(docSnapshot.ref)
+        console.log('🧹 Deleted prescription:', docSnapshot.id)
+      }
+      
+      console.log('✅ Successfully cleared all prescriptions for pharmacist:', pharmacistId)
+      return true
+    } catch (error) {
+      console.error('Error clearing pharmacist prescriptions:', error)
+      throw error
+    }
+  }
+
   // Pharmacist operations
   async createPharmacist(pharmacistData) {
     try {
@@ -224,6 +247,69 @@ class FirebaseStorageService {
       return { id: updatedPharmacist.id, ...updatedPharmacist }
     } catch (error) {
       console.error('Error updating pharmacist:', error)
+      throw error
+    }
+  }
+
+  // Update patient
+  async updatePatient(patientId, updatedPatientData) {
+    try {
+      console.log('👤 Updating patient:', patientId)
+      const patientRef = doc(db, this.collections.patients, patientId)
+      await updateDoc(patientRef, updatedPatientData)
+      console.log('✅ Patient updated successfully')
+      return { id: patientId, ...updatedPatientData }
+    } catch (error) {
+      console.error('Error updating patient:', error)
+      throw error
+    }
+  }
+
+  // Update prescription
+  async updatePrescription(prescriptionId, updatedPrescriptionData) {
+    try {
+      console.log('📋 Updating prescription:', prescriptionId)
+      const prescriptionRef = doc(db, this.collections.medications, prescriptionId)
+      await updateDoc(prescriptionRef, updatedPrescriptionData)
+      console.log('✅ Prescription updated successfully')
+      return { id: prescriptionId, ...updatedPrescriptionData }
+    } catch (error) {
+      console.error('Error updating prescription:', error)
+      throw error
+    }
+  }
+
+  // Add medication to prescription
+  async addMedicationToPrescription(prescriptionId, medicationData) {
+    try {
+      console.log('💊 Adding medication to prescription:', prescriptionId)
+      
+      // Get the current prescription
+      const prescriptionRef = doc(db, this.collections.medications, prescriptionId)
+      const prescriptionDoc = await getDoc(prescriptionRef)
+      
+      if (!prescriptionDoc.exists()) {
+        throw new Error('Prescription not found')
+      }
+      
+      const prescriptionData = prescriptionDoc.data()
+      const medications = prescriptionData.medications || []
+      
+      // Add the new medication
+      const newMedication = {
+        ...medicationData,
+        id: this.generateId(),
+        createdAt: new Date().toISOString()
+      }
+      medications.push(newMedication)
+      
+      // Update the prescription
+      await updateDoc(prescriptionRef, { medications })
+      
+      console.log('✅ Medication added to prescription successfully')
+      return newMedication
+    } catch (error) {
+      console.error('Error adding medication to prescription:', error)
       throw error
     }
   }
@@ -588,34 +674,48 @@ class FirebaseStorageService {
   // Pharmacist prescription operations
   async getPharmacistPrescriptions(pharmacistId) {
     try {
-      // Get all prescriptions and filter by pharmacist's connected doctors
-      const pharmacist = await this.getPharmacistById(pharmacistId)
-      if (!pharmacist || !pharmacist.connectedDoctors) {
-        return []
-      }
-
-      const allPrescriptions = []
+      console.log('🔍 Getting prescriptions for pharmacist:', pharmacistId)
       
-      // Get prescriptions from each connected doctor (without orderBy to avoid index requirement)
-      for (const doctorId of pharmacist.connectedDoctors) {
-        const q = query(
-          collection(db, this.collections.medications), 
-          where('doctorId', '==', doctorId)
-        )
-        const querySnapshot = await getDocs(q)
+      // Get prescriptions from the pharmacist's receivedPrescriptions subcollection
+      const pharmacistRef = doc(db, this.collections.pharmacists, pharmacistId)
+      const prescriptionsRef = collection(pharmacistRef, 'receivedPrescriptions')
+      
+      console.log('🔍 Pharmacist ref path:', pharmacistRef.path)
+      console.log('🔍 Prescriptions ref path:', prescriptionsRef.path)
+      
+      const querySnapshot = await getDocs(prescriptionsRef)
+      
+      console.log('🔍 Query snapshot size:', querySnapshot.size)
+      console.log('🔍 Query snapshot docs:', querySnapshot.docs.length)
+      
+      if (querySnapshot.size === 0) {
+        console.log('🔍 No documents found in subcollection')
+        console.log('🔍 Checking if subcollection exists...')
         
-        const doctorPrescriptions = querySnapshot.docs.map(doc => ({
+        // Try to get the parent document to see if it exists
+        const pharmacistDoc = await getDoc(pharmacistRef)
+        console.log('🔍 Pharmacist document exists:', pharmacistDoc.exists())
+        if (pharmacistDoc.exists()) {
+          console.log('🔍 Pharmacist document data:', pharmacistDoc.data())
+        }
+      }
+      
+      const prescriptions = querySnapshot.docs.map(doc => {
+        const data = doc.data()
+        console.log('🔍 Prescription doc data:', data)
+        return {
           id: doc.id,
-          ...doc.data()
-        }))
-        
-        allPrescriptions.push(...doctorPrescriptions)
-      }
+          ...data
+        }
+      })
       
-      // Sort in JavaScript instead of Firestore to avoid index requirement
-      return allPrescriptions.sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0)
-        const dateB = new Date(b.createdAt || 0)
+      console.log('📋 Found prescriptions for pharmacist:', prescriptions.length)
+      console.log('📋 Prescriptions data:', prescriptions)
+      
+      // Sort by received date (newest first)
+      return prescriptions.sort((a, b) => {
+        const dateA = new Date(a.receivedAt || a.sentAt || 0)
+        const dateB = new Date(b.receivedAt || b.sentAt || 0)
         return dateB - dateA // Descending order
       })
     } catch (error) {
@@ -649,25 +749,38 @@ class FirebaseStorageService {
 
   async savePharmacistPrescriptions(pharmacistId, prescriptions) {
     try {
+      console.log('💾 Saving prescriptions for pharmacist:', pharmacistId)
+      console.log('💾 Prescriptions to save:', prescriptions.length)
+      console.log('💾 Prescriptions data:', prescriptions)
+      
       // This would typically save to a separate collection for pharmacist-specific data
       // For now, we'll store it in a pharmacist-specific subcollection
       const pharmacistRef = doc(db, this.collections.pharmacists, pharmacistId)
       const prescriptionsRef = collection(pharmacistRef, 'receivedPrescriptions')
       
+      console.log('💾 Pharmacist ref path:', pharmacistRef.path)
+      console.log('💾 Prescriptions ref path:', prescriptionsRef.path)
+      
       // Clear existing prescriptions first
       const existingPrescriptions = await getDocs(prescriptionsRef)
+      console.log('💾 Existing prescriptions to clear:', existingPrescriptions.size)
+      
       for (const docSnapshot of existingPrescriptions.docs) {
         await deleteDoc(docSnapshot.ref)
       }
       
       // Add new prescriptions
       for (const prescription of prescriptions) {
-        await addDoc(prescriptionsRef, {
+        const prescriptionData = {
           ...prescription,
           receivedAt: new Date().toISOString()
-        })
+        }
+        console.log('💾 Adding prescription:', prescriptionData)
+        const docRef = await addDoc(prescriptionsRef, prescriptionData)
+        console.log('💾 Prescription added with ID:', docRef.id)
       }
       
+      console.log('✅ Successfully saved prescriptions for pharmacist:', pharmacistId)
       return true
     } catch (error) {
       console.error('Error saving pharmacist prescriptions:', error)

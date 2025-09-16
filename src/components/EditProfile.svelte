@@ -3,6 +3,11 @@
   import authService from '../services/authService.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import { countries } from '../data/countries.js'
+  import { cities, getCitiesByCountry } from '../data/cities.js'
+  
+  // Debug the import
+  console.log('EditProfile: Cities imported:', cities.length)
+  console.log('EditProfile: getCitiesByCountry function:', typeof getCitiesByCountry)
   
   const dispatch = createEventDispatcher()
   export let user
@@ -11,8 +16,27 @@
   let lastName = ''
   let email = ''
   let country = ''
+  let city = ''
   let loading = false
   let error = ''
+  
+  // Reactive variable for cities based on selected country
+  $: availableCities = country ? getCitiesByCountry(country) : []
+  
+  // Debug logging for cities
+  $: if (country) {
+    console.log('EditProfile: Country selected:', country)
+    console.log('EditProfile: Calling getCitiesByCountry with:', country)
+    const result = getCitiesByCountry(country)
+    console.log('EditProfile: getCitiesByCountry result:', result.length, 'cities')
+    console.log('EditProfile: Available cities:', availableCities.length)
+    console.log('EditProfile: First 5 cities:', availableCities.slice(0, 5))
+  }
+  
+  // Reset city when country changes
+  $: if (country && city && !availableCities.find(c => c.name === city)) {
+    city = ''
+  }
   
   // Function to initialize form fields
   const initializeForm = () => {
@@ -22,8 +46,9 @@
       lastName = user.lastName || ''
       email = user.email || ''
       country = user.country || ''
+      city = user.city || ''
       console.log('EditProfile: Manually initialized form fields')
-      console.log('EditProfile: firstName:', firstName, 'lastName:', lastName, 'country:', country)
+      console.log('EditProfile: firstName:', firstName, 'lastName:', lastName, 'country:', country, 'city:', city)
     } else {
       console.log('EditProfile: No user data available for initialization')
     }
@@ -46,15 +71,16 @@
     console.log('EditProfile: lastName:', lastName)
     console.log('EditProfile: email:', email)
     console.log('EditProfile: country:', country)
+    console.log('EditProfile: city:', city)
   }
   
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault()
     console.log('EditProfile: Form submitted')
-    console.log('EditProfile: Form data - firstName:', firstName, 'lastName:', lastName, 'country:', country)
-    console.log('EditProfile: Form data types - firstName type:', typeof firstName, 'lastName type:', typeof lastName, 'country type:', typeof country)
-    console.log('EditProfile: Form data lengths - firstName length:', firstName?.length, 'lastName length:', lastName?.length, 'country length:', country?.length)
+    console.log('EditProfile: Form data - firstName:', firstName, 'lastName:', lastName, 'country:', country, 'city:', city)
+    console.log('EditProfile: Form data types - firstName type:', typeof firstName, 'lastName type:', typeof lastName, 'country type:', typeof country, 'city type:', typeof city)
+    console.log('EditProfile: Form data lengths - firstName length:', firstName?.length, 'lastName length:', lastName?.length, 'country length:', country?.length, 'city length:', city?.length)
     
     error = ''
     loading = true
@@ -69,6 +95,10 @@
         throw new Error('Country is required')
       }
       
+      if (!city.trim()) {
+        throw new Error('City is required')
+      }
+      
       console.log('EditProfile: Validation passed, proceeding with update')
       
       // Update user data
@@ -77,10 +107,11 @@
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         country: country.trim(),
+        city: city.trim(),
         name: `${firstName.trim()} ${lastName.trim()}`
       }
       
-      console.log('EditProfile: Form values - firstName:', firstName, 'lastName:', lastName, 'country:', country)
+      console.log('EditProfile: Form values - firstName:', firstName, 'lastName:', lastName, 'country:', country, 'city:', city)
       console.log('EditProfile: Creating updatedUser object:', updatedUser)
       
       // Update in auth service
@@ -188,6 +219,35 @@
                 <option value={countryOption.name}>{countryOption.name}</option>
               {/each}
             </select>
+          </div>
+          
+          <div class="mb-3">
+            <label for="editCity" class="form-label">
+              City <span class="text-danger">*</span>
+            </label>
+            <select 
+              class="form-select" 
+              id="editCity" 
+              bind:value={city}
+              required
+              disabled={loading || !country}
+            >
+              <option value="">Select your city</option>
+              {#each availableCities as cityOption}
+                <option value={cityOption.name}>{cityOption.name}</option>
+              {/each}
+            </select>
+            {#if country && availableCities.length === 0}
+              <div class="form-text text-warning">
+                <i class="fas fa-exclamation-triangle me-1"></i>
+                No cities available for the selected country. Please contact support.
+              </div>
+            {/if}
+            <!-- Debug info -->
+            <div class="form-text text-info">
+              <i class="fas fa-info-circle me-1"></i>
+              Debug: Country="{country}", Cities: {availableCities.length}
+            </div>
           </div>
           
           {#if error}

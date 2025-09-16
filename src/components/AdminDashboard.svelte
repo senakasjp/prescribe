@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte'
   import adminAuthService from '../services/adminAuthService.js'
-  import jsonStorage from '../services/jsonStorage.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   import aiTokenTracker from '../services/aiTokenTracker.js'
   
   const dispatch = createEventDispatcher()
@@ -17,6 +17,7 @@
   let aiUsageStats = null
   let doctors = []
   let patients = []
+  let doctorPatientCounts = {}
   let loading = true
   let activeTab = 'overview'
   
@@ -56,7 +57,7 @@
   const loadStatistics = async () => {
     try {
       // Get all doctors
-      const allDoctors = jsonStorage.getAllDoctors()
+      const allDoctors = await firebaseStorage.getAllDoctors()
       statistics.totalDoctors = allDoctors.length
       
       // Get all patients across all doctors
@@ -66,13 +67,13 @@
       let totalIllnesses = 0
       
       for (const doctor of allDoctors) {
-        const doctorPatients = jsonStorage.getPatients(doctor.id)
+        const doctorPatients = await firebaseStorage.getPatientsByDoctorId(doctor.id)
         totalPatients += doctorPatients.length
         
         for (const patient of doctorPatients) {
-          const prescriptions = jsonStorage.getPrescriptions(patient.id, doctor.id)
-          const symptoms = jsonStorage.getSymptoms(patient.id, doctor.id)
-          const illnesses = jsonStorage.getIllnesses(patient.id, doctor.id)
+          const prescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id)
+          const symptoms = await firebaseStorage.getSymptomsByPatientId(patient.id)
+          const illnesses = await firebaseStorage.getIllnessesByPatientId(patient.id)
           
           totalPrescriptions += prescriptions.length
           totalSymptoms += symptoms.length
@@ -104,12 +105,13 @@
   // Load doctors and patients data
   const loadDoctorsAndPatients = async () => {
     try {
-      doctors = jsonStorage.getAllDoctors()
+      doctors = await firebaseStorage.getAllDoctors()
       patients = []
       
       // Get patients from all doctors
       for (const doctor of doctors) {
-        const doctorPatients = jsonStorage.getPatients(doctor.id)
+        const doctorPatients = await firebaseStorage.getPatientsByDoctorId(doctor.id)
+        doctorPatientCounts[doctor.id] = doctorPatients.length
         for (const patient of doctorPatients) {
           patients.push({
             ...patient,
@@ -341,7 +343,7 @@
                             <td>{doctor.name || 'N/A'}</td>
                             <td><span class="badge bg-primary">{doctor.role}</span></td>
                             <td>{formatDate(doctor.createdAt)}</td>
-                            <td>{jsonStorage.getPatients(doctor.id).length}</td>
+                            <td>{doctorPatientCounts[doctor.id] || 0}</td>
                           </tr>
                         {/each}
                       </tbody>

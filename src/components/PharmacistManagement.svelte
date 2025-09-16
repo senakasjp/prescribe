@@ -89,8 +89,8 @@
   // Disconnect pharmacist
   const disconnectPharmacist = async (pharmacistId) => {
     try {
-      const pharmacist = await jsonStorage.getPharmacistById(pharmacistId)
-      const doctor = jsonStorage.getDoctorByEmail(user.email)
+      const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
       
       if (pharmacist && doctor) {
         // Remove doctor from pharmacist's connectedDoctors
@@ -101,7 +101,7 @@
           doctor.connectedPharmacists = doctor.connectedPharmacists.filter(id => id !== pharmacistId)
         }
         
-        await jsonStorage.saveData()
+        await firebaseStorage.updatePharmacist(pharmacist)
         notifySuccess('Pharmacist disconnected successfully')
         loadPharmacists()
       }

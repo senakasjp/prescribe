@@ -1,7 +1,6 @@
 // Authentication Service - Temporary replacement for Firebase Auth
 // This can be easily converted to Firebase Auth later
 
-import jsonStorage from './jsonStorage.js'
 import firebaseStorage from './firebaseStorage.js'
 
 class AuthService {
@@ -47,13 +46,13 @@ class AuthService {
   async registerDoctor(email, password, doctorData = {}) {
     try {
       // Check if doctor already exists
-      const existingDoctor = await jsonStorage.getDoctorByEmail(email)
+      const existingDoctor = await firebaseStorage.getDoctorByEmail(email)
       if (existingDoctor) {
         throw new Error('Doctor with this email already exists')
       }
 
       // Create new doctor in local storage
-      const doctor = await jsonStorage.createDoctor({
+      const doctor = await firebaseStorage.createDoctor({
         email,
         password, // In real app, this should be hashed
         role: 'doctor',
@@ -96,7 +95,7 @@ class AuthService {
   // Sign in doctor
   async signInDoctor(email, password) {
     try {
-      const doctor = await jsonStorage.getDoctorByEmail(email)
+      const doctor = await firebaseStorage.getDoctorByEmail(email)
       if (!doctor) {
         throw new Error('Doctor not found')
       }
@@ -157,8 +156,8 @@ class AuthService {
       console.log('AuthService: Updating doctor with data:', updatedDoctorData)
       console.log('AuthService: Current user:', this.currentUser)
       
-      // Update in jsonStorage
-      const updatedDoctor = await jsonStorage.updateDoctor(updatedDoctorData)
+      // Update in Firebase
+      const updatedDoctor = await firebaseStorage.updateDoctor(updatedDoctorData)
       
       // Update current user
       this.saveCurrentUser(updatedDoctor)

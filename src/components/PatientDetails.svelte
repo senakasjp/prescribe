@@ -1,7 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import jsonStorage from '../services/jsonStorage.js'
-import firebaseStorage from '../services/firebaseStorage.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   import openaiService from '../services/openaiService.js'
   import authService from '../services/authService.js'
   import { notifyError, notifySuccess } from '../stores/notifications.js'
@@ -82,16 +81,16 @@ import firebaseStorage from '../services/firebaseStorage.js'
       printButtonClicked = false
       
       // Load illnesses
-      illnesses = await jsonStorage.getIllnessesByPatientId(selectedPatient.id) || []
+      illnesses = await firebaseStorage.getIllnessesByPatientId(selectedPatient.id) || []
       console.log('✅ Loaded illnesses:', illnesses.length)
       
       // Load prescriptions
-      prescriptions = await jsonStorage.getPrescriptionsByPatientId(selectedPatient.id) || []
+      prescriptions = await firebaseStorage.getPrescriptionsByPatientId(selectedPatient.id) || []
       console.log('✅ Loaded prescriptions:', prescriptions.length)
       console.log('📋 Prescriptions data:', prescriptions)
       
       // Load symptoms
-      symptoms = await jsonStorage.getSymptomsByPatientId(selectedPatient.id) || []
+      symptoms = await firebaseStorage.getSymptomsByPatientId(selectedPatient.id) || []
       console.log('✅ Loaded symptoms:', symptoms.length)
       
       // Set up current prescription and medications
@@ -272,7 +271,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
     
     try {
       // Save illness to database
-      const newIllness = await jsonStorage.createIllness({
+      const newIllness = await firebaseStorage.createIllness({
         ...illnessData,
         patientId: selectedPatient.id,
         doctorId: doctorId
@@ -305,7 +304,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
     
     try {
       // Save symptoms to database
-      const newSymptoms = await jsonStorage.createSymptoms({
+      const newSymptoms = await firebaseStorage.createSymptoms({
         ...symptomsData,
         patientId: selectedPatient.id,
         doctorId: doctorId
@@ -339,7 +338,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
     try {
       if (medicationData.isEdit) {
         // Update existing medication in database
-        const updatedMedication = await jsonStorage.createMedication({
+        const updatedMedication = await firebaseStorage.createMedication({
           ...medicationData,
           patientId: selectedPatient.id,
           doctorId: doctorId
@@ -369,7 +368,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
           throw new Error('No current prescription. Please click "New Prescription" first.')
         }
         
-        const newMedication = await jsonStorage.addMedicationToPrescription(
+        const newMedication = await firebaseStorage.addMedicationToPrescription(
           currentPrescription.id, 
           medicationData
         )
@@ -436,7 +435,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
       
       if (!existingPrescription) {
         // This is a new prescription that needs to be saved
-        const savedPrescription = await jsonStorage.createPrescription({
+        const savedPrescription = await firebaseStorage.createPrescription({
           ...currentPrescription,
           patientId: selectedPatient.id,
           doctorId: doctorId
@@ -453,7 +452,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
           doctorId: doctorId
         }
         
-        await jsonStorage.updatePrescription(currentPrescription.id, updatedPrescription)
+        await firebaseStorage.updatePrescription(currentPrescription.id, updatedPrescription)
         console.log('✅ Updated existing prescription with', currentPrescription.medications.length, 'medications')
         
         // Update the prescription in the local array
@@ -525,7 +524,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
           }
           
           // Update in database
-        await jsonStorage.updatePrescription(currentPrescription.id, updatedPrescription)
+        await firebaseStorage.updatePrescription(currentPrescription.id, updatedPrescription)
         console.log('✅ Marked prescription as completed with', currentPrescription.medications.length, 'medications')
           
           // Update the prescription in the local array
@@ -640,14 +639,25 @@ import firebaseStorage from '../services/firebaseStorage.js'
         return
       }
       
-      // Get current prescriptions
-      const prescriptions = jsonStorage.getPrescriptionsByPatientId(selectedPatient.id)
-      console.log('🔍 Current prescriptions:', prescriptions)
-      if (!prescriptions || prescriptions.length === 0) {
-        console.log('❌ No prescriptions to send')
-        alert('No prescriptions to send.')
+      // Get current medications (the actual prescriptions to send)
+      console.log('🔍 Current medications to send:', currentMedications)
+      if (!currentMedications || currentMedications.length === 0) {
+        console.log('❌ No medications to send')
+        alert('No medications to send. Please add medications first.')
         return
       }
+      
+      // Create prescription data from current medications
+      const prescriptions = [{
+        id: Date.now().toString(),
+        patientId: selectedPatient.id,
+        doctorId: doctor.id,
+        medications: currentMedications,
+        notes: prescriptionNotes || '',
+        createdAt: new Date().toISOString(),
+        status: 'pending'
+      }]
+      console.log('🔍 Created prescription data:', prescriptions)
       
       // Get all pharmacists and find those connected to this doctor
       const allPharmacists = await firebaseStorage.getAllPharmacists()
@@ -706,8 +716,8 @@ import firebaseStorage from '../services/firebaseStorage.js'
       console.log('📤 Sending prescriptions to selected pharmacies:', selectedPharmacies)
       
       const firebaseUser = currentUser || authService.getCurrentUser()
-      const doctor = jsonStorage.getDoctorByEmail(firebaseUser.email)
-      const prescriptions = jsonStorage.getPrescriptionsByPatientId(selectedPatient.id)
+      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      const prescriptions = await firebaseStorage.getPrescriptionsByPatientId(selectedPatient.id)
       
       let sentCount = 0
       
@@ -1074,7 +1084,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
       }
       
       // Save to storage
-      await jsonStorage.updatePatient(selectedPatient.id, updatedPatient)
+      await firebaseStorage.updatePatient(selectedPatient.id, updatedPatient)
       
       // Update the selected patient reference
       Object.assign(selectedPatient, updatedPatient)
@@ -1105,7 +1115,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
   const handleDeletePrescription = async (medicationId, index) => {
     try {
       if (confirm('Are you sure you want to delete this prescription?')) {
-        await jsonStorage.deletePrescription(medicationId)
+        await firebaseStorage.deletePrescription(medicationId)
         
         // Remove from prescriptions list
         prescriptions = prescriptions.filter((_, i) => i !== index)
@@ -1185,7 +1195,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
             
             try {
               // Create a new prescription
-              currentPrescription = await jsonStorage.createPrescription({
+              currentPrescription = await firebaseStorage.createPrescription({
                 patientId: selectedPatient.id,
                 doctorId: doctorId,
                 notes: ''
@@ -1723,7 +1733,7 @@ import firebaseStorage from '../services/firebaseStorage.js'
                     // If no current prescription exists, create one automatically
                     if (!currentPrescription) {
                       console.log('📋 No current prescription - creating new one automatically');
-                      currentPrescription = await jsonStorage.createPrescription({
+                      currentPrescription = await firebaseStorage.createPrescription({
                         patientId: selectedPatient.id,
                         doctorId: doctorId,
                         notes: ''
