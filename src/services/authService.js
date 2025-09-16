@@ -52,7 +52,7 @@ class AuthService {
         throw new Error('Doctor with this email already exists')
       }
 
-      // Create new doctor
+      // Create new doctor in local storage
       const doctor = await jsonStorage.createDoctor({
         email,
         password, // In real app, this should be hashed
@@ -62,6 +62,27 @@ class AuthService {
         country: doctorData.country || '',
         name: doctorData.firstName && doctorData.lastName ? `${doctorData.firstName} ${doctorData.lastName}` : ''
       })
+
+      // Also create doctor in Firebase
+      try {
+        console.log('🔄 Local auth: Creating new doctor in Firebase during registration:', email)
+        
+        const firebaseDoctorData = {
+          email: doctor.email,
+          firstName: doctor.firstName,
+          lastName: doctor.lastName,
+          country: doctor.country,
+          role: 'doctor',
+          createdAt: new Date().toISOString()
+        }
+        
+        console.log('🏥 Local auth: Creating Firebase doctor with data:', firebaseDoctorData)
+        const newFirebaseDoctor = await firebaseStorage.createDoctor(firebaseDoctorData)
+        console.log('✅ Local auth: Created Firebase doctor during registration:', newFirebaseDoctor.email)
+      } catch (firebaseError) {
+        console.error('❌ Local auth: Error creating Firebase doctor during registration:', firebaseError)
+        // Don't fail registration if Firebase creation fails
+      }
 
       // Set as current user
       this.saveCurrentUser(doctor)
@@ -82,6 +103,43 @@ class AuthService {
 
       if (doctor.password !== password) {
         throw new Error('Invalid password')
+      }
+
+      // Create/update doctor in Firebase as well
+      try {
+        console.log('🔄 Local auth: Creating/updating doctor in Firebase:', email)
+        
+        // Check if doctor exists in Firebase
+        let existingFirebaseDoctor = await firebaseStorage.getDoctorByEmail(email)
+        
+        if (existingFirebaseDoctor) {
+          // Update existing Firebase doctor with latest data
+          const updatedFirebaseDoctor = await firebaseStorage.updateDoctor({
+            ...existingFirebaseDoctor,
+            ...doctor,
+            // Don't overwrite Firebase-specific fields
+            id: existingFirebaseDoctor.id,
+            createdAt: existingFirebaseDoctor.createdAt
+          })
+          console.log('✅ Local auth: Updated existing Firebase doctor:', updatedFirebaseDoctor.email)
+        } else {
+          // Create new doctor in Firebase
+          const firebaseDoctorData = {
+            email: doctor.email,
+            firstName: doctor.firstName,
+            lastName: doctor.lastName,
+            country: doctor.country,
+            role: 'doctor',
+            createdAt: new Date().toISOString()
+          }
+          
+          console.log('🏥 Local auth: Creating new doctor in Firebase with data:', firebaseDoctorData)
+          const newFirebaseDoctor = await firebaseStorage.createDoctor(firebaseDoctorData)
+          console.log('✅ Local auth: Created new Firebase doctor:', newFirebaseDoctor.email)
+        }
+      } catch (firebaseError) {
+        console.error('❌ Local auth: Error syncing doctor to Firebase:', firebaseError)
+        // Don't fail the login if Firebase sync fails
       }
 
       // Set as current user

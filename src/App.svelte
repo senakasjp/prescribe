@@ -25,7 +25,8 @@
   onMount(() => {
     try {
       // Set up Firebase auth state listener
-      const unsubscribe = firebaseAuthService.onAuthStateChanged((firebaseUser) => {
+      const unsubscribe = firebaseAuthService.onAuthStateChanged(async (firebaseUser) => {
+        console.log('🔥 FIREBASE AUTH LISTENER TRIGGERED!')
         console.log('Firebase auth state changed:', firebaseUser)
         console.log('User just updated flag:', userJustUpdated)
         
@@ -37,6 +38,8 @@
         }
         
         if (firebaseUser) {
+          console.log('✅ Received processed user from Firebase auth service:', firebaseUser.email)
+          
           // Check if this is an admin user
           if (firebaseUser.role === 'admin' || firebaseUser.isAdmin) {
             // Handle admin user - check admin auth service

@@ -16,20 +16,36 @@ class FirebaseAuthService {
     this.authStateListeners = []
     this.setupAuthStateListener()
   }
-
+    
   // Setup Firebase auth state listener
   setupAuthStateListener() {
-    firebaseOnAuthStateChanged(auth, (user) => {
+    firebaseOnAuthStateChanged(auth, async (user) => {
       this.currentUser = user
-      this.notifyAuthStateListeners(user)
+      await this.notifyAuthStateListeners(user)
     })
   }
 
   // Notify all auth state listeners
-  notifyAuthStateListeners(user) {
+  async notifyAuthStateListeners(user) {
+    console.log('🔥 Firebase auth state changed, processing user:', user?.email)
+    
+    // Process the user through handleUserLogin if they exist
+    let processedUser = user
+    if (user) {
+      try {
+        console.log('🔄 Processing user through handleUserLogin')
+        processedUser = await this.handleUserLogin(user)
+        console.log('✅ User processed successfully:', processedUser?.email)
+      } catch (error) {
+        console.error('❌ Error processing user in auth listener:', error)
+        processedUser = user // Fallback to original user
+      }
+    }
+    
+    // Notify all listeners with the processed user
     this.authStateListeners.forEach(callback => {
       try {
-        callback(user)
+        callback(processedUser)
       } catch (error) {
         console.error('Error in auth state listener:', error)
       }
@@ -58,7 +74,7 @@ class FirebaseAuthService {
 
       // Handle admin user specially
       if (isAdmin) {
-        // For admin users, create/update admin profile
+        // For admin users, create/update admin profile AND create as doctor in Firebase
         const adminData = {
           id: 'admin-001',
           email: user.email.toLowerCase(),
@@ -75,18 +91,57 @@ class FirebaseAuthService {
         
         // Save admin to localStorage (similar to adminAuthService)
         localStorage.setItem('prescribe-current-admin', JSON.stringify(adminData))
+        
+        // ALSO create/update as doctor in Firebase for pharmacist connections
+        try {
+          const doctorData = {
+            email: user.email,
+            firstName: user.displayName?.split(' ')[0] || '',
+            lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+            name: user.displayName || '',
+            role: 'doctor',
+            uid: user.uid,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            provider: 'google',
+            isAdmin: true, // Mark as admin doctor
+            createdAt: new Date().toISOString()
+          }
+          
+          // Check if doctor already exists in Firebase
+          let existingDoctor = await firebaseStorage.getDoctorByEmail(user.email)
+          if (existingDoctor) {
+            // Update existing doctor with admin flag
+            await firebaseStorage.updateDoctor({ ...existingDoctor, isAdmin: true })
+            console.log('✅ Updated existing doctor with admin flag in Firebase')
+          } else {
+            // Create new doctor in Firebase
+            console.log('🏥 Creating admin doctor with data:', doctorData)
+            const newDoctor = await firebaseStorage.createDoctor(doctorData)
+            console.log('✅ Created admin doctor in Firebase:', newDoctor)
+          }
+        } catch (error) {
+          console.error('❌ Error creating admin doctor in Firebase:', error)
+          console.error('❌ Error details:', error.message)
+          console.error('❌ Error stack:', error.stack)
+        }
+        
         return adminData
       }
 
       // Check if user exists in our system
+      console.log('🔍 Checking if user exists in Firebase for email:', user.email)
       let existingUser = null
       if (userType === 'doctor') {
         existingUser = await firebaseStorage.getDoctorByEmail(user.email)
+        console.log('🔍 Existing doctor found:', existingUser ? 'Yes' : 'No')
       } else if (userType === 'pharmacist') {
         existingUser = await firebaseStorage.getPharmacistByEmail(user.email)
+        console.log('🔍 Existing pharmacist found:', existingUser ? 'Yes' : 'No')
       }
 
       if (existingUser) {
+        console.log('✅ Updating existing user with Google data')
         // Update existing user with Google data
         const updatedUser = {
           ...existingUser,
@@ -98,12 +153,15 @@ class FirebaseAuthService {
         
         if (userType === 'doctor') {
           await firebaseStorage.updateDoctor(updatedUser)
+          console.log('✅ Doctor updated in Firebase:', updatedUser.email)
         } else if (userType === 'pharmacist') {
           await firebaseStorage.updatePharmacist(updatedUser)
+          console.log('✅ Pharmacist updated in Firebase:', updatedUser.email)
         }
         
         return updatedUser
       } else {
+        console.log('🆕 Creating new user in Firebase')
         // Create new user
         if (userType === 'doctor') {
           const doctorData = {
@@ -119,8 +177,17 @@ class FirebaseAuthService {
             createdAt: new Date().toISOString()
           }
           
-          const newDoctor = await firebaseStorage.createDoctor(doctorData)
-          return newDoctor
+          console.log('🏥 Creating doctor with data:', doctorData)
+          try {
+            const newDoctor = await firebaseStorage.createDoctor(doctorData)
+            console.log('✅ Doctor created in Firebase:', newDoctor)
+            return newDoctor
+          } catch (error) {
+            console.error('❌ Error creating doctor in Firebase:', error)
+            console.error('❌ Error details:', error.message)
+            console.error('❌ Error stack:', error.stack)
+            throw error
+          }
         } else if (userType === 'pharmacist') {
           // For pharmacists, we need additional data
           const pharmacistData = {
@@ -168,11 +235,14 @@ class FirebaseAuthService {
     const mockDisplayName = `Google ${userType === 'doctor' ? 'Doctor' : 'Pharmacist'}`
     
     // Check if user exists in our system
+    console.log('🔍 Checking if mock user exists in Firebase for email:', mockEmail)
     let existingUser = null
     if (userType === 'doctor') {
       existingUser = await firebaseStorage.getDoctorByEmail(mockEmail)
+      console.log('🔍 Existing mock doctor found:', existingUser ? 'Yes' : 'No')
     } else if (userType === 'pharmacist') {
       existingUser = await firebaseStorage.getPharmacistByEmail(mockEmail)
+      console.log('🔍 Existing mock pharmacist found:', existingUser ? 'Yes' : 'No')
     }
 
     if (existingUser) {
@@ -208,7 +278,9 @@ class FirebaseAuthService {
           createdAt: new Date().toISOString()
         }
         
+        console.log('🏥 Creating mock doctor with data:', doctorData)
         const newDoctor = await firebaseStorage.createDoctor(doctorData)
+        console.log('✅ Mock doctor created in Firebase:', newDoctor)
         return newDoctor
       } else if (userType === 'pharmacist') {
         const pharmacistData = {

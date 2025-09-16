@@ -16,6 +16,8 @@ Open http://localhost:5173 in your browser
 - ✅ Patient management functions work
 - ✅ Data persists in localStorage
 - ✅ Profile editing works correctly
+- ✅ Firebase doctor creation works for both auth methods
+- ✅ Pharmacist connection works
 
 ### Step 1.5: Test Profile Management
 
@@ -60,7 +62,53 @@ EditProfile: Manually initialized form fields
 EditProfile: firstName: [value], lastName: [value], country: [value]
 ```
 
-### Step 2: Test Firebase Integration
+### Step 2: Test Firebase Authentication Integration
+
+#### Firebase Doctor Creation Testing
+Test that both authentication methods create Firebase doctor records:
+
+**Test 2.1: Local Authentication**
+1. **Log out** from current session
+2. **Log in** using email/password form with existing account
+3. **Check browser console** for Firebase doctor creation messages:
+   ```
+   🔄 Local auth: Creating/updating doctor in Firebase: [email]
+   🏥 Local auth: Creating new doctor in Firebase with data: [doctor data]
+   🔥 Firebase: Creating doctor in collection: doctors
+   🔥 Firebase: Doctor created successfully with ID: [firebase-id]
+   ✅ Local auth: Created new Firebase doctor: [email]
+   ```
+4. **Verify**: Doctor should now exist in Firebase
+
+**Test 2.2: Google Authentication**
+1. **Log out** from current session
+2. **Click "Login with Google"** button
+3. **Authenticate** with Google account
+4. **Check browser console** for Firebase auth messages:
+   ```
+   🔥 Firebase auth state changed, processing user: [email]
+   🔄 Processing user through handleUserLogin
+   🔍 Checking if user exists in Firebase for email: [email]
+   🆕 Creating new user in Firebase
+   🏥 Creating doctor with data: [doctor data]
+   ✅ Doctor created in Firebase: [created doctor]
+   ```
+5. **Verify**: Doctor should be created/updated in Firebase
+
+**Test 2.3: Pharmacist Connection**
+1. **After either login method**, go to Pharmacist Management
+2. **Try connecting pharmacist** (number: 359536) to doctor
+3. **Check console** for connection success:
+   ```
+   🔍 Looking for pharmacist with number in Firebase: 359536
+   ✅ Found pharmacist in Firebase: Pasgoda Pharmacy with number: 359536
+   🔍 Looking for doctor with identifier: [email]
+   ✅ Found doctor in Firebase: [doctor data]
+   ✅ Successfully connected pharmacist to doctor
+   ```
+4. **Verify**: Connection should succeed (no "Doctor not found" error)
+
+### Step 3: Test Firebase Integration
 
 #### Option A: Test with Firebase (Recommended)
 1. **Set up Firebase project** (follow FIREBASE_SETUP.md)

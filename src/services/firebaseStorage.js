@@ -36,13 +36,23 @@ class FirebaseStorageService {
   // Doctor operations
   async createDoctor(doctorData) {
     try {
+      console.log('🔥 Firebase: Creating doctor in collection:', this.collections.doctors)
+      console.log('🔥 Firebase: Doctor data to save:', doctorData)
+      
       const docRef = await addDoc(collection(db, this.collections.doctors), {
         ...doctorData,
         createdAt: new Date().toISOString()
       })
-      return { id: docRef.id, ...doctorData }
+      
+      const createdDoctor = { id: docRef.id, ...doctorData }
+      console.log('🔥 Firebase: Doctor created successfully with ID:', docRef.id)
+      console.log('🔥 Firebase: Created doctor object:', createdDoctor)
+      
+      return createdDoctor
     } catch (error) {
-      console.error('Error creating doctor:', error)
+      console.error('🔥 Firebase: Error creating doctor:', error)
+      console.error('🔥 Firebase: Error message:', error.message)
+      console.error('🔥 Firebase: Error code:', error.code)
       throw error
     }
   }

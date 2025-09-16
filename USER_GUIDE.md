@@ -23,6 +23,12 @@
 - **Form Pre-population**: Edit form automatically shows your current values
 - **Data Persistence**: Profile changes are saved to the database and persist across sessions
 
+### **🔥 Firebase Integration**
+- **Dual Authentication**: Both Google and local authentication methods are supported
+- **Automatic Sync**: Doctor records are automatically created in Firebase regardless of login method
+- **Pharmacist Connection**: Pharmacists can now connect to doctors seamlessly
+- **Cross-Platform**: Works with both localStorage and Firebase data storage
+
 ## 👨‍⚕️ For Doctors
 
 This guide will help you navigate and use the Patient Management System effectively.
@@ -60,15 +66,27 @@ Once logged in, you'll see:
 
 ## 🚀 Getting Started
 
-### First Time Setup
-1. **Open the Application** - Launch the patient management system
-2. **Register Your Account** - Click "Register" to create your doctor account
-3. **Fill in Your Details**:
-   - Full Name
+### Authentication Methods
+The system supports two authentication methods:
+
+#### **Local Authentication (Email/Password)**
+1. **Register Your Account** - Click "Register" to create your doctor account
+2. **Fill in Your Details**:
+   - First Name
+   - Last Name
    - Email Address
    - Password
-   - Medical Specialization
-4. **Sign In** - Use your credentials to access the system
+   - Country
+3. **Sign In** - Use your email and password to access the system
+4. **Automatic Firebase Sync** - Your doctor record is automatically created in Firebase for pharmacist connections
+
+#### **Google Authentication**
+1. **Click "Login with Google"** - Use your Google account to sign in
+2. **Authorize Access** - Grant permission to the application
+3. **Automatic Account Creation** - Your doctor profile is automatically created
+4. **Seamless Integration** - Works with all pharmacist connection features
+
+**Note**: Both authentication methods create Firebase doctor records automatically, ensuring pharmacists can connect to your account regardless of how you log in.
 
 ### Dashboard Overview
 Once logged in, you'll see:
