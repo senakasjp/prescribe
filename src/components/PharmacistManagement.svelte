@@ -14,15 +14,25 @@
   let searchQuery = ''
   let isOwnPharmacy = false
   
+  // Force reactive updates
+  let refreshTrigger = 0
+  
   // Load pharmacists data
-  const loadPharmacists = async () => {
+  const loadPharmacists = async (forceRefresh = false) => {
     try {
       loading = true
-      const allPharmacists = await firebaseStorage.getAllPharmacists()
+      console.log('🔍 Loading pharmacists data...')
       
-      // Get the actual doctor data from Firebase to get the correct doctor ID
+      const allPharmacists = await firebaseStorage.getAllPharmacists()
+      console.log('🔍 All pharmacists loaded:', allPharmacists.length)
+      
+      // Always get fresh doctor data from Firebase to ensure we have the latest connections
       const doctor = await firebaseStorage.getDoctorByEmail(user.email)
       const doctorId = doctor?.id
+      
+      console.log('🔍 Doctor data:', doctor)
+      console.log('🔍 Doctor ID:', doctorId)
+      console.log('🔍 Doctor connectedPharmacists:', doctor?.connectedPharmacists)
       
       // Separate connected and unconnected pharmacists (check both sides of the connection)
       connectedPharmacists = allPharmacists.filter(pharmacist => {
@@ -33,7 +43,9 @@
         const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
         
         // Connection exists if either side has the connection (for backward compatibility)
-        return pharmacistHasDoctor || doctorHasPharmacist
+        const isConnected = pharmacistHasDoctor || doctorHasPharmacist
+        console.log(`🔍 Pharmacist ${pharmacist.businessName}: pharmacistHasDoctor=${pharmacistHasDoctor}, doctorHasPharmacist=${doctorHasPharmacist}, isConnected=${isConnected}`)
+        return isConnected
       })
       
       pharmacists = allPharmacists.filter(pharmacist => {
@@ -44,11 +56,20 @@
         const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
         
         // Not connected if neither side has the connection
-        return !pharmacistHasDoctor && !doctorHasPharmacist
+        const isNotConnected = !pharmacistHasDoctor && !doctorHasPharmacist
+        console.log(`🔍 Pharmacist ${pharmacist.businessName}: pharmacistHasDoctor=${pharmacistHasDoctor}, doctorHasPharmacist=${doctorHasPharmacist}, isNotConnected=${isNotConnected}`)
+        return isNotConnected
       })
       
+      console.log('✅ Connected pharmacists:', connectedPharmacists.length)
+      console.log('✅ Available pharmacists:', pharmacists.length)
+      
+      // Force reactive update
+      refreshTrigger++
+      console.log('🔄 Refresh trigger updated:', refreshTrigger)
+      
     } catch (error) {
-      console.error('Error loading pharmacists:', error)
+      console.error('❌ Error loading pharmacists:', error)
       notifyError('Failed to load pharmacists')
     } finally {
       loading = false
@@ -103,24 +124,89 @@
   // Disconnect pharmacist
   const disconnectPharmacist = async (pharmacistId) => {
     try {
+      console.log('🔌 Starting pharmacist disconnection for:', pharmacistId)
+      
       const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
       const doctor = await firebaseStorage.getDoctorByEmail(user.email)
       
+      console.log('🔍 Pharmacist data:', pharmacist)
+      console.log('🔍 Doctor data:', doctor)
+      
       if (pharmacist && doctor) {
+        console.log('🔍 Original pharmacist.connectedDoctors:', pharmacist.connectedDoctors)
+        console.log('🔍 Original doctor.connectedPharmacists:', doctor.connectedPharmacists)
+        console.log('🔍 Doctor ID to remove:', doctor.id)
+        console.log('🔍 Pharmacist ID to remove:', pharmacistId)
+        
         // Remove doctor from pharmacist's connectedDoctors
-        pharmacist.connectedDoctors = pharmacist.connectedDoctors.filter(id => id !== doctor.id)
+        const pharmacistConnectedDoctors = pharmacist.connectedDoctors || []
+        const updatedConnectedDoctors = pharmacistConnectedDoctors.filter(id => {
+          const shouldKeep = id !== doctor.id
+          console.log(`🔍 Pharmacist connectedDoctors: ${id} !== ${doctor.id} = ${shouldKeep}`)
+          return shouldKeep
+        })
         
         // Remove pharmacist from doctor's connectedPharmacists
-        if (doctor.connectedPharmacists) {
-          doctor.connectedPharmacists = doctor.connectedPharmacists.filter(id => id !== pharmacistId)
+        const doctorConnectedPharmacists = doctor.connectedPharmacists || []
+        const updatedConnectedPharmacists = doctorConnectedPharmacists.filter(id => {
+          const shouldKeep = id !== pharmacistId
+          console.log(`🔍 Doctor connectedPharmacists: ${id} !== ${pharmacistId} = ${shouldKeep}`)
+          return shouldKeep
+        })
+        
+        console.log('🔍 Updated pharmacist connectedDoctors:', updatedConnectedDoctors)
+        console.log('🔍 Updated doctor connectedPharmacists:', updatedConnectedPharmacists)
+        
+        // Update both pharmacist and doctor in Firebase
+        console.log('🔄 Updating pharmacist in Firebase...')
+        const updatedPharmacist = await firebaseStorage.updatePharmacist({
+          id: pharmacist.id,
+          connectedDoctors: updatedConnectedDoctors
+        })
+        console.log('✅ Pharmacist updated:', updatedPharmacist)
+        
+        console.log('🔄 Updating doctor in Firebase...')
+        const updatedDoctor = await firebaseStorage.updateDoctor({
+          id: doctor.id,
+          connectedPharmacists: updatedConnectedPharmacists
+        })
+        console.log('✅ Doctor updated:', updatedDoctor)
+        
+        // Verify the updates worked
+        console.log('🔍 Verifying updates...')
+        const verifyPharmacist = await firebaseStorage.getPharmacistById(pharmacist.id)
+        const verifyDoctor = await firebaseStorage.getDoctorByEmail(user.email)
+        
+        console.log('🔍 Verified pharmacist.connectedDoctors:', verifyPharmacist.connectedDoctors)
+        console.log('🔍 Verified doctor.connectedPharmacists:', verifyDoctor.connectedPharmacists)
+        
+        const pharmacistStillHasDoctor = verifyPharmacist.connectedDoctors && verifyPharmacist.connectedDoctors.includes(doctor.id)
+        const doctorStillHasPharmacist = verifyDoctor.connectedPharmacists && verifyDoctor.connectedPharmacists.includes(pharmacistId)
+        
+        console.log('🔍 Pharmacist still has doctor:', pharmacistStillHasDoctor)
+        console.log('🔍 Doctor still has pharmacist:', doctorStillHasPharmacist)
+        
+        if (pharmacistStillHasDoctor || doctorStillHasPharmacist) {
+          console.error('❌ Disconnection failed - connection still exists')
+          notifyError('Disconnection failed. Please try again.')
+          return
         }
         
-        await firebaseStorage.updatePharmacist(pharmacist)
+        console.log('✅ Successfully disconnected pharmacist from both sides')
         notifySuccess('Pharmacist disconnected successfully')
-        loadPharmacists()
+        
+        // Add a small delay to ensure Firebase has time to update
+        setTimeout(async () => {
+          console.log('🔄 Refreshing pharmacists list after disconnection...')
+          await loadPharmacists(true)
+        }, 500)
+      } else {
+        console.error('❌ Missing pharmacist or doctor data')
+        notifyError('Failed to disconnect pharmacist - missing data')
       }
     } catch (error) {
-      notifyError('Failed to disconnect pharmacist')
+      console.error('❌ Error disconnecting pharmacist:', error)
+      notifyError('Failed to disconnect pharmacist: ' + error.message)
     }
   }
   
@@ -130,6 +216,11 @@
     pharmacist.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     pharmacist.pharmacistNumber.includes(searchQuery)
   )
+  
+  // Reactive statements to ensure UI updates
+  $: console.log('🔄 Reactive update - connectedPharmacists:', connectedPharmacists.length, 'pharmacists:', pharmacists.length, 'refreshTrigger:', refreshTrigger)
+  $: connectedPharmacists = connectedPharmacists // Force reactivity
+  $: pharmacists = pharmacists // Force reactivity
   
   onMount(() => {
     loadPharmacists()

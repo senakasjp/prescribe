@@ -47,7 +47,10 @@ class StorageService {
     if (this.useFirebase && this.isAuthenticated) {
       // For Firebase, we need to get patients by doctor ID
       const doctorId = firebaseAuthService.getCurrentUserId()
-      return service.getPatientsByDoctorId(doctorId)
+      if (!doctorId) {
+        throw new Error('Doctor ID is required to access patients')
+      }
+      return service.getPatients(doctorId)
     }
     return service.getPatients()
   }

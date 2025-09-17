@@ -381,6 +381,7 @@ class FirebaseStorageService {
         businessName: updatedPharmacist.businessName,
         pharmacistNumber: updatedPharmacist.pharmacistNumber,
         role: updatedPharmacist.role,
+        connectedDoctors: updatedPharmacist.connectedDoctors,
         uid: updatedPharmacist.uid,
         displayName: updatedPharmacist.displayName,
         photoURL: updatedPharmacist.photoURL,
@@ -535,15 +536,24 @@ class FirebaseStorageService {
   // Patient operations
   async createPatient(patientData) {
     try {
-      // Validate required fields
-      if (!patientData.firstName || !patientData.lastName || !patientData.email || !patientData.idNumber) {
-        throw new Error('Missing required patient data')
+      console.log('🔍 FirebaseStorage: createPatient called with data:', patientData)
+      
+      // Validate required fields - only first name and age are mandatory
+      if (!patientData.firstName || !patientData.firstName.trim()) {
+        throw new Error('First name is required')
       }
+      
+      if (!patientData.age || !patientData.age.toString().trim()) {
+        throw new Error('Age is required')
+      }
+      
+      console.log('✅ FirebaseStorage: Required fields validation passed')
 
       // Filter out undefined values to prevent Firebase errors
       const cleanPatientData = Object.fromEntries(
         Object.entries(patientData).filter(([key, value]) => value !== undefined)
       )
+      console.log('🔍 FirebaseStorage: Cleaned patient data:', cleanPatientData)
 
       const patient = {
         firstName: cleanPatientData.firstName?.trim() || '',
@@ -551,33 +561,67 @@ class FirebaseStorageService {
         email: cleanPatientData.email?.trim() || '',
         phone: cleanPatientData.phone?.trim() || '',
         dateOfBirth: cleanPatientData.dateOfBirth || '',
+        age: cleanPatientData.age?.toString().trim() || '',
+        weight: cleanPatientData.weight?.trim() || '',
+        bloodGroup: cleanPatientData.bloodGroup?.trim() || '',
         idNumber: cleanPatientData.idNumber?.trim() || '',
         address: cleanPatientData.address?.trim() || '',
+        allergies: cleanPatientData.allergies?.trim() || '',
         emergencyContact: cleanPatientData.emergencyContact?.trim() || '',
         emergencyPhone: cleanPatientData.emergencyPhone?.trim() || '',
         doctorId: cleanPatientData.doctorId,
         createdAt: new Date().toISOString()
       }
+      
+      console.log('🔍 FirebaseStorage: Patient object to save:', patient)
+      console.log('🔍 FirebaseStorage: Saving to collection:', this.collections.patients)
 
       const docRef = await addDoc(collection(db, this.collections.patients), patient)
-      return { id: docRef.id, ...patient }
+      const result = { id: docRef.id, ...patient }
+      console.log('✅ FirebaseStorage: Patient created successfully:', result)
+      return result
     } catch (error) {
-      console.error('Error creating patient:', error)
+      console.error('❌ FirebaseStorage: Error creating patient:', error)
+      console.error('❌ FirebaseStorage: Error stack:', error.stack)
       throw error
     }
   }
 
-  async getPatients() {
+  async getPatients(doctorId) {
     try {
-      const q = query(collection(db, this.collections.patients), orderBy('createdAt', 'desc'))
-      const querySnapshot = await getDocs(q)
+      console.log('🔍 FirebaseStorage: getPatients called with doctorId:', doctorId)
       
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
+      if (!doctorId) {
+        throw new Error('Doctor ID is required to access patients')
+      }
+      
+      console.log('🔍 FirebaseStorage: Querying patients collection:', this.collections.patients)
+      const q = query(
+        collection(db, this.collections.patients), 
+        where('doctorId', '==', doctorId)
+      )
+      
+      console.log('🔍 FirebaseStorage: Executing query...')
+      const querySnapshot = await getDocs(q)
+      console.log('🔍 FirebaseStorage: Query returned', querySnapshot.docs.length, 'documents')
+      
+      const patients = querySnapshot.docs.map(doc => {
+        const data = doc.data()
+        console.log('🔍 FirebaseStorage: Patient document:', doc.id, data)
+        return {
+          id: doc.id,
+          ...data
+        }
+      })
+      
+      // Sort by createdAt in JavaScript instead of Firestore
+      patients.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
+      console.log('✅ FirebaseStorage: Returning patients:', patients.length)
+      return patients
     } catch (error) {
-      console.error('Error getting patients:', error)
+      console.error('❌ FirebaseStorage: Error getting patients:', error)
+      console.error('❌ FirebaseStorage: Error stack:', error.stack)
       throw error
     }
   }

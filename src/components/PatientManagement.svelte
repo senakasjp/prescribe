@@ -142,14 +142,37 @@
   const loadPatients = async () => {
     try {
       loading = true
-      patients = await firebaseStorage.getPatients()
+      
+      console.log('🔍 PatientManagement: Starting loadPatients')
+      console.log('🔍 PatientManagement: User object:', user)
+      console.log('🔍 PatientManagement: User.id:', user?.id)
+      console.log('🔍 PatientManagement: User.uid:', user?.uid)
+      console.log('🔍 PatientManagement: User.email:', user?.email)
+      
+      // Always get the doctor from Firebase to ensure we have the correct ID
+      console.log('🔍 PatientManagement: Getting doctor from Firebase for email:', user.email)
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      console.log('🔍 PatientManagement: Doctor from Firebase:', doctor)
+      
+      if (!doctor) {
+        console.error('❌ PatientManagement: Doctor not found in Firebase for email:', user.email)
+        throw new Error('Doctor not found in database')
+      }
+      
+      const doctorId = doctor.id
+      console.log('✅ PatientManagement: Using doctor ID:', doctorId)
+      
+      console.log('🔍 PatientManagement: Loading patients for doctor ID:', doctorId)
+      patients = await firebaseStorage.getPatients(doctorId)
       filteredPatients = [...patients]
-      console.log('Loaded patients:', patients.length)
+      console.log('✅ PatientManagement: Loaded patients:', patients.length)
+      console.log('🔍 PatientManagement: Patients data:', patients)
       
       // Load statistics after loading patients
       await loadStatistics()
     } catch (error) {
-      console.error('Error loading patients:', error)
+      console.error('❌ PatientManagement: Error loading patients:', error)
+      console.error('❌ PatientManagement: Error stack:', error.stack)
       patients = []
       filteredPatients = []
     } finally {
@@ -213,35 +236,46 @@
   const addPatient = async (event) => {
     const patientData = event.detail
     try {
+      console.log('🔍 PatientManagement: Starting addPatient')
+      console.log('🔍 PatientManagement: User object:', user)
+      console.log('🔍 PatientManagement: Patient data:', patientData)
+      
       if (!user) {
-        console.error('No user found for adding patient')
+        console.error('❌ PatientManagement: No user found for adding patient')
         return
       }
       
-      // Get doctor ID from user object (handle both Firebase and localStorage formats)
-      const doctorId = user.uid || user.id || user.email
+      // Always get the doctor from Firebase to ensure we have the correct ID
+      console.log('🔍 PatientManagement: Getting doctor from Firebase for email:', user.email)
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      console.log('🔍 PatientManagement: Doctor from Firebase:', doctor)
       
-      if (!doctorId) {
-        console.error('No valid doctor ID found in user object:', user)
-        return
+      if (!doctor) {
+        console.error('❌ PatientManagement: Doctor not found in Firebase for email:', user.email)
+        throw new Error('Doctor not found in database')
       }
       
-      console.log('Adding patient with doctor ID:', doctorId)
-      console.log('Patient data:', patientData)
+      const doctorId = doctor.id
+      console.log('✅ PatientManagement: Using doctor ID for patient creation:', doctorId)
       
-      const newPatient = await firebaseStorage.createPatient({
+      const patientToCreate = {
         ...patientData,
         doctorId: doctorId
-      })
+      }
+      console.log('🔍 PatientManagement: Patient data to create:', patientToCreate)
       
-      console.log('Patient created successfully:', newPatient)
+      const newPatient = await firebaseStorage.createPatient(patientToCreate)
+      console.log('✅ PatientManagement: Patient created successfully:', newPatient)
       
       // Reload patients to ensure we get the latest data
+      console.log('🔍 PatientManagement: Reloading patients after creation...')
       await loadPatients()
       
       showPatientForm = false
+      console.log('✅ PatientManagement: Patient creation process completed')
     } catch (error) {
-      console.error('Error adding patient:', error)
+      console.error('❌ PatientManagement: Error adding patient:', error)
+      console.error('❌ PatientManagement: Error stack:', error.stack)
     }
   }
   

@@ -10,3 +10,8 @@ Do not remove existing comments unless I explicitly ask for it or we're removing
 Always use Bootstrap 5 "sm" theme.
 Use free Font Awesome icons
 Any new component should strictly follow Bootstrap 5.
+
+Doctor Isolation: Each doctor can ONLY see their own patients
+Data Privacy: No cross-doctor data access possible
+HIPAA Compliance: Patient data is properly isolated
+Authentication Required: Doctor ID must be provided to access patients

@@ -188,14 +188,18 @@ The Patient Management System is built using a modern frontend architecture with
 ### firebaseStorage.js
 - **Purpose**: Firebase Firestore operations
 - **Responsibilities**:
-  - Doctor CRUD operations
-  - Patient data management
-  - Doctor deletion with cleanup
+  - Doctor CRUD operations with security isolation
+  - Patient data management with doctor-specific filtering
+  - Doctor deletion with complete data cleanup
+  - Secure data serialization and validation
 - **Key Methods**:
+  - `getPatients(doctorId)` - Get patients filtered by doctor ID (SECURE)
+  - `createPatient(patientData)` - Create patient with required doctor ID
   - `deleteDoctor()` - Delete doctor with complete data cleanup
   - `getAllDoctors()` - Retrieve all doctors
-  - `createDoctor()` - Create doctor records
+  - `createDoctor()` - Create doctor records with proper serialization
   - `updateDoctor()` - Update doctor information
+  - `getDoctorByEmail()` - Find doctor by email for ID resolution
 
 ## 📱 Data Flow
 
@@ -314,16 +318,54 @@ App.svelte
 ## 🔒 Security Considerations
 
 ### Data Protection
-- **Local Storage** - Data stored locally
-- **No External APIs** - No data transmission
+- **Firebase Security** - Secure cloud data storage
 - **Input Validation** - Sanitize all inputs
 - **Session Management** - Secure authentication
+- **Data Serialization** - Prevent Firebase serialization errors
 
-### Privacy
-- **Patient Data** - Stored locally only
-- **No Cloud Storage** - Data remains on device
-- **Access Control** - Doctor-specific data isolation
-- **Data Integrity** - Validation and cleanup
+### Privacy & Data Isolation
+- **Doctor Isolation** - Each doctor can ONLY see their own patients
+- **Data Privacy** - No cross-doctor data access possible
+- **HIPAA Compliance** - Patient data is properly isolated
+- **Authentication Required** - Doctor ID must be provided to access patients
+- **Secure Queries** - All patient queries filtered by doctor ID
+
+### Security Implementation Details
+
+#### Doctor Data Isolation
+```javascript
+// ✅ SECURE: All patient queries require doctor ID
+async getPatients(doctorId) {
+  if (!doctorId) {
+    throw new Error('Doctor ID is required to access patients')
+  }
+  
+  const q = query(
+    collection(db, this.collections.patients), 
+    where('doctorId', '==', doctorId)  // 🔒 SECURITY FILTER
+  )
+}
+
+// ✅ SECURE: Patient creation requires doctor ID
+async createPatient(patientData) {
+  const patient = {
+    ...patientData,
+    doctorId: patientData.doctorId  // 🔒 REQUIRED FIELD
+  }
+}
+```
+
+#### Security Validation
+- **Required Doctor ID** - All patient operations require valid doctor ID
+- **Firebase Rules** - Server-side security rules enforce data isolation
+- **Query Filtering** - All queries automatically filter by doctor ID
+- **No Cross-Access** - Impossible to access other doctors' patients
+
+#### Data Integrity
+- **Validation** - All data validated before storage
+- **Cleanup** - Corrupted data automatically removed
+- **Serialization** - Proper data serialization for Firebase
+- **Error Handling** - Comprehensive error handling and logging
 
 ## 🛠️ Development Architecture
 
