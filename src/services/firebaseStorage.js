@@ -758,10 +758,15 @@ class FirebaseStorageService {
 
   async deleteMedication(medicationId) {
     try {
+      console.log('🗑️ Firebase: Attempting to delete medication with ID:', medicationId)
+      console.log('🗑️ Firebase: Collection path:', this.collections.medications)
+      
       await deleteDoc(doc(db, this.collections.medications, medicationId))
+      console.log('✅ Firebase: Successfully deleted medication:', medicationId)
       return true
     } catch (error) {
-      console.error('Error deleting medication:', error)
+      console.error('❌ Firebase: Error deleting medication:', error)
+      console.error('❌ Firebase: Medication ID was:', medicationId)
       throw error
     }
   }
@@ -801,6 +806,21 @@ class FirebaseStorageService {
       return symptoms
     } catch (error) {
       console.error('Error getting symptoms by patient ID:', error)
+      throw error
+    }
+  }
+
+  async deleteSymptom(symptomId) {
+    try {
+      console.log('🗑️ Firebase: Attempting to delete symptom with ID:', symptomId)
+      console.log('🗑️ Firebase: Collection path:', this.collections.symptoms)
+      
+      await deleteDoc(doc(db, this.collections.symptoms, symptomId))
+      console.log('✅ Firebase: Successfully deleted symptom:', symptomId)
+      return true
+    } catch (error) {
+      console.error('❌ Firebase: Error deleting symptom:', error)
+      console.error('❌ Firebase: Symptom ID was:', symptomId)
       throw error
     }
   }

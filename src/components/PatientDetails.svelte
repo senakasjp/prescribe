@@ -60,15 +60,18 @@
   let editError = ''
   let savingPatient = false
   
-  // Drug interaction checking
-  let drugInteractions = null
-  let checkingInteractions = false
-  let interactionError = ''
-  let showInteractions = false
+  // AI analysis state
   let aiCheckComplete = false
   let aiCheckMessage = ''
   let prescriptionFinished = false
   let lastAnalyzedMedications = []
+  
+  // Full AI Analysis
+  let fullAIAnalysis = null
+  let loadingFullAnalysis = false
+  let showFullAnalysis = false
+  let fullAnalysisError = ''
+  
   
   // Load patient data
   const loadPatientData = async () => {
@@ -79,6 +82,8 @@
       prescriptionsFinalized = false
       prescriptionFinished = false
       printButtonClicked = false
+      aiCheckComplete = false
+      aiCheckMessage = ''
       
       // Load illnesses
       illnesses = await firebaseStorage.getIllnessesByPatientId(selectedPatient.id) || []
@@ -135,10 +140,7 @@
       currentMedications = []
     }
     
-    // Note: Drug interaction checking is now done when clicking action buttons
-    // Clear any existing interactions when loading data
-    drugInteractions = null
-    showInteractions = false
+    // Clear any existing AI analysis when loading data
   }
   
   // Filter current prescriptions (show all medications from all prescriptions)
@@ -150,108 +152,132 @@
     }
     
     console.log('🔍 Showing all medications from', prescriptions.length, 'total prescriptions')
+    console.log('🔍 filterCurrentPrescriptions - prescriptionFinished:', prescriptionFinished)
+    console.log('🔍 filterCurrentPrescriptions - aiCheckComplete:', aiCheckComplete)
+    console.log('🔍 Current prescription before filter:', currentPrescription?.id)
+    
+    // CRITICAL: Ensure currentPrescription is still valid and up-to-date
+    if (currentPrescription && prescriptions.length > 0) {
+      // Find the current prescription in the updated prescriptions array
+      const updatedPrescription = prescriptions.find(p => p.id === currentPrescription.id)
+      if (updatedPrescription) {
+        // Update currentPrescription with the latest data from Firebase
+        currentPrescription = updatedPrescription
+        console.log('🔍 Updated currentPrescription with latest data:', currentPrescription.id)
+      } else {
+        console.log('⚠️ Current prescription not found in prescriptions array - this might cause issues')
+      }
+    }
     
     // Get medications from the current prescription
     currentMedications = currentPrescription ? currentPrescription.medications || [] : []
     console.log('📅 Current medications in prescription:', currentMedications.length)
     
     // Note: Drug interaction checking is now done when clicking action buttons
-    // Clear any existing interactions when filtering
-      drugInteractions = null
-      showInteractions = false
+    // Only clear interactions if prescription is not finished (to preserve AI analysis)
+    if (!prescriptionFinished) {
+      console.log('🔍 Clearing AI analysis - prescription not finished')
+    } else {
+      console.log('🔍 Preserving AI analysis - prescription is finished')
+    }
   }
   
-  // Check for drug interactions
-  const checkDrugInteractions = async () => {
-    if (!openaiService.isConfigured()) {
-      interactionError = 'OpenAI API not configured. Cannot check drug interactions.'
-      return
-    }
-    
-    if (currentMedications.length < 2) {
-      drugInteractions = null
-      return
-    }
-    
-    // Check if medications have changed since last analysis
-    const currentMedNames = currentMedications.map(m => m.name).sort()
-    const lastAnalyzedNames = lastAnalyzedMedications.map(m => m.name).sort()
-    
-    if (currentMedNames.length === lastAnalyzedNames.length && 
-        currentMedNames.every((name, index) => name === lastAnalyzedNames[index])) {
-      console.log('🔄 Medications unchanged - skipping AI analysis')
-      return
-    }
-    
-    checkingInteractions = true
-    interactionError = ''
-    
+  
+  
+  // Perform full AI analysis of the prescription
+  const performFullAIAnalysis = async () => {
     try {
-      console.log('🔍 Checking drug interactions for:', currentMedications.map(p => p.name))
-      drugInteractions = await openaiService.checkDrugInteractions(currentMedications, doctorId)
-      console.log('✅ Drug interactions checked:', drugInteractions)
+      loadingFullAnalysis = true
+      fullAnalysisError = ''
+      showFullAnalysis = false
       
-      // Set AI check completion message
-      aiCheckComplete = true
-      if (drugInteractions && drugInteractions.hasInteractions === false) {
-        aiCheckMessage = 'AI drug interaction test complete - No significant drug interactions detected'
-      } else if (drugInteractions && drugInteractions.hasInteractions === true) {
-        aiCheckMessage = `AI drug interaction test complete - ${drugInteractions.severity} interactions found`
-      } else {
-        aiCheckMessage = 'AI drug interaction test complete'
+      console.log('🤖 Starting full AI prescription analysis...')
+      console.log('🔍 Patient:', selectedPatient.firstName, selectedPatient.lastName)
+      console.log('🔍 Medications:', currentMedications.map(m => m.name))
+      console.log('🔍 Symptoms:', symptoms.length)
+      console.log('🔍 Illnesses:', illnesses.length)
+      
+      // Get doctor information including country
+      const firebaseUser = currentUser || authService.getCurrentUser()
+      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      console.log('🔍 Doctor info for analysis:', doctor)
+      
+      // Prepare comprehensive data for analysis
+      const patientData = {
+        // Basic Patient Information
+        name: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
+        firstName: selectedPatient.firstName,
+        lastName: selectedPatient.lastName,
+        age: selectedPatient.age,
+        weight: selectedPatient.weight,
+        height: selectedPatient.height,
+        bloodGroup: selectedPatient.bloodGroup,
+        gender: selectedPatient.gender,
+        dateOfBirth: selectedPatient.dateOfBirth,
+        
+        // Medical Information
+        allergies: selectedPatient.allergies,
+        medicalHistory: selectedPatient.medicalHistory,
+        currentMedications: selectedPatient.currentMedications,
+        emergencyContact: selectedPatient.emergencyContact,
+        
+        // Current Prescription Data
+        medications: currentMedications,
+        symptoms: symptoms,
+        illnesses: illnesses,
+        
+        // Location Information
+        patientAddress: selectedPatient.address,
+        patientCity: selectedPatient.city,
+        patientCountry: selectedPatient.country,
+        patientPhone: selectedPatient.phone,
+        patientEmail: selectedPatient.email,
+        
+        // Doctor Information
+        doctorName: doctor ? `${doctor.firstName} ${doctor.lastName}` : 'Unknown',
+        doctorCountry: doctor?.country || 'Not specified',
+        doctorCity: doctor?.city || 'Not specified',
+        doctorSpecialization: doctor?.specialization || 'General Practice',
+        doctorLicenseNumber: doctor?.licenseNumber || 'Not specified',
+        
+        // Analysis Context
+        prescriptionDate: new Date().toISOString(),
+        analysisType: 'comprehensive_prescription_analysis'
       }
       
-      // Update last analyzed medications to prevent re-analysis
-      lastAnalyzedMedications = [...currentMedications]
+      // Generate comprehensive analysis using OpenAI
+      const analysis = await openaiService.generateComprehensivePrescriptionAnalysis(patientData, doctorId)
       
-      // Keep message visible until manually dismissed (no auto-hide)
+      fullAIAnalysis = analysis
+      showFullAnalysis = true
       
-      // Notify parent that AI usage was updated
-      if (addToPrescription) {
-        addToPrescription('ai-usage', { type: 'drug-interactions', timestamp: new Date().toISOString() })
-        console.log('📊 AI usage updated - drug interactions checked')
-      }
+      console.log('✅ Full AI analysis completed successfully')
+      notifySuccess('Full AI analysis completed!')
+      
     } catch (error) {
-      console.error('❌ Error checking drug interactions:', error)
-      interactionError = error.message
-      aiCheckComplete = true
-      aiCheckMessage = 'AI analysis failed - Please check console for details'
-      // Keep error message visible until manually dismissed (no auto-hide)
+      console.error('❌ Error performing full AI analysis:', error)
+      fullAnalysisError = error.message
+      notifyError('Failed to perform AI analysis: ' + error.message)
     } finally {
-      checkingInteractions = false
+      loadingFullAnalysis = false
     }
   }
   
-  // Toggle drug interactions display
-  const toggleInteractions = () => {
-    showInteractions = !showInteractions
+  // Close full analysis
+  const closeFullAnalysis = () => {
+    showFullAnalysis = false
+    fullAIAnalysis = null
+    fullAnalysisError = ''
   }
   
-  // Format drug interactions for display
-  const formatInteractions = (text) => {
-    if (!text) return ''
-    
-    return text
-      // Convert section headers (lines that end with colon)
-      .replace(/^([^:\n]+):$/gm, '<br><h6 class="text-primary mb-2 mt-3">$1:</h6>')
-      // Convert bold text patterns
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      // Convert italic text patterns
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      // Convert line breaks
-      .replace(/\n/g, '<br>')
-      // Clean up multiple line breaks
-      .replace(/(<br>){3,}/g, '<br><br>')
-      // Add proper spacing after headers
-      .replace(/(<h6[^>]*>.*?<\/h6>)/g, '$1<br>')
-      // Clean up leading/trailing breaks
-      .replace(/^(<br>)+|(<br>)+$/g, '')
-  }
+  
   
   // Reactive statement to filter current prescriptions when prescriptions change
   $: if (prescriptions) {
     console.log('🔄 Reactive statement triggered - prescriptions changed:', prescriptions.length)
     console.log('🔄 isNewPrescriptionSession:', isNewPrescriptionSession)
+    console.log('🔄 prescriptionFinished:', prescriptionFinished)
+    console.log('🔄 aiCheckComplete:', aiCheckComplete)
     filterCurrentPrescriptions()
   }
   
@@ -330,6 +356,55 @@
     
     showSymptomsForm = false
   }
+
+  // Handle symptoms deletion
+  const handleDeleteSymptom = async (symptomId, index) => {
+    try {
+      console.log('🗑️ Delete symptom clicked for ID:', symptomId, 'at index:', index)
+      
+      if (confirm('Are you sure you want to delete this symptom?')) {
+        console.log('🗑️ User confirmed deletion, proceeding...')
+        
+        // Delete from Firebase
+        await firebaseStorage.deleteSymptom(symptomId)
+        console.log('🗑️ Successfully deleted from Firebase:', symptomId)
+        
+        // Remove from symptoms array
+        symptoms = symptoms.filter((_, i) => i !== index)
+        console.log('🗑️ Removed from symptoms array at index:', index)
+        console.log('🗑️ Current symptoms after deletion:', symptoms.length)
+        
+        // Update expanded state
+        const newExpandedSymptoms = { ...expandedSymptoms }
+        delete newExpandedSymptoms[index]
+        // Reindex remaining expanded states
+        const reindexedExpanded = {}
+        Object.keys(newExpandedSymptoms).forEach(key => {
+          const oldIndex = parseInt(key)
+          if (oldIndex > index) {
+            reindexedExpanded[oldIndex - 1] = newExpandedSymptoms[key]
+          } else if (oldIndex < index) {
+            reindexedExpanded[oldIndex] = newExpandedSymptoms[key]
+          }
+        })
+        expandedSymptoms = reindexedExpanded
+        
+        console.log('✅ Successfully deleted symptom:', symptomId)
+        notifySuccess('Symptom deleted successfully!')
+        
+        // Notify parent component to refresh medical summary
+        dispatch('dataUpdated', { 
+          type: 'symptoms', 
+          data: null // Indicates deletion
+        })
+      } else {
+        console.log('❌ User cancelled deletion')
+      }
+    } catch (error) {
+      console.error('❌ Error deleting symptom:', error)
+      notifyError('Failed to delete symptom: ' + error.message)
+    }
+  }
   
   const handleMedicationAdded = async (event) => {
     const medicationData = event.detail
@@ -358,10 +433,12 @@
           currentMedications = [...currentMedications] // Trigger reactivity
         }
         
-        // Reset AI analysis state when medications change
-        aiCheckComplete = false
-        aiCheckMessage = ''
-        lastAnalyzedMedications = []
+        // Reset AI analysis state when medications change (only if prescription is not finished)
+        if (!prescriptionFinished) {
+          aiCheckComplete = false
+          aiCheckMessage = ''
+          lastAnalyzedMedications = []
+        }
       } else {
         // Add new medication to current prescription
         if (!currentPrescription) {
@@ -393,10 +470,12 @@
         currentMedications = currentPrescription.medications
         console.log('📋 Added medication to current prescription:', newMedication.name)
         
-        // Reset AI analysis state when medications change
-        aiCheckComplete = false
-        aiCheckMessage = ''
-        lastAnalyzedMedications = []
+        // Reset AI analysis state when medications change (only if prescription is not finished)
+        if (!prescriptionFinished) {
+          aiCheckComplete = false
+          aiCheckMessage = ''
+          lastAnalyzedMedications = []
+        }
         
         // Note: Drug interaction checking is now done when clicking action buttons
         // (Complete, Send to Pharmacy, Print) instead of automatically when adding drugs
@@ -478,13 +557,7 @@
     try {
       console.log('🤖 Checking prescriptions with AI...')
       
-      // Only perform AI drug interaction check - no saving or printing
-      if (currentMedications.length >= 2) {
-        console.log('🔍 Triggering AI drug interaction check...')
-        await checkDrugInteractions()
-      } else {
-        console.log('ℹ️ Less than 2 medications - no interactions to check')
-      }
+      // No drug interaction check needed
       
       console.log('✅ AI check completed')
     } catch (error) {
@@ -501,13 +574,6 @@
       console.log('🔍 Current medications count:', currentMedications.length)
       console.log('🔍 OpenAI configured:', openaiService.isConfigured())
       console.log('🔍 Current medications:', currentMedications.map(m => m.name))
-      
-      if (currentMedications.length >= 2) {
-        console.log('🔍 Checking drug interactions before completing...')
-        await checkDrugInteractions()
-      } else {
-        console.log('⚠️ Not enough medications for interaction check (need at least 2)')
-      }
       
       // Save current prescriptions first
       await saveCurrentPrescriptions()
@@ -558,13 +624,6 @@
       console.log('🔍 OpenAI configured:', openaiService.isConfigured())
       console.log('🔍 Current medications:', currentMedications.map(m => m.name))
       
-      if (currentMedications.length >= 2) {
-        console.log('🔍 Checking drug interactions before printing...')
-        await checkDrugInteractions()
-      } else {
-        console.log('⚠️ Not enough medications for interaction check (need at least 2)')
-      }
-      
       // Save current prescriptions first
       await saveCurrentPrescriptions()
       
@@ -597,13 +656,6 @@
       console.log('🔍 Current medications count:', currentMedications.length)
       console.log('🔍 OpenAI configured:', openaiService.isConfigured())
       console.log('🔍 Current medications:', currentMedications.map(m => m.name))
-      
-      if (currentMedications.length >= 2) {
-        console.log('🔍 Checking drug interactions before sending to pharmacy...')
-        await checkDrugInteractions()
-      } else {
-        console.log('⚠️ Not enough medications for interaction check (need at least 2)')
-      }
       
       // Save current prescriptions first
       try {
@@ -1138,27 +1190,61 @@
   
   const handleDeletePrescription = async (medicationId, index) => {
     try {
-      if (confirm('Are you sure you want to delete this prescription?')) {
+      console.log('🗑️ Delete button clicked for medication:', medicationId, 'at index:', index)
+      console.log('🗑️ Current medications before deletion:', currentMedications.length)
+      console.log('🗑️ Current prescription:', currentPrescription?.id)
+      
+      if (confirm('Are you sure you want to delete this medication?')) {
+        console.log('🗑️ User confirmed deletion, proceeding...')
+        
+        // Delete from Firebase
         await firebaseStorage.deletePrescription(medicationId)
+        console.log('🗑️ Successfully deleted from Firebase:', medicationId)
         
-        // Remove from prescriptions list
-        prescriptions = prescriptions.filter((_, i) => i !== index)
-        
-        // Also remove from current medications if it exists there
+        // Remove from current medications array
         const currentIndex = currentMedications.findIndex(p => p.id === medicationId)
         if (currentIndex !== -1) {
           currentMedications = currentMedications.filter((_, i) => i !== currentIndex)
+          console.log('🗑️ Removed from currentMedications at index:', currentIndex)
+          console.log('🗑️ Current medications after deletion:', currentMedications.length)
+        } else {
+          console.log('⚠️ Medication not found in currentMedications array')
         }
         
-        // Reset AI analysis state when medications change
-        aiCheckComplete = false
-        aiCheckMessage = ''
-        lastAnalyzedMedications = []
+        // Also update the current prescription's medications array
+        if (currentPrescription && currentPrescription.medications) {
+          currentPrescription.medications = currentPrescription.medications.filter(m => m.id !== medicationId)
+          console.log('🗑️ Updated currentPrescription.medications:', currentPrescription.medications.length)
+          
+          // CRITICAL: Update the prescription document in Firebase to reflect the medication removal
+          console.log('🗑️ Updating prescription document in Firebase...')
+          await firebaseStorage.updatePrescription(currentPrescription.id, {
+            medications: currentPrescription.medications,
+            updatedAt: new Date().toISOString()
+          })
+          console.log('✅ Prescription document updated in Firebase')
+        }
         
-        console.log('🗑️ Deleted prescription:', medicationId)
+        // Update the prescriptions array to trigger reactivity
+        prescriptions = [...prescriptions]
+        console.log('🗑️ Updated prescriptions array:', prescriptions.length)
+        
+        // Reset AI analysis state when medications change (only if prescription is not finished)
+        if (!prescriptionFinished) {
+          aiCheckComplete = false
+          aiCheckMessage = ''
+          lastAnalyzedMedications = []
+          console.log('🔄 Reset AI analysis state')
+        }
+        
+        console.log('✅ Successfully deleted medication:', medicationId)
+        notifySuccess('Medication deleted successfully!')
+      } else {
+        console.log('❌ User cancelled deletion')
       }
     } catch (error) {
       console.error('❌ Error deleting prescription:', error)
+      notifyError('Failed to delete medication: ' + error.message)
     }
   }
   
@@ -1220,7 +1306,6 @@
             // Reset AI check state for new prescription
             aiCheckComplete = false;
             aiCheckMessage = '';
-            drugInteractions = null;
             
             try {
               // ALWAYS create a new prescription when button is clicked
@@ -1659,10 +1744,11 @@
                       </small>
                     </div>
                     <button 
-                      class="btn btn-outline-secondary btn-sm" 
-                      on:click={() => toggleExpanded('symptoms', index)}
+                      class="btn btn-outline-danger btn-sm" 
+                      on:click={() => handleDeleteSymptom(symptom.id, index)}
+                      title="Delete symptom"
                     >
-                      <i class="fas fa-{expandedSymptoms[index] ? 'chevron-up' : 'chevron-down'}"></i>
+                      <i class="fas fa-trash"></i>
                     </button>
                   </div>
                 </div>
@@ -1756,56 +1842,119 @@
               <h5 class="card-title mb-0">
                 <i class="fas fa-prescription-bottle-alt me-2"></i>Prescription
               </h5>
-              <!-- Add Drug Button -->
-            <button 
-                class="btn btn-primary btn-sm" 
-                on:click={() => { 
-                  console.log('💊 Add Drug clicked');
-                  
-                  if (!currentPrescription) {
-                    notifyError('Please click "New Prescription" first to create a prescription.');
-                    return;
-                  }
-                  
-                  showMedicationForm = true;
-                  editingMedication = null;
-                  notifySuccess('Medication form opened - add drug details');
-                }}
-                disabled={showMedicationForm || !currentPrescription}
-                title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
-            >
-              <i class="fas fa-plus me-1"></i>Add Drug
-            </button>
+              <div class="d-flex gap-2">
+                
+                <!-- Add Drug Button -->
+                <button 
+                    class="btn btn-primary btn-sm" 
+                    on:click={() => { 
+                      console.log('💊 Add Drug clicked');
+                      
+                      if (!currentPrescription) {
+                        notifyError('Please click "New Prescription" first to create a prescription.');
+                        return;
+                      }
+                      
+                      showMedicationForm = true;
+                      editingMedication = null;
+                      notifySuccess('Medication form opened - add drug details');
+                    }}
+                    disabled={showMedicationForm || !currentPrescription}
+                    title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
+                >
+                  <i class="fas fa-plus me-1"></i>Add Drug
+                </button>
+              </div>
           </div>
             <div class="card-body">
           
-          <!-- AI Check Status Message - Only show if prescription is finished and has medications -->
+          
+          <!-- Full AI Analysis Option - Only show if prescription is finished and has medications -->
           {#if aiCheckComplete && prescriptionFinished && currentMedications.length > 0}
-            <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
-              <i class="fas fa-robot me-2"></i>
-              <strong>AI drug interaction test complete</strong>
-              <br>
-              <small>{aiCheckMessage}</small>
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" on:click={() => { aiCheckComplete = false; aiCheckMessage = '' }}></button>
-            </div>
-            
-            <!-- Full AI Analysis Option -->
             <div class="text-center mb-3">
               <p class="text-muted mb-2">Need a full AI assisted prescription analysis?</p>
               <button 
                 class="btn btn-outline-primary btn-sm"
-                on:click={() => {
-                  // TODO: Implement full AI analysis functionality
-                  console.log('🤖 Full AI analysis requested')
-                  dispatch('notification', { 
-                    type: 'info', 
-                    message: 'Full AI analysis feature coming soon!' 
-                  })
-                }}
+                on:click={performFullAIAnalysis}
+                disabled={loadingFullAnalysis}
                 title="Get comprehensive AI analysis of prescription"
               >
-                <i class="fas fa-brain me-2"></i>
-                Full AI Analysis
+                {#if loadingFullAnalysis}
+                  <i class="fas fa-spinner fa-spin me-2"></i>
+                  Analyzing...
+                {:else}
+                  <i class="fas fa-brain me-2"></i>
+                  Full AI Analysis
+                {/if}
+              </button>
+            </div>
+          {/if}
+          
+          <!-- Full AI Analysis Loading -->
+          {#if loadingFullAnalysis}
+            <div class="card border-primary mb-3">
+              <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+                  <i class="fas fa-spinner fa-spin me-2"></i>
+                  Generating AI Analysis...
+            </h6>
+              </div>
+              <div class="card-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="text-muted mb-0">Analyzing prescription data and generating comprehensive insights...</p>
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Full AI Analysis Results -->
+          {#if showFullAnalysis && fullAIAnalysis}
+            <div class="card border-success mb-3 shadow-sm">
+              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                  <i class="fas fa-brain me-2"></i>
+                  Full AI Prescription Analysis
+                </h6>
+                <div class="d-flex gap-2">
+            <button 
+                    class="btn btn-outline-light btn-sm"
+                    on:click={() => {
+                      navigator.clipboard.writeText(fullAIAnalysis.replace(/<[^>]*>/g, ''))
+                      notifySuccess('Analysis copied to clipboard!')
+                    }}
+                    title="Copy analysis text"
+                  >
+                    <i class="fas fa-copy"></i>
+                  </button>
+                  <button 
+                    class="btn btn-outline-light btn-sm"
+                    on:click={closeFullAnalysis}
+                    title="Close analysis"
+                  >
+                    <i class="fas fa-times"></i>
+            </button>
+          </div>
+              </div>
+              <div class="card-body">
+                <div class="ai-analysis-content">
+                  {@html fullAIAnalysis}
+                </div>
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Full AI Analysis Error -->
+          {#if fullAnalysisError}
+            <div class="alert alert-danger mb-3">
+              <i class="fas fa-exclamation-triangle me-2"></i>
+              <strong>Analysis Error:</strong> {fullAnalysisError}
+              <button 
+                class="btn btn-outline-danger btn-sm ms-2"
+                on:click={() => fullAnalysisError = ''}
+                title="Dismiss error"
+              >
+                <i class="fas fa-times"></i>
               </button>
             </div>
           {/if}
@@ -1819,88 +1968,6 @@
             onCancelMedication={handleCancelMedication}
           />
           
-          <!-- Drug Interactions Warning -->
-          {#if currentMedications && currentMedications.length >= 2}
-            <div class="drug-interactions-section mb-3">
-              {#if checkingInteractions}
-                <div class="alert alert-info d-flex align-items-center">
-                  <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                  <i class="fas fa-search me-2"></i>
-                  <div>
-                    <strong>Checking for drug interactions...</strong>
-                    <br>
-                    <small class="text-muted">Analyzing {currentMedications.length} medications for potential interactions</small>
-                  </div>
-                </div>
-              {:else if drugInteractions && drugInteractions.hasInteractions}
-                <div class="alert alert-{drugInteractions.severity === 'critical' ? 'danger' : drugInteractions.severity === 'high' ? 'warning' : 'info'} d-flex justify-content-between align-items-start {drugInteractions.severity === 'critical' ? 'alert-dangerous' : ''}">
-                  <div class="flex-grow-1">
-                    <div class="d-flex align-items-center mb-2">
-                      {#if drugInteractions.severity === 'critical'}
-                        <i class="fas fa-exclamation-triangle me-2 text-danger"></i>
-                        <strong class="text-danger">DANGEROUS INTERACTION DETECTED</strong>
-                      {:else}
-                      <i class="fas fa-exclamation-triangle me-2"></i>
-                      <strong>Drug Interaction Warning</strong>
-                      {/if}
-                      <span class="badge bg-{drugInteractions.severity === 'critical' ? 'danger' : drugInteractions.severity === 'high' ? 'warning' : 'info'} ms-2">
-                        {drugInteractions.severity.toUpperCase()}
-                      </span>
-                      {#if drugInteractions.isLocalDetection}
-                        <span class="badge bg-dark ms-2">LOCAL SAFETY CHECK</span>
-                      {/if}
-                    </div>
-                    <p class="mb-2">
-                      {#if drugInteractions.severity === 'critical'}
-                        <strong class="text-danger">IMMEDIATE ATTENTION REQUIRED:</strong> Dangerous drug interaction detected between current medications.
-                      {:else}
-                        Potential drug interactions detected between current medications.
-                      {/if}
-                    </p>
-                    <button 
-                      class="btn btn-sm btn-outline-{drugInteractions.severity === 'critical' ? 'danger' : drugInteractions.severity === 'high' ? 'warning' : 'info'}"
-                      on:click={toggleInteractions}
-                    >
-                      <i class="fas {showInteractions ? 'fa-eye-slash' : 'fa-eye'} me-1"></i>
-                      {showInteractions ? 'Hide' : 'View'} Details
-                    </button>
-                  </div>
-                </div>
-                
-                {#if showInteractions}
-                  <div class="card mt-2">
-                    <div class="card-body">
-                      <h6 class="card-title">
-                        <i class="fas fa-pills me-2"></i>Drug Interaction Analysis
-                      </h6>
-                      <div class="interaction-content">
-                        {@html formatInteractions(drugInteractions.interactions)}
-                      </div>
-                    </div>
-                  </div>
-                {/if}
-              {:else if drugInteractions && !drugInteractions.hasInteractions}
-                <div class="card border-2 border-info shadow-sm">
-                  <div class="card-header d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 text-danger">
-                      <i class="fas fa-robot me-2"></i>AI-Powered Safety Analysis
-                    </h6>
-                  </div>
-                  <div class="card-body">
-                    <div class="alert alert-success d-flex align-items-center mb-0">
-                  <i class="fas fa-check-circle me-2"></i>
-                  <span>No significant drug interactions detected between current medications.</span>
-                    </div>
-                  </div>
-                </div>
-              {:else if interactionError}
-                <div class="alert alert-warning d-flex align-items-center">
-                  <i class="fas fa-exclamation-triangle me-2"></i>
-                  <span>{interactionError}</span>
-                </div>
-              {/if}
-            </div>
-          {/if}
           
           <!-- Current Prescriptions List -->
           {#if currentMedications && currentMedications.length > 0}
@@ -1929,7 +1996,7 @@
                       </button>
                       <button 
                         class="btn btn-outline-danger btn-sm"
-                        on:click={() => handleDeletePrescription(index)}
+                        on:click={() => handleDeletePrescription(medication.id, index)}
                         title="Delete medication"
                       >
                         <i class="fas fa-trash"></i>
@@ -2140,31 +2207,6 @@
 {/if}
 
 <style>
-  .drug-interactions-section .alert {
-    border-left: 4px solid;
-  }
-  
-  .drug-interactions-section .alert-danger {
-    border-left-color: var(--bs-danger);
-  }
-  
-  .drug-interactions-section .alert-warning {
-    border-left-color: var(--bs-warning);
-  }
-  
-  .drug-interactions-section .alert-info {
-    border-left-color: var(--bs-info);
-  }
-  
-  .drug-interactions-section .alert-success {
-    border-left-color: var(--bs-success);
-  }
-  
-  .drug-interactions-section .alert-dangerous {
-    border: 3px solid var(--bs-danger) !important;
-    background-color: var(--bs-danger-bg-subtle) !important;
-    animation: pulse-danger 2s infinite;
-  }
 
   @keyframes pulse-danger {
     0% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0.7); }
@@ -2202,6 +2244,117 @@
     color: var(--bs-danger) !important;
     font-weight: bold;
   }
+  
+  /* Full AI Analysis styling */
+  .ai-analysis-content {
+    line-height: 1.4;
+    font-size: 0.9rem;
+  }
+  
+  .ai-analysis-content h6 {
+    color: var(--bs-primary) !important;
+    font-weight: 700;
+    margin-top: 0.5rem;
+    margin-bottom: 0.2rem;
+    font-size: 1rem;
+    border-bottom: 2px solid var(--bs-primary);
+    padding-bottom: 0.1rem;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    margin-left: 0;
+    padding-left: 0;
+  }
+  
+  .ai-analysis-content h6:first-child {
+    margin-top: 0;
+    margin-bottom: 0.1rem;
+  }
+  
+  .ai-analysis-content strong {
+    color: var(--bs-dark);
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  
+  .ai-analysis-content em {
+    color: var(--bs-secondary);
+    font-style: italic;
+    font-weight: 500;
+  }
+  
+  .ai-analysis-content ul {
+    padding-left: 1.2rem;
+    margin: 0.1rem 0;
+    margin-left: 0;
+  }
+  
+  .ai-analysis-content li {
+    margin-bottom: 0.1rem;
+    line-height: 1.2;
+    position: relative;
+  }
+  
+  .ai-analysis-content li::marker {
+    color: var(--bs-primary);
+    font-weight: bold;
+  }
+  
+  .ai-analysis-content br + strong {
+    display: block;
+    margin-top: 0.5rem;
+    margin-bottom: 0.3rem;
+  }
+  
+  .ai-analysis-content br + • {
+    display: block;
+    margin-top: 0.4rem;
+  }
+  
+  /* Special formatting for analysis sections */
+  .ai-analysis-content p {
+    margin-bottom: 0.1rem;
+    line-height: 1.2;
+    margin-left: 0;
+    padding-left: 0;
+  }
+  
+  .ai-analysis-content .section-divider {
+    border-top: 1px solid var(--bs-border-color);
+    margin: 0.5rem 0;
+    padding-top: 0.3rem;
+  }
+  
+  /* Highlight important information */
+  .ai-analysis-content .highlight {
+    background-color: var(--bs-warning-bg-subtle);
+    padding: 0.2rem;
+    border-radius: 0.375rem;
+    border-left: 4px solid var(--bs-warning);
+    margin: 0.2rem 0;
+    margin-left: 0;
+  }
+  
+  /* Warning sections */
+  .ai-analysis-content .warning {
+    background-color: var(--bs-danger-bg-subtle);
+    padding: 0.3rem;
+    border-radius: 0.375rem;
+    border-left: 4px solid var(--bs-danger);
+    margin: 0.2rem 0;
+    margin-left: 0;
+  }
+  
+  /* Recommendation sections */
+  .ai-analysis-content .recommendation {
+    background-color: var(--bs-success-bg-subtle);
+    padding: 0.3rem;
+    border-radius: 0.375rem;
+    border-left: 4px solid var(--bs-success);
+    margin: 0.2rem 0;
+    margin-left: 0;
+  }
+
 
   /* Medication list styling - compact without cards */
   .medication-list {

@@ -9,6 +9,7 @@ A patient can be be prescribed with one or more prescriptions
 A prescription has one or more drugs (medicines)
 A patient has a symptoms, ilnesses, tests and prescription hostory
 Doctor and register/select a patient
+Use only three font sizes for the whole appliation. change font size propotinally with responsive views.
 Under patient symptoms and prescriptions can be entered
 To indentify new prescripiton just consider click "+ New Prescripton" as a start of new prescription
 Prescription can be printed as PDF 
@@ -19,5 +20,7 @@ It has a email add and business name
 When create the account, a unique 6 digit number is generated
 Doctors can add pharmacist using the number give
 When doctor send a prescription pharmacist can view it 
+
+RxNav-in-a-Box
 
 

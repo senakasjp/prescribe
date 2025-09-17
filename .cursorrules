@@ -15,3 +15,5 @@ Doctor Isolation: Each doctor can ONLY see their own patients
 Data Privacy: No cross-doctor data access possible
 HIPAA Compliance: Patient data is properly isolated
 Authentication Required: Doctor ID must be provided to access patients
+
+RxNav-in-a-Box

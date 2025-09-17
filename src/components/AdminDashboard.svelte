@@ -3,6 +3,7 @@
   import adminAuthService from '../services/adminAuthService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import aiTokenTracker from '../services/aiTokenTracker.js'
+  import AIPromptLogs from './AIPromptLogs.svelte'
   
   const dispatch = createEventDispatcher()
   
@@ -277,6 +278,12 @@
               on:click={() => handleTabChange('ai-usage')}
             >
               <i class="fas fa-robot me-2"></i>AI Usage
+            </button>
+            <button
+              class="list-group-item list-group-item-action {activeTab === 'ai-logs' ? 'active' : ''}"
+              on:click={() => handleTabChange('ai-logs')}
+            >
+              <i class="fas fa-brain me-2"></i>AI Logs
             </button>
             <button
               class="list-group-item list-group-item-action {activeTab === 'system' ? 'active' : ''}"
@@ -627,6 +634,14 @@
                 </div>
               </div>
             {/if}
+            
+          {:else if activeTab === 'ai-logs'}
+            <!-- AI Logs Tab -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h2><i class="fas fa-brain me-2 text-danger"></i>AI Prompt Logs</h2>
+            </div>
+            
+            <AIPromptLogs />
             
           {:else if activeTab === 'system'}
             <!-- System Tab -->

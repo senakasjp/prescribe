@@ -2,11 +2,43 @@
 // This service provides AI-generated recommendations based on patient symptoms
 
 import aiTokenTracker from './aiTokenTracker.js'
+import { 
+  collection, 
+  addDoc, 
+  getDocs, 
+  query, 
+  orderBy, 
+  limit 
+} from 'firebase/firestore'
+import { db } from '../firebase-config.js'
 
 class OpenAIService {
   constructor() {
     this.apiKey = import.meta.env.VITE_OPENAI_API_KEY
     this.baseURL = 'https://api.openai.com/v1'
+    this.client = null
+    this.initializeClient()
+  }
+
+  // Initialize OpenAI client
+  initializeClient() {
+    if (this.isConfigured()) {
+      try {
+        // Dynamic import of OpenAI to avoid build issues
+        import('openai').then(({ default: OpenAI }) => {
+          this.client = new OpenAI({
+            apiKey: this.apiKey,
+            baseURL: this.baseURL,
+            dangerouslyAllowBrowser: true
+          })
+          console.log('✅ OpenAI client initialized successfully')
+        }).catch(error => {
+          console.error('❌ Failed to initialize OpenAI client:', error)
+        })
+      } catch (error) {
+        console.error('❌ Error importing OpenAI:', error)
+      }
+    }
   }
 
   // Check if API key is configured
@@ -14,506 +46,612 @@ class OpenAIService {
     return this.apiKey && this.apiKey !== 'undefined' && this.apiKey !== ''
   }
 
-  // Generate AI recommendations based on symptoms
-  async generateRecommendations(symptoms, patientAge = null, doctorId = null) {
-    if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured. Please add VITE_OPENAI_API_KEY to your environment variables.')
-    }
-
+  // Log AI prompt to Firebase for admin monitoring - Enhanced to capture ALL OpenAI requests
+  async logAIPrompt(promptType, promptData, response = null, error = null, additionalInfo = {}) {
     try {
-      console.log('🤖 Generating AI recommendations for symptoms:', symptoms)
+      // Extract the complete prompt content from the request body
+      let fullPrompt = ''
+      let systemMessage = ''
+      let userMessage = ''
+      
+      if (promptData.requestBody && promptData.requestBody.messages) {
+        const messages = promptData.requestBody.messages
+        messages.forEach(msg => {
+          if (msg.role === 'system') {
+            systemMessage = msg.content
+          } else if (msg.role === 'user') {
+            userMessage = msg.content
+          }
+        })
+        
+        // Combine system and user messages for full prompt
+        fullPrompt = `SYSTEM MESSAGE:\n${systemMessage}\n\nUSER MESSAGE:\n${userMessage}`
+      }
 
-      // Prepare symptoms text
-      const symptomsText = symptoms.map(symptom => 
-        `${symptom.description} (Severity: ${symptom.severity}${symptom.duration ? `, Duration: ${symptom.duration}` : ''})`
-      ).join(', ')
+      const logEntry = {
+        promptType, // 'drugSuggestions', 'drugInteractions', 'comprehensiveAnalysis', 'api_call', etc.
+        timestamp: new Date().toISOString(),
+        promptData: JSON.stringify(promptData, null, 2), // Stringify for storage
+        fullPrompt: fullPrompt, // Complete prompt content
+        systemMessage: systemMessage, // System message only
+        userMessage: userMessage, // User message only
+        response: response ? JSON.stringify(response, null, 2) : null,
+        error: error ? error.message : null,
+        success: !error,
+        tokensUsed: response ? this.estimateTokens(promptData, response) : 0,
+        // Additional metadata
+        apiEndpoint: additionalInfo.endpoint || 'chat/completions',
+        model: additionalInfo.model || 'unknown',
+        requestId: additionalInfo.requestId || Date.now().toString(),
+        userAgent: navigator.userAgent,
+        url: window.location.href,
+        // Include any additional context
+        ...additionalInfo
+      }
 
-      // Create the prompt for medical recommendations
-      const prompt = `As a medical AI assistant, analyze the following patient symptoms and provide professional medical recommendations. 
+      await addDoc(collection(db, 'aiPromptLogs'), logEntry)
+      console.log('📝 AI prompt logged successfully:', promptType, 'Request ID:', logEntry.requestId)
+      console.log('📝 Full prompt logged:', fullPrompt.substring(0, 200) + '...')
+    } catch (logError) {
+      console.error('❌ Failed to log AI prompt:', logError)
+      // Don't throw error - logging failure shouldn't break the main functionality
+    }
+  }
 
-Patient Symptoms: ${symptomsText}
-${patientAge ? `Patient Age: ${patientAge} years` : ''}
+  // Estimate token usage (rough approximation)
+  estimateTokens(promptData, response) {
+    const promptText = typeof promptData === 'string' ? promptData : JSON.stringify(promptData)
+    const responseText = typeof response === 'string' ? response : JSON.stringify(response)
+    const totalText = promptText + responseText
+    // Rough estimate: 1 token ≈ 4 characters
+    return Math.ceil(totalText.length / 4)
+  }
 
-Please provide your response in the following structured format:
+  // Centralized OpenAI API call wrapper that logs ALL requests
+  async makeOpenAIRequest(endpoint, requestBody, promptType = 'api_call', additionalContext = {}) {
+    const requestId = Date.now().toString() + Math.random().toString(36).substr(2, 9)
+    
+    try {
+      console.log('🚀 Making OpenAI API request:', endpoint, 'Request ID:', requestId)
+      
+      // Log the request BEFORE making the call
+      await this.logAIPrompt(promptType, {
+        endpoint,
+        requestBody,
+        requestId,
+        timestamp: new Date().toISOString(),
+        ...additionalContext
+      }, null, null, {
+        endpoint,
+        model: requestBody.model || 'unknown',
+        requestId,
+        ...additionalContext
+      })
 
-**Possible Conditions:**
-- List potential diagnoses or conditions to consider
-
-**Diagnostic Recommendations:**
-- Recommended tests or examinations
-- When to seek immediate medical attention
-
-**Treatment Recommendations:**
-- General treatment approaches
-- Lifestyle modifications
-- Follow-up considerations
-
-**Important Notes:**
-- Key warnings or red flags
-- When to contact healthcare provider immediately
-
-Format your response with clear headings and bullet points. Be concise but comprehensive. Remember this is for informational purposes only and should not replace professional medical consultation.`
-
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
+      const response = await fetch(`${this.baseURL}/${endpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a medical AI assistant that provides professional medical recommendations based on symptoms. Always emphasize that your recommendations are for informational purposes only and should not replace professional medical consultation.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 1000,
-          temperature: 0.3
-        })
+        body: JSON.stringify(requestBody)
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
+        const error = new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
+        
+        // Log the error
+        await this.logAIPrompt(promptType, {
+          endpoint,
+          requestBody,
+          requestId,
+          timestamp: new Date().toISOString(),
+          ...additionalContext
+        }, null, error, {
+          endpoint,
+          model: requestBody.model || 'unknown',
+          requestId,
+          ...additionalContext
+        })
+        
+        throw error
       }
 
       const data = await response.json()
-      const recommendations = data.choices[0]?.message?.content || 'No recommendations available.'
+      
+      // Log the successful response
+      await this.logAIPrompt(promptType, {
+        endpoint,
+        requestBody,
+        requestId,
+        timestamp: new Date().toISOString(),
+        ...additionalContext
+      }, data, null, {
+        endpoint,
+        model: requestBody.model || 'unknown',
+        requestId,
+        tokensUsed: data.usage ? data.usage.total_tokens : 0,
+        ...additionalContext
+      })
 
-      // Track token usage
-      if (data.usage) {
-        aiTokenTracker.trackUsage(
-          'generateRecommendations',
-          data.usage.prompt_tokens,
-          data.usage.completion_tokens,
-          'gpt-3.5-turbo',
-          doctorId
-        )
-      }
-
-      console.log('✅ AI recommendations generated successfully')
-      return recommendations
+      console.log('✅ OpenAI API request completed:', endpoint, 'Request ID:', requestId)
+      return data
 
     } catch (error) {
-      console.error('❌ Error generating AI recommendations:', error)
+      console.error('❌ OpenAI API request failed:', endpoint, 'Request ID:', requestId, error)
+      
+      // Log the error (if not already logged above)
+      if (!error.logged) {
+        await this.logAIPrompt(promptType, {
+          endpoint,
+          requestBody,
+          requestId,
+          timestamp: new Date().toISOString(),
+          ...additionalContext
+        }, null, error, {
+          endpoint,
+          model: requestBody.model || 'unknown',
+          requestId,
+          ...additionalContext
+        })
+        error.logged = true
+      }
+      
       throw error
     }
   }
 
-  // Generate medication suggestions based on symptoms
-  async generateMedicationSuggestions(symptoms, currentMedications = [], doctorId = null) {
+  // Get last 50 AI prompts for admin panel
+  async getLastAIPrompts(limitCount = 50) {
+    try {
+      const q = query(
+        collection(db, 'aiPromptLogs'),
+        orderBy('timestamp', 'desc'),
+        limit(limitCount)
+      )
+      
+      const querySnapshot = await getDocs(q)
+      const prompts = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      
+      console.log('📊 Retrieved AI prompts:', prompts.length)
+      return prompts
+    } catch (error) {
+      console.error('❌ Error retrieving AI prompts:', error)
+      throw error
+    }
+  }
+
+  // Ensure client is initialized
+  async ensureClientReady() {
+    if (!this.isConfigured()) {
+      throw new Error('OpenAI API key not configured')
+    }
+    
+    if (!this.client) {
+      // Try to initialize client synchronously
+      try {
+        const { default: OpenAI } = await import('openai')
+        this.client = new OpenAI({
+          apiKey: this.apiKey,
+          baseURL: this.baseURL,
+          dangerouslyAllowBrowser: true
+        })
+        console.log('✅ OpenAI client initialized on demand')
+      } catch (error) {
+        console.error('❌ Failed to initialize OpenAI client:', error)
+        throw new Error('Failed to initialize OpenAI client')
+      }
+    }
+    
+    return this.client
+  }
+
+
+  // Convert combined analysis JSON to HTML
+  convertCombinedAnalysisToHTML(jsonResponse) {
+    if (!jsonResponse) return ''
+
+    let html = ''
+
+    // Conditions section
+    if (jsonResponse.conditions && Array.isArray(jsonResponse.conditions)) {
+      html += `<h6>🔍 CONDITIONS</h6><ul>`
+      jsonResponse.conditions.forEach(condition => {
+        html += `<li>${condition}</li>`
+      })
+      html += `</ul>`
+    }
+
+    // Treatment section
+    if (jsonResponse.treatment && Array.isArray(jsonResponse.treatment)) {
+      html += `<h6>💊 TREATMENT</h6><ul>`
+      jsonResponse.treatment.forEach(med => {
+        html += `<li><strong>${med.medication}:</strong> ${med.dosage}`
+        if (med.availability) {
+          html += `<br><span class="text-info"><strong>Availability:</strong> ${med.availability}</span>`
+        }
+        if (med.alternatives) {
+          html += `<br><span class="text-warning"><strong>Alternatives:</strong> ${med.alternatives}</span>`
+        }
+        html += `</li>`
+      })
+      html += `</ul>`
+    }
+
+    // Interactions section
+    if (jsonResponse.interactions) {
+      html += `<h6>⚠️ INTERACTIONS</h6><div class="warning"><p>${jsonResponse.interactions}</p></div>`
+    }
+
+    // Red flags section
+    if (jsonResponse.redFlags && Array.isArray(jsonResponse.redFlags)) {
+      html += `<h6>🚨 RED FLAGS</h6><div class="warning"><ul>`
+      jsonResponse.redFlags.forEach(flag => {
+        html += `<li>${flag}</li>`
+      })
+      html += `</ul></div>`
+    }
+
+    return html
+  }
+
+  // Convert structured JSON analysis to HTML
+  convertStructuredAnalysisToHTML(jsonResponse) {
+    if (!jsonResponse) return ''
+
+    let html = ''
+
+    // Overview section
+    if (jsonResponse.overview) {
+      html += `<h6>📋 OVERVIEW</h6><p>${jsonResponse.overview}</p>`
+    }
+
+    // Medications section
+    if (jsonResponse.medications && Array.isArray(jsonResponse.medications)) {
+      html += `<h6>🔍 MEDICATIONS</h6><ul>`
+      jsonResponse.medications.forEach(med => {
+        html += `<li><strong>${med.drug}:</strong> ${med.assessment}`
+        if (med.availability) {
+          html += `<br><span class="text-info"><strong>Availability:</strong> ${med.availability}</span>`
+        }
+        if (med.alternatives) {
+          html += `<br><span class="text-warning"><strong>Alternatives:</strong> ${med.alternatives}</span>`
+        }
+        html += `</li>`
+      })
+      html += `</ul>`
+    }
+
+    // Safety section
+    if (jsonResponse.safety) {
+      html += `<h6>⚠️ SAFETY</h6><div class="warning"><ul>`
+      if (jsonResponse.safety.interactions) {
+        html += `<li><strong>Interactions:</strong> ${jsonResponse.safety.interactions}</li>`
+      }
+      if (jsonResponse.safety.monitoring) {
+        html += `<li><strong>Monitoring:</strong> ${jsonResponse.safety.monitoring}</li>`
+      }
+      html += `</ul></div>`
+    }
+
+    // Effectiveness section
+    if (jsonResponse.effectiveness) {
+      html += `<h6>🎯 EFFECTIVENESS</h6><ul>`
+      if (jsonResponse.effectiveness.alignment) {
+        html += `<li><strong>Alignment:</strong> ${jsonResponse.effectiveness.alignment}</li>`
+      }
+      if (jsonResponse.effectiveness.outcomes) {
+        html += `<li><strong>Outcomes:</strong> ${jsonResponse.effectiveness.outcomes}</li>`
+      }
+      html += `</ul>`
+    }
+
+    // Recommendations section
+    if (jsonResponse.recommendations) {
+      html += `<h6>📈 RECOMMENDATIONS</h6><div class="recommendation"><ul>`
+      if (jsonResponse.recommendations.adjustments) {
+        html += `<li><strong>Adjustments:</strong> ${jsonResponse.recommendations.adjustments}</li>`
+      }
+      if (jsonResponse.recommendations.followUp) {
+        html += `<li><strong>Follow-up:</strong> ${jsonResponse.recommendations.followUp}</li>`
+      }
+      html += `</ul></div>`
+    }
+
+    // Warnings section
+    if (jsonResponse.warnings) {
+      html += `<h6>🚨 WARNINGS</h6><div class="warning"><ul>`
+      if (jsonResponse.warnings.critical) {
+        html += `<li><strong>Critical:</strong> ${jsonResponse.warnings.critical}</li>`
+      }
+      if (jsonResponse.warnings.emergency) {
+        html += `<li><strong>Emergency:</strong> ${jsonResponse.warnings.emergency}</li>`
+      }
+      html += `</ul></div>`
+    }
+
+    // Notes section
+    if (jsonResponse.notes) {
+      html += `<h6>📝 NOTES</h6><div class="highlight"><ul>`
+      if (jsonResponse.notes.clinical) {
+        html += `<li><strong>Clinical:</strong> ${jsonResponse.notes.clinical}</li>`
+      }
+      if (jsonResponse.notes.education) {
+        html += `<li><strong>Education:</strong> ${jsonResponse.notes.education}</li>`
+      }
+      html += `</ul></div>`
+    }
+
+    return html
+  }
+
+  // Convert markdown to HTML - simple and reliable (fallback)
+  convertMarkdownToHTML(text) {
+    if (!text) return ''
+
+    console.log('🔧 Converting markdown to HTML...')
+    console.log('📝 Original text preview:', text.substring(0, 200))
+
+    // Remove any HTML code blocks or markdown artifacts
+    text = text.replace(/```html\s*/g, '')
+    text = text.replace(/```\s*/g, '')
+    text = text.replace(/`([^`]+)`/g, '$1')
+
+    // Convert main section headers first
+    text = text.replace(/\*\*📋\s*PRESCRIPTION OVERVIEW:\*\*/g, '<h6>📋 OVERVIEW</h6>')
+    text = text.replace(/\*\*🔍\s*MEDICATION ANALYSIS:\*\*/g, '<h6>🔍 MEDICATIONS</h6>')
+    text = text.replace(/\*\*⚠️\s*SAFETY ASSESSMENT:\*\*/g, '<h6>⚠️ SAFETY</h6>')
+    text = text.replace(/\*\*🎯\s*TREATMENT EFFECTIVENESS:\*\*/g, '<h6>🎯 EFFECTIVENESS</h6>')
+    text = text.replace(/\*\*📈\s*OPTIMIZATION RECOMMENDATIONS:\*\*/g, '<h6>📈 RECOMMENDATIONS</h6>')
+    text = text.replace(/\*\*🚨\s*RED FLAGS & WARNINGS:\*\*/g, '<h6>🚨 WARNINGS</h6>')
+    text = text.replace(/\*\*📝\s*CLINICAL NOTES:\*\*/g, '<h6>📝 NOTES</h6>')
+
+    // Convert other bold headers
+    text = text.replace(/\*\*([^*]+):\*\*/g, '<h6>$1</h6>')
+
+    // Convert remaining bold text
+    text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+
+    // Convert italic text
+    text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+
+    // Convert bullet points
+    text = text.replace(/^[-•]\s+(.+)$/gm, '<li>$1</li>')
+    
+    // Wrap consecutive list items
+    text = text.replace(/(<li>.*<\/li>(\s*<li>.*<\/li>)*)/gs, '<ul>$1</ul>')
+    
+    // Add special styling to sections
+    text = text.replace(/<h6>⚠️\s*SAFETY<\/h6>([\s\S]*?)(?=<h6>|$)/g, (match, content) => {
+      return '<h6>⚠️ SAFETY</h6><div class="warning">' + content.trim() + '</div>'
+    })
+    
+    text = text.replace(/<h6>📈\s*RECOMMENDATIONS<\/h6>([\s\S]*?)(?=<h6>|$)/g, (match, content) => {
+      return '<h6>📈 RECOMMENDATIONS</h6><div class="recommendation">' + content.trim() + '</div>'
+    })
+    
+    text = text.replace(/<h6>🚨\s*WARNINGS<\/h6>([\s\S]*?)(?=<h6>|$)/g, (match, content) => {
+      return '<h6>🚨 WARNINGS</h6><div class="warning">' + content.trim() + '</div>'
+    })
+    
+    text = text.replace(/<h6>📝\s*NOTES<\/h6>([\s\S]*?)(?=<h6>|$)/g, (match, content) => {
+      return '<h6>📝 NOTES</h6><div class="highlight">' + content.trim() + '</div>'
+    })
+    
+    // Convert line breaks
+    text = text.replace(/\n\n/g, '</p><p>')
+    text = text.replace(/\n/g, '<br>')
+    
+    // Wrap in paragraphs
+    text = '<p>' + text + '</p>'
+    
+    // Clean up
+    text = text.replace(/<p><\/p>/g, '')
+    text = text.replace(/<p>\s*<\/p>/g, '')
+    text = text.replace(/<p>\s*<h6>/g, '<h6>')
+    text = text.replace(/<\/h6>\s*<\/p>/g, '</h6>')
+    text = text.replace(/<p>\s*<div/g, '<div')
+    text = text.replace(/<\/div>\s*<\/p>/g, '</div>')
+    
+    console.log('✅ Converted text preview:', text.substring(0, 200))
+    return text
+  }
+
+
+  // Generate comprehensive prescription analysis
+  async generateComprehensivePrescriptionAnalysis(patientData, doctorId = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured.')
     }
 
     try {
-      console.log('💊 Generating medication suggestions for symptoms:', symptoms)
+      console.log('🤖 Generating comprehensive prescription analysis...')
 
-      const symptomsText = symptoms.map(symptom => 
+      // Prepare comprehensive patient data
+      const medicationsText = patientData.medications.map(med => 
+        `${med.name} (${med.dosage}, ${med.frequency}, ${med.duration})`
+      ).join(', ')
+
+      const symptomsText = patientData.symptoms.map(symptom => 
         `${symptom.description} (Severity: ${symptom.severity})`
       ).join(', ')
 
-      const currentMedsText = currentMedications.length > 0 
-        ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
-        : 'No current medications'
+      const illnessesText = patientData.illnesses.map(illness => 
+        `${illness.condition} (Diagnosed: ${illness.diagnosisDate})`
+      ).join(', ')
 
-      const prompt = `As a medical AI assistant, suggest appropriate medications for the following symptoms. Consider drug interactions and contraindications.
+        const prompt = `Analyze prescription case as second opinion support for qualified doctor. Provide structured JSON response.
 
-Patient Symptoms: ${symptomsText}
-${currentMedsText}
+        PATIENT INFORMATION:
+        Name: ${patientData.name} (${patientData.firstName} ${patientData.lastName})
+        Age: ${patientData.age || 'N/A'}, Weight: ${patientData.weight || 'N/A'}, Height: ${patientData.height || 'N/A'}
+        Gender: ${patientData.gender || 'Not specified'}, Blood Group: ${patientData.bloodGroup || 'Not specified'}
+        Date of Birth: ${patientData.dateOfBirth || 'Not specified'}
 
-Please provide your response in the following structured format:
+        MEDICAL INFORMATION:
+        Allergies: ${patientData.allergies || 'None'}
+        Medical History: ${patientData.medicalHistory || 'None'}
+        Current Medications: ${patientData.currentMedications || 'None'}
+        Emergency Contact: ${patientData.emergencyContact || 'Not specified'}
 
-**Over-the-Counter Medications:**
-- List OTC medications that might help
-- Dosage recommendations
-- Important considerations
+        LOCATION INFORMATION:
+        Patient Address: ${patientData.patientAddress || 'Not specified'}
+        Patient City: ${patientData.patientCity || 'Not specified'}
+        Patient Country: ${patientData.patientCountry || 'Not specified'}
+        Patient Phone: ${patientData.patientPhone || 'Not specified'}
+        Patient Email: ${patientData.patientEmail || 'Not specified'}
 
-**Prescription Medications:**
-- Prescription medications to consider
-- Typical dosages
-- Special considerations
+        DOCTOR INFORMATION:
+        Doctor Name: ${patientData.doctorName || 'Unknown'}
+        Doctor Country: ${patientData.doctorCountry || 'Not specified'}
+        Doctor City: ${patientData.doctorCity || 'Not specified'}
+        Doctor Specialization: ${patientData.doctorSpecialization || 'General Practice'}
+        Doctor License: ${patientData.doctorLicenseNumber || 'Not specified'}
 
-**Drug Interactions:**
-- Important interactions to be aware of
-- Contraindications
-- Monitoring requirements
+        CURRENT PRESCRIPTION:
+        Medications: ${medicationsText}
+        Symptoms: ${symptomsText || 'None'}
+        Conditions: ${illnessesText || 'None'}
+        Prescription Date: ${patientData.prescriptionDate || 'Current'}
 
-**Side Effects & Monitoring:**
-- Common side effects to watch for
-- When to discontinue
-- Follow-up requirements
+        Provide analysis in the following JSON structure:
+        - overview: Brief assessment of the prescription case
+        - medications: Array of objects with drug name, assessment, and availability status in patient's country
+        - safety: Object with interactions and monitoring requirements
+        - effectiveness: Object with alignment and expected outcomes
+        - recommendations: Object with adjustments, follow-up schedule, and alternative medications if needed
+        - warnings: Object with critical issues and emergency situations
+        - notes: Object with clinical points, patient education, and country-specific considerations
 
-**Important Warnings:**
-- Critical safety information
-- When to avoid certain medications
-- Emergency situations
+        IMPORTANT: Check drug availability and regulatory approval in the patient's country. Suggest alternatives if medications are not available or approved in the patient's region. Consider local healthcare practices and drug naming conventions.`
 
-Format your response with clear headings and bullet points. Remember this is for informational purposes only and should not replace professional medical consultation.`
-
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
+        const requestBody = {
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
-              content: 'You are a medical AI assistant that provides medication suggestions based on symptoms. Always emphasize professional medical consultation and consider drug interactions.'
+              content: 'Medical AI assistant providing second opinion support to qualified doctors. Provide comprehensive prescription analysis with structured JSON output. CRITICAL: Consider regional healthcare practices, local drug availability, country-specific medical guidelines, and drug regulatory approvals. Assess if prescribed medications are available and approved in the patient\'s country. Suggest alternative medications if drugs are not available in the patient\'s region. Focus on key safety issues, effectiveness, and actionable recommendations tailored to the patient and doctor locations.'
             },
             {
               role: 'user',
               content: prompt
             }
           ],
-          max_tokens: 800,
-          temperature: 0.2
-        })
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
-      }
-
-      const data = await response.json()
-      const suggestions = data.choices[0]?.message?.content || 'No medication suggestions available.'
-
-      // Track token usage
-      if (data.usage) {
-        aiTokenTracker.trackUsage(
-          'generateMedicationSuggestions',
-          data.usage.prompt_tokens,
-          data.usage.completion_tokens,
-          'gpt-3.5-turbo',
-          doctorId
-        )
-      }
-
-      console.log('✅ Medication suggestions generated successfully')
-      return suggestions
-
-    } catch (error) {
-      console.error('❌ Error generating medication suggestions:', error)
-      throw error
-    }
-  }
-
-  // Local database of known dangerous drug interactions for safety validation
-  getKnownDangerousInteractions() {
-    return [
-      // MAOI + SSRI combinations (extremely dangerous)
-      {
-        drugs: ['phenelzine', 'isocarboxazid', 'tranylcypromine', 'selegiline', 'rasagiline'],
-        interactions: ['fluoxetine', 'sertraline', 'paroxetine', 'citalopram', 'escitalopram', 'fluvoxamine'],
-        severity: 'critical',
-        description: 'MAOI + SSRI: Extremely dangerous — risk of serotonin syndrome (high fever, agitation, muscle rigidity, seizures, even death). There must be at least 14 days between stopping MAOI and starting SSRI.'
-      },
-      // Warfarin interactions
-      {
-        drugs: ['warfarin'],
-        interactions: ['aspirin', 'ibuprofen', 'naproxen', 'diclofenac', 'celecoxib'],
-        severity: 'high',
-        description: 'Warfarin + NSAIDs: Increased bleeding risk. Monitor INR closely.'
-      },
-      // Digoxin interactions
-      {
-        drugs: ['digoxin'],
-        interactions: ['furosemide', 'hydrochlorothiazide', 'spironolactone'],
-        severity: 'high',
-        description: 'Digoxin + Diuretics: Risk of digoxin toxicity due to potassium depletion.'
-      },
-      // Lithium interactions
-      {
-        drugs: ['lithium'],
-        interactions: ['furosemide', 'hydrochlorothiazide', 'ibuprofen', 'naproxen'],
-        severity: 'high',
-        description: 'Lithium + NSAIDs/Diuretics: Increased lithium levels, risk of toxicity.'
-      },
-      // ACE inhibitors + potassium supplements
-      {
-        drugs: ['lisinopril', 'enalapril', 'ramipril', 'captopril'],
-        interactions: ['potassium chloride', 'potassium citrate', 'spironolactone'],
-        severity: 'high',
-        description: 'ACE Inhibitors + Potassium: Risk of hyperkalemia (high potassium levels).'
-      }
-    ]
-  }
-
-  // Database of known SAFE drug combinations to prevent false positives
-  getKnownSafeCombinations() {
-    return [
-      // Common safe combinations
-      {
-        drugs: ['paracetamol', 'acetaminophen'],
-        interactions: ['metformin', 'aspirin', 'ibuprofen', 'omeprazole', 'amoxicillin', 'amoxiclav'],
-        description: 'Safe combination - no significant interactions'
-      },
-      {
-        drugs: ['metformin'],
-        interactions: ['paracetamol', 'acetaminophen', 'aspirin', 'ibuprofen', 'omeprazole'],
-        description: 'Safe combination - no significant interactions'
-      },
-      {
-        drugs: ['aspirin'],
-        interactions: ['paracetamol', 'acetaminophen', 'metformin', 'omeprazole'],
-        description: 'Safe combination - no significant interactions'
-      },
-      {
-        drugs: ['ibuprofen'],
-        interactions: ['paracetamol', 'acetaminophen', 'metformin'],
-        description: 'Safe combination - no significant interactions'
-      },
-      {
-        drugs: ['omeprazole'],
-        interactions: ['paracetamol', 'acetaminophen', 'metformin', 'aspirin'],
-        description: 'Safe combination - no significant interactions'
-      }
-    ]
-  }
-
-  // Check for known dangerous interactions locally first
-  checkLocalDangerousInteractions(prescriptions) {
-    const dangerousInteractions = this.getKnownDangerousInteractions()
-    const medicationNames = prescriptions.map(p => p.name.toLowerCase().trim())
-    
-    for (const interaction of dangerousInteractions) {
-      const hasFirstDrug = interaction.drugs.some(drug => 
-        medicationNames.some(med => med.includes(drug))
-      )
-      const hasSecondDrug = interaction.interactions.some(drug => 
-        medicationNames.some(med => med.includes(drug))
-      )
-      
-      if (hasFirstDrug && hasSecondDrug) {
-        return {
-          hasInteractions: true,
-          interactions: `🚨 DANGEROUS INTERACTION DETECTED 🚨\n\n${interaction.description}\n\n**ACTION REQUIRED:** Do NOT take these medications together. Consult a healthcare professional immediately.`,
-          severity: interaction.severity,
-          isLocalDetection: true
-        }
-      }
-    }
-    
-    return null
-  }
-
-  // Check for known safe combinations to prevent false positives
-  checkKnownSafeCombinations(prescriptions) {
-    const safeCombinations = this.getKnownSafeCombinations()
-    const medicationNames = prescriptions.map(p => p.name.toLowerCase().trim())
-
-    for (const combination of safeCombinations) {
-      const hasDrug = combination.drugs.some(drug => 
-        medicationNames.some(med => med.includes(drug))
-      )
-      const hasInteractionDrug = combination.interactions.some(drug => 
-        medicationNames.some(med => med.includes(drug))
-      )
-      
-      if (hasDrug && hasInteractionDrug) {
-        return {
-          isSafeCombination: true,
-          description: combination.description
-        }
-      }
-    }
-    
-    return null
-  }
-
-  // Enhanced parsing for AI response to catch more interaction types
-  parseAIInteractionResponse(analysis) {
-    const lowerAnalysis = analysis.toLowerCase()
-    
-    // More conservative interaction detection - only flag if AI explicitly mentions interactions
-    const hasInteractions = !lowerAnalysis.includes('no significant drug interactions detected') && 
-                           !lowerAnalysis.includes('no interactions found') &&
-                           !lowerAnalysis.includes('no known interactions') &&
-                           !lowerAnalysis.includes('no drug interactions') &&
-                           !lowerAnalysis.includes('no significant interactions') &&
-                           !lowerAnalysis.includes('no major interactions') &&
-                           !lowerAnalysis.includes('no dangerous interactions') &&
-                           (lowerAnalysis.includes('drug interaction') || 
-                            lowerAnalysis.includes('contraindication') ||
-                            lowerAnalysis.includes('serotonin syndrome') ||
-                            lowerAnalysis.includes('bleeding risk') ||
-                            lowerAnalysis.includes('toxicity risk') ||
-                            lowerAnalysis.includes('dangerous combination') ||
-                            lowerAnalysis.includes('avoid taking') ||
-                            lowerAnalysis.includes('do not combine') ||
-                            lowerAnalysis.includes('increased risk') ||
-                            lowerAnalysis.includes('monitor closely'))
-
-    // More conservative severity detection
-    let severity = 'low'
-    if (lowerAnalysis.includes('critical') || 
-        lowerAnalysis.includes('severe') || 
-        lowerAnalysis.includes('dangerous') ||
-        lowerAnalysis.includes('contraindication') ||
-        lowerAnalysis.includes('serotonin syndrome') ||
-        lowerAnalysis.includes('fatal') ||
-        lowerAnalysis.includes('death') ||
-        lowerAnalysis.includes('emergency') ||
-        lowerAnalysis.includes('life-threatening')) {
-      severity = 'critical'
-    } else if (lowerAnalysis.includes('major') || 
-               lowerAnalysis.includes('high risk') || 
-               lowerAnalysis.includes('significant interaction') ||
-               lowerAnalysis.includes('serious') ||
-               lowerAnalysis.includes('toxicity') ||
-               lowerAnalysis.includes('bleeding risk')) {
-      severity = 'high'
-    } else if (lowerAnalysis.includes('moderate') || 
-               lowerAnalysis.includes('medium') ||
-               lowerAnalysis.includes('caution') ||
-               lowerAnalysis.includes('warning')) {
-      severity = 'moderate'
-    }
-
-    return { hasInteractions, severity }
-  }
-
-  // Check for drug interactions between current prescriptions
-  async checkDrugInteractions(prescriptions, doctorId = null) {
-    if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
-    }
-
-    try {
-      if (!prescriptions || prescriptions.length < 2) {
-        return {
-          hasInteractions: false,
-          interactions: 'No drug interactions to check (less than 2 medications).',
-          severity: 'none'
-        }
-      }
-
-      console.log('🔍 Checking drug interactions for prescriptions:', prescriptions)
-
-      // First, check for known dangerous interactions locally
-      const localDangerousInteraction = this.checkLocalDangerousInteractions(prescriptions)
-      if (localDangerousInteraction) {
-        console.log('🚨 Local dangerous interaction detected:', localDangerousInteraction)
-        return localDangerousInteraction
-      }
-
-      // Check for known safe combinations to prevent false positives
-      const safeCombination = this.checkKnownSafeCombinations(prescriptions)
-      if (safeCombination) {
-        console.log('✅ Safe combination detected:', safeCombination)
-        return {
-          hasInteractions: false,
-          interactions: 'No significant drug interactions detected. These medications are commonly prescribed together and are considered safe.',
-          severity: 'none',
-          isSafeCombination: true
-        }
-      }
-
-      const medicationNames = prescriptions.map(prescription => prescription.name).join(', ')
-
-      const prompt = `As a medical AI assistant, analyze the following medications for potential drug interactions.
-
-Current Prescriptions: ${medicationNames}
-
-Please analyze these medications and provide a structured response in the following format:
-
-**INTERACTION ANALYSIS:**
-- Check for KNOWN, DOCUMENTED drug-drug interactions only
-- Identify SPECIFIC contraindications (not general warnings)
-- Assess severity levels (Minor, Moderate, Major, Severe, Critical)
-
-**SPECIFIC INTERACTIONS:**
-- List ONLY confirmed interactions found in medical literature
-- Explain the specific mechanism and documented effects
-- Provide evidence-based monitoring recommendations
-
-**SEVERITY ASSESSMENT:**
-- Overall risk level based on documented evidence (Low, Moderate, High, Critical)
-- Specific warnings for healthcare providers
-- Clear criteria for when to seek immediate medical attention
-
-**MONITORING RECOMMENDATIONS:**
-- Evidence-based monitoring guidelines
-- Recommended follow-up intervals
-- Specific signs of adverse reactions to watch for
-
-IMPORTANT CRITERIA FOR REPORTING INTERACTIONS:
-- Only report DOCUMENTED, CLINICALLY SIGNIFICANT interactions
-- Do NOT report theoretical or minor interactions
-- Be CONSERVATIVE - only flag interactions with clear evidence
-- Focus on these HIGH-RISK combinations:
-  - Serotonin syndrome risks (MAOI + SSRI combinations)
-  - Bleeding risks (warfarin + NSAIDs)
-  - Toxicity risks (lithium + diuretics)
-  - Cardiovascular risks
-  - CNS depressant combinations
-
-If NO documented, clinically significant interactions are found, clearly state "No significant drug interactions detected" and provide general safety monitoring advice. Remember this is for informational purposes only and should not replace professional medical consultation.`
-
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a medical AI assistant specializing in drug interaction analysis. Provide accurate, evidence-based information about medication interactions while emphasizing the need for professional medical consultation. Be thorough in identifying ALL potential interactions and contraindications.'
-            },
-            {
-              role: 'user',
-              content: prompt
+          max_tokens: 1200,
+          temperature: 0.1,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "prescription_analysis",
+              schema: {
+                type: "object",
+                properties: {
+                  overview: {
+                    type: "string",
+                    description: "Brief assessment of the prescription case"
+                  },
+                  medications: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        drug: { type: "string" },
+                        assessment: { type: "string" },
+                        availability: { type: "string", description: "Availability status in patient's country" },
+                        alternatives: { type: "string", description: "Alternative medications if not available" }
+                      },
+                      required: ["drug", "assessment", "availability"]
+                    }
+                  },
+                  safety: {
+                    type: "object",
+                    properties: {
+                      interactions: { type: "string" },
+                      monitoring: { type: "string" }
+                    },
+                    required: ["interactions", "monitoring"]
+                  },
+                  effectiveness: {
+                    type: "object",
+                    properties: {
+                      alignment: { type: "string" },
+                      outcomes: { type: "string" }
+                    },
+                    required: ["alignment", "outcomes"]
+                  },
+                  recommendations: {
+                    type: "object",
+                    properties: {
+                      adjustments: { type: "string" },
+                      followUp: { type: "string" }
+                    },
+                    required: ["adjustments", "followUp"]
+                  },
+                  warnings: {
+                    type: "object",
+                    properties: {
+                      critical: { type: "string" },
+                      emergency: { type: "string" }
+                    },
+                    required: ["critical", "emergency"]
+                  },
+                  notes: {
+                    type: "object",
+                    properties: {
+                      clinical: { type: "string" },
+                      education: { type: "string" }
+                    },
+                    required: ["clinical", "education"]
+                  }
+                },
+                required: ["overview", "medications", "safety", "effectiveness", "recommendations", "warnings", "notes"]
+              }
             }
-          ],
-          max_tokens: 1000,
-          temperature: 0.1
-        })
+          }
+        }
+
+      const data = await this.makeOpenAIRequest('chat/completions', requestBody, 'comprehensiveAnalysis', {
+        patientData,
+        doctorId,
+        currentMedications: patientData.medications,
+        symptoms: patientData.symptoms,
+        illnesses: patientData.illnesses
       })
+      
+      let analysis = data.choices[0]?.message?.content || 'Unable to generate comprehensive analysis.'
+      console.log('📝 Raw AI response:', analysis.substring(0, 200) + '...')
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
+      // Parse JSON response and convert to HTML
+      try {
+        const jsonResponse = JSON.parse(analysis)
+        analysis = this.convertStructuredAnalysisToHTML(jsonResponse)
+        console.log('✅ Successfully converted structured JSON to HTML')
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse JSON response, using raw content:', parseError.message)
+        // Fallback to markdown conversion if JSON parsing fails
+        analysis = this.convertMarkdownToHTML(analysis)
       }
-
-      const data = await response.json()
-      const analysis = data.choices[0]?.message?.content || 'Unable to analyze drug interactions.'
 
       // Track token usage
       if (data.usage) {
         aiTokenTracker.trackUsage(
-          'checkDrugInteractions',
+          'generateComprehensivePrescriptionAnalysis',
           data.usage.prompt_tokens,
           data.usage.completion_tokens,
-          'gpt-3.5-turbo',
+          'gpt-4o-mini',
           doctorId
         )
       }
 
-      // Enhanced parsing of AI response
-      const { hasInteractions, severity } = this.parseAIInteractionResponse(analysis)
-
-      console.log('✅ Drug interaction analysis completed:', { hasInteractions, severity })
-
-      return {
-        hasInteractions,
-        interactions: analysis,
-        severity
-      }
+      console.log('✅ Comprehensive prescription analysis generated')
+      return analysis
 
     } catch (error) {
-      console.error('❌ Error checking drug interactions:', error)
+      console.error('❌ Error generating comprehensive prescription analysis:', error)
       throw error
     }
   }
@@ -535,27 +673,73 @@ If NO documented, clinically significant interactions are found, clearly state "
         ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
         : 'No current medications'
 
-      // Single comprehensive but concise prompt
-      const prompt = `Patient symptoms: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
+      // Ultra-concise prompt
+      const prompt = `Symptoms: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
 ${currentMedsText}
 
-Provide concise medical analysis:
+Brief analysis:
+**Conditions:** 2-3 likely diagnoses
+**Treatment:** Key medications + dosages
+**Interactions:** Critical warnings
+**Red Flags:** Emergency signs
 
-**Possible Conditions:**
-- List 2-3 most likely conditions
+Concise medical info only.`
 
-**Treatment Recommendations:**
-- Key medications to consider (OTC and prescription)
-- Important dosages and considerations
-
-**Drug Interactions:**
-- Critical interactions with current medications
-- Key warnings
-
-**Red Flags:**
-- When to seek immediate medical attention
-
-Be brief and focused. Medical information only.`
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+              content: 'Medical AI assistant providing second opinion support to qualified doctors. Provide structured JSON analysis. Consider drug availability and regulatory approval in the patient\'s country. Suggest alternatives if medications are not available in the patient\'s region.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 400,
+        temperature: 0.1,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "combined_analysis",
+            schema: {
+              type: "object",
+              properties: {
+                conditions: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "2-3 likely diagnoses"
+                },
+                treatment: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      medication: { type: "string" },
+                      dosage: { type: "string" },
+                      availability: { type: "string", description: "Availability in patient's country" },
+                      alternatives: { type: "string", description: "Alternative medications if not available" }
+                    },
+                    required: ["medication", "dosage", "availability"]
+                  },
+                  description: "Key medications and dosages with availability status"
+                },
+                interactions: {
+                  type: "string",
+                  description: "Critical interaction warnings"
+                },
+                redFlags: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Emergency signs to watch for"
+                }
+              },
+              required: ["conditions", "treatment", "interactions", "redFlags"]
+            }
+          }
+        }
+      }
 
       const response = await fetch(`${this.baseURL}/chat/completions`, {
         method: 'POST',
@@ -563,21 +747,7 @@ Be brief and focused. Medical information only.`
           'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'Medical assistant. Provide concise analysis with clear sections. Be brief but comprehensive for medical decision-making.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 600,  // Single response instead of two separate calls
-          temperature: 0.2
-        })
+        body: JSON.stringify(requestBody)
       })
 
       if (!response.ok) {
@@ -586,7 +756,16 @@ Be brief and focused. Medical information only.`
       }
 
       const data = await response.json()
-      const combinedAnalysis = data.choices[0]?.message?.content || 'No analysis available.'
+      let combinedAnalysis = data.choices[0]?.message?.content || 'No analysis available.'
+
+      // Parse JSON response and convert to readable format
+      try {
+        const jsonResponse = JSON.parse(combinedAnalysis)
+        combinedAnalysis = this.convertCombinedAnalysisToHTML(jsonResponse)
+        console.log('✅ Successfully converted structured JSON to HTML')
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse JSON response, using raw content:', parseError.message)
+      }
 
       // Track token usage
       if (data.usage) {
@@ -594,7 +773,7 @@ Be brief and focused. Medical information only.`
           'generateCombinedAnalysis',
           data.usage.prompt_tokens,
           data.usage.completion_tokens,
-          'gpt-3.5-turbo',
+          'gpt-4o-mini',
           doctorId
         )
       }
@@ -612,6 +791,7 @@ Be brief and focused. Medical information only.`
       throw error
     }
   }
+
 }
 
 // Create singleton instance
