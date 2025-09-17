@@ -336,11 +336,18 @@
       const doctor = await firebaseStorage.getDoctorByEmail(user.email)
       if (!doctor) return 0
       
-      // Get all pharmacists and count those that have this doctor in their connectedDoctors array
+      // Get all pharmacists and count those connected to this doctor (check both sides)
       const allPharmacists = await firebaseStorage.getAllPharmacists()
-      const connectedCount = allPharmacists.filter(pharmacist => 
-        pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
-      ).length
+      const connectedCount = allPharmacists.filter(pharmacist => {
+        // Check if pharmacist has this doctor in their connectedDoctors
+        const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
+        
+        // Check if doctor has this pharmacist in their connectedPharmacists
+        const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
+        
+        // Connection exists if either side has the connection (for backward compatibility)
+        return pharmacistHasDoctor || doctorHasPharmacist
+      }).length
       
       console.log('🔍 Connected pharmacies count:', connectedCount)
       console.log('🔍 Doctor ID:', doctor.id)

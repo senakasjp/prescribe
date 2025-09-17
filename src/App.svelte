@@ -61,11 +61,13 @@
               isAdmin: true,
               firstName: firebaseUser.displayName?.split(' ')[0] || 'Super',
               lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || 'Admin',
-              name: firebaseUser.displayName || 'Super Admin'
+              name: firebaseUser.displayName || 'Super Admin',
+              country: firebaseUser.country || 'Global',
+              city: firebaseUser.city || 'System'
             }
             console.log('Super admin logged in as doctor with admin privileges:', user)
           } else if (firebaseUser.role === 'admin' && !firebaseUser.isAdmin) {
-            // Handle admin user - check admin auth service
+            // Handle regular admin user - check admin auth service
             const adminUser = adminAuthService.getCurrentAdmin()
             if (adminUser && adminUser.email === firebaseUser.email) {
               user = { ...firebaseUser, ...adminUser }
@@ -74,26 +76,51 @@
               user = firebaseUser
               console.log('Using Firebase admin user:', firebaseUser)
             }
-            showAdminPanel = true
+            // Don't automatically show admin panel - let user click admin button
           } else {
             // Regular user - preserve any local updates
             const localUser = authService.getCurrentUser()
             if (localUser && localUser.email === firebaseUser.email) {
               // Merge Firebase data with local user data to preserve updates
-              user = { ...firebaseUser, ...localUser }
+              // Prioritize local data for profile fields to prevent overwriting
+              user = { 
+                ...firebaseUser, 
+                ...localUser,
+                // Ensure profile data is preserved from local storage
+                firstName: localUser.firstName || firebaseUser.firstName,
+                lastName: localUser.lastName || firebaseUser.lastName,
+                country: localUser.country || firebaseUser.country,
+                city: localUser.city || firebaseUser.city,
+                name: localUser.name || firebaseUser.name
+              }
               console.log('Merged Firebase and local user data:', user)
+              console.log('Preserved profile data - country:', user.country, 'city:', user.city)
             } else {
               user = firebaseUser
               console.log('Using Firebase user:', firebaseUser)
+              
+              // If Firebase user doesn't have complete profile data, fetch from database
+              if (!firebaseUser.country || !firebaseUser.city || !firebaseUser.firstName) {
+                console.log('Firebase user missing profile data, fetching from database...')
+                try {
+                  const doctorData = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+                  if (doctorData) {
+                    user = { ...firebaseUser, ...doctorData }
+                    console.log('Updated user with database profile data:', user)
+                  }
+                } catch (error) {
+                  console.error('Error fetching doctor profile data:', error)
+                }
+              }
             }
           }
         } else if (!user) {
           // No Firebase user, check local auth service
-          user = authService.getCurrentUser()
-          console.log('Current user in App:', user)
-          console.log('User ID:', user?.id)
-          console.log('User UID:', user?.uid)
-          console.log('User email:', user?.email)
+    user = authService.getCurrentUser()
+    console.log('Current user in App:', user)
+    console.log('User ID:', user?.id)
+    console.log('User UID:', user?.uid)
+    console.log('User email:', user?.email)
           console.log('User role:', user?.role)
           console.log('User country:', user?.country)
         }
@@ -118,7 +145,7 @@
     setTimeout(() => {
       if (loading) {
         console.log('Fallback: Setting loading to false')
-        loading = false
+    loading = false
       }
     }, 2000)
   })
@@ -245,6 +272,8 @@
         displayName: 'Super Admin',
         uid: 'super-admin-uid',
         provider: 'auto-login',
+        country: 'Global',
+        city: 'System',
         permissions: ['read_all', 'write_all', 'delete_all', 'manage_users', 'view_analytics'],
         createdAt: new Date().toISOString()
       }
@@ -265,7 +294,13 @@
 
   // Handle admin panel access
   const handleAdminAccess = () => {
+    console.log('🔍 Admin button clicked!')
+    console.log('🔍 Current user:', user)
+    console.log('🔍 User email:', user?.email)
+    console.log('🔍 User isAdmin:', user?.isAdmin)
+    console.log('🔍 User role:', user?.role)
     showAdminPanel = true
+    console.log('🔍 showAdminPanel set to:', showAdminPanel)
   }
   
   // Handle back from admin panel
@@ -339,17 +374,17 @@
       </div>
     </div>
   {:else if user}
-    {#if user.role === 'admin' && !user.isAdmin}
-      <!-- Admin Panel (only for regular admin users, not super admin) -->
-      <AdminPanel on:back-to-app={handleBackFromAdmin} />
+    {#if showAdminPanel}
+      <!-- Admin Panel (for super admin and regular admin users) -->
+      <AdminPanel {user} on:back-to-app={handleBackFromAdmin} />
     {:else if user.role === 'pharmacist'}
       <!-- Pharmacist Dashboard -->
         <PharmacistDashboard pharmacist={user} />
     {:else}
-      <!-- Doctor is logged in - Show patient management -->
-      <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <!-- Doctor is logged in - Show patient management -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid px-2 px-md-3">
-          <span class="navbar-brand">
+        <span class="navbar-brand">
             <i class="fas fa-user-md me-1 me-md-2"></i>
             <span class="d-none d-sm-inline">M-Prescribe</span>
             <span class="d-sm-none">M-P</span>
@@ -448,18 +483,18 @@
               </div>
             </div>
           </div>
-        </div>
-      </nav>
-      
-      <div class="container-fluid mt-3 mt-md-4 px-3 px-md-4">
-        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} />
       </div>
+    </nav>
+    
+    <div class="container-fluid mt-3 mt-md-4 px-3 px-md-4">
+        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} />
+    </div>
     {/if}
   {:else}
     <!-- User is not logged in - Show Bootstrap 5 authentication -->
     <div class="min-vh-100 d-flex align-items-start justify-content-center bg-primary bg-gradient px-2 px-sm-3 px-md-4" style="padding-top: 2rem;">
       <div class="container-fluid">
-        <div class="row justify-content-center">
+    <div class="row justify-content-center">
           <div class="col-12 col-sm-11 col-md-10 col-lg-8 col-xl-6 col-xxl-5">
             <!-- Main Auth Card -->
             <div class="card shadow-lg border-0 rounded-3 rounded-md-4 overflow-hidden">
@@ -513,7 +548,7 @@
                         <span class="d-sm-none">Doctor</span>
                       </h4>
                     </div>
-                    <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+            <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
                   {:else}
                     <div class="text-center mb-3 mb-md-4">
                       <h4 class="fw-semibold text-dark mb-0 fs-5 fs-md-4">

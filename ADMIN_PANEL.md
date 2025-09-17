@@ -6,13 +6,17 @@ The Admin Panel provides system administrators with comprehensive access to mana
 
 ## 🔐 Admin Access
 
-### Admin Credentials
-- **Email**: `senakahks@gmail.com`
-- **Password**: `M-PrescribeAdmin2024!`
+### Super Admin System
+- **Super Admin Email**: `senakahks@gmail.com`
+- **Automatic Access**: Super admin automatically lands on doctor app with admin privileges
+- **Direct Admin Panel**: No login form required - direct access to admin panel
+- **Protected Account**: Super admin account cannot be deleted by anyone
 
 ### Access Methods
-1. **From Doctor Login Page**: Click "Admin Panel" button
-2. **From Main App**: Click "Admin" button in the navigation bar (when logged in as doctor)
+1. **Super Admin Auto-Login**: `senakahks@gmail.com` automatically logs in and lands on doctor app
+2. **Admin Panel Access**: Click "Admin" button in navigation bar (super admin only)
+3. **Direct Admin Access**: Super admin bypasses admin login form entirely
+4. **Seamless Navigation**: Switch between doctor app and admin panel seamlessly
 
 ## 🎯 Features
 
@@ -23,9 +27,18 @@ The Admin Panel provides system administrators with comprehensive access to mana
 
 ### 2. Doctors Management
 - **View All Doctors**: Complete list of registered doctors
-- **Doctor Details**: Email, name, role, creation date
+- **Doctor Details**: Email, name, role, creation date, admin status
 - **Patient Count**: Number of patients per doctor
 - **System-wide Statistics**: Total doctors registered
+- **Doctor Deletion**: Delete any doctor account (except super admin)
+- **Complete Data Cleanup**: When deleting doctors, removes all associated data:
+  - All patients belonging to the doctor
+  - All prescriptions, symptoms, and illnesses
+  - All drug database entries created by the doctor
+  - The doctor account itself
+- **Protected Super Admin**: Super admin account cannot be deleted
+- **Confirmation Dialogs**: Detailed warnings before deletion
+- **Real-time Updates**: Table updates immediately after deletion
 
 ### 3. Patients Management
 - **View All Patients**: Complete list across all doctors
@@ -71,23 +84,36 @@ src/services/
 
 ## 🚀 Usage Instructions
 
-### 1. Accessing Admin Panel
-1. Navigate to the main application
-2. Click "Admin Panel" button (available on login page and main app)
-3. Enter admin credentials
-4. Access the admin dashboard
+### 1. Super Admin Access
+1. **Automatic Login**: `senakahks@gmail.com` automatically logs in and lands on doctor app
+2. **Admin Button**: Click "Admin" button in the navigation bar
+3. **Direct Access**: Admin panel opens without login form
+4. **Seamless Navigation**: Switch between doctor app and admin panel
 
 ### 2. Navigating the Dashboard
 - **Overview Tab**: System statistics and recent activity
-- **Doctors Tab**: Manage and view all registered doctors
+- **Doctors Tab**: Manage, view, and delete all registered doctors
 - **Patients Tab**: View all patients across the system
 - **AI Usage Tab**: Monitor AI token usage and costs
 - **System Tab**: System settings and quick actions
 
 ### 3. Admin Actions
+- **Delete Doctors**: Click "Delete" button next to any doctor (except super admin)
+- **Confirmation**: Review detailed warning dialog before deletion
+- **Data Cleanup**: System automatically removes all associated data
 - **Sign Out**: Use the dropdown menu in the top-right corner
 - **Back to App**: Use the "Back to App" button (top-right corner)
 - **Refresh Data**: Use refresh buttons to update statistics
+
+### 4. Doctor Deletion Process
+1. **Navigate to Doctors Tab**: Click "Doctors" in the sidebar
+2. **Select Doctor**: Find the doctor you want to delete
+3. **Click Delete**: Click the red "Delete" button
+4. **Review Warning**: Read the detailed confirmation dialog
+5. **Confirm Deletion**: Click "OK" to proceed or "Cancel" to abort
+6. **Wait for Completion**: System shows loading state during deletion
+7. **Success Notification**: Confirmation message when deletion is complete
+8. **Updated Table**: Doctor list updates immediately
 
 ## 🔒 Security Features
 

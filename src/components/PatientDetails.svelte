@@ -665,10 +665,17 @@
       const allPharmacists = await firebaseStorage.getAllPharmacists()
       console.log('🔍 All pharmacists:', allPharmacists.length)
       
-      // Find pharmacists connected to this doctor
-      const connectedPharmacists = allPharmacists.filter(pharmacist => 
-        pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
-      )
+      // Find pharmacists connected to this doctor (check both sides of the connection)
+      const connectedPharmacists = allPharmacists.filter(pharmacist => {
+        // Check if pharmacist has this doctor in their connectedDoctors
+        const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
+        
+        // Check if doctor has this pharmacist in their connectedPharmacists
+        const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
+        
+        // Connection exists if either side has the connection (for backward compatibility)
+        return pharmacistHasDoctor || doctorHasPharmacist
+      })
       
       console.log('🔍 Connected pharmacists for doctor:', connectedPharmacists.length)
       
@@ -1209,6 +1216,11 @@
             showMedicationForm = false; 
             editingMedication = null;
             prescriptionFinished = false;
+            
+            // Reset AI check state for new prescription
+            aiCheckComplete = false;
+            aiCheckMessage = '';
+            drugInteractions = null;
             
             try {
               // ALWAYS create a new prescription when button is clicked
@@ -1767,8 +1779,8 @@
           </div>
             <div class="card-body">
           
-          <!-- AI Check Status Message -->
-          {#if aiCheckComplete}
+          <!-- AI Check Status Message - Only show if prescription is finished and has medications -->
+          {#if aiCheckComplete && prescriptionFinished && currentMedications.length > 0}
             <div class="alert alert-success alert-dismissible fade show mb-3" role="alert">
               <i class="fas fa-robot me-2"></i>
               <strong>AI drug interaction test complete</strong>

@@ -151,6 +151,61 @@
   const refreshData = async () => {
     await loadAdminData()
   }
+
+  // Delete doctor
+  const deleteDoctor = async (doctor) => {
+    try {
+      // Show confirmation dialog
+      const confirmed = confirm(
+        `Are you sure you want to delete doctor "${doctor.name || doctor.email}"?\n\n` +
+        `This will permanently delete:\n` +
+        `• The doctor account\n` +
+        `• All patients belonging to this doctor\n` +
+        `• All prescriptions, symptoms, and illnesses\n` +
+        `• All drug database entries\n\n` +
+        `This action cannot be undone!`
+      )
+      
+      if (!confirmed) {
+        return
+      }
+      
+      // Show loading state
+      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      if (deleteButton) {
+        deleteButton.disabled = true
+        deleteButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Deleting...'
+      }
+      
+      console.log('🗑️ Admin: Deleting doctor:', doctor.email)
+      
+      // Call the delete function
+      await firebaseStorage.deleteDoctor(doctor.id)
+      
+      // Remove doctor from local array
+      doctors = doctors.filter(d => d.id !== doctor.id)
+      
+      // Update statistics
+      statistics.totalDoctors = doctors.length
+      
+      // Recalculate patient counts
+      await loadDoctorsAndPatients()
+      
+      console.log('✅ Admin: Doctor deleted successfully')
+      alert(`Doctor "${doctor.name || doctor.email}" has been deleted successfully.`)
+      
+    } catch (error) {
+      console.error('❌ Admin: Error deleting doctor:', error)
+      alert('Error deleting doctor. Please try again.')
+      
+      // Reset button state
+      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      if (deleteButton) {
+        deleteButton.disabled = false
+        deleteButton.innerHTML = '<i class="fas fa-trash me-2"></i>Delete'
+      }
+    }
+  }
 </script>
 
 <div class="min-vh-100 bg-light">
@@ -334,6 +389,7 @@
                           <th>Role</th>
                           <th>Created</th>
                           <th>Patients</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -341,9 +397,30 @@
                           <tr>
                             <td>{doctor.email}</td>
                             <td>{doctor.name || 'N/A'}</td>
-                            <td><span class="badge bg-primary">{doctor.role}</span></td>
+                            <td>
+                              <span class="badge bg-primary">{doctor.role}</span>
+                              {#if doctor.isAdmin}
+                                <span class="badge bg-danger ms-1">Admin</span>
+                              {/if}
+                            </td>
                             <td>{formatDate(doctor.createdAt)}</td>
                             <td>{doctorPatientCounts[doctor.id] || 0}</td>
+                            <td>
+                              {#if doctor.email !== 'senakahks@gmail.com'}
+                                <button 
+                                  class="btn btn-outline-danger btn-sm"
+                                  data-doctor-id={doctor.id}
+                                  on:click={() => deleteDoctor(doctor)}
+                                  title="Delete doctor and all related data"
+                                >
+                                  <i class="fas fa-trash me-2"></i>Delete
+                                </button>
+                              {:else}
+                                <span class="text-muted small">
+                                  <i class="fas fa-shield-alt me-1"></i>Super Admin
+                                </span>
+                              {/if}
+                            </td>
                           </tr>
                         {/each}
                       </tbody>

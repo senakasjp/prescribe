@@ -22,10 +22,14 @@ The Patient Management System is built using a modern frontend architecture with
   - Authentication state management
   - Routing between components
   - Global layout and navigation
+  - Super admin auto-login and role management
 - **Key Features**:
   - Responsive header with user info
   - Loading states
   - Authentication flow
+  - Super admin recognition and auto-login
+  - Admin panel access control
+  - Location data persistence
 
 #### DoctorAuth.svelte
 - **Purpose**: Doctor authentication and registration
@@ -99,6 +103,39 @@ The Patient Management System is built using a modern frontend architecture with
   - Patient and medication details
   - Professional formatting
 
+### Admin Components
+
+#### AdminPanel.svelte
+- **Purpose**: Main admin panel router and container
+- **Responsibilities**:
+  - Super admin authentication bypass
+  - Admin dashboard routing
+  - Admin login form handling
+- **Key Features**:
+  - Super admin recognition
+  - Direct admin access
+  - Admin authentication flow
+
+#### AdminDashboard.svelte
+- **Purpose**: Comprehensive admin dashboard
+- **Responsibilities**:
+  - System statistics display
+  - Doctor management and deletion
+  - Patient overview across all doctors
+  - AI usage analytics
+- **Key Features**:
+  - Doctor deletion with complete data cleanup
+  - Protected super admin account
+  - Real-time statistics updates
+  - Confirmation dialogs for destructive actions
+
+#### AdminLogin.svelte
+- **Purpose**: Admin authentication form
+- **Features**:
+  - Email-based admin verification
+  - Secure password authentication
+  - Admin session management
+
 ## 🔧 Services Layer
 
 ### jsonStorage.js
@@ -125,6 +162,40 @@ The Patient Management System is built using a modern frontend architecture with
   - `signInDoctor()` - Authenticate doctor
   - `getCurrentUser()` - Get current user
   - `signOut()` - Logout user
+
+### firebaseAuth.js
+- **Purpose**: Firebase authentication integration
+- **Responsibilities**:
+  - Google Sign-In integration
+  - Super admin recognition
+  - Firebase user management
+- **Key Methods**:
+  - `signInWithGoogle()` - Google authentication
+  - Super admin detection and role assignment
+  - Firebase user creation and updates
+
+### adminAuthService.js
+- **Purpose**: Admin-specific authentication
+- **Responsibilities**:
+  - Admin session management
+  - Admin authentication verification
+  - Super admin bypass logic
+- **Key Methods**:
+  - `getCurrentAdmin()` - Get current admin user
+  - `signOut()` - Admin logout
+  - Super admin authentication bypass
+
+### firebaseStorage.js
+- **Purpose**: Firebase Firestore operations
+- **Responsibilities**:
+  - Doctor CRUD operations
+  - Patient data management
+  - Doctor deletion with cleanup
+- **Key Methods**:
+  - `deleteDoctor()` - Delete doctor with complete data cleanup
+  - `getAllDoctors()` - Retrieve all doctors
+  - `createDoctor()` - Create doctor records
+  - `updateDoctor()` - Update doctor information
 
 ## 📱 Data Flow
 

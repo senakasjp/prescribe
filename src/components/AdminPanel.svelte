@@ -5,6 +5,7 @@
   import AdminDashboard from './AdminDashboard.svelte'
   
   const dispatch = createEventDispatcher()
+  export let user = null // Accept current user as prop
   
   let currentAdmin = null
   let loading = true
@@ -14,11 +15,37 @@
     checkAdminAuth()
   })
   
+  // Reactive statement to re-check admin auth when user changes
+  $: if (user) {
+    console.log('🔄 AdminPanel: User changed, re-checking admin auth')
+    console.log('🔄 AdminPanel: User email:', user.email)
+    console.log('🔄 AdminPanel: User isAdmin:', user.isAdmin)
+    checkAdminAuth()
+  }
+  
   // Check if admin is already authenticated
   const checkAdminAuth = () => {
     try {
-      currentAdmin = adminAuthService.getCurrentAdmin()
-      console.log('🔍 Current admin state:', currentAdmin ? 'Authenticated' : 'Not authenticated')
+      console.log('🔍 AdminPanel: Checking admin auth...')
+      console.log('🔍 AdminPanel: User object:', user)
+      
+      // Check if current user is super admin
+      if (user && (user.isAdmin || user.email === 'senakahks@gmail.com')) {
+        console.log('🔍 Super admin detected:', user.email)
+        currentAdmin = {
+          id: user.id || 'super-admin-001',
+          email: user.email,
+          role: 'admin',
+          name: user.name || 'Super Admin',
+          permissions: user.permissions || ['read_all', 'write_all', 'delete_all', 'manage_users', 'view_analytics']
+        }
+        console.log('✅ Super admin authenticated:', currentAdmin.email)
+        console.log('✅ AdminPanel: Setting currentAdmin to:', currentAdmin)
+      } else {
+        // Check regular admin authentication
+        currentAdmin = adminAuthService.getCurrentAdmin()
+        console.log('🔍 Current admin state:', currentAdmin ? 'Authenticated' : 'Not authenticated')
+      }
     } catch (error) {
       console.error('❌ Error checking admin auth:', error)
       currentAdmin = null

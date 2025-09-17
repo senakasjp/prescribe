@@ -24,14 +24,28 @@
       const doctor = await firebaseStorage.getDoctorByEmail(user.email)
       const doctorId = doctor?.id
       
-      // Separate connected and unconnected pharmacists
-      connectedPharmacists = allPharmacists.filter(pharmacist => 
-        pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctorId)
-      )
+      // Separate connected and unconnected pharmacists (check both sides of the connection)
+      connectedPharmacists = allPharmacists.filter(pharmacist => {
+        // Check if pharmacist has this doctor in their connectedDoctors
+        const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctorId)
+        
+        // Check if doctor has this pharmacist in their connectedPharmacists
+        const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
+        
+        // Connection exists if either side has the connection (for backward compatibility)
+        return pharmacistHasDoctor || doctorHasPharmacist
+      })
       
-      pharmacists = allPharmacists.filter(pharmacist => 
-        !pharmacist.connectedDoctors || !pharmacist.connectedDoctors.includes(doctorId)
-      )
+      pharmacists = allPharmacists.filter(pharmacist => {
+        // Check if pharmacist has this doctor in their connectedDoctors
+        const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctorId)
+        
+        // Check if doctor has this pharmacist in their connectedPharmacists
+        const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
+        
+        // Not connected if neither side has the connection
+        return !pharmacistHasDoctor && !doctorHasPharmacist
+      })
       
     } catch (error) {
       console.error('Error loading pharmacists:', error)

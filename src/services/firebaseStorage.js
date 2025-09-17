@@ -50,6 +50,7 @@ class FirebaseStorageService {
         role: doctorData.role,
         isAdmin: doctorData.isAdmin,
         permissions: doctorData.permissions,
+        connectedPharmacists: doctorData.connectedPharmacists || [],
         uid: doctorData.uid,
         displayName: doctorData.displayName,
         photoURL: doctorData.photoURL,
@@ -126,6 +127,7 @@ class FirebaseStorageService {
         role: updatedDoctor.role,
         isAdmin: updatedDoctor.isAdmin,
         permissions: updatedDoctor.permissions,
+        connectedPharmacists: updatedDoctor.connectedPharmacists,
         uid: updatedDoctor.uid,
         displayName: updatedDoctor.displayName,
         photoURL: updatedDoctor.photoURL,
@@ -159,6 +161,55 @@ class FirebaseStorageService {
       }))
     } catch (error) {
       console.error('Error getting all doctors:', error)
+      throw error
+    }
+  }
+
+  async deleteDoctor(doctorId) {
+    try {
+      console.log('🗑️ Deleting doctor:', doctorId)
+      
+      // First, get all patients belonging to this doctor
+      const patients = await this.getPatientsByDoctorId(doctorId)
+      console.log('🗑️ Found patients to delete:', patients.length)
+      
+      // Delete all patients and their related data
+      for (const patient of patients) {
+        // Delete prescriptions/medications
+        const prescriptions = await this.getPrescriptionsByPatientId(patient.id)
+        for (const prescription of prescriptions) {
+          await this.deleteMedication(prescription.id)
+        }
+        
+        // Delete symptoms
+        const symptoms = await this.getSymptomsByPatientId(patient.id)
+        for (const symptom of symptoms) {
+          await deleteDoc(doc(db, this.collections.symptoms, symptom.id))
+        }
+        
+        // Delete illnesses
+        const illnesses = await this.getIllnessesByPatientId(patient.id)
+        for (const illness of illnesses) {
+          await deleteDoc(doc(db, this.collections.illnesses, illness.id))
+        }
+        
+        // Delete the patient
+        await deleteDoc(doc(db, this.collections.patients, patient.id))
+      }
+      
+      // Delete doctor's drug database entries
+      const doctorDrugs = await this.getDoctorDrugs(doctorId)
+      for (const drug of doctorDrugs) {
+        await deleteDoc(doc(db, this.collections.drugDatabase, drug.id))
+      }
+      
+      // Finally, delete the doctor
+      await deleteDoc(doc(db, this.collections.doctors, doctorId))
+      
+      console.log('✅ Successfully deleted doctor and all related data:', doctorId)
+      return true
+    } catch (error) {
+      console.error('Error deleting doctor:', error)
       throw error
     }
   }
@@ -419,13 +470,22 @@ class FirebaseStorageService {
       // Add doctor to pharmacist's connected doctors
       const updatedConnectedDoctors = [...(pharmacist.connectedDoctors || []), doctor.id]
       
-      // Update pharmacist
-      await this.updatePharmacist({
-        id: pharmacist.id,
-        connectedDoctors: updatedConnectedDoctors
-      })
+      // Add pharmacist to doctor's connected pharmacists
+      const updatedConnectedPharmacists = [...(doctor.connectedPharmacists || []), pharmacist.id]
       
-      console.log('✅ Successfully connected pharmacist to doctor')
+      // Update both pharmacist and doctor
+      await Promise.all([
+        this.updatePharmacist({
+          id: pharmacist.id,
+          connectedDoctors: updatedConnectedDoctors
+        }),
+        this.updateDoctor({
+          id: doctor.id,
+          connectedPharmacists: updatedConnectedPharmacists
+        })
+      ])
+      
+      console.log('✅ Successfully connected pharmacist to doctor (both sides updated)')
       return pharmacist
       
     } catch (error) {
