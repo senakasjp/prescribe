@@ -17,6 +17,18 @@
     try {
       loading = true
       
+      console.log('🔍 PharmacistDashboard: Starting loadPharmacistData')
+      console.log('🔍 PharmacistDashboard: pharmacist object:', pharmacist)
+      console.log('🔍 PharmacistDashboard: pharmacist.id:', pharmacist?.id)
+      console.log('🔍 PharmacistDashboard: pharmacist.connectedDoctors:', pharmacist?.connectedDoctors)
+      
+      // Check if pharmacist data is valid
+      if (!pharmacist || !pharmacist.id) {
+        console.error('❌ PharmacistDashboard: Invalid pharmacist data - missing ID')
+        notifyError('Invalid pharmacist data. Please log in again.')
+        return
+      }
+      
       // Get prescriptions from connected doctors using Firebase
       prescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacist.id)
       
@@ -38,19 +50,26 @@
       
       // Load connected doctors info from Firebase
       connectedDoctors = []
-      for (const doctorId of pharmacist.connectedDoctors) {
-        const doctor = await firebaseStorage.getDoctorById(doctorId)
-        if (doctor) {
-          connectedDoctors.push(doctor)
+      if (pharmacist.connectedDoctors && Array.isArray(pharmacist.connectedDoctors)) {
+        for (const doctorId of pharmacist.connectedDoctors) {
+          const doctor = await firebaseStorage.getDoctorById(doctorId)
+          if (doctor) {
+            connectedDoctors.push(doctor)
+          }
         }
+      } else {
+        console.log('🔍 PharmacistDashboard: No connected doctors found or connectedDoctors is not an array')
       }
       
       // Sort prescriptions by date (newest first)
       prescriptions.sort((a, b) => new Date(b.createdAt || b.dateCreated) - new Date(a.createdAt || a.dateCreated))
       
+      console.log('✅ PharmacistDashboard: Data loaded successfully')
+      
     } catch (error) {
-      console.error('Error loading pharmacist data:', error)
-      notifyError('Failed to load prescriptions')
+      console.error('❌ PharmacistDashboard: Error loading pharmacist data:', error)
+      console.error('❌ PharmacistDashboard: Error stack:', error.stack)
+      notifyError('Failed to load prescriptions: ' + error.message)
     } finally {
       loading = false
     }
@@ -113,6 +132,10 @@
   }
   
   onMount(() => {
+    console.log('🔍 PharmacistDashboard: Received pharmacist data:', pharmacist)
+    console.log('🔍 PharmacistDashboard: businessName:', pharmacist?.businessName)
+    console.log('🔍 PharmacistDashboard: pharmacistNumber:', pharmacist?.pharmacistNumber)
+    console.log('🔍 PharmacistDashboard: All pharmacist fields:', Object.keys(pharmacist || {}))
     loadPharmacistData()
   })
 </script>
@@ -126,7 +149,7 @@
         <span class="fw-bold text-primary">M-Prescribe - Pharmacist Portal</span>
       </div>
       <div class="dropdown">
-        <button class="btn btn-link dropdown-toggle d-flex align-items-center p-0" type="button" data-bs-toggle="dropdown">
+        <button class="btn btn-link dropdown-toggle d-flex align-items-center p-0 text-decoration-none" type="button" data-bs-toggle="dropdown">
           <i class="fas fa-user-circle me-2"></i>
           <span class="d-none d-md-inline">{pharmacist.businessName}</span>
         </button>
@@ -156,11 +179,11 @@
         <div class="card-body">
           <div class="mb-3">
             <label class="form-label fw-bold">Business Name:</label>
-            <p class="mb-0">{pharmacist.businessName}</p>
+            <p class="mb-0">{pharmacist.businessName || pharmacist.name || 'Not specified'}</p>
           </div>
           <div class="mb-3">
             <label class="form-label fw-bold">Pharmacist ID:</label>
-            <p class="mb-0 text-primary fw-bold">{pharmacist.pharmacistNumber}</p>
+            <p class="mb-0 text-primary fw-bold">{pharmacist.pharmacistNumber || pharmacist.id || 'Not specified'}</p>
           </div>
           <div class="mb-3">
             <label class="form-label fw-bold">Connected Doctors:</label>

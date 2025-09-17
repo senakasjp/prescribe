@@ -309,12 +309,19 @@
   }
   
   const handlePharmacistLogin = (pharmacistData) => {
-    console.log('Pharmacist login:', pharmacistData)
+    console.log('Pharmacist login event:', pharmacistData)
+    console.log('Pharmacist login detail:', pharmacistData.detail)
+    
+    // Extract the actual pharmacist data from the event detail
+    const pharmacist = pharmacistData.detail
+    console.log('Extracted pharmacist data:', pharmacist)
+    
     // Ensure the pharmacist data has the correct role
     user = {
-      ...pharmacistData,
+      ...pharmacist,
       role: 'pharmacist'
     }
+    console.log('Final user object:', user)
     loading = false
   }
   

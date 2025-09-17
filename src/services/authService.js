@@ -199,6 +199,11 @@ class AuthService {
   async loginPharmacist(email, password) {
     try {
       const pharmacist = await firebaseStorage.getPharmacistByEmail(email)
+      console.log('🔍 AuthService: Retrieved pharmacist data:', pharmacist)
+      console.log('🔍 AuthService: businessName:', pharmacist?.businessName)
+      console.log('🔍 AuthService: pharmacistNumber:', pharmacist?.pharmacistNumber)
+      console.log('🔍 AuthService: All pharmacist fields:', Object.keys(pharmacist || {}))
+      
       if (!pharmacist) {
         return { success: false, message: 'Pharmacist not found' }
       }

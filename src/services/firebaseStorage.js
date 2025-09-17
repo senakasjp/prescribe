@@ -167,49 +167,87 @@ class FirebaseStorageService {
 
   async deleteDoctor(doctorId) {
     try {
-      console.log('🗑️ Deleting doctor:', doctorId)
+      console.log('🗑️ Starting doctor deletion process for:', doctorId)
       
       // First, get all patients belonging to this doctor
+      console.log('🗑️ Step 1: Getting patients for doctor...')
       const patients = await this.getPatientsByDoctorId(doctorId)
       console.log('🗑️ Found patients to delete:', patients.length)
       
       // Delete all patients and their related data
-      for (const patient of patients) {
-        // Delete prescriptions/medications
-        const prescriptions = await this.getPrescriptionsByPatientId(patient.id)
-        for (const prescription of prescriptions) {
-          await this.deleteMedication(prescription.id)
-        }
+      for (let i = 0; i < patients.length; i++) {
+        const patient = patients[i]
+        console.log(`🗑️ Step 2.${i + 1}: Deleting patient ${patient.id} (${patient.firstName} ${patient.lastName})`)
         
-        // Delete symptoms
-        const symptoms = await this.getSymptomsByPatientId(patient.id)
-        for (const symptom of symptoms) {
-          await deleteDoc(doc(db, this.collections.symptoms, symptom.id))
+        try {
+          // Delete prescriptions/medications
+          console.log(`🗑️ Step 2.${i + 1}.1: Getting prescriptions for patient ${patient.id}`)
+          const prescriptions = await this.getPrescriptionsByPatientId(patient.id)
+          console.log(`🗑️ Found ${prescriptions.length} prescriptions to delete`)
+          
+          for (let j = 0; j < prescriptions.length; j++) {
+            const prescription = prescriptions[j]
+            console.log(`🗑️ Step 2.${i + 1}.1.${j + 1}: Deleting prescription ${prescription.id}`)
+            await this.deleteMedication(prescription.id)
+          }
+          
+          // Delete symptoms
+          console.log(`🗑️ Step 2.${i + 1}.2: Getting symptoms for patient ${patient.id}`)
+          const symptoms = await this.getSymptomsByPatientId(patient.id)
+          console.log(`🗑️ Found ${symptoms.length} symptoms to delete`)
+          
+          for (let k = 0; k < symptoms.length; k++) {
+            const symptom = symptoms[k]
+            console.log(`🗑️ Step 2.${i + 1}.2.${k + 1}: Deleting symptom ${symptom.id}`)
+            await deleteDoc(doc(db, this.collections.symptoms, symptom.id))
+          }
+          
+          // Delete illnesses
+          console.log(`🗑️ Step 2.${i + 1}.3: Getting illnesses for patient ${patient.id}`)
+          const illnesses = await this.getIllnessesByPatientId(patient.id)
+          console.log(`🗑️ Found ${illnesses.length} illnesses to delete`)
+          
+          for (let l = 0; l < illnesses.length; l++) {
+            const illness = illnesses[l]
+            console.log(`🗑️ Step 2.${i + 1}.3.${l + 1}: Deleting illness ${illness.id}`)
+            await deleteDoc(doc(db, this.collections.illnesses, illness.id))
+          }
+          
+          // Delete the patient
+          console.log(`🗑️ Step 2.${i + 1}.4: Deleting patient ${patient.id}`)
+          await deleteDoc(doc(db, this.collections.patients, patient.id))
+          console.log(`✅ Patient ${patient.id} deleted successfully`)
+          
+        } catch (patientError) {
+          console.error(`❌ Error deleting patient ${patient.id}:`, patientError)
+          throw new Error(`Failed to delete patient ${patient.firstName} ${patient.lastName}: ${patientError.message}`)
         }
-        
-        // Delete illnesses
-        const illnesses = await this.getIllnessesByPatientId(patient.id)
-        for (const illness of illnesses) {
-          await deleteDoc(doc(db, this.collections.illnesses, illness.id))
-        }
-        
-        // Delete the patient
-        await deleteDoc(doc(db, this.collections.patients, patient.id))
       }
       
       // Delete doctor's drug database entries
+      console.log('🗑️ Step 3: Getting doctor drug database entries...')
       const doctorDrugs = await this.getDoctorDrugs(doctorId)
-      for (const drug of doctorDrugs) {
+      console.log(`🗑️ Found ${doctorDrugs.length} drug entries to delete`)
+      
+      for (let m = 0; m < doctorDrugs.length; m++) {
+        const drug = doctorDrugs[m]
+        console.log(`🗑️ Step 3.${m + 1}: Deleting drug ${drug.id}`)
         await deleteDoc(doc(db, this.collections.drugDatabase, drug.id))
       }
       
       // Finally, delete the doctor
+      console.log('🗑️ Step 4: Deleting doctor record...')
       await deleteDoc(doc(db, this.collections.doctors, doctorId))
       
       console.log('✅ Successfully deleted doctor and all related data:', doctorId)
       return true
     } catch (error) {
-      console.error('Error deleting doctor:', error)
+      console.error('❌ Error deleting doctor:', error)
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      })
       throw error
     }
   }
@@ -763,10 +801,10 @@ class FirebaseStorageService {
 
   async getDoctorDrugs(doctorId) {
     try {
+      // Simple query without orderBy to avoid requiring composite index
       const q = query(
         collection(db, this.collections.drugDatabase), 
-        where('doctorId', '==', doctorId),
-        orderBy('name')
+        where('doctorId', '==', doctorId)
       )
       const querySnapshot = await getDocs(q)
       
