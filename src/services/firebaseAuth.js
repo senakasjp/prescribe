@@ -57,8 +57,8 @@ class FirebaseAuthService {
       const result = await signInWithPopup(auth, googleProvider)
       const user = result.user
       
-      // Check if this is the admin email
-      const isAdmin = user.email.toLowerCase() === 'senakahks@gmail.com'
+      // Check if this is the super admin email
+      const isSuperAdmin = user.email.toLowerCase() === 'senakahks@gmail.com'
       
       // Extract user data
       const userData = {
@@ -66,44 +66,27 @@ class FirebaseAuthService {
         email: user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        role: isAdmin ? 'admin' : userType,
+        role: isSuperAdmin ? 'doctor' : userType, // Super admin is treated as doctor
         provider: 'google',
-        isAdmin: isAdmin
+        isAdmin: isSuperAdmin // But has admin privileges
       }
 
-      // Handle admin user specially
-      if (isAdmin) {
-        // For admin users, create/update admin profile AND create as doctor in Firebase
-        const adminData = {
-          id: 'admin-001',
-          email: user.email.toLowerCase(),
-          name: user.displayName || 'System Administrator',
-          role: 'admin',
-          uid: user.uid,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          provider: 'google',
-          permissions: ['read_all', 'write_all', 'delete_all', 'manage_users', 'view_analytics'],
-          lastLogin: new Date().toISOString(),
-          createdAt: new Date().toISOString()
-        }
-        
-        // Save admin to localStorage (similar to adminAuthService)
-        localStorage.setItem('prescribe-current-admin', JSON.stringify(adminData))
-        
-        // ALSO create/update as doctor in Firebase for pharmacist connections
+      // Handle super admin user specially
+      if (isSuperAdmin) {
+        // For super admin, create/update as doctor in Firebase with admin privileges
         try {
           const doctorData = {
             email: user.email,
-            firstName: user.displayName?.split(' ')[0] || '',
-            lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
-            name: user.displayName || '',
+            firstName: user.displayName?.split(' ')[0] || 'Super',
+            lastName: user.displayName?.split(' ').slice(1).join(' ') || 'Admin',
+            name: user.displayName || 'Super Admin',
             role: 'doctor',
             uid: user.uid,
             displayName: user.displayName,
             photoURL: user.photoURL,
             provider: 'google',
             isAdmin: true, // Mark as admin doctor
+            permissions: ['read_all', 'write_all', 'delete_all', 'manage_users', 'view_analytics'],
             createdAt: new Date().toISOString()
           }
           
@@ -113,19 +96,20 @@ class FirebaseAuthService {
             // Update existing doctor with admin flag
             await firebaseStorage.updateDoctor({ ...existingDoctor, isAdmin: true })
             console.log('✅ Updated existing doctor with admin flag in Firebase')
+            return { ...existingDoctor, isAdmin: true }
           } else {
             // Create new doctor in Firebase
-            console.log('🏥 Creating admin doctor with data:', doctorData)
+            console.log('🏥 Creating super admin doctor with data:', doctorData)
             const newDoctor = await firebaseStorage.createDoctor(doctorData)
-            console.log('✅ Created admin doctor in Firebase:', newDoctor)
+            console.log('✅ Created super admin doctor in Firebase:', newDoctor)
+            return newDoctor
           }
         } catch (error) {
-          console.error('❌ Error creating admin doctor in Firebase:', error)
+          console.error('❌ Error creating super admin doctor in Firebase:', error)
           console.error('❌ Error details:', error.message)
           console.error('❌ Error stack:', error.stack)
+          throw error
         }
-        
-        return adminData
       }
 
       // Check if user exists in our system

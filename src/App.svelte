@@ -24,6 +24,18 @@
   
   onMount(() => {
     try {
+      // Check for super admin auto-login first
+      const superAdminEmail = 'senakahks@gmail.com'
+      const urlParams = new URLSearchParams(window.location.search)
+      const autoLogin = urlParams.get('auto-login')
+      
+      // Auto-login super admin if requested or if accessing from specific URL
+      if (autoLogin === 'admin' || window.location.hash === '#admin') {
+        console.log('🔐 Auto-logging in super admin:', superAdminEmail)
+        this.autoLoginSuperAdmin(superAdminEmail)
+        return
+      }
+      
       // Set up Firebase auth state listener
       const unsubscribe = firebaseAuthService.onAuthStateChanged(async (firebaseUser) => {
         console.log('🔥 FIREBASE AUTH LISTENER TRIGGERED!')
@@ -40,8 +52,19 @@
         if (firebaseUser) {
           console.log('✅ Received processed user from Firebase auth service:', firebaseUser.email)
           
-          // Check if this is an admin user
-          if (firebaseUser.role === 'admin' || firebaseUser.isAdmin) {
+          // Check if this is the super admin
+          if (firebaseUser.email === superAdminEmail) {
+            // Super admin should be treated as doctor with admin privileges
+            user = {
+              ...firebaseUser,
+              role: 'doctor',
+              isAdmin: true,
+              firstName: firebaseUser.displayName?.split(' ')[0] || 'Super',
+              lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || 'Admin',
+              name: firebaseUser.displayName || 'Super Admin'
+            }
+            console.log('Super admin logged in as doctor with admin privileges:', user)
+          } else if (firebaseUser.role === 'admin' && !firebaseUser.isAdmin) {
             // Handle admin user - check admin auth service
             const adminUser = adminAuthService.getCurrentAdmin()
             if (adminUser && adminUser.email === firebaseUser.email) {
@@ -205,6 +228,41 @@
     console.log('App: Profile update complete, full user object:', user)
   }
   
+  // Auto-login super admin
+  const autoLoginSuperAdmin = async (email) => {
+    try {
+      console.log('🔐 Auto-logging in super admin:', email)
+      
+      // Create super admin user object
+      const superAdminUser = {
+        id: 'super-admin-001',
+        email: email,
+        role: 'doctor', // Super admin is treated as doctor
+        isAdmin: true, // But has admin privileges
+        firstName: 'Super',
+        lastName: 'Admin',
+        name: 'Super Admin',
+        displayName: 'Super Admin',
+        uid: 'super-admin-uid',
+        provider: 'auto-login',
+        permissions: ['read_all', 'write_all', 'delete_all', 'manage_users', 'view_analytics'],
+        createdAt: new Date().toISOString()
+      }
+      
+      // Save to auth service
+      authService.saveCurrentUser(superAdminUser)
+      
+      // Set user
+      user = superAdminUser
+      loading = false
+      
+      console.log('✅ Super admin auto-logged in:', superAdminUser)
+    } catch (error) {
+      console.error('❌ Error auto-logging in super admin:', error)
+      loading = false
+    }
+  }
+
   // Handle admin panel access
   const handleAdminAccess = () => {
     showAdminPanel = true
@@ -281,8 +339,8 @@
       </div>
     </div>
   {:else if user}
-    {#if user.role === 'admin' || user.isAdmin}
-      <!-- Admin Panel -->
+    {#if user.role === 'admin' && !user.isAdmin}
+      <!-- Admin Panel (only for regular admin users, not super admin) -->
       <AdminPanel on:back-to-app={handleBackFromAdmin} />
     {:else if user.role === 'pharmacist'}
       <!-- Pharmacist Dashboard -->
@@ -334,10 +392,12 @@
                 <i class="fas fa-user-edit me-1"></i>
                 Edit Profile
               </button>
-              <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
-                <i class="fas fa-shield-alt me-1"></i>
-                Admin
-              </button>
+              {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
+                <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
+                  <i class="fas fa-shield-alt me-1"></i>
+                  Admin
+                </button>
+              {/if}
               <button class="btn btn-outline-light btn-sm" on:click={handleLogout}>
                 <i class="fas fa-sign-out-alt me-1"></i>
                 Logout
@@ -375,10 +435,12 @@
                   <i class="fas fa-user-edit me-1"></i>
                   Edit
                 </button>
-                <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleAdminAccess}>
-                  <i class="fas fa-shield-alt me-1"></i>
-                  Admin
-                </button>
+                {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
+                  <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleAdminAccess}>
+                    <i class="fas fa-shield-alt me-1"></i>
+                    Admin
+                  </button>
+                {/if}
                 <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleLogout}>
                   <i class="fas fa-sign-out-alt me-1"></i>
                   Exit
@@ -395,7 +457,7 @@
     {/if}
   {:else}
     <!-- User is not logged in - Show Bootstrap 5 authentication -->
-    <div class="min-vh-100 d-flex align-items-center justify-content-center bg-primary bg-gradient px-2 px-sm-3 px-md-4">
+    <div class="min-vh-100 d-flex align-items-start justify-content-center bg-primary bg-gradient px-2 px-sm-3 px-md-4" style="padding-top: 2rem;">
       <div class="container-fluid">
         <div class="row justify-content-center">
           <div class="col-12 col-sm-11 col-md-10 col-lg-8 col-xl-6 col-xxl-5">

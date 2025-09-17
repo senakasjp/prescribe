@@ -259,7 +259,7 @@
                       </td>
                       <td>
                         <span class="badge bg-primary">
-                          {prescription.prescriptions ? prescription.prescriptions.length : 0} prescription(s)
+                          {prescription.prescriptions ? prescription.prescriptions.reduce((total, p) => total + (p.medications ? p.medications.length : 0), 0) : 0} medication(s)
                         </span>
                       </td>
                       <td>

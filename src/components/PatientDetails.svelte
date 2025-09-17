@@ -719,7 +719,22 @@
       
       const firebaseUser = currentUser || authService.getCurrentUser()
       const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
-      const prescriptions = await firebaseStorage.getPrescriptionsByPatientId(selectedPatient.id)
+      
+      // Send only the current prescription, not all prescriptions for the patient
+      let prescriptions = []
+      if (currentPrescription && currentPrescription.medications && currentPrescription.medications.length > 0) {
+        prescriptions = [currentPrescription]
+        console.log('📤 Sending current prescription:', currentPrescription.id, 'with', currentPrescription.medications.length, 'medications')
+      } else {
+        // If no current prescription, get the most recent prescription for this patient
+        const allPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(selectedPatient.id)
+        if (allPrescriptions.length > 0) {
+          prescriptions = [allPrescriptions[0]] // Get the most recent prescription
+          console.log('📤 Sending most recent prescription:', allPrescriptions[0].id, 'with', allPrescriptions[0].medications?.length || 0, 'medications')
+        }
+      }
+      
+      console.log('📤 Total prescriptions to send:', prescriptions.length)
       
       let sentCount = 0
       

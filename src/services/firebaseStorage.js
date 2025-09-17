@@ -39,12 +39,34 @@ class FirebaseStorageService {
       console.log('🔥 Firebase: Creating doctor in collection:', this.collections.doctors)
       console.log('🔥 Firebase: Doctor data to save:', doctorData)
       
-      const docRef = await addDoc(collection(db, this.collections.doctors), {
-        ...doctorData,
+      // Only include serializable fields to avoid Firebase errors
+      const serializableData = {
+        email: doctorData.email,
+        firstName: doctorData.firstName,
+        lastName: doctorData.lastName,
+        name: doctorData.name,
+        country: doctorData.country,
+        city: doctorData.city,
+        role: doctorData.role,
+        isAdmin: doctorData.isAdmin,
+        permissions: doctorData.permissions,
+        uid: doctorData.uid,
+        displayName: doctorData.displayName,
+        photoURL: doctorData.photoURL,
+        provider: doctorData.provider,
         createdAt: new Date().toISOString()
+      }
+      
+      // Remove undefined values
+      Object.keys(serializableData).forEach(key => {
+        if (serializableData[key] === undefined) {
+          delete serializableData[key]
+        }
       })
       
-      const createdDoctor = { id: docRef.id, ...doctorData }
+      const docRef = await addDoc(collection(db, this.collections.doctors), serializableData)
+      
+      const createdDoctor = { id: docRef.id, ...serializableData }
       console.log('🔥 Firebase: Doctor created successfully with ID:', docRef.id)
       console.log('🔥 Firebase: Created doctor object:', createdDoctor)
       
@@ -92,11 +114,34 @@ class FirebaseStorageService {
   async updateDoctor(updatedDoctor) {
     try {
       const docRef = doc(db, this.collections.doctors, updatedDoctor.id)
-      await updateDoc(docRef, {
-        ...updatedDoctor,
+      
+      // Only include serializable fields to avoid Firebase errors
+      const serializableData = {
+        email: updatedDoctor.email,
+        firstName: updatedDoctor.firstName,
+        lastName: updatedDoctor.lastName,
+        name: updatedDoctor.name,
+        country: updatedDoctor.country,
+        city: updatedDoctor.city,
+        role: updatedDoctor.role,
+        isAdmin: updatedDoctor.isAdmin,
+        permissions: updatedDoctor.permissions,
+        uid: updatedDoctor.uid,
+        displayName: updatedDoctor.displayName,
+        photoURL: updatedDoctor.photoURL,
+        provider: updatedDoctor.provider,
         updatedAt: new Date().toISOString()
+      }
+      
+      // Remove undefined values
+      Object.keys(serializableData).forEach(key => {
+        if (serializableData[key] === undefined) {
+          delete serializableData[key]
+        }
       })
-      return { id: updatedDoctor.id, ...updatedDoctor }
+      
+      await updateDoc(docRef, serializableData)
+      return { id: updatedDoctor.id, ...serializableData }
     } catch (error) {
       console.error('Error updating doctor:', error)
       throw error
@@ -240,11 +285,29 @@ class FirebaseStorageService {
   async updatePharmacist(updatedPharmacist) {
     try {
       const docRef = doc(db, this.collections.pharmacists, updatedPharmacist.id)
-      await updateDoc(docRef, {
-        ...updatedPharmacist,
+      
+      // Only include serializable fields to avoid Firebase errors
+      const serializableData = {
+        email: updatedPharmacist.email,
+        businessName: updatedPharmacist.businessName,
+        pharmacistNumber: updatedPharmacist.pharmacistNumber,
+        role: updatedPharmacist.role,
+        uid: updatedPharmacist.uid,
+        displayName: updatedPharmacist.displayName,
+        photoURL: updatedPharmacist.photoURL,
+        provider: updatedPharmacist.provider,
         updatedAt: new Date().toISOString()
+      }
+      
+      // Remove undefined values
+      Object.keys(serializableData).forEach(key => {
+        if (serializableData[key] === undefined) {
+          delete serializableData[key]
+        }
       })
-      return { id: updatedPharmacist.id, ...updatedPharmacist }
+      
+      await updateDoc(docRef, serializableData)
+      return { id: updatedPharmacist.id, ...serializableData }
     } catch (error) {
       console.error('Error updating pharmacist:', error)
       throw error
