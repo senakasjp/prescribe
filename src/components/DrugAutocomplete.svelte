@@ -108,11 +108,11 @@
   }
 </script>
 
-<div class="position-relative">
-  <div class="input-group">
+<div class="position-relative drug-autocomplete-container">
+  <div class="input-group input-group-sm">
     <input 
       type="text" 
-      class="form-control" 
+      class="form-control form-control-sm" 
       bind:value={value}
       {placeholder}
       {disabled}
@@ -122,7 +122,7 @@
       on:keydown={handleKeydown}
     >
     <button 
-      class="btn btn-outline-primary" 
+      class="btn btn-outline-primary btn-sm d-none d-sm-inline-flex" 
       type="button" 
       {disabled}
       on:click={() => {
@@ -151,11 +151,11 @@
       }}
       title="Add to database"
     >
-      <i class="fas fa-database me-1"></i>To database
+      <i class="fas fa-database me-1"></i><span class="d-none d-md-inline">To database</span>
     </button>
     {#if value}
       <button 
-        class="btn btn-outline-secondary" 
+        class="btn btn-outline-secondary btn-sm" 
         type="button" 
         {disabled}
         on:click={clearSearch}
@@ -165,6 +165,41 @@
       </button>
     {/if}
   </div>
+  
+  <!-- Mobile database button (shown on small screens) -->
+  {#if value && value.trim()}
+    <div class="d-block d-sm-none mt-2">
+      <button 
+        class="btn btn-outline-primary btn-sm w-100" 
+        type="button" 
+        {disabled}
+        on:click={() => {
+          console.log('Mobile database button clicked for:', value)
+          if (value.trim()) {
+            const drugData = {
+              name: value.trim(),
+              displayName: value.trim(),
+              dosage: '',
+              instructions: '',
+              frequency: '',
+              duration: '',
+              notes: ''
+            }
+            
+            drugDatabase.addDrug(doctorId, drugData)
+            notifySuccess(`"${value.trim()}" added to your drug database`)
+            
+            searchResults = []
+            showDropdown = false
+          } else {
+            notifyInfo('Please enter a drug name to add to database')
+          }
+        }}
+      >
+        <i class="fas fa-database me-1"></i>Add to Database
+      </button>
+    </div>
+  {/if}
   
   <!-- Dropdown Results -->
   {#if showDropdown && searchResults.length > 0}
@@ -194,18 +229,82 @@
 </div>
 
 <style>
+  .drug-autocomplete-container {
+    width: 100%;
+  }
+  
+  .drug-autocomplete-container .input-group {
+    width: 100%;
+  }
+  
   .dropdown-menu {
     max-height: 200px;
     overflow-y: auto;
+    font-size: 0.9rem;
   }
   
   .dropdown-item {
     white-space: normal;
     padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    border: none;
+    text-align: left;
+    width: 100%;
   }
   
   .dropdown-item:hover,
   .dropdown-item.active {
-    background-color: var(--bs-light);
+    background-color: var(--bs-primary);
+    color: white;
+  }
+  
+  .dropdown-item strong {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  
+  .dropdown-item small {
+    font-size: 0.8rem;
+  }
+  
+  /* Mobile responsive adjustments */
+  @media (max-width: 576px) {
+    .dropdown-menu {
+      font-size: 0.85rem;
+      max-height: 150px;
+    }
+    
+    .dropdown-item {
+      padding: 0.4rem 0.8rem;
+      font-size: 0.85rem;
+    }
+    
+    .dropdown-item strong {
+      font-size: 0.85rem;
+    }
+    
+    .dropdown-item small {
+      font-size: 0.75rem;
+    }
+    
+    .drug-autocomplete-container .btn {
+      font-size: 0.8rem;
+      padding: 0.4rem 0.6rem;
+    }
+  }
+  
+  /* Tablet adjustments */
+  @media (min-width: 577px) and (max-width: 768px) {
+    .dropdown-menu {
+      font-size: 0.88rem;
+    }
+    
+    .dropdown-item {
+      font-size: 0.88rem;
+    }
+    
+    .dropdown-item strong {
+      font-size: 0.88rem;
+    }
   }
 </style>

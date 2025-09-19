@@ -216,7 +216,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
   {#if symptoms && symptoms.length > 0}
     <div class="mb-3 text-center">
       <button 
-        class="ai-assistant-btn"
+        class="btn btn-info btn-sm"
         on:click={generateComprehensiveAnalysis}
         disabled={loading || !isOpenAIConfigured}
         title="Generate comprehensive AI analysis including medical recommendations and medication suggestions"
@@ -224,7 +224,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
         {#if loading}
           <span class="spinner-border spinner-border-sm me-2" role="status"></span>
         {/if}
-        <i class="fas fa-sparkles me-2"></i>
+        <i class="fas fa-brain me-2"></i>
         AI Assistant
       </button>
     </div>
@@ -461,55 +461,6 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
 </div>
 
 <style>
-  /* AI Assistant Button Styling */
-  .ai-assistant-btn {
-    background-color: #2c2c2c;
-    border: 1px solid #4a4a4a;
-    color: white;
-    padding: 0.6rem 1.2rem;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    transition: all 0.3s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-    min-width: auto;
-    white-space: nowrap;
-  }
-
-  .ai-assistant-btn:hover:not(:disabled) {
-    background-color: #3a3a3a;
-    border-color: #5a5a5a;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  }
-
-  .ai-assistant-btn:active:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  }
-
-  .ai-assistant-btn:disabled {
-    background-color: #1a1a1a;
-    border-color: #3a3a3a;
-    color: #666;
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .ai-assistant-btn i.fa-sparkles {
-    color: #fff;
-    font-size: 1rem;
-  }
-
-  .ai-assistant-btn .spinner-border-sm {
-    width: 1rem;
-    height: 1rem;
-    border-width: 0.1em;
-  }
 
   /* Chatbot Interface Styling - Image Format */
   .ai-chatbot-interface {

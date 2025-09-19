@@ -9,6 +9,7 @@
   import PrescriptionList from './PrescriptionList.svelte'
   import PrescriptionPDF from './PrescriptionPDF.svelte'
   import AIRecommendations from './AIRecommendations.svelte'
+  import PrescriptionsTab from './PrescriptionsTab.svelte'
   
   export let selectedPatient
   export const addToPrescription = null
@@ -720,10 +721,13 @@
       console.log('🔍 Input currentMedications:', currentMedications)
       console.log('🔍 Input doctorId:', doctorId)
 
-      // Calculate patient age
-      const patientAge = selectedPatient?.dateOfBirth 
-        ? Math.floor((new Date() - new Date(selectedPatient.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000))
-        : null
+      // Calculate patient age - prioritize stored age field
+      let patientAge = null
+      if (selectedPatient?.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+        patientAge = parseInt(selectedPatient.age)
+      } else if (selectedPatient?.dateOfBirth) {
+        patientAge = Math.floor((new Date() - new Date(selectedPatient.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000))
+      }
 
       console.log('🔍 Calculated patient age:', patientAge)
       console.log('🔍 Patient country:', selectedPatient?.country)
@@ -1263,114 +1267,184 @@
         }
       }
       
-      const doc = new jsPDF()
+      // Create A5 document (148 x 210 mm)
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a5'
+      })
+      
       const currentDate = new Date().toLocaleDateString('en-US', {
         month: '2-digit',
         day: '2-digit', 
         year: 'numeric'
       })
       
-      console.log('📄 Creating PDF content...')
+      console.log('📄 Creating A5 PDF content...')
       console.log('Patient:', selectedPatient.firstName, selectedPatient.lastName)
       console.log('Current medications:', currentMedications.length)
-      console.log('Prescription notes:', prescriptionNotes)
       
-      // Set up fonts and styles
-      doc.setFont('helvetica', 'bold')
+      // A5 dimensions: 148mm width, 210mm height
+      const pageWidth = 148
+      const pageHeight = 210
+      const margin = 10
+      const contentWidth = pageWidth - (margin * 2)
       
-      // Header - PRESCRIPTION (centered, large)
-      doc.setFontSize(24)
-      doc.text('PRESCRIPTION', 105, 30, { align: 'center' })
-      
-      // Doctor info section
-      doc.setFontSize(12)
-      doc.setFont('helvetica', 'normal')
-      doc.text('DOCTOR NAME', 20, 50)
-      doc.text('Your Medical Clinic', 20, 60)
-      
-      // Date (right aligned)
-      doc.text(`DATE: ${currentDate}`, 180, 50, { align: 'right' })
-      
-      // Patient info section with Rx symbol
+      // Header with clinic name
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
-      doc.text('R', 20, 85)
+      doc.text('MEDICAL PRESCRIPTION', margin, 15)
       
-      // Patient name and age line
-      doc.setFontSize(12)
+      // Clinic details
+      doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
-      doc.text(`PATIENT NAME: ${selectedPatient.firstName} ${selectedPatient.lastName}`, 35, 85)
+      doc.text('Your Medical Clinic', margin, 22)
+      doc.text('123 Medical Street, City', margin, 27)
+      doc.text('Phone: (555) 123-4567', margin, 32)
       
-      // Calculate age from date of birth
+      // Date (right aligned)
+      doc.setFontSize(10)
+      doc.text(`Date: ${currentDate}`, pageWidth - margin, 22, { align: 'right' })
+      
+      // Prescription number
+      const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
+      doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, 32, { align: 'right' })
+      
+      // Patient information section
+      doc.setFontSize(12)
+      doc.setFont('helvetica', 'bold')
+      doc.text('PATIENT INFORMATION', margin, 45)
+      
+      // Patient details
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      
+      // Get patient age (prioritize age field)
+      let patientAge = 'Not specified'
+      if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+        patientAge = selectedPatient.age + ' years'
+      } else if (selectedPatient.dateOfBirth) {
       const birthDate = new Date(selectedPatient.dateOfBirth)
+        if (!isNaN(birthDate.getTime())) {
       const today = new Date()
       const age = today.getFullYear() - birthDate.getFullYear()
       const monthDiff = today.getMonth() - birthDate.getMonth()
-      const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+          const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+          patientAge = calculatedAge + ' years'
+        }
+      }
       
-      doc.text(`AGE: ${actualAge}`, 150, 85)
+      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, margin, 52)
+      doc.text(`Age: ${patientAge}`, margin + 70, 52)
+      doc.text(`Gender: ${selectedPatient.gender || 'Not specified'}`, margin, 58)
+      doc.text(`Phone: ${selectedPatient.phone || 'Not provided'}`, margin + 70, 58)
+      doc.text(`Address: ${selectedPatient.address || 'Not provided'}`, margin, 64)
       
-      // Address line
-      doc.text(`ADDRESS: ${selectedPatient.address || 'Not provided'}`, 35, 95)
-      
-      // Medications section
-      let yPos = 120
+      // Prescription medications section
+      let yPos = 75
       
       if (currentMedications && currentMedications.length > 0) {
+        doc.setFontSize(12)
+        doc.setFont('helvetica', 'bold')
+        doc.text('PRESCRIPTION MEDICATIONS', margin, yPos)
+        yPos += 10
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        
         currentMedications.forEach((medication, index) => {
-          if (yPos > 250) {
+          if (yPos > pageHeight - 40) {
             doc.addPage()
-            yPos = 30
+            yPos = margin + 10
           }
           
-          // Medication name and dosage
-          doc.setFontSize(12)
+          // Medication header with number
+          doc.setFontSize(10)
+          doc.setFont('helvetica', 'bold')
+          doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
+          
+          // Dosage and frequency
+          doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
-          doc.text(`${medication.name} ${medication.dosage}`, 20, yPos)
+          yPos += 6
+          doc.text(`   Dosage: ${medication.dosage}`, margin, yPos)
+          yPos += 5
+          doc.text(`   Frequency: ${medication.frequency}`, margin, yPos)
+          
+          // Duration if available
+          if (medication.duration) {
+            yPos += 5
+            doc.text(`   Duration: ${medication.duration}`, margin, yPos)
+          }
           
           // Instructions
-          yPos += 8
-          doc.text(`${medication.instructions || `Take ${medication.frequency}`}`, 20, yPos)
+          if (medication.instructions) {
+            yPos += 5
+            const instructions = doc.splitTextToSize(`   Instructions: ${medication.instructions}`, contentWidth - 10)
+            doc.text(instructions, margin, yPos)
+            yPos += instructions.length * 4
+          }
           
-          yPos += 15 // Space between medications
+          // AI suggested indicator
+          if (medication.aiSuggested) {
+            yPos += 5
+            doc.setFontSize(8)
+            doc.setTextColor(100, 100, 100)
+            doc.text('   [AI Suggested]', margin, yPos)
+            doc.setTextColor(0, 0, 0) // Reset color
+          }
+          
+          yPos += 8 // Space between medications
         })
-      }
-      
-      // Add prescription notes if available
-      if (prescriptionNotes && prescriptionNotes.trim() !== '') {
-        if (yPos > 250) {
-          doc.addPage()
-          yPos = 30
-        }
+      } else {
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'normal')
+        doc.text('No medications prescribed.', margin, yPos)
         yPos += 10
-        doc.text('Additional Notes:', 20, yPos)
-        yPos += 8
-        const notes = doc.splitTextToSize(prescriptionNotes, 170)
-        doc.text(notes, 20, yPos)
-        yPos += notes.length * 5
       }
       
-      // Signature section
-      const signatureY = Math.max(yPos + 30, 200)
+      // Additional notes
+      if (prescriptionNotes && prescriptionNotes.trim() !== '') {
+        if (yPos > pageHeight - 60) {
+          doc.addPage()
+          yPos = margin + 10
+        }
+        
+        doc.setFontSize(12)
+        doc.setFont('helvetica', 'bold')
+        doc.text('ADDITIONAL NOTES', margin, yPos)
+        yPos += 8
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        const notes = doc.splitTextToSize(prescriptionNotes, contentWidth)
+        doc.text(notes, margin, yPos)
+        yPos += notes.length * 4
+      }
       
-      // Doctor signature line
-      doc.setFontSize(12)
+      // Doctor signature section
+      if (yPos > pageHeight - 40) {
+        doc.addPage()
+        yPos = pageHeight - 35
+      } else {
+        yPos = Math.max(yPos + 10, pageHeight - 35)
+      }
+      
+      doc.setFontSize(10)
       doc.setFont('helvetica', 'normal')
-      doc.text('Dr. [Doctor Name]', 150, signatureY)
+      doc.text('Doctor Signature:', margin, yPos)
+      doc.line(margin + 30, yPos + 1, margin + 80, yPos + 1)
       
-      // Draw signature line
-      doc.line(140, signatureY + 5, 190, signatureY + 5)
+      // Date and stamp area
+      doc.text('Date:', margin + 90, yPos)
+      doc.line(margin + 105, yPos + 1, margin + 130, yPos + 1)
       
-      // Medical seal (simplified)
-      doc.setFontSize(8)
-      doc.text('MEDICAL SEAL', 20, signatureY)
-      doc.circle(30, signatureY - 5, 8)
+      // Footer
+      doc.setFontSize(7)
+      doc.text('This prescription is valid for 30 days from the date of issue.', margin, pageHeight - 5)
+      doc.text('Keep this prescription in a safe place.', margin + 75, pageHeight - 5)
       
-      // Add caduceus symbol (simplified)
-      doc.setFontSize(6)
-      doc.text('⚕', 30, signatureY - 2, { align: 'center' })
-      
-      // Generate filename with capital letter as per user preference
+      // Generate filename
       const filename = `Prescription_${selectedPatient.firstName}_${selectedPatient.lastName}_${currentDate.replace(/\//g, '-')}.pdf`
       
       console.log('💾 Saving PDF with filename:', filename)
@@ -1378,10 +1452,10 @@
       // Save the PDF
       doc.save(filename)
       
-      console.log('✅ PDF generated and downloaded successfully:', filename)
+      console.log('✅ A5 PDF generated and downloaded successfully:', filename)
       
       // Show success message to user
-      alert(`PDF generated successfully: ${filename}`)
+      alert(`A5 Prescription PDF generated successfully: ${filename}`)
       
     } catch (error) {
       console.error('❌ Error generating PDF:', error)
@@ -1432,8 +1506,9 @@
   
   // Patient edit functions
   const startEditingPatient = () => {
-    console.log('Edit button clicked, starting patient edit mode')
-    console.log('Selected patient:', selectedPatient)
+    console.log('🖊️ Edit button clicked, starting patient edit mode')
+    console.log('🖊️ Selected patient:', selectedPatient)
+    console.log('🖊️ Current isEditingPatient state:', isEditingPatient)
     
     // Populate edit form with current patient data
     editPatientData = {
@@ -1646,6 +1721,46 @@
     window.debugPrescriptions = debugDataState
   }
   
+  // Finalize prescription function
+  const finalizePrescription = async () => {
+    try {
+      console.log('✅ Finalizing prescription...')
+      
+      if (!currentPrescription) {
+        notifyError('No prescription to finalize')
+        return
+      }
+      
+      if (currentMedications.length === 0) {
+        notifyError('Cannot finalize empty prescription')
+        return
+      }
+      
+      // Update prescription status
+      currentPrescription.status = 'finalized'
+      currentPrescription.medications = currentMedications
+      currentPrescription.finalizedAt = new Date().toISOString()
+      
+      // Save to Firebase
+      await firebaseStorage.updatePrescription(currentPrescription.id, {
+        status: 'finalized',
+        medications: currentMedications,
+        finalizedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      })
+      
+      prescriptionsFinalized = true
+      prescriptionFinished = true
+      
+      console.log('✅ Prescription finalized successfully')
+      notifySuccess('Prescription finalized successfully!')
+      
+    } catch (error) {
+      console.error('❌ Error finalizing prescription:', error)
+      notifyError('Failed to finalize prescription: ' + error.message)
+    }
+  }
+  
   // Reactive statement to reload data when refreshTrigger changes
   $: if (refreshTrigger > 0) {
     loadPatientData()
@@ -1662,18 +1777,32 @@
   <div class="card-header">
     <div class="d-flex justify-content-between align-items-center">
       <div>
-        <h5 class="mb-0">
-          <i class="fas fa-user me-2"></i>
-          {selectedPatient.firstName} {selectedPatient.lastName}
-        </h5>
+      <h5 class="mb-0">
+        <i class="fas fa-user me-2"></i>
+        {selectedPatient.firstName} {selectedPatient.lastName}
+      </h5>
         <small class="text-muted">
           Age: {(() => {
-            const birthDate = new Date(selectedPatient.dateOfBirth)
-            const today = new Date()
-            const age = today.getFullYear() - birthDate.getFullYear()
-            const monthDiff = today.getMonth() - birthDate.getMonth()
-            return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-          })()} years
+            // Use stored age field if available
+            if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+              return selectedPatient.age + ' years'
+            }
+            
+            // Fallback to dateOfBirth calculation only if no age field
+            if (selectedPatient.dateOfBirth) {
+              const birthDate = new Date(selectedPatient.dateOfBirth)
+              if (!isNaN(birthDate.getTime())) {
+                const today = new Date()
+                const age = today.getFullYear() - birthDate.getFullYear()
+                const monthDiff = today.getMonth() - birthDate.getMonth()
+                const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+                return calculatedAge + ' years'
+              }
+            }
+            
+            // If neither age field nor valid dateOfBirth
+            return 'Not specified'
+          })()}
         </small>
       </div>
       <div class="btn-group" role="group">
@@ -2030,7 +2159,7 @@
                   <p><strong>Phone:</strong> {selectedPatient.phone || 'Not provided'}</p>
                   <p><strong>Gender:</strong> {selectedPatient.gender || 'Not specified'}</p>
                     <p><strong>Date of Birth:</strong> {selectedPatient.dateOfBirth}</p>
-                    <p><strong>Age:</strong> {selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || 'Not calculated'}</p>
+                    <p><strong>Age:</strong> {selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || 'Not specified'}</p>
                     {#if selectedPatient.weight}
                       <p><strong>Weight:</strong> {selectedPatient.weight} kg</p>
                     {/if}
@@ -2240,20 +2369,20 @@
             <div class="text-center p-4">
               <i class="fas fa-heartbeat fa-2x text-muted mb-3"></i>
               <p class="text-muted">No illnesses recorded for this patient.</p>
-            </div>
-          {/if}
-          
+        </div>
+      {/if}
+      
           <!-- Next Button -->
           <div class="row mt-3">
             <div class="col-12 text-center">
-              <button 
+                <button 
                 class="btn btn-danger btn-sm"
                 on:click={goToNextTab}
                 title="Continue to Prescriptions tab"
               >
                 <i class="fas fa-arrow-right me-2"></i>Next
-              </button>
-            </div>
+                </button>
+              </div>
           </div>
         </div>
       {/if}
@@ -2265,21 +2394,21 @@
             <h6 class="mb-0">
               <i class="fas fa-file-medical me-2"></i>Medical Reports
             </h6>
-            <button 
+              <button 
               class="btn btn-primary btn-sm" 
               on:click={() => showReportForm = true}
             >
               <i class="fas fa-plus me-1"></i>Add Report
-            </button>
-          </div>
+              </button>
+            </div>
           
           <!-- Add Report Form -->
           {#if showReportForm}
             <div class="card mb-4">
               <div class="card-header">
-                <h6 class="mb-0">
+            <h6 class="mb-0">
                   <i class="fas fa-plus me-2"></i>Add New Report
-                </h6>
+            </h6>
               </div>
               <div class="card-body">
                 <div class="row">
@@ -2291,7 +2420,7 @@
                       bind:value={reportTitle}
                       placeholder="e.g., Blood Test Results, X-Ray Report"
                     />
-                  </div>
+                </div>
                   <div class="col-md-6 mb-3">
                     <label class="form-label">Report Date</label>
                     <input 
@@ -2299,7 +2428,7 @@
                       class="form-control" 
                       bind:value={reportDate}
                     />
-                  </div>
+              </div>
                 </div>
                 
                 <div class="mb-3">
@@ -2369,11 +2498,11 @@
                         </small>
                       </div>
                     {/if}
-                  </div>
-                {/if}
-                
+            </div>
+          {/if}
+          
                 <div class="d-flex gap-2">
-                  <button 
+            <button 
                     class="btn btn-success btn-sm" 
                     on:click={addReport}
                   >
@@ -2391,7 +2520,7 @@
                     }}
                   >
                     <i class="fas fa-times me-1"></i>Cancel
-                  </button>
+            </button>
                 </div>
               </div>
             </div>
@@ -2414,14 +2543,14 @@
                         {/if}
                         {report.title}
                       </h6>
-                      <button 
+              <button 
                         class="btn btn-outline-danger btn-sm"
                         on:click={() => removeReport(report.id)}
                         title="Remove report"
                       >
                         <i class="fas fa-trash"></i>
-                      </button>
-                    </div>
+              </button>
+            </div>
                     <div class="card-body">
                       <p class="text-muted small mb-2">
                         <i class="fas fa-calendar me-1"></i>
@@ -2448,13 +2577,13 @@
                             <p class="text-muted small mb-0">
                               {report.files.length} file(s) uploaded
                             </p>
-                            <small class="text-muted">
+                    <small class="text-muted">
                               {report.files[0]?.name || 'File uploaded'}
-                            </small>
+                    </small>
                           </div>
-                        </div>
-                      {/if}
-                    </div>
+                      </div>
+                    {/if}
+                  </div>
                   </div>
                 </div>
               {/each}
@@ -2470,24 +2599,24 @@
           <!-- Navigation Buttons -->
           <div class="row mt-3">
             <div class="col-12 text-center">
-              <button 
+                      <button 
                 class="btn btn-outline-secondary btn-sm me-3"
                 on:click={goToPreviousTab}
                 title="Go back to Symptoms tab"
               >
                 <i class="fas fa-arrow-left me-2"></i>Back
-              </button>
-              <button 
+                      </button>
+                      <button 
                 class="btn btn-danger btn-sm"
                 on:click={goToNextTab}
                 title="Continue to Diagnoses tab"
               >
                 <i class="fas fa-arrow-right me-2"></i>Next
-              </button>
-            </div>
+                      </button>
+                    </div>
           </div>
-        </div>
-      {/if}
+                    </div>
+                  {/if}
       
       <!-- Diagnoses Tab -->
       {#if activeTab === 'diagnoses'}
@@ -2502,7 +2631,7 @@
             >
               <i class="fas fa-plus me-1"></i>Add Diagnosis
             </button>
-          </div>
+                </div>
           
           <!-- Add Diagnosis Form -->
           {#if showDiagnosticForm}
@@ -2531,8 +2660,8 @@
                       bind:value={diagnosticDate}
                     />
                   </div>
-                </div>
-                
+            </div>
+            
                 <div class="row">
                   <div class="col-md-6 mb-3">
                     <label class="form-label">Diagnostic Code (Optional)</label>
@@ -2555,22 +2684,22 @@
                 
                 <div class="mb-3">
                   <label class="form-label">Diagnosis Description</label>
-                  <textarea 
-                    class="form-control" 
+              <textarea 
+                class="form-control" 
                     rows="4" 
                     bind:value={diagnosticDescription}
                     placeholder="Describe the diagnosis, symptoms, findings, and clinical assessment..."
-                  ></textarea>
-                </div>
-                
+              ></textarea>
+            </div>
+            
                 <div class="d-flex gap-2">
-                  <button 
+                <button 
                     class="btn btn-success btn-sm" 
                     on:click={addDiagnosis}
-                  >
+                    >
                     <i class="fas fa-save me-1"></i>Save Diagnosis
-                  </button>
-                  <button 
+                </button>
+                    <button 
                     class="btn btn-outline-secondary btn-sm" 
                     on:click={() => {
                       showDiagnosticForm = false
@@ -2582,7 +2711,7 @@
                     }}
                   >
                     <i class="fas fa-times me-1"></i>Cancel
-                  </button>
+                    </button>
                 </div>
               </div>
             </div>
@@ -2599,14 +2728,14 @@
                         <i class="fas fa-stethoscope text-primary me-2"></i>
                         {diagnosis.title}
                       </h6>
-                      <button 
+                    <button 
                         class="btn btn-outline-danger btn-sm"
                         on:click={() => removeDiagnosis(diagnosis.id)}
                         title="Remove diagnosis"
                       >
                         <i class="fas fa-trash"></i>
-                      </button>
-                    </div>
+                    </button>
+                </div>
                     <div class="card-body">
                       <div class="row mb-2">
                         <div class="col-6">
@@ -2614,7 +2743,7 @@
                             <i class="fas fa-calendar me-1"></i>
                             {new Date(diagnosis.date).toLocaleDateString()}
                           </small>
-                        </div>
+              </div>
                         <div class="col-6">
                           <span class="badge bg-{diagnosis.severity === 'mild' ? 'success' : diagnosis.severity === 'moderate' ? 'warning' : 'danger'}">
                             {diagnosis.severity.charAt(0).toUpperCase() + diagnosis.severity.slice(1)}
@@ -2626,7 +2755,7 @@
                           <i class="fas fa-code me-1"></i>
                           <strong>Code:</strong> {diagnosis.code}
                         </p>
-                      {/if}
+            {/if}
                       <div class="diagnosis-description">
                         <p class="mb-0">{diagnosis.description}</p>
                       </div>
@@ -2648,11 +2777,23 @@
             {symptoms} 
             currentMedications={currentMedications}
             patientAge={selectedPatient ? (() => {
-              const birthDate = new Date(selectedPatient.dateOfBirth)
-              const today = new Date()
-              const age = today.getFullYear() - birthDate.getFullYear()
-              const monthDiff = today.getMonth() - birthDate.getMonth()
-              return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+              // Use stored age field if available
+              if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+                return parseInt(selectedPatient.age)
+              }
+              
+              // Fallback to dateOfBirth calculation only if no age field
+              if (selectedPatient.dateOfBirth) {
+                const birthDate = new Date(selectedPatient.dateOfBirth)
+                if (!isNaN(birthDate.getTime())) {
+                  const today = new Date()
+                  const age = today.getFullYear() - birthDate.getFullYear()
+                  const monthDiff = today.getMonth() - birthDate.getMonth()
+                  return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+                }
+              }
+              
+              return null
             })() : null}
             {doctorId}
             on:ai-usage-updated={(event) => {
@@ -2687,404 +2828,78 @@
       <!-- Prescriptions Tab -->
       {#if activeTab === 'prescriptions'}
         <div class="tab-pane active">
-          <!-- Prescription Card -->
-          <div class="card border-2 border-info shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
-              <h5 class="card-title mb-0">
-                <i class="fas fa-prescription-bottle-alt me-2"></i>Prescription
-              </h5>
-              <div class="d-flex gap-2">
-                <!-- New Prescription Button -->
-                <button 
-                  class="btn btn-success btn-sm" 
-                  on:click={async () => { 
-                    console.log('🆕 New Prescription button clicked - Creating NEW prescription');
-                    showMedicationForm = false; 
-                    editingMedication = null;
-                    prescriptionFinished = false;
-                    
-                    // Reset AI check state for new prescription
-                    aiCheckComplete = false;
-                    aiCheckMessage = '';
-                    lastAnalyzedMedications = [];
-                    
-                    try {
-                      // Create new prescription
-                      const newPrescription = await firebaseStorage.createPrescription(
-                        selectedPatient.id,
-                        doctorId,
-                        'New Prescription',
-                        'Prescription created from Prescriptions tab'
-                      );
-                      
-                      currentPrescription = newPrescription;
-                      currentMedications = [];
-                      
-                      // Add the new prescription to the prescriptions array immediately
-                      prescriptions = [...prescriptions, currentPrescription];
-                      console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
-                      
-                      console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
-                      notifySuccess('New prescription created! Click "Add Drug" to add medications.');
-                    } catch (error) {
-                      console.error('❌ Error creating new prescription:', error);
-                      notifyError('Failed to create new prescription: ' + error.message);
-                    }
-                  }}
-                  disabled={loading}
-                  title="Create a new prescription"
-                >
-                  <i class="fas fa-plus me-1"></i>New Prescription
-                </button>
-                
-                <!-- Add Drug Button -->
-                <button 
-                    class="btn btn-primary btn-sm" 
-                    on:click={() => { 
-                      console.log('💊 Add Drug clicked');
-                      
-                      if (!currentPrescription) {
-                        notifyError('Please click "New Prescription" first to create a prescription.');
-                        return;
-                      }
-                      
-                      showMedicationForm = true;
-                      editingMedication = null;
-                      notifySuccess('Medication form opened - add drug details');
-                    }}
-                    disabled={showMedicationForm || !currentPrescription}
-                    title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
-                >
-                  <i class="fas fa-plus me-1"></i>Add Drug
-                </button>
-                
-                <!-- AI Drug Suggestions Button -->
-                <button 
-                    class="btn btn-outline-info btn-sm" 
-                    on:click={generateAIDrugSuggestions}
-                    disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured()}
-                    title={!symptoms || symptoms.length === 0 ? "Add symptoms first" : "Get AI-assisted drug suggestions"}
-                >
-                  {#if loadingAIDrugSuggestions}
-                    <i class="fas fa-spinner fa-spin me-1"></i>Generating...
-                  {:else}
-                    <i class="fas fa-brain me-1"></i>AI Suggestions
-                  {/if}
-                </button>
-              </div>
-          </div>
-            <div class="card-body">
-          
-          <!-- AI Drug Suggestions Section -->
-          {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0}
-            <div class="card border-info mb-3 shadow-sm">
-              <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">
-                  <i class="fas fa-brain me-2"></i>
-                  AI Drug Suggestions ({aiDrugSuggestions.length})
-                </h6>
-                <button 
-                  class="btn btn-outline-light btn-sm"
-                  on:click={() => showAIDrugSuggestions = false}
-                  title="Hide AI suggestions"
-                >
-                  <i class="fas fa-times"></i>
-                </button>
-              </div>
-              <div class="card-body p-2">
-                <div class="row">
-                  {#each aiDrugSuggestions as suggestion, index}
-                    <div class="col-md-6 mb-2">
-                      <div class="card border-light">
-                        <div class="card-body p-2">
-                          <div class="d-flex justify-content-between align-items-start mb-1">
-                            <h6 class="card-title mb-0 text-primary">{suggestion.name}</h6>
-                            <div class="btn-group btn-group-sm">
-                              <button 
-                                class="btn btn-success btn-sm"
-                                on:click={() => addAISuggestedDrug(suggestion, index)}
-                                disabled={!currentPrescription}
-                                title="Add to prescription"
-                              >
-                                <i class="fas fa-plus"></i>
-                              </button>
-                              <button 
-                                class="btn btn-outline-danger btn-sm"
-                                on:click={() => removeAISuggestedDrug(index)}
-                                title="Remove suggestion"
-                              >
-                                <i class="fas fa-times"></i>
-                              </button>
-                            </div>
-                          </div>
-                          <div class="small text-muted mb-1">
-                            <strong>Dosage:</strong> {suggestion.dosage} • <strong>Frequency:</strong> {suggestion.frequency} • <strong>Duration:</strong> {suggestion.duration}
-                          </div>
-                          {#if suggestion.instructions}
-                            <div class="small text-muted mb-1">
-                              <strong>Instructions:</strong> {suggestion.instructions}
-                            </div>
-                          {/if}
-                          {#if suggestion.reason}
-                            <div class="small text-info">
-                              <i class="fas fa-lightbulb me-1"></i>
-                              <strong>Reason:</strong> {suggestion.reason}
-                            </div>
-                          {/if}
-                        </div>
-                      </div>
-                    </div>
-                  {/each}
-                </div>
-                <div class="text-center mt-2">
-                  <small class="text-muted">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Review and add suggestions to your prescription. You can modify dosages and instructions as needed.
-                  </small>
-                </div>
-              </div>
-            </div>
-          {/if}
-          
-          <!-- Full AI Analysis Option - Only show if prescription is finished and has medications -->
-          {#if aiCheckComplete && prescriptionFinished && currentMedications.length > 0}
-            <div class="text-center mb-3">
-              <p class="text-muted mb-2">Need a full AI assisted prescription analysis?</p>
-              <button 
-                class="btn btn-outline-primary btn-sm"
-                on:click={performFullAIAnalysis}
-                disabled={loadingFullAnalysis}
-                title="Get comprehensive AI analysis of prescription"
-              >
-                {#if loadingFullAnalysis}
-                  <i class="fas fa-spinner fa-spin me-2"></i>
-                  Analyzing...
-                {:else}
-                  <i class="fas fa-brain me-2"></i>
-                  Full AI Analysis
-                {/if}
-              </button>
-            </div>
-          {/if}
-          
-          <!-- Full AI Analysis Loading -->
-          {#if loadingFullAnalysis}
-            <div class="card border-primary mb-3">
-              <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h6 class="mb-0">
-                  <i class="fas fa-spinner fa-spin me-2"></i>
-                  Generating AI Analysis...
-            </h6>
-              </div>
-              <div class="card-body text-center py-4">
-                <div class="spinner-border text-primary mb-3" role="status">
-                  <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="text-muted mb-0">Analyzing prescription data and generating comprehensive insights...</p>
-              </div>
-            </div>
-          {/if}
-          
-          <!-- Full AI Analysis Results -->
-          {#if showFullAnalysis && fullAIAnalysis}
-            <div class="card border-success mb-3 shadow-sm">
-              <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">
-                  <i class="fas fa-brain me-2"></i>
-                  Full AI Prescription Analysis
-                </h6>
-                <div class="d-flex gap-2">
-            <button 
-                    class="btn btn-outline-light btn-sm"
-                    on:click={() => {
-                      navigator.clipboard.writeText(fullAIAnalysis.replace(/<[^>]*>/g, ''))
-                      notifySuccess('Analysis copied to clipboard!')
-                    }}
-                    title="Copy analysis text"
-                  >
-                    <i class="fas fa-copy"></i>
-                  </button>
-                  <button 
-                    class="btn btn-outline-light btn-sm"
-                    on:click={closeFullAnalysis}
-                    title="Close analysis"
-                  >
-                    <i class="fas fa-times"></i>
-            </button>
-          </div>
-              </div>
-              <div class="card-body">
-                <div class="ai-analysis-content">
-                  {@html fullAIAnalysis}
-                </div>
-              </div>
-            </div>
-          {/if}
-          
-          <!-- Full AI Analysis Error -->
-          {#if fullAnalysisError}
-            <div class="alert alert-danger mb-3">
-              <i class="fas fa-exclamation-triangle me-2"></i>
-              <strong>Analysis Error:</strong> {fullAnalysisError}
-              <button 
-                class="btn btn-outline-danger btn-sm ms-2"
-                on:click={() => fullAnalysisError = ''}
-                title="Dismiss error"
-              >
-                <i class="fas fa-times"></i>
-              </button>
-            </div>
-          {/if}
-          
-          <PatientForms 
-            {showMedicationForm}
-            {selectedPatient}
-            {editingMedication}
-            {doctorId}
-            onMedicationAdded={handleMedicationAdded}
-            onCancelMedication={handleCancelMedication}
+          <PrescriptionsTab 
+          {selectedPatient}
+          {showMedicationForm}
+          {editingMedication}
+          {doctorId}
+          {currentMedications}
+          {prescriptionsFinalized}
+          {showAIDrugSuggestions}
+          {aiDrugSuggestions}
+          {currentPrescription}
+          {loadingAIDrugSuggestions}
+          {symptoms}
+          {openaiService}
+          onMedicationAdded={handleMedicationAdded}
+          onCancelMedication={handleCancelMedication}
+          onEditPrescription={handleEditPrescription}
+          onDeletePrescription={handleDeletePrescription}
+          onDeleteMedicationByIndex={handleDeleteMedicationByIndex}
+          onFinalizePrescription={finalizePrescription}
+          onShowPharmacyModal={showPharmacySelection}
+          onGoToPreviousTab={goToPreviousTab}
+          onGenerateAIDrugSuggestions={generateAIDrugSuggestions}
+          onAddAISuggestedDrug={addAISuggestedDrug}
+          onRemoveAISuggestedDrug={removeAISuggestedDrug}
+          onNewPrescription={async () => { 
+            console.log('🆕 New Prescription button clicked - Creating NEW prescription');
+            showMedicationForm = false; 
+            editingMedication = null;
+            prescriptionFinished = false;
+            
+            // Reset AI check state for new prescription
+            aiCheckComplete = false;
+            aiCheckMessage = '';
+            lastAnalyzedMedications = [];
+            
+            try {
+              // Create new prescription
+              const newPrescription = await firebaseStorage.createPrescription(
+                selectedPatient.id,
+                doctorId,
+                'New Prescription',
+                'Prescription created from Prescriptions tab'
+              );
+              
+              currentPrescription = newPrescription;
+              currentMedications = [];
+              
+              // Add the new prescription to the prescriptions array immediately
+              prescriptions = [...prescriptions, currentPrescription];
+              console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
+              
+              console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
+              notifySuccess('New prescription created! Click "Add Drug" to add medications.');
+            } catch (error) {
+              console.error('❌ Error creating new prescription:', error);
+              notifyError('Failed to create new prescription: ' + error.message);
+            }
+          }}
+          onAddDrug={() => { 
+            console.log('💊 Add Drug clicked');
+            
+            if (!currentPrescription) {
+              notifyError('Please click "New Prescription" first to create a prescription.');
+              return;
+            }
+            
+            showMedicationForm = true;
+            editingMedication = null;
+            notifySuccess('Medication form opened - add drug details');
+          }}
+          onPrintPrescriptions={printPrescriptions}
           />
-          
-          
-          <!-- Current Prescriptions List -->
-          {#if currentMedications && currentMedications.length > 0}
-            <div class="medication-list">
-              {#each currentMedications as medication, index}
-                <div class="medication-item d-flex justify-content-between align-items-center py-2 border-bottom">
-                  <div class="flex-grow-1">
-                    <div class="fw-bold fs-6">
-                      {medication.name}
-                      {#if medication.aiSuggested}
-                        <span class="badge bg-info ms-2">
-                          <i class="fas fa-brain me-1"></i>AI Suggested
-                        </span>
-                      {/if}
-                    </div>
-                    <small class="text-muted">
-                      {medication.dosage} • {medication.frequency} • {medication.duration}
-                    </small>
-                    {#if medication.instructions}
-                      <div class="mt-1">
-                        <small class="text-muted">{medication.instructions}</small>
-                      </div>
-                    {/if}
-                    {#if medication.aiReason}
-                      <div class="mt-1">
-                        <small class="text-info">
-                          <i class="fas fa-lightbulb me-1"></i>
-                          <strong>AI Reason:</strong> {medication.aiReason}
-                        </small>
-                      </div>
-                    {/if}
-                  </div>
-                  {#if !prescriptionsFinalized}
-                    <div class="btn-group btn-group-sm">
-                      <button 
-                        class="btn btn-outline-primary btn-sm"
-                        on:click={() => handleEditPrescription(medication, index)}
-                        title="Edit medication"
-                      >
-                        <i class="fas fa-edit"></i>
-                      </button>
-                      <button 
-                        class="btn btn-outline-danger btn-sm"
-                        on:click={() => {
-                          if (medication.id) {
-                            handleDeletePrescription(medication.id, index)
-                          } else {
-                            console.warn('⚠️ Medication missing ID, attempting to delete by index:', medication)
-                            handleDeleteMedicationByIndex(index)
-                          }
-                        }}
-                        title="Delete medication"
-                      >
-                        <i class="fas fa-trash"></i>
-                      </button>
-                    </div>
-                  {:else}
-                    <div class="text-muted">
-                      <small><i class="fas fa-check-circle me-1"></i>Finalized</small>
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-            
-            <!-- Prescription Notes Box -->
-            <div class="mt-3">
-              <label for="prescriptionNotes" class="form-label">
-                <i class="fas fa-sticky-note me-1"></i>Prescription Notes
-              </label>
-              <textarea 
-                id="prescriptionNotes"
-                class="form-control" 
-                rows="3" 
-                placeholder="Add any additional notes about the current prescriptions..."
-                bind:value={prescriptionNotes}
-              ></textarea>
-              <div class="form-text">
-                <small class="text-muted">Optional notes about the current prescription regimen</small>
-              </div>
-            </div>
-            
-            <!-- Action Buttons - Show only if there are drugs or notes -->
-            {#if currentMedications.length > 0 || prescriptionNotes.trim() !== ''}
-              <div class="mt-3 text-center">
-                <div class="d-flex gap-2 justify-content-center flex-wrap">
-                  {#if !prescriptionFinished}
-                    <!-- Show Finish button when not finished -->
-                <button 
-                      class="btn btn-success btn-sm flex-fill"
-                      on:click={completePrescriptions}
-                      title="Finish current prescriptions"
-                    >
-                      <i class="fas fa-check-circle me-2"></i>
-                      Finish
-                </button>
-                  {:else}
-                    <!-- Show Send to Pharmacy and Print buttons when finished -->
-                    <button 
-                      class="btn btn-warning btn-sm flex-fill"
-                      on:click={showPharmacySelection}
-                      title="Send prescriptions to connected pharmacy"
-                    >
-                      <i class="fas fa-paper-plane me-2"></i>
-                      Send to Pharmacy
-                    </button>
-                    
-                    <button 
-                      class="btn btn-outline-primary btn-sm flex-fill"
-                      on:click={printPrescriptions}
-                      title="Print prescriptions to PDF"
-                    >
-                      <i class="fas fa-file-pdf me-2"></i>
-                      Print
-                    </button>
-                  {/if}
-                </div>
-              </div>
-            {/if}
-          {:else}
-            <div class="text-center text-muted py-3">
-              <i class="fas fa-pills fa-2x mb-2"></i>
-              <p>No current prescriptions for today</p>
-            </div>
-          {/if}
-            </div>
-          </div>
-          
-          <!-- Navigation Buttons -->
-          <div class="row mt-3">
-            <div class="col-12 text-center">
-              <button 
-                class="btn btn-outline-secondary btn-sm"
-                on:click={goToPreviousTab}
-                title="Go back to Diagnoses tab"
-              >
-                <i class="fas fa-arrow-left me-2"></i>Back
-              </button>
-            </div>
-          </div>
         </div>
       {/if}
 
@@ -3137,7 +2952,7 @@
           
           <!-- Pharmacy List -->
           <div class="list-group">
-            {#each availablePharmacies as pharmacy (pharmacy.id)}
+            {#each availablePharmacies as pharmacy}
               <label class="list-group-item d-flex align-items-center">
                 <input 
                   class="form-check-input me-3" 
@@ -3164,10 +2979,10 @@
             {/each}
           </div>
           
-          {#if selectedPharmacies.length === 0}
-            <div class="alert alert-warning mt-3 mb-0">
-              <i class="fas fa-exclamation-triangle me-2"></i>
-              Please select at least one pharmacy to send the prescription.
+          {#if availablePharmacies.length === 0}
+            <div class="text-center text-muted py-4">
+              <i class="fas fa-store fa-2x mb-2"></i>
+              <p>No pharmacies available</p>
             </div>
           {/if}
         </div>
@@ -3219,152 +3034,141 @@
 {/if}
 
 <style>
-
-  @keyframes pulse-danger {
-    0% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(var(--bs-danger-rgb), 0); }
-    100% { box-shadow: 0 0 0 0 rgba(var(--bs-danger-rgb), 0); }
-  }
-  
-  .interaction-content {
-    line-height: 1.6;
-    font-size: 0.9rem;
-  }
-  
-  .interaction-content h6 {
-    color: var(--bs-primary) !important;
-    font-weight: 600;
-    font-size: 0.95rem;
-    margin-top: 1rem !important;
-    margin-bottom: 0.5rem !important;
-    border-bottom: 1px solid var(--bs-border-color);
-    padding-bottom: 0.25rem;
-  }
-  
-  .interaction-content strong {
-    color: var(--bs-body-color);
-    font-weight: 600;
-  }
-  
-  .interaction-content em {
-    color: var(--bs-secondary);
-    font-style: italic;
+  /* Progress Bar Styling */
+  .progress-bar-container {
+    padding: 1rem 0;
   }
 
-  /* Critical interaction styling */
-  .interaction-content .text-danger {
-    color: var(--bs-danger) !important;
-    font-weight: bold;
+  .progress-steps {
+    position: relative;
+    max-width: 100%;
   }
-  
-  /* Full AI Analysis styling */
-  .ai-analysis-content {
-    line-height: 1.4;
-    font-size: 0.9rem;
-  }
-  
-  .ai-analysis-content h6 {
-    color: var(--bs-primary) !important;
-    font-weight: 700;
-    margin-top: 0.5rem;
-    margin-bottom: 0.2rem;
-    font-size: 1rem;
-    border-bottom: 2px solid var(--bs-primary);
-    padding-bottom: 0.1rem;
-    text-align: left;
+
+  .step {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    margin-left: 0;
-    padding-left: 0;
-  }
-  
-  .ai-analysis-content h6:first-child {
-    margin-top: 0;
-    margin-bottom: 0.1rem;
-  }
-  
-  .ai-analysis-content strong {
-    color: var(--bs-dark);
-    font-weight: 700;
-    font-size: 0.95rem;
-  }
-  
-  .ai-analysis-content em {
-    color: var(--bs-secondary);
-    font-style: italic;
-    font-weight: 500;
-  }
-  
-  .ai-analysis-content ul {
-    padding-left: 1.2rem;
-    margin: 0.1rem 0;
-    margin-left: 0;
-  }
-  
-  .ai-analysis-content li {
-    margin-bottom: 0.1rem;
-    line-height: 1.2;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
     position: relative;
   }
-  
-  .ai-analysis-content li::marker {
-    color: var(--bs-primary);
-    font-weight: bold;
+
+  .step.disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .step.enabled {
+    cursor: pointer;
+  }
+
+  .step.enabled:hover .step-circle {
+    transform: scale(1.1);
+  }
+
+  .step-circle {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+    border: 3px solid #e9ecef;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+  }
+
+  .step.active .step-circle {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+    box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.25);
+  }
+
+  .step.enabled:not(.active) .step-circle {
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+    color: #495057;
+  }
+
+  .step.disabled .step-circle {
+    background-color: #f8f9fa;
+    border-color: #e9ecef;
+    color: #adb5bd;
+  }
+
+  .step-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-align: center;
+    color: #6c757d;
+    transition: color 0.3s ease;
+  }
+
+  .step.active .step-label {
+    color: #007bff;
+    font-weight: 600;
   }
   
-  .ai-analysis-content br + strong {
-    display: block;
-    margin-top: 0.5rem;
-    margin-bottom: 0.3rem;
+  .step.enabled:not(.active) .step-label {
+    color: #495057;
   }
-  
-  .ai-analysis-content br + • {
-    display: block;
-    margin-top: 0.4rem;
+
+  .step.disabled .step-label {
+    color: #adb5bd;
   }
-  
-  /* Special formatting for analysis sections */
-  .ai-analysis-content p {
-    margin-bottom: 0.1rem;
-    line-height: 1.2;
-    margin-left: 0;
-    padding-left: 0;
+
+  .step-connector {
+    position: absolute;
+    top: 25px;
+    left: 50%;
+    width: 100%;
+    height: 2px;
+    background-color: #e9ecef;
+    z-index: -1;
+    transform: translateX(-50%);
   }
-  
-  .ai-analysis-content .section-divider {
-    border-top: 1px solid var(--bs-border-color);
-    margin: 0.5rem 0;
-    padding-top: 0.3rem;
+
+  .step.active + .step-connector,
+  .step.enabled + .step-connector {
+    background-color: #007bff;
   }
-  
-  /* Highlight important information */
-  .ai-analysis-content .highlight {
-    background-color: var(--bs-warning-bg-subtle);
-    padding: 0.2rem;
-    border-radius: 0.375rem;
-    border-left: 4px solid var(--bs-warning);
-    margin: 0.2rem 0;
-    margin-left: 0;
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .step-circle {
+      width: 40px;
+      height: 40px;
+    font-size: 1rem;
+    }
+    
+    .step-label {
+      font-size: 0.75rem;
+    }
+    
+    .step-connector {
+      top: 20px;
+    }
   }
-  
-  /* Warning sections */
-  .ai-analysis-content .warning {
-    background-color: var(--bs-danger-bg-subtle);
-    padding: 0.3rem;
-    border-radius: 0.375rem;
-    border-left: 4px solid var(--bs-danger);
-    margin: 0.2rem 0;
-    margin-left: 0;
-  }
-  
-  /* Recommendation sections */
-  .ai-analysis-content .recommendation {
-    background-color: var(--bs-success-bg-subtle);
-    padding: 0.3rem;
-    border-radius: 0.375rem;
-    border-left: 4px solid var(--bs-success);
-    margin: 0.2rem 0;
-    margin-left: 0;
+
+  @media (max-width: 576px) {
+    .step-circle {
+      width: 35px;
+      height: 35px;
+      font-size: 0.9rem;
+    }
+    
+    .step-label {
+      font-size: 0.7rem;
+    }
+    
+    .step-connector {
+      top: 17.5px;
+    }
   }
 
   /* Wave file view animation */
@@ -3447,147 +3251,11 @@
     .wave-bar:nth-child(8) { height: 16px; }
   }
 
-  /* Progress Bar Styling */
-  .progress-bar-container {
-    padding: 1rem 0;
-  }
-
-  .progress-steps {
-    position: relative;
-    max-width: 100%;
-  }
-
-  .step {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    flex: 1;
-    position: relative;
-  }
-
-  .step.disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-
-  .step.enabled {
-    cursor: pointer;
-  }
-
-  .step.enabled:hover .step-circle {
-    transform: scale(1.1);
-  }
-
-  .step-circle {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    transition: all 0.3s ease;
-    border: 3px solid #e9ecef;
-    background-color: #f8f9fa;
-    color: #6c757d;
-    margin-bottom: 0.5rem;
-  }
-
-  .step.active .step-circle {
-    background-color: #007bff;
-    border-color: #007bff;
-    color: white;
-    box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.25);
-  }
-
-  .step.enabled:not(.active) .step-circle {
-    background-color: #e9ecef;
-    border-color: #dee2e6;
-    color: #495057;
-  }
-
-  .step.disabled .step-circle {
-    background-color: #f8f9fa;
-    border-color: #e9ecef;
-    color: #adb5bd;
-  }
-
-  .step-label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    text-align: center;
-    color: #6c757d;
-    transition: color 0.3s ease;
-  }
-
-  .step.active .step-label {
-    color: #007bff;
-    font-weight: 600;
-  }
-
-  .step.enabled:not(.active) .step-label {
-    color: #495057;
-  }
-
-  .step.disabled .step-label {
-    color: #adb5bd;
-  }
-
-  .step-connector {
-    position: absolute;
-    top: 25px;
-    left: 50%;
-    width: 100%;
-    height: 2px;
-    background-color: #e9ecef;
-    z-index: -1;
-    transform: translateX(-50%);
-  }
-
-  .step.active + .step-connector,
-  .step.enabled + .step-connector {
-    background-color: #007bff;
-  }
-
-  /* Responsive adjustments */
-  @media (max-width: 768px) {
-    .step-circle {
-      width: 40px;
-      height: 40px;
-      font-size: 1rem;
-    }
-    
-    .step-label {
-      font-size: 0.75rem;
-    }
-    
-    .step-connector {
-      top: 20px;
-    }
-  }
-
-  @media (max-width: 576px) {
-    .step-circle {
-      width: 35px;
-      height: 35px;
-      font-size: 0.9rem;
-    }
-    
-    .step-label {
-      font-size: 0.7rem;
-    }
-    
-    .step-connector {
-      top: 17.5px;
-    }
-  }
-
-
-  /* Medication list styling - compact without cards */
+  /* Medication list styling */
   .medication-list {
-    background: transparent;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background-color: #f8f9fa;
   }
   
   .medication-item {
@@ -3604,5 +3272,68 @@
   
   .medication-item:last-child {
     border-bottom: none !important;
+  }
+
+  /* Responsive prescriptions tab styling */
+  .prescriptions-responsive-container {
+    margin-bottom: 1rem;
+  }
+  
+  .prescriptions-responsive-container .card-header {
+    padding: 0.75rem 1rem;
+  }
+  
+  .prescriptions-responsive-container .card-header h5 {
+    font-size: 1.1rem;
+    margin-bottom: 0;
+  }
+  
+  .prescriptions-responsive-container .btn-group {
+    flex-wrap: wrap;
+  }
+  
+  /* Mobile adjustments for prescriptions tab */
+  @media (max-width: 991.98px) {
+    .prescriptions-responsive-container .col-lg-8,
+    .prescriptions-responsive-container .col-lg-4 {
+      margin-bottom: 1rem;
+    }
+    
+    .prescriptions-responsive-container .card-header {
+      padding: 0.5rem 0.75rem;
+    }
+    
+    .prescriptions-responsive-container .card-header h5 {
+      font-size: 1rem;
+    }
+    
+    .prescriptions-responsive-container .d-flex.flex-wrap.gap-2 {
+      margin-top: 0.5rem;
+    }
+    
+    .prescriptions-responsive-container .btn {
+      font-size: 0.8rem;
+      padding: 0.4rem 0.8rem;
+    }
+  }
+  
+  /* Small mobile adjustments */
+  @media (max-width: 576px) {
+    .prescriptions-responsive-container .card-header {
+      padding: 0.4rem 0.5rem;
+    }
+    
+    .prescriptions-responsive-container .card-header h5 {
+      font-size: 0.95rem;
+    }
+    
+    .prescriptions-responsive-container .btn {
+      font-size: 0.75rem;
+      padding: 0.35rem 0.6rem;
+    }
+    
+    .prescriptions-responsive-container .d-flex.flex-wrap.gap-2 {
+      gap: 0.25rem !important;
+    }
   }
 </style>
