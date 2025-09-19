@@ -285,43 +285,25 @@ class OpenAIService {
 
     let html = ''
 
-    // Conditions section
+    // Compact format with reduced line spacing
     if (jsonResponse.conditions && Array.isArray(jsonResponse.conditions)) {
-      html += `<h6>🔍 CONDITIONS</h6><ul>`
-      jsonResponse.conditions.forEach(condition => {
-        html += `<li>${condition}</li>`
-      })
-      html += `</ul>`
+      html += `<p class="compact-text"><strong>Possible Conditions:</strong> ${jsonResponse.conditions.join(', ')}</p>`
     }
 
-    // Treatment section
     if (jsonResponse.treatment && Array.isArray(jsonResponse.treatment)) {
-      html += `<h6>💊 TREATMENT</h6><ul>`
+      html += `<p class="compact-text"><strong>Treatment:</strong></p><ul class="compact-list">`
       jsonResponse.treatment.forEach(med => {
-        html += `<li><strong>${med.medication}:</strong> ${med.dosage}`
-        if (med.availability) {
-          html += `<br><span class="text-info"><strong>Availability:</strong> ${med.availability}</span>`
-        }
-        if (med.alternatives) {
-          html += `<br><span class="text-warning"><strong>Alternatives:</strong> ${med.alternatives}</span>`
-        }
-        html += `</li>`
+        html += `<li class="compact-item">${med.medication}: ${med.dosage}</li>`
       })
       html += `</ul>`
     }
 
-    // Interactions section
     if (jsonResponse.interactions) {
-      html += `<h6>⚠️ INTERACTIONS</h6><div class="warning"><p>${jsonResponse.interactions}</p></div>`
+      html += `<p class="compact-text"><strong>Important:</strong> ${jsonResponse.interactions}</p>`
     }
 
-    // Red flags section
     if (jsonResponse.redFlags && Array.isArray(jsonResponse.redFlags)) {
-      html += `<h6>🚨 RED FLAGS</h6><div class="warning"><ul>`
-      jsonResponse.redFlags.forEach(flag => {
-        html += `<li>${flag}</li>`
-      })
-      html += `</ul></div>`
+      html += `<p class="compact-text"><strong>Watch for:</strong> ${jsonResponse.redFlags.join(', ')}</p>`
     }
 
     return html
@@ -680,6 +662,114 @@ class OpenAIService {
 
     } catch (error) {
       console.error('❌ Error generating comprehensive prescription analysis:', error)
+      throw error
+    }
+  }
+
+  // Generate AI-assisted drug suggestions for prescriptions
+  async generateAIDrugSuggestions(symptoms, currentMedications = [], patientAge = null, doctorId = null) {
+    if (!this.isConfigured()) {
+      throw new Error('OpenAI API key not configured.')
+    }
+
+    try {
+      console.log('💊 Generating AI drug suggestions...')
+
+      const symptomsText = symptoms.map(symptom => symptom.description).join(', ')
+      const currentMedsText = currentMedications.length > 0 
+        ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
+        : 'No current medications'
+
+      const prompt = `Based on symptoms: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
+${currentMedsText}
+
+Suggest 3-5 specific medications with dosages for prescription. Return as JSON object with "suggestions" array:
+{
+  "suggestions": [
+    {
+      "name": "Medication Name",
+      "dosage": "20mg",
+      "frequency": "Once daily",
+      "duration": "7 days",
+      "instructions": "Take with food",
+      "reason": "Brief reason for suggestion"
+    }
+  ]
+}
+
+Include both prescription and OTC options. Consider drug interactions.`
+
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Medical AI assistant providing drug suggestions for doctors. Return valid JSON only.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 800,
+        temperature: 0.1,
+        response_format: {
+          type: "json_object"
+        }
+      }
+
+      const data = await this.makeOpenAIRequest(
+        'chat/completions',
+        requestBody,
+        'drugSuggestions',
+        {
+          symptoms: symptomsText,
+          currentMedications: currentMedsText,
+          patientAge,
+          doctorId
+        }
+      )
+
+      let suggestions = []
+      try {
+        const jsonResponse = JSON.parse(data.choices[0]?.message?.content || '{}')
+        console.log('🔍 Raw AI response:', jsonResponse)
+        
+        // Handle both object with suggestions array and direct array
+        if (jsonResponse.suggestions && Array.isArray(jsonResponse.suggestions)) {
+          suggestions = jsonResponse.suggestions
+        } else if (Array.isArray(jsonResponse)) {
+          suggestions = jsonResponse
+        } else {
+          console.warn('⚠️ Unexpected JSON structure:', jsonResponse)
+          suggestions = []
+        }
+        
+        console.log('✅ Successfully parsed AI drug suggestions:', suggestions.length)
+        console.log('📋 Suggestions data:', suggestions)
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse drug suggestions JSON:', parseError.message)
+        console.warn('⚠️ Raw response:', data.choices[0]?.message?.content)
+        // Fallback: create basic suggestions from text
+        suggestions = []
+      }
+
+      // Track token usage
+      if (data.usage) {
+        aiTokenTracker.trackUsage(
+          'generateAIDrugSuggestions',
+          data.usage.prompt_tokens,
+          data.usage.completion_tokens,
+          'gpt-4o-mini',
+          doctorId
+        )
+      }
+
+      console.log('✅ AI drug suggestions generated:', suggestions.length)
+      return suggestions
+
+    } catch (error) {
+      console.error('❌ Error generating AI drug suggestions:', error)
       throw error
     }
   }

@@ -19,6 +19,11 @@
   let showMedicationSuggestionsInline = false
   let showCombinedAnalysis = false
   
+  // Chatbot variables
+  let chatMessage = ''
+  let chatLoading = false
+  let chatMessages = []
+  
   // Generate single optimized AI analysis (recommendations + medication suggestions)
   const generateComprehensiveAnalysis = async () => {
     console.log('🚀 AI Button Clicked! Starting comprehensive analysis...')
@@ -107,33 +112,111 @@
     if (!text) return ''
     
     return text
-      // Convert numbered lists to proper HTML
-      .replace(/(\d+\.\s)/g, '<br><strong>$1</strong>')
-      // Convert bullet points to proper HTML
-      .replace(/^[\s]*[-•]\s/gm, '<br>• ')
-      // Convert section headers (lines that end with colon)
-      .replace(/^([^:\n]+):$/gm, '<br><h6 class="text-primary mb-2 mt-3">$1:</h6>')
+      // Remove hash symbols (###)
+      .replace(/#{1,6}\s*/g, '')
+      // Convert numbered lists to proper HTML (minimal spacing)
+      .replace(/(\d+\.\s)/g, '<strong>$1</strong>')
+      // Convert bullet points to proper HTML (minimal spacing)
+      .replace(/^[\s]*[-•]\s/gm, '• ')
+      // Convert section headers (lines that end with colon) - compact
+      .replace(/^([^:\n]+):$/gm, '<h6 class="text-primary mb-1 mt-1">$1:</h6>')
       // Convert bold text patterns
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       // Convert italic text patterns
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      // Convert line breaks
-      .replace(/\n/g, '<br>')
-      // Clean up multiple line breaks
-      .replace(/(<br>){3,}/g, '<br><br>')
-      // Add proper spacing after headers
-      .replace(/(<h6[^>]*>.*?<\/h6>)/g, '$1<br>')
-      // Clean up leading/trailing breaks
-      .replace(/^(<br>)+|(<br>)+$/g, '')
+      // Convert line breaks to minimal spacing
+      .replace(/\n/g, ' ')
+      // Clean up multiple spaces
+      .replace(/\s{2,}/g, ' ')
+      // Clean up leading/trailing spaces
+      .replace(/^\s+|\s+$/g, '')
+  }
+
+  // Chatbot functions
+  const sendChatMessage = async () => {
+    if (!chatMessage.trim()) return
+    
+    const userMessage = chatMessage.trim()
+    chatMessage = ''
+    chatLoading = true
+    
+    // Add user message to chat
+    chatMessages = [...chatMessages, {
+      type: 'user',
+      content: userMessage,
+      timestamp: new Date()
+    }]
+    
+    try {
+      // Generate token-optimized AI response for chat
+      const symptomsText = symptoms && symptoms.length > 0 ? symptoms.map(s => s.symptom).join(', ') : 'No symptoms recorded'
+      const analysisSummary = recommendations && recommendations.length > 0 ? recommendations.substring(0, 500) : 'No previous analysis available'
+      
+      const chatPrompt = `You are a medical AI assistant. Answer this question concisely and professionally: "${userMessage}". 
+
+Context: Patient symptoms: ${symptomsText}
+Previous analysis summary: ${analysisSummary}
+
+Provide a brief, focused answer (max 200 words) with clear medical guidance.`
+
+      console.log('🤖 Chat request:', { userMessage, symptomsText, analysisSummary })
+
+      const response = await openaiService.makeOpenAIRequest('chat/completions', {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a medical AI assistant. Provide concise, professional medical guidance. Keep responses brief and focused (under 200 words). Use clear formatting with headers and bullet points when appropriate.'
+          },
+          {
+            role: 'user',
+            content: chatPrompt
+          }
+        ],
+        max_tokens: 300,
+        temperature: 0.1
+      }, 'chatbotResponse', {
+        symptoms: symptomsText,
+        question: userMessage,
+        doctorId: doctorId
+      })
+      
+      console.log('🤖 Chat response:', response)
+      
+      // Add AI response to chat
+      chatMessages = [...chatMessages, {
+        type: 'ai',
+        content: response.choices[0].message.content,
+        timestamp: new Date()
+      }]
+      
+    } catch (error) {
+      console.error('❌ Chat error:', error)
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        symptoms: symptoms,
+        recommendations: recommendations,
+        doctorId: doctorId
+      })
+      
+      chatMessages = [...chatMessages, {
+        type: 'ai',
+        content: `I apologize, but I encountered an error while processing your question: "${error.message}". Please try again or rephrase your question.`,
+        timestamp: new Date()
+      }]
+    } finally {
+      chatLoading = false
+    }
   }
 </script>
 
 <div class="ai-recommendations">
   <!-- AI Comprehensive Analysis Button -->
   {#if symptoms && symptoms.length > 0}
-    <div class="mb-3">
+    <div class="mb-3 text-center">
       <button 
-        class="btn btn-outline-danger btn-sm w-100"
+        class="ai-assistant-btn"
         on:click={generateComprehensiveAnalysis}
         disabled={loading || !isOpenAIConfigured}
         title="Generate comprehensive AI analysis including medical recommendations and medication suggestions"
@@ -141,8 +224,8 @@
         {#if loading}
           <span class="spinner-border spinner-border-sm me-2" role="status"></span>
         {/if}
-        <i class="fas fa-brain me-2"></i>
-        AI-Powered Medical Intelligence
+        <i class="fas fa-sparkles me-2"></i>
+        AI Assistant
       </button>
     </div>
   {:else}
@@ -264,14 +347,113 @@
           
           <!-- Single Combined Analysis -->
           {#if recommendations}
-            <div class="mb-2">
-              <div class="max-height-300 overflow-auto p-3 bg-light rounded border">
+            <div class="mb-4">
+              <div class="p-3 bg-light rounded border">
                 <div class="analysis-text">
                   {@html formatRecommendations(recommendations)}
                 </div>
               </div>
             </div>
           {/if}
+          
+          <!-- AI Chatbot Interface -->
+          <div class="ai-chatbot-interface mt-3">
+            <div class="card border-primary">
+              <div class="card-header bg-primary text-white py-2">
+                <h6 class="mb-0 small">
+                  <i class="fas fa-comments me-1"></i>Ask AI Assistant
+                </h6>
+                <small class="small">Have follow-up questions? Ask our AI assistant for more details.</small>
+              </div>
+              <div class="card-body p-2">
+                <div class="chat-messages mb-2" id="chatMessages">
+                  <!-- Initial AI message -->
+                  <div class="message ai-message mb-3">
+                    <div class="message-avatar">
+                      <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="message-content">
+                      <div class="message-bubble">
+                        Hello! I've analyzed the patient's symptoms and provided recommendations above. Do you have any specific questions about the diagnosis, treatment options, or medication interactions? I'm here to help clarify any aspects of the analysis.
+                      </div>
+                      <div class="message-time">
+                        {new Date().toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Dynamic chat messages -->
+                  {#each chatMessages as message (message.timestamp)}
+                    <div class="message {message.type}-message mb-3">
+                      {#if message.type === 'user'}
+                        <div class="message-content">
+                          <div class="message-bubble">
+                            {message.content}
+                          </div>
+                          <div class="message-time">
+                            {message.timestamp.toLocaleTimeString()}
+                          </div>
+                        </div>
+                        <div class="message-avatar">
+                          <i class="fas fa-user-md"></i>
+                        </div>
+                      {:else}
+                        <div class="message-avatar">
+                          <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="message-content">
+                          <div class="message-bubble">
+                            {@html formatRecommendations(message.content)}
+                          </div>
+                          <div class="message-time">
+                            {message.timestamp.toLocaleTimeString()}
+                          </div>
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+                  
+                  <!-- Loading indicator -->
+                  {#if chatLoading}
+                    <div class="message ai-message mb-3">
+                      <div class="message-avatar">
+                        <i class="fas fa-robot"></i>
+                      </div>
+                      <div class="message-content">
+                        <div class="message-bubble">
+                          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                          Thinking...
+                        </div>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+                
+                <div class="chat-input">
+                  <div class="input-group input-group-sm">
+                    <input 
+                      type="text" 
+                      class="form-control form-control-sm" 
+                      placeholder="Ask a question about the analysis..."
+                      bind:value={chatMessage}
+                      on:keydown={(e) => e.key === 'Enter' && sendChatMessage()}
+                    />
+                    <button 
+                      class="btn btn-primary btn-sm" 
+                      type="button"
+                      on:click={sendChatMessage}
+                      disabled={!chatMessage.trim() || chatLoading}
+                    >
+                      {#if chatLoading}
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                      {/if}
+                      <i class="fas fa-paper-plane"></i>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -279,6 +461,221 @@
 </div>
 
 <style>
+  /* AI Assistant Button Styling */
+  .ai-assistant-btn {
+    background-color: #2c2c2c;
+    border: 1px solid #4a4a4a;
+    color: white;
+    padding: 0.6rem 1.2rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    min-width: auto;
+    white-space: nowrap;
+  }
+
+  .ai-assistant-btn:hover:not(:disabled) {
+    background-color: #3a3a3a;
+    border-color: #5a5a5a;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .ai-assistant-btn:active:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
+
+  .ai-assistant-btn:disabled {
+    background-color: #1a1a1a;
+    border-color: #3a3a3a;
+    color: #666;
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .ai-assistant-btn i.fa-sparkles {
+    color: #fff;
+    font-size: 1rem;
+  }
+
+  .ai-assistant-btn .spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.1em;
+  }
+
+  /* Chatbot Interface Styling - Image Format */
+  .ai-chatbot-interface {
+    margin-top: 0.5rem;
+  }
+
+  .chat-messages {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+  }
+
+  .message {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    gap: 0.75rem;
+  }
+
+  .user-message {
+    flex-direction: row-reverse;
+  }
+
+  .message-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+
+  .ai-message .message-avatar {
+    background: linear-gradient(135deg, #007bff, #0056b3);
+    color: white;
+  }
+
+  .user-message .message-avatar {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+    color: white;
+  }
+
+  .message-content {
+    max-width: 70%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .user-message .message-content {
+    align-items: flex-end;
+  }
+
+  .ai-message .message-content {
+    align-items: flex-start;
+  }
+
+  .message-bubble {
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    word-wrap: break-word;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    max-width: 100%;
+  }
+
+  .ai-message .message-bubble {
+    background-color: white;
+    color: #333;
+    border: 1px solid #e9ecef;
+    border-bottom-left-radius: 0.25rem;
+  }
+
+  .user-message .message-bubble {
+    background-color: #007bff;
+    color: white;
+    border-bottom-right-radius: 0.25rem;
+  }
+
+  .message-time {
+    font-size: 0.75rem;
+    color: #6c757d;
+    padding: 0 0.5rem;
+  }
+
+  .ai-message .message-bubble h6 {
+    color: #007bff !important;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .ai-message .message-bubble strong {
+    color: #333;
+    font-weight: 600;
+  }
+
+  .ai-message .message-bubble ul {
+    padding-left: 1rem;
+    margin: 0.5rem 0;
+  }
+
+  .ai-message .message-bubble li {
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+  }
+
+  .chat-input .form-control {
+    border-radius: 0.75rem 0 0 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .chat-input .btn {
+    border-radius: 0 0.75rem 0.75rem 0;
+    font-size: 0.875rem;
+  }
+
+  .chat-input .form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.15rem rgba(0, 123, 255, 0.25);
+  }
+
+  /* Ultra Compact AI Analysis Styling */
+  .compact-text {
+    margin: 0.1rem 0;
+    font-size: 0.85rem;
+    line-height: 1.1;
+    padding: 0;
+  }
+
+  .compact-list {
+    margin: 0.1rem 0;
+    padding-left: 0.8rem;
+  }
+
+  .compact-item {
+    margin: 0.05rem 0;
+    font-size: 0.85rem;
+    line-height: 1.1;
+    padding: 0;
+  }
+
+  /* Remove all extra spacing from AI analysis content */
+  .ai-analysis-content p,
+  .ai-analysis-content ul,
+  .ai-analysis-content li {
+    margin: 0.05rem 0 !important;
+    line-height: 1.1 !important;
+  }
+
+  .ai-analysis-content {
+    padding: 0.5rem !important;
+  }
+
+  .ai-analysis-content h6,
+  .ai-analysis-content h5,
+  .ai-analysis-content h4 {
+    margin: 0.1rem 0 !important;
+    line-height: 1.2 !important;
+  }
+
   /* Bootstrap 5 utility classes used for card styling */
   .max-height-300 {
     max-height: 300px;

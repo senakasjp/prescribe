@@ -44,6 +44,11 @@
   let prescriptionsFinalized = false
   let printButtonClicked = false
   
+  // AI-assisted drug suggestions
+  let aiDrugSuggestions = []
+  let loadingAIDrugSuggestions = false
+  let showAIDrugSuggestions = false
+  
   // Patient edit mode
   let isEditingPatient = false
   let editPatientData = {
@@ -679,6 +684,87 @@
     } catch (error) {
       console.error('❌ Error completing prescriptions:', error)
     }
+  }
+
+  // Generate AI-assisted drug suggestions
+  const generateAIDrugSuggestions = async () => {
+    if (!symptoms || symptoms.length === 0) {
+      notifyError('Please add symptoms first to generate AI drug suggestions.')
+      return
+    }
+
+    if (!openaiService.isConfigured()) {
+      notifyError('AI service is not configured. Please check your OpenAI API key.')
+      return
+    }
+
+    try {
+      loadingAIDrugSuggestions = true
+      console.log('🤖 Generating AI drug suggestions...')
+      console.log('🔍 Input symptoms:', symptoms)
+      console.log('🔍 Input currentMedications:', currentMedications)
+      console.log('🔍 Input doctorId:', doctorId)
+
+      // Calculate patient age
+      const patientAge = selectedPatient?.dateOfBirth 
+        ? Math.floor((new Date() - new Date(selectedPatient.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000))
+        : null
+
+      console.log('🔍 Calculated patient age:', patientAge)
+
+      const suggestions = await openaiService.generateAIDrugSuggestions(
+        symptoms,
+        currentMedications,
+        patientAge,
+        doctorId
+      )
+
+      console.log('🔍 Received suggestions from AI service:', suggestions)
+      console.log('🔍 Suggestions type:', typeof suggestions)
+      console.log('🔍 Is suggestions array?', Array.isArray(suggestions))
+
+      aiDrugSuggestions = suggestions
+      showAIDrugSuggestions = true
+      console.log('✅ AI drug suggestions generated:', suggestions.length)
+      notifySuccess(`Generated ${suggestions.length} AI drug suggestions!`)
+
+    } catch (error) {
+      console.error('❌ Error generating AI drug suggestions:', error)
+      notifyError('Failed to generate AI drug suggestions: ' + error.message)
+    } finally {
+      loadingAIDrugSuggestions = false
+    }
+  }
+
+  // Add AI suggested drug to prescription
+  const addAISuggestedDrug = (suggestion) => {
+    if (!currentPrescription) {
+      notifyError('Please create a prescription first.')
+      return
+    }
+
+    const medication = {
+      name: suggestion.name,
+      dosage: suggestion.dosage,
+      frequency: suggestion.frequency,
+      duration: suggestion.duration,
+      instructions: suggestion.instructions || '',
+      aiSuggested: true,
+      aiReason: suggestion.reason || ''
+    }
+
+    currentMedications = [...currentMedications, medication]
+    console.log('💊 Added AI suggested drug:', medication)
+    notifySuccess(`Added ${medication.name} to prescription`)
+
+    // Save to Firebase
+    saveCurrentPrescriptions()
+  }
+
+  // Remove AI suggested drug from list
+  const removeAISuggestedDrug = (index) => {
+    aiDrugSuggestions = aiDrugSuggestions.filter((_, i) => i !== index)
+    console.log('🗑️ Removed AI suggested drug at index:', index)
   }
 
   // Print prescriptions to PDF
@@ -1464,10 +1550,21 @@
 <div class="card border-2 border-info shadow-sm">
   <div class="card-header">
     <div class="d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">
-        <i class="fas fa-user me-2"></i>
-        {selectedPatient.firstName} {selectedPatient.lastName}
-      </h5>
+      <div>
+        <h5 class="mb-0">
+          <i class="fas fa-user me-2"></i>
+          {selectedPatient.firstName} {selectedPatient.lastName}
+        </h5>
+        <small class="text-muted">
+          Age: {(() => {
+            const birthDate = new Date(selectedPatient.dateOfBirth)
+            const today = new Date()
+            const age = today.getFullYear() - birthDate.getFullYear()
+            const monthDiff = today.getMonth() - birthDate.getMonth()
+            return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+          })()} years
+        </small>
+      </div>
       <div class="btn-group" role="group">
         <button 
           class="btn {activeTab === 'history' ? 'btn-danger border-0' : 'btn-outline-danger'} btn-sm me-2"
@@ -1476,50 +1573,6 @@
           title="View patient history"
         >
           <i class="fas fa-history me-1"></i>History
-        </button>
-        <button 
-          class="btn btn-success btn-sm me-2" 
-          on:click={async () => { 
-            console.log('🆕 New Prescription button clicked - Creating NEW prescription');
-            activeTab = 'prescriptions'; 
-            showMedicationForm = false; 
-            editingMedication = null;
-            prescriptionFinished = false;
-            
-            // Reset AI check state for new prescription
-            aiCheckComplete = false;
-            aiCheckMessage = '';
-            
-            try {
-              // ALWAYS create a new prescription when button is clicked
-              currentPrescription = await firebaseStorage.createPrescription({
-                patientId: selectedPatient.id,
-                doctorId: doctorId,
-                notes: '',
-                isNew: true  // Mark as new prescription
-              });
-              console.log('📋 Created NEW prescription:', currentPrescription.id);
-              
-              // Initialize new prescription
-              currentMedications = [];
-              prescriptionNotes = '';
-              isNewPrescriptionSession = true;
-              
-              // Add the new prescription to the prescriptions array immediately
-              prescriptions = [...prescriptions, currentPrescription];
-              console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
-              
-              console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
-              notifySuccess('New prescription created! Click "Add Drug" to add medications.');
-            } catch (error) {
-              console.error('❌ Error creating new prescription:', error);
-              notifyError('Failed to create new prescription: ' + error.message);
-            }
-          }}
-          disabled={loading || isEditingPatient}
-          title="Create a new prescription"
-        >
-          <i class="fas fa-plus me-1"></i>New Prescription
         </button>
         <button 
           class="btn btn-outline-primary btn-sm" 
@@ -2593,10 +2646,94 @@
                 >
                   <i class="fas fa-plus me-1"></i>Add Drug
                 </button>
+                
+                <!-- AI Drug Suggestions Button -->
+                <button 
+                    class="btn btn-outline-info btn-sm" 
+                    on:click={generateAIDrugSuggestions}
+                    disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured()}
+                    title={!symptoms || symptoms.length === 0 ? "Add symptoms first" : "Get AI-assisted drug suggestions"}
+                >
+                  {#if loadingAIDrugSuggestions}
+                    <i class="fas fa-spinner fa-spin me-1"></i>Generating...
+                  {:else}
+                    <i class="fas fa-brain me-1"></i>AI Suggestions
+                  {/if}
+                </button>
               </div>
           </div>
             <div class="card-body">
           
+          <!-- AI Drug Suggestions Section -->
+          {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0}
+            <div class="card border-info mb-3 shadow-sm">
+              <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                  <i class="fas fa-brain me-2"></i>
+                  AI Drug Suggestions ({aiDrugSuggestions.length})
+                </h6>
+                <button 
+                  class="btn btn-outline-light btn-sm"
+                  on:click={() => showAIDrugSuggestions = false}
+                  title="Hide AI suggestions"
+                >
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="card-body p-2">
+                <div class="row">
+                  {#each aiDrugSuggestions as suggestion, index}
+                    <div class="col-md-6 mb-2">
+                      <div class="card border-light">
+                        <div class="card-body p-2">
+                          <div class="d-flex justify-content-between align-items-start mb-1">
+                            <h6 class="card-title mb-0 text-primary">{suggestion.name}</h6>
+                            <div class="btn-group btn-group-sm">
+                              <button 
+                                class="btn btn-success btn-sm"
+                                on:click={() => addAISuggestedDrug(suggestion)}
+                                disabled={!currentPrescription}
+                                title="Add to prescription"
+                              >
+                                <i class="fas fa-plus"></i>
+                              </button>
+                              <button 
+                                class="btn btn-outline-danger btn-sm"
+                                on:click={() => removeAISuggestedDrug(index)}
+                                title="Remove suggestion"
+                              >
+                                <i class="fas fa-times"></i>
+                              </button>
+                            </div>
+                          </div>
+                          <div class="small text-muted mb-1">
+                            <strong>Dosage:</strong> {suggestion.dosage} • <strong>Frequency:</strong> {suggestion.frequency} • <strong>Duration:</strong> {suggestion.duration}
+                          </div>
+                          {#if suggestion.instructions}
+                            <div class="small text-muted mb-1">
+                              <strong>Instructions:</strong> {suggestion.instructions}
+                            </div>
+                          {/if}
+                          {#if suggestion.reason}
+                            <div class="small text-info">
+                              <i class="fas fa-lightbulb me-1"></i>
+                              <strong>Reason:</strong> {suggestion.reason}
+                            </div>
+                          {/if}
+                        </div>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+                <div class="text-center mt-2">
+                  <small class="text-muted">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Review and add suggestions to your prescription. You can modify dosages and instructions as needed.
+                  </small>
+                </div>
+              </div>
+            </div>
+          {/if}
           
           <!-- Full AI Analysis Option - Only show if prescription is finished and has medications -->
           {#if aiCheckComplete && prescriptionFinished && currentMedications.length > 0}
@@ -2704,13 +2841,28 @@
               {#each currentMedications as medication, index}
                 <div class="medication-item d-flex justify-content-between align-items-center py-2 border-bottom">
                   <div class="flex-grow-1">
-                    <div class="fw-bold fs-6">{medication.name}</div>
+                    <div class="fw-bold fs-6">
+                      {medication.name}
+                      {#if medication.aiSuggested}
+                        <span class="badge bg-info ms-2">
+                          <i class="fas fa-brain me-1"></i>AI Suggested
+                        </span>
+                      {/if}
+                    </div>
                     <small class="text-muted">
                       {medication.dosage} • {medication.frequency} • {medication.duration}
                     </small>
                     {#if medication.instructions}
                       <div class="mt-1">
                         <small class="text-muted">{medication.instructions}</small>
+                      </div>
+                    {/if}
+                    {#if medication.aiReason}
+                      <div class="mt-1">
+                        <small class="text-info">
+                          <i class="fas fa-lightbulb me-1"></i>
+                          <strong>AI Reason:</strong> {medication.aiReason}
+                        </small>
                       </div>
                     {/if}
                   </div>
