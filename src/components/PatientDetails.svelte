@@ -713,6 +713,114 @@
   let showPharmacyModal = false
   let availablePharmacies = []
   let selectedPharmacies = []
+  
+  // Reports functionality
+  let showReportForm = false
+  let reportText = ''
+  let reportFiles = []
+  let reportType = 'text' // 'text', 'pdf', 'image'
+  let reportTitle = ''
+  let reportDate = new Date().toISOString().split('T')[0]
+  let reports = []
+  
+  // Diagnostic data functionality
+  let showDiagnosticForm = false
+  let diagnosticTitle = ''
+  let diagnosticDescription = ''
+  let diagnosticCode = ''
+  let diagnosticSeverity = 'moderate' // mild, moderate, severe
+  let diagnosticDate = new Date().toISOString().split('T')[0]
+  let diagnoses = []
+
+  // Report functions
+  const addReport = () => {
+    if (!reportTitle.trim()) {
+      notifyError('Please enter a report title')
+      return
+    }
+    
+    if (reportType === 'text' && !reportText.trim()) {
+      notifyError('Please enter report content')
+      return
+    }
+    
+    if (reportType !== 'text' && reportFiles.length === 0) {
+      notifyError('Please select a file to upload')
+      return
+    }
+    
+    const newReport = {
+      id: Date.now().toString(),
+      title: reportTitle,
+      type: reportType,
+      date: reportDate,
+      content: reportType === 'text' ? reportText : null,
+      files: reportType !== 'text' ? reportFiles : [],
+      createdAt: new Date().toISOString()
+    }
+    
+    reports = [...reports, newReport]
+    
+    // Reset form
+    reportTitle = ''
+    reportText = ''
+    reportFiles = []
+    reportType = 'text'
+    reportDate = new Date().toISOString().split('T')[0]
+    showReportForm = false
+    
+    notifySuccess('Report added successfully!')
+  }
+  
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files)
+    reportFiles = files
+  }
+  
+  const removeReport = (reportId) => {
+    reports = reports.filter(r => r.id !== reportId)
+    notifySuccess('Report removed successfully!')
+  }
+
+  // Diagnostic functions
+  const addDiagnosis = () => {
+    if (!diagnosticTitle.trim()) {
+      notifyError('Please enter a diagnosis title')
+      return
+    }
+    
+    if (!diagnosticDescription.trim()) {
+      notifyError('Please enter a diagnosis description')
+      return
+    }
+    
+    const newDiagnosis = {
+      id: Date.now().toString(),
+      title: diagnosticTitle,
+      description: diagnosticDescription,
+      code: diagnosticCode,
+      severity: diagnosticSeverity,
+      date: diagnosticDate,
+      createdAt: new Date().toISOString()
+    }
+    
+    diagnoses = [...diagnoses, newDiagnosis]
+    
+    // Reset form
+    diagnosticTitle = ''
+    diagnosticDescription = ''
+    diagnosticCode = ''
+    diagnosticSeverity = 'moderate'
+    diagnosticDate = new Date().toISOString().split('T')[0]
+    showDiagnosticForm = false
+    
+    notifySuccess('Diagnosis added successfully!')
+  }
+  
+  const removeDiagnosis = (diagnosisId) => {
+    diagnoses = diagnoses.filter(d => d.id !== diagnosisId)
+    notifySuccess('Diagnosis removed successfully!')
+  }
 
   // Show pharmacy selection modal
   const showPharmacySelection = async () => {
@@ -1945,17 +2053,205 @@
             </h6>
             <button 
               class="btn btn-primary btn-sm" 
-              on:click={() => notifySuccess('Report upload feature coming soon!')}
+              on:click={() => showReportForm = true}
             >
               <i class="fas fa-plus me-1"></i>Add Report
             </button>
           </div>
           
-          <div class="text-center p-4">
-            <i class="fas fa-file-medical fa-2x text-muted mb-3"></i>
-            <p class="text-muted">No medical reports available for this patient.</p>
-            <p class="text-muted small">Upload lab results, imaging reports, and other medical documents here.</p>
-          </div>
+          <!-- Add Report Form -->
+          {#if showReportForm}
+            <div class="card mb-4">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-plus me-2"></i>Add New Report
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Report Title</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      bind:value={reportTitle}
+                      placeholder="e.g., Blood Test Results, X-Ray Report"
+                    />
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Report Date</label>
+                    <input 
+                      type="date" 
+                      class="form-control" 
+                      bind:value={reportDate}
+                    />
+                  </div>
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">Report Type</label>
+                  <div class="nav nav-tabs nav-fill" role="tablist">
+                    <input 
+                      type="radio" 
+                      class="btn-check" 
+                      id="report-text" 
+                      bind:group={reportType} 
+                      value="text"
+                    />
+                    <label class="nav-link {reportType === 'text' ? 'active' : ''}" for="report-text" role="tab">
+                      <i class="fas fa-keyboard me-2"></i>Text Entry
+                    </label>
+                    
+                    <input 
+                      type="radio" 
+                      class="btn-check" 
+                      id="report-pdf" 
+                      bind:group={reportType} 
+                      value="pdf"
+                    />
+                    <label class="nav-link {reportType === 'pdf' ? 'active' : ''}" for="report-pdf" role="tab">
+                      <i class="fas fa-file-pdf me-2"></i>PDF Upload
+                    </label>
+                    
+                    <input 
+                      type="radio" 
+                      class="btn-check" 
+                      id="report-image" 
+                      bind:group={reportType} 
+                      value="image"
+                    />
+                    <label class="nav-link {reportType === 'image' ? 'active' : ''}" for="report-image" role="tab">
+                      <i class="fas fa-image me-2"></i>Image Upload
+                    </label>
+                  </div>
+                </div>
+                
+                {#if reportType === 'text'}
+                  <div class="mb-3">
+                    <label class="form-label">Report Content</label>
+                    <textarea 
+                      class="form-control" 
+                      rows="6" 
+                      bind:value={reportText}
+                      placeholder="Enter the report details, findings, and observations..."
+                    ></textarea>
+                  </div>
+                {:else}
+                  <div class="mb-3">
+                    <label class="form-label">
+                      Upload {reportType === 'pdf' ? 'PDF' : 'Image'} File
+                    </label>
+                    <input 
+                      type="file" 
+                      class="form-control" 
+                      accept={reportType === 'pdf' ? '.pdf' : 'image/*'}
+                      on:change={handleFileUpload}
+                      multiple={false}
+                    />
+                    {#if reportFiles.length > 0}
+                      <div class="mt-2">
+                        <small class="text-muted">
+                          Selected: {reportFiles[0].name} ({(reportFiles[0].size / 1024 / 1024).toFixed(2)} MB)
+                        </small>
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+                
+                <div class="d-flex gap-2">
+                  <button 
+                    class="btn btn-success btn-sm" 
+                    on:click={addReport}
+                  >
+                    <i class="fas fa-save me-1"></i>Save Report
+                  </button>
+                  <button 
+                    class="btn btn-outline-secondary btn-sm" 
+                    on:click={() => {
+                      showReportForm = false
+                      reportTitle = ''
+                      reportText = ''
+                      reportFiles = []
+                      reportType = 'text'
+                      reportDate = new Date().toISOString().split('T')[0]
+                    }}
+                  >
+                    <i class="fas fa-times me-1"></i>Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Reports List -->
+          {#if reports.length > 0}
+            <div class="row">
+              {#each reports as report (report.id)}
+                <div class="col-md-6 mb-3">
+                  <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                      <h6 class="mb-0">
+                        {#if report.type === 'text'}
+                          <i class="fas fa-keyboard text-primary me-2"></i>
+                        {:else if report.type === 'pdf'}
+                          <i class="fas fa-file-pdf text-danger me-2"></i>
+                        {:else}
+                          <i class="fas fa-image text-success me-2"></i>
+                        {/if}
+                        {report.title}
+                      </h6>
+                      <button 
+                        class="btn btn-outline-danger btn-sm"
+                        on:click={() => removeReport(report.id)}
+                        title="Remove report"
+                      >
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
+                    <div class="card-body">
+                      <p class="text-muted small mb-2">
+                        <i class="fas fa-calendar me-1"></i>
+                        {new Date(report.date).toLocaleDateString()}
+                      </p>
+                      {#if report.type === 'text'}
+                        <div class="report-content">
+                          <p class="mb-0">{report.content}</p>
+                        </div>
+                      {:else}
+                        <div class="wave-file-view">
+                          <div class="wave-container">
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                            <div class="wave-bar"></div>
+                          </div>
+                          <div class="file-info">
+                            <i class="fas fa-file-upload text-primary mb-1"></i>
+                            <p class="text-muted small mb-0">
+                              {report.files.length} file(s) uploaded
+                            </p>
+                            <small class="text-muted">
+                              {report.files[0]?.name || 'File uploaded'}
+                            </small>
+                          </div>
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div class="text-center p-4">
+              <i class="fas fa-file-medical fa-2x text-muted mb-3"></i>
+              <p class="text-muted">No medical reports available for this patient.</p>
+              <p class="text-muted small">Add lab results, imaging reports, and other medical documents here.</p>
+            </div>
+          {/if}
           
           <!-- Navigation Buttons -->
           <div class="row mt-3">
@@ -1988,17 +2284,150 @@
             </h6>
             <button 
               class="btn btn-primary btn-sm" 
-              on:click={() => notifySuccess('Diagnosis entry feature coming soon!')}
+              on:click={() => showDiagnosticForm = true}
             >
               <i class="fas fa-plus me-1"></i>Add Diagnosis
             </button>
           </div>
           
-          <div class="text-center p-4">
-            <i class="fas fa-stethoscope fa-2x text-muted mb-3"></i>
-            <p class="text-muted">No diagnoses recorded for this patient.</p>
-            <p class="text-muted small">Record medical diagnoses, conditions, and assessments here.</p>
-          </div>
+          <!-- Add Diagnosis Form -->
+          {#if showDiagnosticForm}
+            <div class="card mb-4">
+              <div class="card-header">
+                <h6 class="mb-0">
+                  <i class="fas fa-plus me-2"></i>Add New Diagnosis
+                </h6>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Diagnosis Title</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      bind:value={diagnosticTitle}
+                      placeholder="e.g., Hypertension, Diabetes Type 2"
+                    />
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Diagnosis Date</label>
+                    <input 
+                      type="date" 
+                      class="form-control" 
+                      bind:value={diagnosticDate}
+                    />
+                  </div>
+                </div>
+                
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Diagnostic Code (Optional)</label>
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      bind:value={diagnosticCode}
+                      placeholder="e.g., ICD-10: I10, E11.9"
+                    />
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label">Severity</label>
+                    <select class="form-select" bind:value={diagnosticSeverity}>
+                      <option value="mild">Mild</option>
+                      <option value="moderate">Moderate</option>
+                      <option value="severe">Severe</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div class="mb-3">
+                  <label class="form-label">Diagnosis Description</label>
+                  <textarea 
+                    class="form-control" 
+                    rows="4" 
+                    bind:value={diagnosticDescription}
+                    placeholder="Describe the diagnosis, symptoms, findings, and clinical assessment..."
+                  ></textarea>
+                </div>
+                
+                <div class="d-flex gap-2">
+                  <button 
+                    class="btn btn-success btn-sm" 
+                    on:click={addDiagnosis}
+                  >
+                    <i class="fas fa-save me-1"></i>Save Diagnosis
+                  </button>
+                  <button 
+                    class="btn btn-outline-secondary btn-sm" 
+                    on:click={() => {
+                      showDiagnosticForm = false
+                      diagnosticTitle = ''
+                      diagnosticDescription = ''
+                      diagnosticCode = ''
+                      diagnosticSeverity = 'moderate'
+                      diagnosticDate = new Date().toISOString().split('T')[0]
+                    }}
+                  >
+                    <i class="fas fa-times me-1"></i>Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Diagnoses List -->
+          {#if diagnoses.length > 0}
+            <div class="row">
+              {#each diagnoses as diagnosis (diagnosis.id)}
+                <div class="col-md-6 mb-3">
+                  <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                      <h6 class="mb-0">
+                        <i class="fas fa-stethoscope text-primary me-2"></i>
+                        {diagnosis.title}
+                      </h6>
+                      <button 
+                        class="btn btn-outline-danger btn-sm"
+                        on:click={() => removeDiagnosis(diagnosis.id)}
+                        title="Remove diagnosis"
+                      >
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
+                    <div class="card-body">
+                      <div class="row mb-2">
+                        <div class="col-6">
+                          <small class="text-muted">
+                            <i class="fas fa-calendar me-1"></i>
+                            {new Date(diagnosis.date).toLocaleDateString()}
+                          </small>
+                        </div>
+                        <div class="col-6">
+                          <span class="badge bg-{diagnosis.severity === 'mild' ? 'success' : diagnosis.severity === 'moderate' ? 'warning' : 'danger'}">
+                            {diagnosis.severity.charAt(0).toUpperCase() + diagnosis.severity.slice(1)}
+                          </span>
+                        </div>
+                      </div>
+                      {#if diagnosis.code}
+                        <p class="text-muted small mb-2">
+                          <i class="fas fa-code me-1"></i>
+                          <strong>Code:</strong> {diagnosis.code}
+                        </p>
+                      {/if}
+                      <div class="diagnosis-description">
+                        <p class="mb-0">{diagnosis.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div class="text-center p-4">
+              <i class="fas fa-stethoscope fa-2x text-muted mb-3"></i>
+              <p class="text-muted">No diagnoses recorded for this patient.</p>
+              <p class="text-muted small">Record medical diagnoses, conditions, and assessments here.</p>
+            </div>
+          {/if}
           
           <!-- AI Recommendations Component -->
           <AIRecommendations 
@@ -2616,6 +3045,86 @@
     border-left: 4px solid var(--bs-success);
     margin: 0.2rem 0;
     margin-left: 0;
+  }
+
+  /* Wave file view animation */
+  .wave-file-view {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 0.5rem;
+    border: 1px solid #dee2e6;
+  }
+
+  .wave-container {
+    display: flex;
+    align-items: end;
+    gap: 2px;
+    height: 40px;
+  }
+
+  .wave-bar {
+    width: 4px;
+    background: linear-gradient(to top, #007bff, #0056b3);
+    border-radius: 2px;
+    animation: wave 1.5s ease-in-out infinite;
+  }
+
+  .wave-bar:nth-child(1) { height: 20px; animation-delay: 0s; }
+  .wave-bar:nth-child(2) { height: 30px; animation-delay: 0.1s; }
+  .wave-bar:nth-child(3) { height: 25px; animation-delay: 0.2s; }
+  .wave-bar:nth-child(4) { height: 35px; animation-delay: 0.3s; }
+  .wave-bar:nth-child(5) { height: 28px; animation-delay: 0.4s; }
+  .wave-bar:nth-child(6) { height: 32px; animation-delay: 0.5s; }
+  .wave-bar:nth-child(7) { height: 26px; animation-delay: 0.6s; }
+  .wave-bar:nth-child(8) { height: 22px; animation-delay: 0.7s; }
+
+  @keyframes wave {
+    0%, 100% {
+      transform: scaleY(1);
+      opacity: 0.7;
+    }
+    50% {
+      transform: scaleY(1.5);
+      opacity: 1;
+    }
+  }
+
+  .file-info {
+    flex: 1;
+    text-align: center;
+  }
+
+  .file-info i {
+    font-size: 1.5rem;
+  }
+
+  /* Responsive wave view */
+  @media (max-width: 576px) {
+    .wave-file-view {
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 0.75rem;
+    }
+    
+    .wave-container {
+      height: 30px;
+    }
+    
+    .wave-bar {
+      width: 3px;
+    }
+    
+    .wave-bar:nth-child(1) { height: 15px; }
+    .wave-bar:nth-child(2) { height: 22px; }
+    .wave-bar:nth-child(3) { height: 18px; }
+    .wave-bar:nth-child(4) { height: 25px; }
+    .wave-bar:nth-child(5) { height: 20px; }
+    .wave-bar:nth-child(6) { height: 24px; }
+    .wave-bar:nth-child(7) { height: 19px; }
+    .wave-bar:nth-child(8) { height: 16px; }
   }
 
 
