@@ -1534,8 +1534,58 @@
   </div>
   
   <div class="card-body">
-    <!-- Patient Tabs -->
-    <PatientTabs {activeTab} {enabledTabs} onTabChange={handleTabChange} />
+    <!-- Progress Bar -->
+    <div class="progress-bar-container mb-4">
+      <div class="progress-steps d-flex justify-content-between align-items-center">
+        <div class="step {activeTab === 'overview' ? 'active' : ''} {enabledTabs.includes('overview') ? 'enabled' : 'disabled'}" 
+             on:click={() => enabledTabs.includes('overview') && handleTabChange('overview')}>
+          <div class="step-circle">
+            <i class="fas fa-user"></i>
+          </div>
+          <div class="step-label">Overview</div>
+        </div>
+        
+        <div class="step-connector"></div>
+        
+        <div class="step {activeTab === 'symptoms' ? 'active' : ''} {enabledTabs.includes('symptoms') ? 'enabled' : 'disabled'}" 
+             on:click={() => enabledTabs.includes('symptoms') && handleTabChange('symptoms')}>
+          <div class="step-circle">
+            <i class="fas fa-thermometer-half"></i>
+          </div>
+          <div class="step-label">Symptoms</div>
+        </div>
+        
+        <div class="step-connector"></div>
+        
+        <div class="step {activeTab === 'reports' ? 'active' : ''} {enabledTabs.includes('reports') ? 'enabled' : 'disabled'}" 
+             on:click={() => enabledTabs.includes('reports') && handleTabChange('reports')}>
+          <div class="step-circle">
+            <i class="fas fa-file-medical"></i>
+          </div>
+          <div class="step-label">Reports</div>
+        </div>
+        
+        <div class="step-connector"></div>
+        
+        <div class="step {activeTab === 'diagnoses' ? 'active' : ''} {enabledTabs.includes('diagnoses') ? 'enabled' : 'disabled'}" 
+             on:click={() => enabledTabs.includes('diagnoses') && handleTabChange('diagnoses')}>
+          <div class="step-circle">
+            <i class="fas fa-stethoscope"></i>
+          </div>
+          <div class="step-label">Diagnoses</div>
+        </div>
+        
+        <div class="step-connector"></div>
+        
+        <div class="step {activeTab === 'prescriptions' ? 'active' : ''} {enabledTabs.includes('prescriptions') ? 'enabled' : 'disabled'}" 
+             on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}>
+          <div class="step-circle">
+            <i class="fas fa-prescription-bottle-alt"></i>
+          </div>
+          <div class="step-label">Prescriptions</div>
+        </div>
+      </div>
+    </div>
     
     <!-- Tab Content -->
     <div class="tab-content mt-3">
@@ -3125,6 +3175,143 @@
     .wave-bar:nth-child(6) { height: 24px; }
     .wave-bar:nth-child(7) { height: 19px; }
     .wave-bar:nth-child(8) { height: 16px; }
+  }
+
+  /* Progress Bar Styling */
+  .progress-bar-container {
+    padding: 1rem 0;
+  }
+
+  .progress-steps {
+    position: relative;
+    max-width: 100%;
+  }
+
+  .step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
+    position: relative;
+  }
+
+  .step.disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .step.enabled {
+    cursor: pointer;
+  }
+
+  .step.enabled:hover .step-circle {
+    transform: scale(1.1);
+  }
+
+  .step-circle {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+    border: 3px solid #e9ecef;
+    background-color: #f8f9fa;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+  }
+
+  .step.active .step-circle {
+    background-color: #007bff;
+    border-color: #007bff;
+    color: white;
+    box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.25);
+  }
+
+  .step.enabled:not(.active) .step-circle {
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+    color: #495057;
+  }
+
+  .step.disabled .step-circle {
+    background-color: #f8f9fa;
+    border-color: #e9ecef;
+    color: #adb5bd;
+  }
+
+  .step-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-align: center;
+    color: #6c757d;
+    transition: color 0.3s ease;
+  }
+
+  .step.active .step-label {
+    color: #007bff;
+    font-weight: 600;
+  }
+
+  .step.enabled:not(.active) .step-label {
+    color: #495057;
+  }
+
+  .step.disabled .step-label {
+    color: #adb5bd;
+  }
+
+  .step-connector {
+    position: absolute;
+    top: 25px;
+    left: 50%;
+    width: 100%;
+    height: 2px;
+    background-color: #e9ecef;
+    z-index: -1;
+    transform: translateX(-50%);
+  }
+
+  .step.active + .step-connector,
+  .step.enabled + .step-connector {
+    background-color: #007bff;
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .step-circle {
+      width: 40px;
+      height: 40px;
+      font-size: 1rem;
+    }
+    
+    .step-label {
+      font-size: 0.75rem;
+    }
+    
+    .step-connector {
+      top: 20px;
+    }
+  }
+
+  @media (max-width: 576px) {
+    .step-circle {
+      width: 35px;
+      height: 35px;
+      font-size: 0.9rem;
+    }
+    
+    .step-label {
+      font-size: 0.7rem;
+    }
+    
+    .step-connector {
+      top: 17.5px;
+    }
   }
 
 
