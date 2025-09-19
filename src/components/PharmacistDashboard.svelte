@@ -407,11 +407,11 @@
           {/if}
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" on:click={closePrescriptionDetails}>
+          <button type="button" class="btn btn-secondary btn-sm" on:click={closePrescriptionDetails}>
             <i class="fas fa-times me-1"></i>
             Close
           </button>
-          <button type="button" class="btn btn-success">
+          <button type="button" class="btn btn-success btn-sm">
             <i class="fas fa-check me-1"></i>
             Mark as Dispensed
           </button>

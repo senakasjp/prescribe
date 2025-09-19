@@ -526,7 +526,7 @@
                   <div class="btn-group w-100" role="group" aria-label="Authentication mode">
                     <button 
                       type="button" 
-                      class="btn {authMode === 'doctor' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm btn-md"
+                      class="btn {authMode === 'doctor' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm"
                       on:click={handleSwitchToDoctor}
                     >
                       <i class="fas fa-user-md me-1 me-md-2"></i>
@@ -535,7 +535,7 @@
                     </button>
                     <button 
                       type="button" 
-                      class="btn {authMode === 'pharmacist' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm btn-md"
+                      class="btn {authMode === 'pharmacist' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm"
                       on:click={handleSwitchToPharmacist}
                     >
                       <i class="fas fa-pills me-1 me-md-2"></i>

@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
   import openaiService from '../services/openaiService.js'
   import authService from '../services/authService.js'
@@ -26,7 +26,12 @@
   let currentPrescription = null // Current prescription being worked on
   let currentMedications = [] // Current medications in the working prescription (for display)
   let activeTab = 'overview'
+  let enabledTabs = ['overview'] // Progressive workflow: start with only overview enabled
   let isNewPrescriptionSession = false
+  
+  // Reactive statement to ensure PatientTabs gets updated enabledTabs
+  $: console.log('🔄 enabledTabs changed:', enabledTabs)
+  $: enabledTabsKey = enabledTabs.join(',') // Force reactivity by creating a key
   let showIllnessForm = false
   let showMedicationForm = false
   let showSymptomsForm = false
@@ -281,13 +286,75 @@
     filterCurrentPrescriptions()
   }
   
+  // Progressive workflow: enable next tab when user visits current tab
+  const enableNextTab = () => {
+    const tabOrder = ['overview', 'symptoms', 'reports', 'diagnoses', 'prescriptions']
+    const currentIndex = tabOrder.indexOf(activeTab)
+    
+    if (currentIndex < tabOrder.length - 1) {
+      const nextTab = tabOrder[currentIndex + 1]
+      if (!enabledTabs.includes(nextTab)) {
+        enabledTabs = [...enabledTabs, nextTab]
+        console.log(`🔓 Unlocked tab: ${nextTab}`)
+        notifySuccess(`Great! ${nextTab.charAt(0).toUpperCase() + nextTab.slice(1)} tab is now available.`)
+      }
+    }
+  }
+  
+  // Manual progression: go to next tab when Next button is clicked
+  const goToNextTab = async () => {
+    const tabOrder = ['overview', 'symptoms', 'reports', 'diagnoses', 'prescriptions']
+    const currentIndex = tabOrder.indexOf(activeTab)
+    
+    if (currentIndex < tabOrder.length - 1) {
+      const nextTab = tabOrder[currentIndex + 1]
+      
+      // Enable the next tab if not already enabled
+      if (!enabledTabs.includes(nextTab)) {
+        // Create a new array to ensure Svelte detects the change
+        const newEnabledTabs = [...enabledTabs, nextTab]
+        enabledTabs = newEnabledTabs
+        console.log(`🔓 Unlocked tab: ${nextTab}`)
+        console.log(`🔓 Updated enabledTabs:`, enabledTabs)
+        notifySuccess(`Great! ${nextTab.charAt(0).toUpperCase() + nextTab.slice(1)} tab is now available.`)
+        
+        // Wait for DOM to update
+        await tick()
+      }
+      
+      // Switch to the next tab using handleTabChange to ensure proper state management
+      // Don't enable next tab again since we already did it above
+      handleTabChange(nextTab, false)
+      console.log(`➡️ Manual progression to: ${nextTab}`)
+    }
+  }
+
+  // Manual progression: go to previous tab when Back button is clicked
+  const goToPreviousTab = () => {
+    const tabOrder = ['overview', 'symptoms', 'reports', 'diagnoses', 'prescriptions']
+    const currentIndex = tabOrder.indexOf(activeTab)
+    
+    if (currentIndex > 0) {
+      const previousTab = tabOrder[currentIndex - 1]
+      
+      // Switch to the previous tab
+      handleTabChange(previousTab, false)
+      console.log(`⬅️ Manual progression to: ${previousTab}`)
+    }
+  }
+  
   // Handle tab change
-  const handleTabChange = (tab) => {
+  const handleTabChange = (tab, shouldEnableNext = true) => {
     activeTab = tab
     // Reset form visibility when changing tabs
     showIllnessForm = false
     showSymptomsForm = false
     showMedicationForm = false
+    
+    // Enable next tab when user manually visits current tab (progressive workflow)
+    if (shouldEnableNext) {
+      enableNextTab()
+    }
   }
   
   // Handle form submissions
@@ -1295,6 +1362,14 @@
       </h5>
       <div class="btn-group" role="group">
         <button 
+          class="btn {activeTab === 'history' ? 'btn-danger border-0' : 'btn-outline-danger'} btn-sm me-2"
+          on:click={() => handleTabChange('history')}
+          role="tab"
+          title="View patient history"
+        >
+          <i class="fas fa-history me-1"></i>History
+        </button>
+        <button 
           class="btn btn-success btn-sm me-2" 
           on:click={async () => { 
             console.log('🆕 New Prescription button clicked - Creating NEW prescription');
@@ -1352,7 +1427,7 @@
   
   <div class="card-body">
     <!-- Patient Tabs -->
-    <PatientTabs {activeTab} onTabChange={handleTabChange} />
+    <PatientTabs {activeTab} {enabledTabs} onTabChange={handleTabChange} />
     
     <!-- Tab Content -->
     <div class="tab-content mt-3">
@@ -1606,7 +1681,7 @@
                   <div class="d-flex flex-column flex-sm-row gap-2">
               <button 
                       type="submit" 
-                      class="btn btn-primary flex-fill" 
+                      class="btn btn-primary btn-sm flex-fill" 
                       disabled={savingPatient}
                     >
                       {#if savingPatient}
@@ -1616,7 +1691,7 @@
                     </button>
                     <button 
                       type="button" 
-                      class="btn btn-secondary flex-fill" 
+                      class="btn btn-secondary btn-sm flex-fill" 
                       on:click={cancelEditingPatient}
                       disabled={savingPatient}
                     >
@@ -1667,6 +1742,19 @@
                     </div>
                   </div>
                 {/if}
+                
+                <!-- Next Button -->
+                <div class="row mt-3">
+                  <div class="col-12 text-center">
+                    <button 
+                      class="btn btn-danger btn-sm"
+                      on:click={goToNextTab}
+                      title="Continue to Symptoms tab"
+                    >
+                      <i class="fas fa-arrow-right me-2"></i>Next
+                    </button>
+                  </div>
+                </div>
               {/if}
             </div>
           </div>
@@ -1695,24 +1783,6 @@
             onCancelSymptoms={handleCancelSymptoms}
           />
           
-          <!-- AI Recommendations Component -->
-          <AIRecommendations 
-            {symptoms} 
-            currentMedications={currentMedications}
-            patientAge={selectedPatient ? (() => {
-              const birthDate = new Date(selectedPatient.dateOfBirth)
-              const today = new Date()
-              const age = today.getFullYear() - birthDate.getFullYear()
-              const monthDiff = today.getMonth() - birthDate.getMonth()
-              return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-            })() : null}
-            {doctorId}
-            on:ai-usage-updated={(event) => {
-              if (addToPrescription) {
-                addToPrescription('ai-usage', event.detail)
-              }
-            }}
-          />
           
           {#if symptoms && symptoms.length > 0}
             <div class="list-group">
@@ -1760,6 +1830,26 @@
               <p class="text-muted">No symptoms recorded for this patient.</p>
             </div>
           {/if}
+          
+          <!-- Navigation Buttons -->
+          <div class="row mt-3">
+            <div class="col-12 text-center">
+              <button 
+                class="btn btn-outline-secondary btn-sm me-3"
+                on:click={goToPreviousTab}
+                title="Go back to Overview tab"
+              >
+                <i class="fas fa-arrow-left me-2"></i>Back
+              </button>
+              <button 
+                class="btn btn-danger btn-sm"
+                on:click={goToNextTab}
+                title="Continue to Reports tab"
+              >
+                <i class="fas fa-arrow-right me-2"></i>Next
+              </button>
+            </div>
+          </div>
         </div>
       {/if}
       
@@ -1830,6 +1920,124 @@
               <p class="text-muted">No illnesses recorded for this patient.</p>
             </div>
           {/if}
+          
+          <!-- Next Button -->
+          <div class="row mt-3">
+            <div class="col-12 text-center">
+              <button 
+                class="btn btn-danger btn-sm"
+                on:click={goToNextTab}
+                title="Continue to Prescriptions tab"
+              >
+                <i class="fas fa-arrow-right me-2"></i>Next
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+      
+      <!-- Reports Tab -->
+      {#if activeTab === 'reports'}
+        <div class="tab-pane active">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">
+              <i class="fas fa-file-medical me-2"></i>Medical Reports
+            </h6>
+            <button 
+              class="btn btn-primary btn-sm" 
+              on:click={() => notifySuccess('Report upload feature coming soon!')}
+            >
+              <i class="fas fa-plus me-1"></i>Add Report
+            </button>
+          </div>
+          
+          <div class="text-center p-4">
+            <i class="fas fa-file-medical fa-2x text-muted mb-3"></i>
+            <p class="text-muted">No medical reports available for this patient.</p>
+            <p class="text-muted small">Upload lab results, imaging reports, and other medical documents here.</p>
+          </div>
+          
+          <!-- Navigation Buttons -->
+          <div class="row mt-3">
+            <div class="col-12 text-center">
+              <button 
+                class="btn btn-outline-secondary btn-sm me-3"
+                on:click={goToPreviousTab}
+                title="Go back to Symptoms tab"
+              >
+                <i class="fas fa-arrow-left me-2"></i>Back
+              </button>
+              <button 
+                class="btn btn-danger btn-sm"
+                on:click={goToNextTab}
+                title="Continue to Diagnoses tab"
+              >
+                <i class="fas fa-arrow-right me-2"></i>Next
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
+      
+      <!-- Diagnoses Tab -->
+      {#if activeTab === 'diagnoses'}
+        <div class="tab-pane active">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h6 class="mb-0">
+              <i class="fas fa-stethoscope me-2"></i>Medical Diagnoses
+            </h6>
+            <button 
+              class="btn btn-primary btn-sm" 
+              on:click={() => notifySuccess('Diagnosis entry feature coming soon!')}
+            >
+              <i class="fas fa-plus me-1"></i>Add Diagnosis
+            </button>
+          </div>
+          
+          <div class="text-center p-4">
+            <i class="fas fa-stethoscope fa-2x text-muted mb-3"></i>
+            <p class="text-muted">No diagnoses recorded for this patient.</p>
+            <p class="text-muted small">Record medical diagnoses, conditions, and assessments here.</p>
+          </div>
+          
+          <!-- AI Recommendations Component -->
+          <AIRecommendations 
+            {symptoms} 
+            currentMedications={currentMedications}
+            patientAge={selectedPatient ? (() => {
+              const birthDate = new Date(selectedPatient.dateOfBirth)
+              const today = new Date()
+              const age = today.getFullYear() - birthDate.getFullYear()
+              const monthDiff = today.getMonth() - birthDate.getMonth()
+              return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+            })() : null}
+            {doctorId}
+            on:ai-usage-updated={(event) => {
+              if (addToPrescription) {
+                addToPrescription('ai-usage', event.detail)
+              }
+            }}
+          />
+          
+          <!-- Navigation Buttons -->
+          <div class="row mt-3">
+            <div class="col-12 text-center">
+              <button 
+                class="btn btn-outline-secondary btn-sm me-3"
+                on:click={goToPreviousTab}
+                title="Go back to Reports tab"
+              >
+                <i class="fas fa-arrow-left me-2"></i>Back
+              </button>
+              <button 
+                class="btn btn-danger btn-sm"
+                on:click={goToNextTab}
+                title="Continue to Prescriptions tab"
+              >
+                <i class="fas fa-arrow-right me-2"></i>Next
+              </button>
+            </div>
+          </div>
         </div>
       {/if}
       
@@ -1843,6 +2051,48 @@
                 <i class="fas fa-prescription-bottle-alt me-2"></i>Prescription
               </h5>
               <div class="d-flex gap-2">
+                <!-- New Prescription Button -->
+                <button 
+                  class="btn btn-success btn-sm" 
+                  on:click={async () => { 
+                    console.log('🆕 New Prescription button clicked - Creating NEW prescription');
+                    showMedicationForm = false; 
+                    editingMedication = null;
+                    prescriptionFinished = false;
+                    
+                    // Reset AI check state for new prescription
+                    aiCheckComplete = false;
+                    aiCheckMessage = '';
+                    lastAnalyzedMedications = [];
+                    
+                    try {
+                      // Create new prescription
+                      const newPrescription = await firebaseStorage.createPrescription(
+                        selectedPatient.id,
+                        doctorId,
+                        'New Prescription',
+                        'Prescription created from Prescriptions tab'
+                      );
+                      
+                      currentPrescription = newPrescription;
+                      currentMedications = [];
+                      
+                      // Add the new prescription to the prescriptions array immediately
+                      prescriptions = [...prescriptions, currentPrescription];
+                      console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
+                      
+                      console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
+                      notifySuccess('New prescription created! Click "Add Drug" to add medications.');
+                    } catch (error) {
+                      console.error('❌ Error creating new prescription:', error);
+                      notifyError('Failed to create new prescription: ' + error.message);
+                    }
+                  }}
+                  disabled={loading}
+                  title="Create a new prescription"
+                >
+                  <i class="fas fa-plus me-1"></i>New Prescription
+                </button>
                 
                 <!-- Add Drug Button -->
                 <button 
@@ -2035,7 +2285,7 @@
                   {#if !prescriptionFinished}
                     <!-- Show Finish button when not finished -->
                 <button 
-                      class="btn btn-success flex-fill"
+                      class="btn btn-success btn-sm flex-fill"
                       on:click={completePrescriptions}
                       title="Finish current prescriptions"
                     >
@@ -2045,7 +2295,7 @@
                   {:else}
                     <!-- Show Send to Pharmacy and Print buttons when finished -->
                     <button 
-                      class="btn btn-warning flex-fill"
+                      class="btn btn-warning btn-sm flex-fill"
                       on:click={showPharmacySelection}
                       title="Send prescriptions to connected pharmacy"
                     >
@@ -2054,7 +2304,7 @@
                     </button>
                     
                     <button 
-                      class="btn btn-outline-primary flex-fill"
+                      class="btn btn-outline-primary btn-sm flex-fill"
                       on:click={printPrescriptions}
                       title="Print prescriptions to PDF"
                     >
@@ -2071,6 +2321,19 @@
               <p>No current prescriptions for today</p>
             </div>
           {/if}
+            </div>
+          </div>
+          
+          <!-- Navigation Buttons -->
+          <div class="row mt-3">
+            <div class="col-12 text-center">
+              <button 
+                class="btn btn-outline-secondary btn-sm"
+                on:click={goToPreviousTab}
+                title="Go back to Diagnoses tab"
+              >
+                <i class="fas fa-arrow-left me-2"></i>Back
+              </button>
             </div>
           </div>
         </div>
@@ -2160,13 +2423,13 @@
           {/if}
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" on:click={() => showPharmacyModal = false}>
+          <button type="button" class="btn btn-secondary btn-sm" on:click={() => showPharmacyModal = false}>
             <i class="fas fa-times me-2"></i>
             Cancel
           </button>
           <button 
             type="button" 
-            class="btn btn-warning" 
+            class="btn btn-warning btn-sm" 
             on:click={sendToSelectedPharmacies}
             disabled={selectedPharmacies.length === 0}
           >

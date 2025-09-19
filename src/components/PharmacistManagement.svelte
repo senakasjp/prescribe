@@ -238,7 +238,7 @@
       <p class="text-muted mb-0">Connect with pharmacists to share prescriptions</p>
     </div>
     <button 
-      class="btn btn-primary position-relative"
+      class="btn btn-primary btn-sm position-relative"
       on:click={openConnectModal}
       type="button"
       style="z-index: 1000;"
@@ -286,7 +286,7 @@
           <div class="col-md-4 d-flex align-items-end">
             <div class="d-flex gap-2 w-100">
               <button 
-                class="btn btn-success flex-fill"
+                class="btn btn-success btn-sm flex-fill"
                 on:click={connectPharmacist}
                 disabled={!pharmacistNumber || pharmacistNumber.length !== 6}
               >
@@ -294,7 +294,7 @@
                 Connect
               </button>
               <button 
-                class="btn btn-outline-secondary"
+                class="btn btn-outline-secondary btn-sm"
                 on:click={() => {
                   showAddForm = false
                   pharmacistNumber = ''
@@ -500,13 +500,13 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" on:click={closeConnectModal}>
+          <button type="button" class="btn btn-secondary btn-sm" on:click={closeConnectModal}>
             <i class="fas fa-times me-1"></i>
             Cancel
           </button>
           <button 
             type="button" 
-            class="btn btn-primary"
+            class="btn btn-primary btn-sm"
             on:click={connectPharmacist}
             disabled={!pharmacistNumber || pharmacistNumber.length !== 6}
           >

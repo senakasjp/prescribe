@@ -21,16 +21,25 @@
   
   // Generate single optimized AI analysis (recommendations + medication suggestions)
   const generateComprehensiveAnalysis = async () => {
+    console.log('🚀 AI Button Clicked! Starting comprehensive analysis...')
+    
     if (!symptoms || symptoms.length === 0) {
       error = 'No symptoms available to analyze'
+      console.log('❌ No symptoms available, aborting AI analysis')
       return
     }
     
+    console.log('✅ Symptoms available, proceeding with AI analysis')
     loading = true
     error = ''
     
     try {
       console.log('🤖 Generating single optimized AI analysis...')
+      console.log('🤖 Symptoms:', symptoms)
+      console.log('🤖 Current medications:', currentMedications)
+      console.log('🤖 Patient age:', patientAge)
+      console.log('🤖 Doctor ID:', doctorId)
+      console.log('🤖 OpenAI configured:', openaiService.isConfigured())
       
       // Use single API call for both recommendations and medication suggestions
       const combinedResult = await openaiService.generateCombinedAnalysis(symptoms, currentMedications, patientAge, doctorId)
@@ -132,9 +141,17 @@
         {#if loading}
           <span class="spinner-border spinner-border-sm me-2" role="status"></span>
         {/if}
-        <i class="fas fa-robot me-2"></i>
+        <i class="fas fa-brain me-2"></i>
         AI-Powered Medical Intelligence
       </button>
+    </div>
+  {:else}
+    <div class="mb-3">
+      <div class="alert alert-info" role="alert">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>No Symptoms Available:</strong> Please add symptoms in the Symptoms tab first to enable AI analysis.
+        <br><small>Debug: symptoms.length = {symptoms ? symptoms.length : 'undefined'}</small>
+      </div>
     </div>
   {/if}
   
@@ -161,7 +178,7 @@
       <div class="card border-2 border-info shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h6 class="mb-0 text-danger">
-            <i class="fas fa-robot me-2"></i>AI-Powered Medical Intelligence
+            <i class="fas fa-brain me-2"></i>AI-Powered Medical Intelligence
           </h6>
           <button 
             type="button" 
@@ -229,7 +246,7 @@
       <div class="card border-2 border-info shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h6 class="mb-0 text-danger">
-            <i class="fas fa-robot me-2"></i>AI-Powered Medical Intelligence
+            <i class="fas fa-brain me-2"></i>AI-Powered Medical Intelligence
           </h6>
           <button 
             type="button" 
@@ -248,10 +265,6 @@
           <!-- Single Combined Analysis -->
           {#if recommendations}
             <div class="mb-2">
-              <div class="alert alert-info alert-sm mb-3" role="alert">
-                <i class="fas fa-info-circle me-2"></i>
-                <strong>Medical Analysis:</strong> This analysis includes recommendations, medication suggestions, and interaction warnings. Always consult with a healthcare professional.
-              </div>
               <div class="max-height-300 overflow-auto p-3 bg-light rounded border">
                 <div class="analysis-text">
                   {@html formatRecommendations(recommendations)}

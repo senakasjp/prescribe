@@ -43,12 +43,26 @@ class OpenAIService {
 
   // Check if API key is configured
   isConfigured() {
-    return this.apiKey && this.apiKey !== 'undefined' && this.apiKey !== ''
+    const configured = this.apiKey && this.apiKey !== 'undefined' && this.apiKey !== ''
+    console.log('🔑 OpenAI API Key Status:', {
+      hasKey: !!this.apiKey,
+      keyValue: this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'undefined',
+      configured: configured
+    })
+    return configured
   }
 
   // Log AI prompt to Firebase for admin monitoring - Enhanced to capture ALL OpenAI requests
   async logAIPrompt(promptType, promptData, response = null, error = null, additionalInfo = {}) {
     try {
+      console.log('📝 logAIPrompt called with:', {
+        promptType,
+        promptData: typeof promptData,
+        response: !!response,
+        error: !!error,
+        additionalInfo
+      })
+      
       // Extract the complete prompt content from the request body
       let fullPrompt = ''
       let systemMessage = ''
@@ -89,11 +103,20 @@ class OpenAIService {
         ...additionalInfo
       }
 
+      console.log('📝 About to add document to Firebase:', logEntry.requestId)
+      console.log('📝 Firebase db object:', !!db)
+      console.log('📝 Collection reference:', !!collection(db, 'aiPromptLogs'))
+      
       await addDoc(collection(db, 'aiPromptLogs'), logEntry)
       console.log('📝 AI prompt logged successfully:', promptType, 'Request ID:', logEntry.requestId)
       console.log('📝 Full prompt logged:', fullPrompt.substring(0, 200) + '...')
     } catch (logError) {
       console.error('❌ Failed to log AI prompt:', logError)
+      console.error('❌ Log error details:', {
+        message: logError.message,
+        code: logError.code,
+        stack: logError.stack
+      })
       // Don't throw error - logging failure shouldn't break the main functionality
     }
   }
@@ -113,8 +136,12 @@ class OpenAIService {
     
     try {
       console.log('🚀 Making OpenAI API request:', endpoint, 'Request ID:', requestId)
+      console.log('🚀 Request body:', requestBody)
+      console.log('🚀 Prompt type:', promptType)
+      console.log('🚀 Additional context:', additionalContext)
       
       // Log the request BEFORE making the call
+      console.log('📝 About to log AI prompt to Firebase...')
       await this.logAIPrompt(promptType, {
         endpoint,
         requestBody,
@@ -127,6 +154,7 @@ class OpenAIService {
         requestId,
         ...additionalContext
       })
+      console.log('✅ AI prompt logged to Firebase successfully')
 
       const response = await fetch(`${this.baseURL}/${endpoint}`, {
         method: 'POST',
@@ -741,21 +769,28 @@ Concise medical info only.`
         }
       }
 
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
+      // Use the centralized logging method instead of direct fetch
+      console.log('🔍 About to call makeOpenAIRequest with logging...')
+      console.log('🔍 Request body for logging:', requestBody)
+      console.log('🔍 Additional context for logging:', {
+        symptoms: symptomsText,
+        currentMedications: currentMedsText,
+        patientAge,
+        doctorId
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
-      }
-
-      const data = await response.json()
+      
+      const data = await this.makeOpenAIRequest(
+        'chat/completions',
+        requestBody,
+        'comprehensiveAnalysis',
+        {
+          symptoms: symptomsText,
+          currentMedications: currentMedsText,
+          patientAge,
+          doctorId
+        }
+      )
+      console.log('✅ makeOpenAIRequest completed, data received:', data)
       let combinedAnalysis = data.choices[0]?.message?.content || 'No analysis available.'
 
       // Parse JSON response and convert to readable format

@@ -751,7 +751,7 @@
           >
           {#if searchQuery}
             <button 
-              class="btn btn-outline-secondary" 
+              class="btn btn-outline-secondary btn-sm" 
               type="button" 
               on:click={clearSearch}
               title="Clear search"

@@ -1,16 +1,26 @@
 <!-- AI Prompt Logs Component for Admin Panel -->
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import openaiService from '../services/openaiService.js'
+  import { collection, query, orderBy, limit, onSnapshot, getDocs, addDoc } from 'firebase/firestore'
+  import { db } from '../firebase-config.js'
 
   let aiPrompts = []
   let loading = true
   let error = ''
   let selectedPrompt = null
   let showPromptDetails = false
+  let unsubscribe = null
 
   onMount(async () => {
     await loadAIPrompts()
+    setupRealtimeListener()
+  })
+
+  onDestroy(() => {
+    if (unsubscribe) {
+      unsubscribe()
+    }
   })
 
   const loadAIPrompts = async () => {
@@ -36,6 +46,111 @@
       loading = false
     }
   }
+
+  // Setup real-time listener for new AI prompts
+  const setupRealtimeListener = () => {
+    try {
+      console.log('🔴 Setting up real-time listener for AI prompts...')
+      
+      const q = query(
+        collection(db, 'aiPromptLogs'),
+        orderBy('timestamp', 'desc'),
+        limit(50)
+      )
+      
+      unsubscribe = onSnapshot(q, (querySnapshot) => {
+        console.log('📡 Real-time update received:', querySnapshot.docs.length, 'documents')
+        console.log('📡 Query snapshot metadata:', querySnapshot.metadata)
+        console.log('📡 Query snapshot fromCache:', querySnapshot.metadata.fromCache)
+        console.log('📡 Query snapshot hasPendingWrites:', querySnapshot.metadata.hasPendingWrites)
+        
+        // Log each document to see what's being received
+        querySnapshot.docs.forEach((doc, index) => {
+          console.log(`📄 Document ${index + 1}:`, {
+            id: doc.id,
+            data: doc.data(),
+            timestamp: doc.data().timestamp,
+            promptType: doc.data().promptType,
+            requestId: doc.data().requestId
+          })
+        })
+        
+        const newPrompts = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        
+        console.log('📡 New prompts data:', newPrompts)
+        console.log('📡 Previous aiPrompts count:', aiPrompts.length)
+        console.log('📡 New aiPrompts count:', newPrompts.length)
+        
+        // Check if we have new entries
+        const newEntries = newPrompts.filter(newPrompt => 
+          !aiPrompts.some(existingPrompt => existingPrompt.id === newPrompt.id)
+        )
+        console.log('📡 New entries detected:', newEntries.length)
+        if (newEntries.length > 0) {
+          console.log('📡 New entries details:', newEntries.map(entry => ({
+            id: entry.id,
+            timestamp: entry.timestamp,
+            promptType: entry.promptType,
+            requestId: entry.requestId
+          })))
+        }
+        
+        // Update the prompts array
+        aiPrompts = newPrompts
+        
+        // Ensure loading is false so table renders
+        loading = false
+        
+        console.log('✅ Real-time update applied:', newPrompts.length, 'prompts')
+        console.log('✅ Current aiPrompts array:', aiPrompts)
+        
+        // Clear any previous errors
+        if (error) {
+          error = ''
+        }
+      }, (error) => {
+        console.error('❌ Real-time listener error:', error)
+        console.error('❌ Error code:', error.code)
+        console.error('❌ Error message:', error.message)
+        error = 'Real-time updates failed: ' + error.message
+        loading = false
+      })
+      
+      console.log('✅ Real-time listener setup complete')
+    } catch (err) {
+      console.error('❌ Error setting up real-time listener:', err)
+      error = 'Failed to setup real-time listener: ' + err.message
+    }
+  }
+
+  // Refresh data manually (reloads initial data and resets real-time listener)
+  const refreshData = async () => {
+    try {
+      console.log('🔄 Manual refresh requested...')
+      
+      // Unsubscribe from current listener
+      if (unsubscribe) {
+        unsubscribe()
+        unsubscribe = null
+      }
+      
+      // Reload initial data
+      await loadAIPrompts()
+      
+      // Setup new real-time listener
+      setupRealtimeListener()
+      
+      console.log('✅ Manual refresh completed')
+    } catch (err) {
+      console.error('❌ Error during manual refresh:', err)
+      error = 'Refresh failed: ' + err.message
+    }
+  }
+  
+  
 
   const viewPromptDetails = (prompt) => {
     selectedPrompt = prompt
@@ -119,258 +234,67 @@
     }
   }
 
-  // Test Firebase connection directly
-  const testFirebaseConnection = async () => {
+
+
+  // Clean up malformed log entries
+  const cleanupMalformedEntries = async () => {
     try {
-      console.log('🔥 Testing Firebase connection directly...')
+      console.log('🧹 Cleaning up malformed log entries...')
       
-      // Import Firebase functions directly
-      const { collection, addDoc, getDocs, query, orderBy, limit } = await import('firebase/firestore')
-      const { db } = await import('../firebase-config.js')
+      // Filter out entries with undefined promptType or missing data
+      const validPrompts = aiPrompts.filter(prompt => 
+        prompt.promptType && 
+        prompt.promptType !== 'undefined' && 
+        prompt.promptData && 
+        prompt.promptData !== 'undefined'
+      )
       
-      console.log('📡 Firebase imports successful')
+      console.log(`📊 Found ${aiPrompts.length} total prompts`)
+      console.log(`✅ Found ${validPrompts.length} valid prompts`)
+      console.log(`🗑️ Found ${aiPrompts.length - validPrompts.length} malformed prompts`)
       
-      // Test writing to collection
-      const testDoc = {
-        testType: 'firebase_connection_test',
-        timestamp: new Date().toISOString(),
-        message: 'Testing Firebase write access',
-        success: true
-      }
+      // Update the display to show only valid prompts
+      aiPrompts = validPrompts
       
-      console.log('📝 Writing test document to Firebase...')
-      const docRef = await addDoc(collection(db, 'aiPromptLogs'), testDoc)
-      console.log('✅ Test document written with ID:', docRef.id)
-      
-      // Test reading from collection
-      console.log('📖 Reading from Firebase collection...')
-      const q = query(collection(db, 'aiPromptLogs'), orderBy('timestamp', 'desc'), limit(5))
-      const querySnapshot = await getDocs(q)
-      const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      
-      console.log('📊 Retrieved documents:', docs.length)
-      console.log('📊 Document data:', docs)
-      
-      // Reload prompts to see if the test document appears
-      await loadAIPrompts()
-      
-      console.log('✅ Firebase connection test completed successfully')
+      console.log('✅ Cleanup completed')
     } catch (error) {
-      console.error('❌ Firebase connection test failed:', error)
-      console.error('❌ Error details:', error.message)
-      console.error('❌ Error code:', error.code)
-      console.error('❌ Error stack:', error.stack)
+      console.error('❌ Error during cleanup:', error)
     }
   }
 
-  // Verify data integrity of saved prompts
-  const verifyPromptData = async () => {
-    try {
-      console.log('🔍 Verifying prompt data integrity...')
-      
-      if (aiPrompts.length === 0) {
-        console.log('⚠️ No prompts to verify')
-        return
-      }
-      
-      // Check each prompt's data structure
-      aiPrompts.forEach((prompt, index) => {
-        console.log(`📋 Prompt ${index + 1} verification:`)
-        console.log('  - ID:', prompt.id)
-        console.log('  - Type:', prompt.promptType)
-        console.log('  - Timestamp:', prompt.timestamp)
-        console.log('  - Success:', prompt.success)
-        console.log('  - Tokens:', prompt.tokensUsed)
-        console.log('  - Has Prompt Data:', !!prompt.promptData)
-        console.log('  - Has Response:', !!prompt.response)
-        console.log('  - Has Error:', !!prompt.error)
-        
-        // Verify prompt data structure
-        if (prompt.promptData) {
-          try {
-            const parsedData = JSON.parse(prompt.promptData)
-            console.log('  - Prompt Data Keys:', Object.keys(parsedData))
-            console.log('  - Prompt Data Size:', prompt.promptData.length, 'characters')
-          } catch (e) {
-            console.log('  - ❌ Prompt Data Parse Error:', e.message)
-          }
-        }
-        
-        // Verify response data
-        if (prompt.response) {
-          try {
-            const parsedResponse = JSON.parse(prompt.response)
-            console.log('  - Response Type:', typeof parsedResponse)
-            console.log('  - Response Size:', prompt.response.length, 'characters')
-          } catch (e) {
-            console.log('  - Response is plain text (not JSON)')
-            console.log('  - Response Size:', prompt.response.length, 'characters')
-          }
-        }
-        
-        console.log('  - ✅ Prompt verification complete')
-        console.log('---')
-      })
-      
-      console.log('✅ All prompts verified successfully')
-    } catch (error) {
-      console.error('❌ Error verifying prompt data:', error)
-    }
-  }
-
-  // Test function to create a sample AI prompt log
-  const createTestPrompt = async () => {
-    try {
-      console.log('🧪 Creating comprehensive test AI prompt log...')
-      
-      // Create a more comprehensive test log entry
-      const testPromptData = {
-        patientData: {
-          name: 'Test Patient',
-          age: 30,
-          weight: 70,
-          allergies: 'None',
-          medications: ['Paracetamol', 'Ibuprofen'],
-          symptoms: ['Fever', 'Headache'],
-          illnesses: ['Common Cold']
-        },
-        doctorId: 'test-doctor-123',
-        timestamp: new Date().toISOString(),
-        testType: 'comprehensive_analysis_test'
-      }
-      
-      const testResponse = 'This is a comprehensive test response from AI analysis system. It includes detailed medical recommendations and safety assessments.'
-      
-      // Test the logging function directly with full prompt structure
-      console.log('🔍 Testing logAIPrompt function...')
-      const testRequestData = {
-        endpoint: 'chat/completions',
-        requestBody: {
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: 'Medical AI assistant providing second opinion support to qualified doctors. Provide comprehensive prescription analysis with HTML formatting.'
-            },
-            {
-              role: 'user',
-              content: `Analyze prescription case as second opinion support for qualified doctor. Use HTML format only.
-
-PATIENT INFORMATION:
-Name: Test Patient (Test Patient)
-Age: 30, Weight: 70kg, Height: 175cm
-Gender: Male, Blood Group: A+
-Date of Birth: 1994-01-01
-
-MEDICAL INFORMATION:
-Allergies: None
-Medical History: None
-Current Medications: None
-Emergency Contact: Not specified
-
-LOCATION INFORMATION:
-Patient Address: Test Address
-Patient City: Test City
-Patient Country: Test Country
-Patient Phone: +1234567890
-Patient Email: test@example.com
-
-DOCTOR INFORMATION:
-Doctor Name: Dr. Test Doctor
-Doctor Country: Test Country
-Doctor City: Test City
-Doctor Specialization: General Practice
-Doctor License: MD123456
-
-CURRENT PRESCRIPTION:
-Medications: Paracetamol 500mg TID for headache
-Symptoms: Headache (moderate, 2 days, throbbing pain)
-Conditions: None
-Prescription Date: 2024-01-15T10:30:00.000Z
-
-Format response as:
-<h6>📋 OVERVIEW</h6><p>[Brief assessment]</p>
-<h6>🔍 MEDICATIONS</h6><ul><li><strong>[Drug]:</strong> [Assessment]</li></ul>
-<h6>⚠️ SAFETY</h6><div class="warning"><ul><li><strong>Interactions:</strong> [Key issues]</li><li><strong>Monitoring:</strong> [Required]</li></ul></div>
-<h6>🎯 EFFECTIVENESS</h6><ul><li><strong>Alignment:</strong> [Symptom coverage]</li><li><strong>Outcomes:</strong> [Expected results]</li></ul>
-<h6>📈 RECOMMENDATIONS</h6><div class="recommendation"><ul><li><strong>Adjustments:</strong> [Dosage changes]</li><li><strong>Follow-up:</strong> [Schedule]</li></ul></div>
-<h6>🚨 WARNINGS</h6><div class="warning"><ul><li><strong>Critical:</strong> [Safety issues]</li><li><strong>Emergency:</strong> [When to seek help]</li></ul></div>
-<h6>📝 NOTES</h6><div class="highlight"><ul><li><strong>Clinical:</strong> [Key points]</li><li><strong>Education:</strong> [Patient instructions]</li></ul></div>
-
-Be concise. HTML only.`
-            }
-          ],
-          max_tokens: 1200,
-          temperature: 0.1
-        },
-        requestId: 'test-' + Date.now(),
-        timestamp: new Date().toISOString(),
-        testType: 'comprehensive_analysis_test'
-      }
-      
-      await openaiService.logAIPrompt('comprehensiveAnalysis', testRequestData, testResponse, null)
-      console.log('✅ Comprehensive test prompt created successfully')
-      console.log('📊 Test data saved:', {
-        promptType: 'comprehensiveAnalysis',
-        promptDataSize: JSON.stringify(testPromptData).length,
-        responseSize: testResponse.length,
-        timestamp: testPromptData.timestamp
-      })
-      
-      // Wait a moment for Firebase to process
-      console.log('⏳ Waiting for Firebase to process...')
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Reload the prompts
-      console.log('🔄 Reloading prompts...')
-      await loadAIPrompts()
-      
-      console.log('✅ Test complete - check if logs appear in table')
-    } catch (error) {
-      console.error('❌ Error creating test prompt:', error)
-      console.error('❌ Error details:', error.message)
-      console.error('❌ Error stack:', error.stack)
-      
-      // Show error in UI
-      error = 'Test failed: ' + error.message
-    }
-  }
 </script>
 
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <h5 class="mb-0">
-      <i class="fas fa-brain me-2"></i>
-      AI Prompt Logs (Last 50)
-    </h5>
+    <div>
+      <h5 class="mb-0">
+        <i class="fas fa-brain me-2"></i>
+        AI Prompt Logs (Last 50)
+      </h5>
+      {#if unsubscribe}
+        <small class="text-success">
+          <i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>
+          Real-time updates active
+        </small>
+      {:else}
+        <small class="text-muted">
+          <i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>
+          Real-time updates inactive
+        </small>
+      {/if}
+    </div>
     <div class="d-flex gap-2">
       <button 
-        class="btn btn-outline-danger btn-sm" 
-        on:click={testFirebaseConnection}
-        disabled={loading}
-      >
-        <i class="fas fa-fire me-1"></i>
-        Test Firebase
-      </button>
-      <button 
-        class="btn btn-outline-warning btn-sm" 
-        on:click={createTestPrompt}
-        disabled={loading}
-      >
-        <i class="fas fa-vial me-1"></i>
-        Test Log
-      </button>
-      <button 
-        class="btn btn-outline-info btn-sm" 
-        on:click={verifyPromptData}
+        class="btn btn-outline-secondary btn-sm" 
+        on:click={cleanupMalformedEntries}
         disabled={loading || aiPrompts.length === 0}
       >
-        <i class="fas fa-search me-1"></i>
-        Verify Data
+        <i class="fas fa-broom me-1"></i>
+        Cleanup
       </button>
       <button 
         class="btn btn-outline-primary btn-sm" 
-        on:click={loadAIPrompts}
+        on:click={refreshData}
         disabled={loading}
       >
         <i class="fas fa-sync-alt me-1"></i>
@@ -417,7 +341,7 @@ Be concise. HTML only.`
                 </td>
                 <td>
                   <span class="badge bg-{getPromptTypeColor(prompt.promptType)}">
-                    {prompt.promptType}
+                    {prompt.promptType || 'Unknown'}
                   </span>
                 </td>
                 <td>
@@ -462,7 +386,7 @@ Be concise. HTML only.`
         <div class="modal-header">
           <h5 class="modal-title">
             <i class="fas fa-brain me-2"></i>
-            AI Prompt Details - {selectedPrompt.promptType}
+            AI Prompt Details - {selectedPrompt.promptType || 'Unknown Type'}
           </h5>
           <button 
             type="button" 
@@ -519,7 +443,11 @@ Be concise. HTML only.`
                 Raw Request Data
               </h6>
               <div class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">
-                <pre class="mb-0 small">{selectedPrompt.promptData}</pre>
+                {#if selectedPrompt.promptData}
+                  <pre class="mb-0 small">{selectedPrompt.promptData}</pre>
+                {:else}
+                  <p class="text-muted mb-0">No request data available</p>
+                {/if}
               </div>
             </div>
             <div class="col-md-6">
@@ -562,7 +490,7 @@ Be concise. HTML only.`
               <div class="col-md-3">
                 <strong>Type:</strong><br>
                 <span class="badge bg-{getPromptTypeColor(selectedPrompt.promptType)}">
-                  {selectedPrompt.promptType}
+                  {selectedPrompt.promptType || 'Unknown'}
                 </span>
               </div>
               <div class="col-md-3">
@@ -580,7 +508,7 @@ Be concise. HTML only.`
         <div class="modal-footer">
           <button 
             type="button" 
-            class="btn btn-secondary" 
+            class="btn btn-secondary btn-sm" 
             on:click={closePromptDetails}
           >
             Close
