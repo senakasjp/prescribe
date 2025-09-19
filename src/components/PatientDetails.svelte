@@ -142,7 +142,12 @@
     if (mostRecentPrescription) {
       console.log('🔧 Found most recent prescription:', mostRecentPrescription.id)
       currentPrescription = mostRecentPrescription
-      currentMedications = currentPrescription.medications || []
+      
+      // Ensure all medications have proper IDs
+      const medicationsWithIds = ensureMedicationIds(currentPrescription.medications || [])
+      currentPrescription.medications = medicationsWithIds
+      currentMedications = medicationsWithIds
+      
       console.log('📅 Set current medications:', currentMedications.length)
     } else {
       console.log('🔧 No existing prescriptions found - will create new one when needed')
@@ -180,8 +185,18 @@
     }
     
     // Get medications from the current prescription
-    currentMedications = currentPrescription ? currentPrescription.medications || [] : []
-    console.log('📅 Current medications in prescription:', currentMedications.length)
+    const prescriptionMedications = currentPrescription ? currentPrescription.medications || [] : []
+    console.log('📅 Current medications in prescription:', prescriptionMedications.length)
+    console.log('📅 Current medications before filter:', currentMedications.length)
+    
+    // Only update if the prescription has different medications
+    if (prescriptionMedications.length !== currentMedications.length || 
+        JSON.stringify(prescriptionMedications) !== JSON.stringify(currentMedications)) {
+      currentMedications = prescriptionMedications
+      console.log('📅 Updated currentMedications from prescription:', currentMedications.length)
+    } else {
+      console.log('📅 No change needed - currentMedications already matches prescription')
+    }
     
     // Note: Drug interaction checking is now done when clicking action buttons
     // Only clear interactions if prescription is not finished (to preserve AI analysis)
@@ -711,12 +726,16 @@
         : null
 
       console.log('🔍 Calculated patient age:', patientAge)
+      console.log('🔍 Patient country:', selectedPatient?.country)
 
       const suggestions = await openaiService.generateAIDrugSuggestions(
         symptoms,
         currentMedications,
         patientAge,
-        doctorId
+        doctorId,
+        {
+          patientCountry: selectedPatient?.country || 'Not specified'
+        }
       )
 
       console.log('🔍 Received suggestions from AI service:', suggestions)
@@ -737,25 +756,43 @@
   }
 
   // Add AI suggested drug to prescription
-  const addAISuggestedDrug = (suggestion) => {
+  const addAISuggestedDrug = (suggestion, suggestionIndex) => {
     if (!currentPrescription) {
       notifyError('Please create a prescription first.')
       return
     }
 
     const medication = {
+      id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID for AI-suggested medication
       name: suggestion.name,
       dosage: suggestion.dosage,
       frequency: suggestion.frequency,
       duration: suggestion.duration,
       instructions: suggestion.instructions || '',
       aiSuggested: true,
-      aiReason: suggestion.reason || ''
+      aiReason: suggestion.reason || '',
+      patientId: selectedPatient.id,
+      doctorId: doctorId,
+      createdAt: new Date().toISOString()
     }
 
+    // Update both currentMedications and currentPrescription.medications
     currentMedications = [...currentMedications, medication]
+    currentPrescription.medications = [...currentMedications]
+    
+    // Remove the suggestion from the AI suggestions list
+    aiDrugSuggestions = aiDrugSuggestions.filter((_, index) => index !== suggestionIndex)
+    
     console.log('💊 Added AI suggested drug:', medication)
+    console.log('💊 Updated currentPrescription.medications:', currentPrescription.medications.length)
+    console.log('🗑️ Removed suggestion from AI list, remaining:', aiDrugSuggestions.length)
     notifySuccess(`Added ${medication.name} to prescription`)
+    
+    // Hide suggestions section if no suggestions remain
+    if (aiDrugSuggestions.length === 0) {
+      showAIDrugSuggestions = false
+      console.log('🔍 Hiding AI suggestions section - all suggestions added')
+    }
 
     // Save to Firebase
     saveCurrentPrescriptions()
@@ -765,6 +802,73 @@
   const removeAISuggestedDrug = (index) => {
     aiDrugSuggestions = aiDrugSuggestions.filter((_, i) => i !== index)
     console.log('🗑️ Removed AI suggested drug at index:', index)
+    
+    // Hide suggestions section if no suggestions remain
+    if (aiDrugSuggestions.length === 0) {
+      showAIDrugSuggestions = false
+      console.log('🔍 Hiding AI suggestions section - no suggestions remaining')
+    }
+  }
+
+  // Ensure all medications have proper IDs
+  const ensureMedicationIds = (medications) => {
+    return medications.map((medication, index) => {
+      if (!medication.id) {
+        console.warn('⚠️ Medication missing ID, generating one:', medication.name)
+        return {
+          ...medication,
+          id: `med-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 6)}`,
+          patientId: selectedPatient?.id || 'unknown',
+          doctorId: doctorId || 'unknown',
+          createdAt: medication.createdAt || new Date().toISOString()
+        }
+      }
+      return medication
+    })
+  }
+
+  // Handle deletion of medications without IDs by index
+  const handleDeleteMedicationByIndex = async (index) => {
+    try {
+      console.log('🗑️ Delete medication by index:', index)
+      
+      if (confirm('Are you sure you want to delete this medication?')) {
+        console.log('🗑️ User confirmed deletion by index')
+        
+        // Remove from current medications array
+        const medicationToDelete = currentMedications[index]
+        if (medicationToDelete) {
+          console.log('🗑️ Deleting medication:', medicationToDelete.name)
+          
+          // Remove from array
+          currentMedications = currentMedications.filter((_, i) => i !== index)
+          
+          // Update current prescription medications
+          if (currentPrescription && currentPrescription.medications) {
+            currentPrescription.medications = currentPrescription.medications.filter((_, i) => i !== index)
+            
+            // Update in Firebase
+            await firebaseStorage.updatePrescription(currentPrescription.id, {
+              medications: currentPrescription.medications,
+              updatedAt: new Date().toISOString()
+            })
+            console.log('✅ Updated prescription in Firebase')
+          }
+          
+          // Update prescriptions array
+          prescriptions = [...prescriptions]
+          
+          console.log('✅ Successfully deleted medication by index')
+          notifySuccess('Medication deleted successfully!')
+        } else {
+          console.error('❌ Medication not found at index:', index)
+          notifyError('Medication not found')
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error deleting medication by index:', error)
+      notifyError('Failed to delete medication: ' + error.message)
+    }
   }
 
   // Print prescriptions to PDF
@@ -1454,6 +1558,13 @@
       console.log('🗑️ Delete button clicked for medication:', medicationId, 'at index:', index)
       console.log('🗑️ Current medications before deletion:', currentMedications.length)
       console.log('🗑️ Current prescription:', currentPrescription?.id)
+      
+      // Validate medicationId
+      if (!medicationId) {
+        console.error('❌ Cannot delete medication: medicationId is undefined or null')
+        notifyError('Cannot delete medication: Invalid medication ID')
+        return
+      }
       
       if (confirm('Are you sure you want to delete this medication?')) {
         console.log('🗑️ User confirmed deletion, proceeding...')
@@ -2691,7 +2802,7 @@
                             <div class="btn-group btn-group-sm">
                               <button 
                                 class="btn btn-success btn-sm"
-                                on:click={() => addAISuggestedDrug(suggestion)}
+                                on:click={() => addAISuggestedDrug(suggestion, index)}
                                 disabled={!currentPrescription}
                                 title="Add to prescription"
                               >
@@ -2877,7 +2988,14 @@
                       </button>
                       <button 
                         class="btn btn-outline-danger btn-sm"
-                        on:click={() => handleDeletePrescription(medication.id, index)}
+                        on:click={() => {
+                          if (medication.id) {
+                            handleDeletePrescription(medication.id, index)
+                          } else {
+                            console.warn('⚠️ Medication missing ID, attempting to delete by index:', medication)
+                            handleDeleteMedicationByIndex(index)
+                          }
+                        }}
                         title="Delete medication"
                       >
                         <i class="fas fa-trash"></i>

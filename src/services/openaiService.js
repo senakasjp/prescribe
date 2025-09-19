@@ -667,7 +667,7 @@ class OpenAIService {
   }
 
   // Generate AI-assisted drug suggestions for prescriptions
-  async generateAIDrugSuggestions(symptoms, currentMedications = [], patientAge = null, doctorId = null) {
+  async generateAIDrugSuggestions(symptoms, currentMedications = [], patientAge = null, doctorId = null, additionalContext = {}) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured.')
     }
@@ -680,10 +680,14 @@ class OpenAIService {
         ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
         : 'No current medications'
 
+      // Get patient country from additional context
+      const patientCountry = additionalContext?.patientCountry || 'Not specified'
+
       const prompt = `Based on symptoms: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
 ${currentMedsText}
+Patient Country: ${patientCountry}
 
-Suggest 3-5 specific medications with dosages for prescription. Return as JSON object with "suggestions" array:
+Suggest 3-5 specific PRESCRIPTION medications with dosages for qualified medical doctor to prescribe. Return as JSON object with "suggestions" array:
 {
   "suggestions": [
     {
@@ -697,7 +701,13 @@ Suggest 3-5 specific medications with dosages for prescription. Return as JSON o
   ]
 }
 
-Include both prescription and OTC options. Consider drug interactions.`
+IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
+- Suggest ONLY prescription medications that require doctor's prescription
+- Use medication names commonly available in ${patientCountry}
+- Consider local drug regulations and approval status
+- Account for drug interactions and local prescribing practices
+- Suggest medications that are legally available and commonly prescribed in ${patientCountry}
+- DO NOT include OTC (over-the-counter) medications`
 
       const requestBody = {
         model: 'gpt-4o-mini',
@@ -726,7 +736,8 @@ Include both prescription and OTC options. Consider drug interactions.`
           symptoms: symptomsText,
           currentMedications: currentMedsText,
           patientAge,
-          doctorId
+          doctorId,
+          patientCountry: patientCountry
         }
       )
 
