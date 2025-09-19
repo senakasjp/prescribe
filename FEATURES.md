@@ -2,6 +2,14 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🟠 Dynamic Stock Availability System**
+- **Smart Stock Badges** - Real-time stock monitoring with color-coded availability indicators
+- **Pharmacy Integration** - Doctors can see medication availability from connected pharmacies
+- **Initial Quantity Tracking** - System tracks initial stock quantities for accurate low-stock detection
+- **Visual Stock Alerts** - Orange badges for normal stock, red badges for low stock (≤10% of initial)
+- **Real-time Updates** - Automatic color changes based on current vs. initial stock levels
+- **Stock Management** - Comprehensive inventory management for pharmacists
+
 ### **🔒 Critical Security Implementation - Doctor Data Isolation**
 - **Doctor Isolation** - Each doctor can ONLY see their own patients (CRITICAL SECURITY FIX)
 - **Data Privacy** - No cross-doctor data access possible
@@ -61,6 +69,10 @@
 - **Prescription Sharing** - Connected pharmacists can view prescriptions from doctors
 - **Pharmacist Dashboard** - Dedicated interface for viewing and managing prescriptions
 - **Business Information** - Track pharmacy business names and contact information
+- **Drug Stock Management** - Comprehensive inventory management with quantity, strength, and expiry tracking
+- **Stock Availability Tracking** - Monitor stock levels with visual status indicators
+- **Initial Quantity Recording** - Track initial stock quantities for low-stock alert calculations
+- **Stock Status Monitoring** - Real-time stock level monitoring and alerts
 
 ### Patient Management
 - **Patient Registration** - Complete patient information entry with simplified mandatory fields
@@ -83,6 +95,9 @@
 - **Prescription Management** - M-Prescribe and track prescriptions with edit/delete functionality
 - **Medical Summary** - Always-visible overview in prescriptions tab
 - **Drug Database** - Personal drug database with autocomplete for each doctor
+- **Stock Availability Integration** - Real-time display of medication availability from connected pharmacies
+- **Dynamic Stock Badges** - Visual indicators showing medication stock levels (orange for normal, red for low stock)
+- **Pharmacy Stock Monitoring** - Automatic checking of connected pharmacists' inventory
 - **Smart Notifications** - Real-time feedback system for all actions
 
 ### User Interface

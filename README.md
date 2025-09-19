@@ -4,6 +4,13 @@ A comprehensive patient management system built with Svelte 4, Bootstrap 5, and 
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🟠 Dynamic Stock Availability System**
+- **Smart Badge Colors**: Availability badges now show orange for normal stock, red for low stock (≤10% of initial)
+- **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
+- **Real-time Stock Monitoring**: Automatic color changes based on current vs. initial stock levels
+- **Visual Stock Alerts**: Immediate visual feedback for critical stock levels
+- **Pharmacy Integration**: Connected pharmacists' stock levels displayed in doctor prescriptions
+
 ### **🔒 Critical Security Implementation - Doctor Data Isolation**
 - **Doctor Isolation**: Each doctor can ONLY see their own patients (CRITICAL SECURITY FIX)
 - **Data Privacy**: No cross-doctor data access possible
@@ -87,6 +94,9 @@ A comprehensive patient management system built with Svelte 4, Bootstrap 5, and 
 - **Prescription Sharing** - Connected pharmacists can view prescriptions from doctors
 - **Pharmacist Dashboard** - Dedicated interface for viewing and managing prescriptions
 - **Business Information** - Track pharmacy business names and contact information
+- **Drug Stock Management** - Add, edit, and track medication inventory with quantity, strength, and expiry dates
+- **Stock Availability Tracking** - Monitor stock levels with visual status indicators (In Stock, Low Stock, Out of Stock)
+- **Initial Quantity Recording** - Track initial stock quantities for low-stock alert calculations
 - **Firebase Storage** - All pharmacist data stored in Firebase Firestore
 - **Real-time Updates** - Prescriptions appear instantly in pharmacist dashboard
 
@@ -108,6 +118,9 @@ A comprehensive patient management system built with Svelte 4, Bootstrap 5, and 
 - **Prescription Management** - M-Prescribe and track prescriptions with edit/delete functionality
 - **Medical Summary** - Always-visible overview in prescriptions tab
 - **Drug Database** - Personal drug database with autocomplete for each doctor
+- **Stock Availability Integration** - Real-time display of medication availability from connected pharmacies
+- **Dynamic Stock Badges** - Visual indicators showing medication stock levels (orange for normal, red for low stock)
+- **Pharmacy Stock Monitoring** - Automatic checking of connected pharmacists' inventory
 - **Smart Notifications** - Real-time feedback for all actions
 - **Firebase Storage** - All medical data stored in Firebase Firestore
 - **AI Drug Interaction Analysis** - Automatic drug interaction checking on prescription completion

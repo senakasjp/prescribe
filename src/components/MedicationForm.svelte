@@ -12,6 +12,7 @@
   
   let name = ''
   let dosage = ''
+  let dosageUnit = 'mg'
   let instructions = ''
   let frequency = ''
   let duration = ''
@@ -36,6 +37,7 @@
     // Force reset all variables
     name = ''
     dosage = ''
+    dosageUnit = 'mg'
     instructions = ''
     frequency = ''
     duration = ''
@@ -57,7 +59,23 @@
   // Populate form when editing (only once)
   $: if (editingMedication && !formInitialized) {
     name = editingMedication.name || ''
-    dosage = editingMedication.dosage || ''
+    
+    // Parse dosage if it exists
+    if (editingMedication.dosage) {
+      // Try to extract number and unit from dosage string
+      const dosageMatch = editingMedication.dosage.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
+      if (dosageMatch) {
+        dosage = dosageMatch[1]
+        dosageUnit = dosageMatch[2]
+      } else {
+        dosage = editingMedication.dosage
+        dosageUnit = editingMedication.dosageUnit || 'mg'
+      }
+    } else {
+      dosage = ''
+      dosageUnit = 'mg'
+    }
+    
     instructions = editingMedication.instructions || ''
     frequency = editingMedication.frequency || ''
     duration = editingMedication.duration || ''
@@ -93,7 +111,8 @@
       
       const medicationData = {
         name: name.trim(),
-        dosage: dosage.trim(),
+        dosage: dosage.trim() + dosageUnit,
+        dosageUnit: dosageUnit,
         instructions: instructions.trim(),
         frequency,
         duration: duration.trim(),
@@ -116,7 +135,8 @@
         
         drugDatabase.addDrug(doctorId, {
           name: name.trim(),
-          dosage: dosage.trim(),
+          dosage: dosage.trim() + dosageUnit,
+          dosageUnit: dosageUnit,
           instructions: instructions.trim(),
           frequency,
           duration: duration.trim(),
@@ -136,6 +156,7 @@
       // Reset form
       name = ''
       dosage = ''
+      dosageUnit = 'mg'
       instructions = ''
       frequency = ''
       duration = ''
@@ -157,7 +178,18 @@
     // Only auto-fill other fields when editing an existing prescription
     // For new prescriptions, only fill the name field
     if (editingMedication) {
-      dosage = drug.dosage || dosage
+      // Parse dosage if it exists
+      if (drug.dosage) {
+        // Try to extract number and unit from dosage string
+        const dosageMatch = drug.dosage.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
+        if (dosageMatch) {
+          dosage = dosageMatch[1]
+          dosageUnit = dosageMatch[2]
+        } else {
+          dosage = drug.dosage
+          dosageUnit = 'mg' // default
+        }
+      }
       instructions = drug.instructions || instructions
       frequency = drug.frequency || frequency
       duration = drug.duration || duration
@@ -208,15 +240,37 @@
         <div class="col-12 col-sm-6">
           <div class="mb-3">
             <label for="medicationDosage" class="form-label">Dosage <span class="text-danger">*</span></label>
-            <input 
-              type="text" 
-              class="form-control form-control-sm" 
-              id="medicationDosage" 
-              bind:value={dosage}
-              required
-              disabled={loading}
-              placeholder="e.g., 500mg, 10ml"
-            >
+            <div class="input-group">
+              <input 
+                type="text" 
+                class="form-control form-control-sm" 
+                id="medicationDosage" 
+                bind:value={dosage}
+                required
+                disabled={loading}
+                placeholder="500"
+              >
+              <select 
+                class="form-select form-select-sm" 
+                id="dosageUnit" 
+                bind:value={dosageUnit}
+                disabled={loading}
+              >
+                <option value="mg">mg</option>
+                <option value="g">g</option>
+                <option value="ml">ml</option>
+                <option value="l">l</option>
+                <option value="units">units</option>
+                <option value="mcg">mcg</option>
+                <option value="tablets">tablets</option>
+                <option value="pills">pills</option>
+                <option value="capsules">capsules</option>
+                <option value="drops">drops</option>
+                <option value="patches">patches</option>
+                <option value="injections">injections</option>
+                <option value="sachets">sachets</option>
+              </select>
+            </div>
           </div>
         </div>
         <div class="col-12 col-sm-6">

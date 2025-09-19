@@ -4,6 +4,12 @@ This guide will help you set up Firebase for the M-Prescribe application.
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🟠 Stock Management Collections**
+- **Pharmacist Stock Collection**: New `pharmacistStock` collection for drug inventory management
+- **Initial Quantity Tracking**: Stock items now include `initialQuantity` field for low-stock calculations
+- **Real-time Stock Monitoring**: Automatic stock level monitoring with visual indicators
+- **Pharmacy Integration**: Connected pharmacists' stock data accessible to doctors
+
 ### **🔧 Critical Fixes**
 - **Firebase Index Issues**: Resolved Firebase compound query index errors by removing orderBy clauses
 - **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
@@ -208,6 +214,7 @@ The application uses the following Firestore collections:
 - `symptoms` - Patient symptom records (linked to patients and doctors)
 - `pharmacists` - Pharmacist profiles and business information
 - `drugDatabase` - Doctor-specific drug databases
+- `pharmacistStock` - Pharmacist drug inventory with stock levels and availability
 
 ### Subcollections
 - `pharmacists/{pharmacistId}/receivedPrescriptions` - Prescriptions sent to pharmacists

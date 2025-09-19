@@ -103,6 +103,57 @@ The Patient Management System is built using a modern frontend architecture with
   - Patient and medication details
   - Professional formatting
 
+### Pharmacist Components
+
+#### PharmacistAuth.svelte
+- **Purpose**: Pharmacist authentication and registration
+- **Responsibilities**:
+  - Pharmacist login/logout
+  - Account registration
+  - Authentication state management
+- **Key Features**:
+  - Form validation
+  - Error handling
+  - Responsive design
+
+#### PharmacistDashboard.svelte
+- **Purpose**: Pharmacist interface for managing prescriptions and drug inventory
+- **Responsibilities**:
+  - Display prescriptions from connected doctors
+  - Prescription management
+  - Business information display
+  - Drug stock management and inventory tracking
+- **Key Features**:
+  - Prescription viewing
+  - Business stats
+  - Connected doctors list
+  - Comprehensive drug stock management
+  - Stock availability tracking with visual indicators
+  - Initial quantity recording for low-stock alerts
+
+#### PharmacistManagement.svelte
+- **Purpose**: Doctor-pharmacist connection management
+- **Responsibilities**:
+  - Connect with pharmacists using unique numbers
+  - Manage pharmacist connections
+  - View connected pharmacists
+- **Key Features**:
+  - Pharmacist connection interface
+  - Connection status tracking
+  - Pharmacist number validation
+
+#### PrescriptionsTab.svelte
+- **Purpose**: Enhanced prescription management with stock availability
+- **Responsibilities**:
+  - Display current medications with stock availability
+  - Show pharmacy stock integration
+  - Manage prescription workflow
+- **Key Features**:
+  - Dynamic stock badges (orange for normal, red for low stock)
+  - Real-time pharmacy stock monitoring
+  - Stock percentage calculations (≤10% of initial = low stock)
+  - AI drug suggestions integration
+
 ### Admin Components
 
 #### AdminPanel.svelte

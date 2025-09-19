@@ -2,6 +2,13 @@
 
 ## 📋 Recent Updates (January 16, 2025)
 
+### **🟠 Dynamic Stock Availability System**
+- **Smart Badge Implementation**: Real-time stock monitoring with color-coded availability indicators
+- **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
+- **Pharmacy Integration**: Doctors can see medication availability from connected pharmacies
+- **Stock Management**: Comprehensive inventory management for pharmacists with quantity, strength, and expiry tracking
+- **Visual Stock Alerts**: Orange badges for normal stock, red badges for low stock (≤10% of initial)
+
 ### **🔥 Firebase-Only Migration**
 - **Complete Migration**: All data operations now use Firebase Firestore exclusively
 - **Component Updates**: Migrated all components from `jsonStorage` to `firebaseStorage`

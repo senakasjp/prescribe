@@ -780,9 +780,14 @@
       createdAt: new Date().toISOString()
     }
 
-    // Update both currentMedications and currentPrescription.medications
+    // Add medication to current prescription only
+    if (!currentPrescription.medications) {
+      currentPrescription.medications = []
+    }
+    currentPrescription.medications = [...currentPrescription.medications, medication]
+    
+    // Update currentMedications to include all medications from all prescriptions
     currentMedications = [...currentMedications, medication]
-    currentPrescription.medications = [...currentMedications]
     
     // Remove the suggestion from the AI suggestions list
     aiDrugSuggestions = aiDrugSuggestions.filter((_, index) => index !== suggestionIndex)

@@ -2,6 +2,14 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🟠 Dynamic Stock Availability System**
+- **Smart Stock Badges**: Real-time stock monitoring with color-coded availability indicators
+- **Pharmacy Integration**: Doctors can see medication availability from connected pharmacies
+- **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
+- **Visual Stock Alerts**: Orange badges for normal stock, red badges for low stock (≤10% of initial)
+- **Real-time Updates**: Automatic color changes based on current vs. initial stock levels
+- **Stock Management**: Comprehensive inventory management for pharmacists
+
 ### **🔒 Critical Security Implementation - Doctor Data Isolation**
 - **Doctor Isolation**: Each doctor can ONLY see their own patients (CRITICAL SECURITY FIX)
 - **Data Privacy**: No cross-doctor data access possible

@@ -2,6 +2,27 @@
 
 All notable changes to M-Prescribe are documented in this file.
 
+## [1.3.0] - 2025-01-16
+
+### ✨ Added
+- **Dynamic Stock Availability System**: Real-time stock monitoring with color-coded badges
+- **Pharmacy Stock Integration**: Doctors can see medication availability from connected pharmacies
+- **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
+- **Smart Stock Badges**: Orange badges for normal stock, red badges for low stock (≤10% of initial)
+- **Drug Stock Management**: Comprehensive inventory management for pharmacists
+- **Stock Availability Display**: Visual indicators showing medication availability in prescriptions
+
+### 🎨 Improved
+- **Visual Stock Alerts**: Immediate visual feedback for critical stock levels
+- **Pharmacy-Doctor Integration**: Seamless connection between pharmacist inventory and doctor prescriptions
+- **Stock Monitoring**: Real-time updates of stock levels across the system
+- **User Experience**: Enhanced prescription interface with stock availability information
+
+### 🔄 Changed
+- **Badge Color Logic**: Dynamic color changes based on stock percentage calculations
+- **Pharmacist Dashboard**: Enhanced with comprehensive drug stock management features
+- **Prescription Display**: Added stock availability badges to medication lists
+
 ## [1.2.0] - 2025-01-15
 
 ### 🔧 Fixed

@@ -2,9 +2,112 @@
 
 ## 📋 Overview
 
-The Patient Management System uses a local JSON storage service (`jsonStorage.js`) that provides a simple API for data persistence. This document outlines all available methods and their usage.
+The Patient Management System uses Firebase Firestore for data persistence with comprehensive APIs for patient management, prescription handling, and pharmacy stock management. This document outlines all available methods and their usage.
 
-## 🔧 jsonStorage Service
+## 🔥 Firebase Storage Service
+
+### Core Methods
+
+#### `getPatients(doctorId)`
+Retrieves all patients for a specific doctor.
+
+```javascript
+const patients = await firebaseStorage.getPatients(doctorId);
+```
+
+**Parameters**:
+- `doctorId` (String): Doctor's unique identifier
+
+**Returns**: Promise<Array> - Array of patient objects
+
+#### `addPatient(doctorId, patientData)`
+Creates a new patient record.
+
+```javascript
+const patient = await firebaseStorage.addPatient(doctorId, {
+  firstName: "John",
+  lastName: "Doe",
+  age: 45,
+  // ... other patient data
+});
+```
+
+**Parameters**:
+- `doctorId` (String): Doctor's unique identifier
+- `patientData` (Object): Patient information
+
+**Returns**: Promise<Object> - Created patient with generated ID
+
+### Pharmacist Stock Management
+
+#### `getPharmacistDrugStock(pharmacistId)`
+Retrieves all drug stock items for a specific pharmacist.
+
+```javascript
+const stock = await firebaseStorage.getPharmacistDrugStock(pharmacistId);
+```
+
+**Parameters**:
+- `pharmacistId` (String): Pharmacist's unique identifier
+
+**Returns**: Promise<Array> - Array of stock item objects
+
+#### `addPharmacistStockItem(pharmacistId, stockItem)`
+Adds a new stock item to a pharmacist's inventory.
+
+```javascript
+const stockItem = await firebaseStorage.addPharmacistStockItem(pharmacistId, {
+  drugName: "Paracetamol",
+  genericName: "Acetaminophen",
+  manufacturer: "ABC Pharma",
+  quantity: 1000,
+  strength: "500",
+  strengthUnit: "mg",
+  initialQuantity: 1000,
+  expiryDate: "2025-12-31",
+  batchNumber: "BATCH001",
+  price: 0.50,
+  category: "prescription"
+});
+```
+
+**Parameters**:
+- `pharmacistId` (String): Pharmacist's unique identifier
+- `stockItem` (Object): Stock item information
+
+**Returns**: Promise<Object> - Created stock item with generated ID
+
+#### `updatePharmacistStockItem(pharmacistId, stockItemId, stockItem)`
+Updates an existing stock item.
+
+```javascript
+await firebaseStorage.updatePharmacistStockItem(pharmacistId, stockItemId, {
+  quantity: 500, // Updated quantity
+  // ... other updated fields
+});
+```
+
+**Parameters**:
+- `pharmacistId` (String): Pharmacist's unique identifier
+- `stockItemId` (String): Stock item's unique identifier
+- `stockItem` (Object): Updated stock item information
+
+**Returns**: Promise<void>
+
+#### `deletePharmacistStockItem(pharmacistId, stockItemId)`
+Removes a stock item from inventory.
+
+```javascript
+await firebaseStorage.deletePharmacistStockItem(pharmacistId, stockItemId);
+```
+
+**Parameters**:
+- `pharmacistId` (String): Pharmacist's unique identifier
+- `stockItemId` (String): Stock item's unique identifier
+
+**Returns**: Promise<void>
+
+## 🔧 jsonStorage Service (Legacy)
 
 ### Core Methods
 

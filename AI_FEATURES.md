@@ -2,7 +2,13 @@
 
 This document describes the AI features integrated into the M-Prescribe Patient Management System.
 
-## 🆕 Recent Updates (January 15, 2025)
+## 🆕 Recent Updates (January 16, 2025)
+
+### **🟠 AI-Enhanced Stock Management**
+- **Smart Drug Suggestions**: AI-powered medication recommendations with country-specific drug availability
+- **Stock-Aware Recommendations**: AI considers pharmacy stock levels when suggesting medications
+- **Country-Specific Drug Names**: AI provides medication suggestions based on patient's country for accurate drug names
+- **Enhanced Prompt Engineering**: Improved AI prompts to exclude OTC suggestions and focus on prescription medications
 
 ### **🔧 AI System Improvements**
 - **Enhanced Drug Interaction Analysis**: Improved analysis of medications within prescription containers

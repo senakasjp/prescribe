@@ -1,5 +1,7 @@
 <script>
+  import { onMount } from 'svelte'
   import PatientForms from './PatientForms.svelte'
+  import firebaseStorage from '../services/firebaseStorage.js'
   
   export let selectedPatient
   export let showMedicationForm
@@ -27,6 +29,148 @@
   export let onNewPrescription
   export let onAddDrug
   export let onPrintPrescriptions
+  
+  // Pharmacy stock availability
+  let pharmacyStock = []
+  let stockLoading = false
+  
+  // Load pharmacy stock for availability checking
+  const loadPharmacyStock = async () => {
+    if (!doctorId) return
+    
+    try {
+      stockLoading = true
+      console.log('📦 Loading pharmacy stock for doctor:', doctorId)
+      
+      // Get doctor's connected pharmacists
+      const doctor = await firebaseStorage.getDoctorById(doctorId)
+      console.log('👨‍⚕️ Doctor data:', doctor)
+      
+      if (!doctor || !doctor.connectedPharmacists || doctor.connectedPharmacists.length === 0) {
+        console.log('⚠️ No connected pharmacists found for doctor')
+        pharmacyStock = []
+        return
+      }
+      
+      console.log('🏥 Connected pharmacists:', doctor.connectedPharmacists)
+      
+      // Get stock from all connected pharmacists
+      let allStock = []
+      for (const pharmacistId of doctor.connectedPharmacists) {
+        console.log('📦 Loading stock for pharmacist:', pharmacistId)
+        const stockData = await firebaseStorage.getPharmacistDrugStock(pharmacistId)
+        if (stockData && stockData.length > 0) {
+          allStock = allStock.concat(stockData)
+          console.log('📦 Added', stockData.length, 'items from pharmacist', pharmacistId)
+        }
+      }
+      
+      pharmacyStock = allStock
+      console.log('📦 Total loaded pharmacy stock:', pharmacyStock.length, 'items from', doctor.connectedPharmacists.length, 'pharmacists')
+      
+    } catch (error) {
+      console.error('❌ Error loading pharmacy stock:', error)
+      pharmacyStock = []
+    } finally {
+      stockLoading = false
+    }
+  }
+  
+  // Check if a medication is available in pharmacy stock
+  const isMedicationAvailable = (medication) => {
+    if (!medication || !pharmacyStock.length) return null
+    
+    console.log('🔍 ===== STARTING AVAILABILITY CHECK =====')
+    console.log('🔍 Medication to check:', JSON.stringify(medication, null, 2))
+    console.log('📦 Pharmacy stock array length:', pharmacyStock.length)
+    console.log('📦 All pharmacy stock:', JSON.stringify(pharmacyStock, null, 2))
+    
+    // Parse medication dosage to extract strength and unit
+    console.log('🔍 Dosage string:', medication.dosage)
+    const dosageMatch = medication.dosage?.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
+    console.log('🔍 Dosage match result:', dosageMatch)
+    
+    if (!dosageMatch) {
+      console.log('⚠️ Could not parse dosage:', medication.dosage, '- trying name-only match')
+      
+      // Try to match by name only if dosage parsing fails
+      const matchingStock = pharmacyStock.find(stock => {
+        const stockName = stock.drugName?.toLowerCase().trim() || ''
+        const medName = medication.name?.toLowerCase().trim() || ''
+        const nameMatch = stockName && medName && stockName.includes(medName)
+        
+        console.log('🔍 Name-only comparison:', stockName, 'vs', medName, 'match:', nameMatch)
+        return nameMatch
+      })
+      
+      if (matchingStock) {
+        const quantity = parseInt(matchingStock.quantity) || 0
+        console.log('✅ Found name-only match:', matchingStock, 'quantity:', quantity)
+        return {
+          available: quantity > 0,
+          quantity: quantity,
+          stockItem: matchingStock
+        }
+      }
+      
+      return null
+    }
+    
+    const [, strength, unit] = dosageMatch
+    console.log('🔍 Parsed strength:', strength, 'unit:', unit)
+    
+    // Find matching stock item with more flexible matching
+    const matchingStock = pharmacyStock.find(stock => {
+      // Check drug name match (case insensitive, partial match)
+      const stockName = stock.drugName?.toLowerCase().trim() || ''
+      const medName = medication.name?.toLowerCase().trim() || ''
+      const nameMatch = stockName && medName && stockName.includes(medName)
+      
+      console.log('🔍 Name comparison:', stockName, 'vs', medName, 'match:', nameMatch)
+      
+      // Check strength match (flexible)
+      const stockStrength = stock.strength || ''
+      const strengthMatch = stockStrength === strength || stockStrength.includes(strength)
+      
+      console.log('🔍 Strength comparison:', stockStrength, 'vs', strength, 'match:', strengthMatch)
+      
+      // Check unit match (flexible)
+      const stockUnit = stock.strengthUnit || ''
+      const unitMatch = !stockUnit || stockUnit === unit || stockUnit.includes(unit)
+      
+      console.log('🔍 Unit comparison:', stockUnit, 'vs', unit, 'match:', unitMatch)
+      
+      const isMatch = nameMatch && strengthMatch && unitMatch
+      console.log('🔍 Overall match for stock item:', stock.drugName, ':', isMatch)
+      
+      return isMatch
+    })
+    
+    if (matchingStock) {
+      // Check if quantity is available
+      const quantity = parseInt(matchingStock.quantity) || 0
+      console.log('✅ Found matching stock:', matchingStock, 'quantity:', quantity)
+      return {
+        available: quantity > 0,
+        quantity: quantity,
+        stockItem: matchingStock
+      }
+    }
+    
+    console.log('❌ No matching stock found for:', medication.name)
+    return { available: false, quantity: 0, stockItem: null }
+  }
+  
+  // Load stock when component mounts or doctorId changes
+  $: if (doctorId) {
+    loadPharmacyStock()
+  }
+  
+  onMount(() => {
+    if (doctorId) {
+      loadPharmacyStock()
+    }
+  })
 </script>
 
 <div class="prescriptions-responsive-container">
@@ -99,6 +243,20 @@
                       {#if medication.aiSuggested}
                         <span class="badge bg-info ms-2">
                           <i class="fas fa-brain me-1"></i>AI Suggested
+                        </span>
+                      {/if}
+                      <!-- Availability Badge -->
+                      {#if !stockLoading}
+                        {@const availability = isMedicationAvailable(medication)}
+                        {#if availability !== null && availability.available}
+                          {@const isLowStock = availability.stockItem && availability.stockItem.initialQuantity && availability.quantity <= (availability.stockItem.initialQuantity * 0.1)}
+                          <span class="badge {isLowStock ? 'bg-danger' : 'bg-warning'} ms-2">
+                            <i class="fas fa-check-circle me-1"></i>In Stock
+                          </span>
+                        {/if}
+                      {:else}
+                        <span class="badge bg-secondary ms-2">
+                          <i class="fas fa-spinner fa-spin me-1"></i>Checking...
                         </span>
                       {/if}
                     </div>
