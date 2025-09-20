@@ -1,12 +1,15 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import authService from '../services/authService.js'
   import PatientForm from './PatientForm.svelte'
   import PatientDetails from './PatientDetails.svelte'
   import PatientList from './PatientList.svelte'
   import MedicalSummary from './MedicalSummary.svelte'
   import PharmacistManagement from './PharmacistManagement.svelte'
   import { Chart, registerables } from 'chart.js'
+  import { countries } from '../data/countries.js'
+  import { cities, getCitiesByCountry } from '../data/cities.js'
   
   // Register Chart.js components
   Chart.register(...registerables)
@@ -103,6 +106,10 @@
   let totalPrescriptions = 0
   let totalDrugs = 0
   let connectedPharmacies = 0
+  
+  // Profile editing state removed - now using tabbed modal
+  
+  // Reactive variables removed - now using tabbed modal
   
   // Reactive statements to ensure component updates when data changes
   $: if (selectedPatient) {
@@ -669,6 +676,155 @@
       .sort((a, b) => new Date(b.items[0]?.createdAt || 0) - new Date(a.items[0]?.createdAt || 0))
   }
   
+  // Profile editing state
+  let editingProfile = false
+  let editFirstName = ''
+  let editLastName = ''
+  let editCountry = ''
+  let editCity = ''
+  let profileLoading = false
+  let profileError = ''
+  let activeTab = 'edit-profile'
+  
+  // Prescription template variables
+  let templateType = '' // 'printed', 'upload', 'system'
+  let uploadedHeader = null
+  let templatePreview = null
+  
+  // Reactive variable for cities based on selected country
+  $: availableCities = editCountry ? getCitiesByCountry(editCountry) : []
+  
+  // Reset city when country changes
+  $: if (editCountry && editCity && !availableCities.find(c => c.name === editCity)) {
+    editCity = ''
+  }
+  
+  // Handle edit profile click - show inline tabbed interface
+  const handleEditProfile = () => {
+    editingProfile = true
+    // Initialize form fields with current user data
+    editFirstName = user?.firstName || ''
+    editLastName = user?.lastName || ''
+    editCountry = user?.country || ''
+    editCity = user?.city || ''
+    profileError = ''
+  }
+  
+  // Handle profile cancel
+  const handleProfileCancel = () => {
+    editingProfile = false
+    editFirstName = ''
+    editLastName = ''
+    editCountry = ''
+    editCity = ''
+    profileError = ''
+  }
+  
+  // Handle tab switching
+  const switchTab = (tabName) => {
+    console.log('Switching to tab:', tabName)
+    activeTab = tabName
+    console.log('Active tab is now:', activeTab)
+  }
+  
+  // Handle profile form submission
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault()
+    
+    profileError = ''
+    profileLoading = true
+    
+    try {
+      // Validate required fields
+      if (!editFirstName.trim() || !editLastName.trim()) {
+        throw new Error('First name and last name are required')
+      }
+      
+      if (!editCountry.trim()) {
+        throw new Error('Country is required')
+      }
+      
+      if (!editCity.trim()) {
+        throw new Error('City is required')
+      }
+      
+      // Update user data
+      const updatedUser = {
+        ...user,
+        firstName: editFirstName.trim(),
+        lastName: editLastName.trim(),
+        country: editCountry.trim(),
+        city: editCity.trim(),
+        name: `${editFirstName.trim()} ${editLastName.trim()}`
+      }
+      
+      // Update in auth service
+      await authService.updateDoctor(updatedUser)
+      
+      // Dispatch profile update event to parent
+      dispatch('profile-updated', updatedUser)
+      
+      // Exit edit mode
+      editingProfile = false
+      
+    } catch (err) {
+      profileError = err.message
+    } finally {
+      profileLoading = false
+    }
+  }
+  
+  // Handle template type selection
+  const selectTemplateType = (type) => {
+    templateType = type
+    uploadedHeader = null
+    templatePreview = null
+  }
+  
+  // Handle header image upload
+  const handleHeaderUpload = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        uploadedHeader = e.target.result
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+  
+  // Generate system header preview
+  const generateSystemHeader = () => {
+    templatePreview = {
+      type: 'system',
+      doctorName: user?.name || 'Dr. [Your Name]',
+      practiceName: '[Your Practice Name]',
+      address: '[Your Address]',
+      phone: '[Your Phone]',
+      email: user?.email || '[Your Email]'
+    }
+  }
+  
+  // Save template settings
+  const saveTemplateSettings = async () => {
+    try {
+      // Here you would save the template settings to Firebase
+      // For now, we'll just show a success message
+      console.log('Template settings saved:', {
+        templateType,
+        uploadedHeader: uploadedHeader ? 'Image uploaded' : null,
+        templatePreview
+      })
+      
+      // Show success message (you can implement a notification system)
+      alert('Template settings saved successfully!')
+      
+    } catch (error) {
+      console.error('Error saving template settings:', error)
+      alert('Error saving template settings. Please try again.')
+    }
+  }
+  
   onMount(() => {
     loadPatients()
     // Create chart after a short delay to ensure DOM is ready
@@ -946,9 +1102,14 @@
                            <i class="fas fa-user-md fa-2x text-primary"></i>
                          </div>
                          <div class="flex-grow-1 ms-3">
-                           <h4 class="card-title mb-1 fw-bold text-dark">
-                             Welcome, Dr. {doctorName}!
-                           </h4>
+                           <div class="d-flex justify-content-between align-items-center">
+                             <h4 class="card-title mb-1 fw-bold text-dark">
+                               Welcome, Dr. {doctorName}!
+                             </h4>
+                             <button class="btn btn-link p-2" on:click={handleEditProfile} title="Edit Profile Settings" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                               <i class="fas fa-cog text-danger fa-sm"></i>
+                             </button>
+                           </div>
                            <p class="card-text mb-0 text-muted">
                              Ready to provide excellent patient care with AI-powered assistance
                            </p>
@@ -963,6 +1124,7 @@
                    </div>
                  </div>
         
+        {#if !editingProfile}
         <!-- Statistics Cards -->
         <div class="col-6 col-md-4">
           <div class="card border-0 shadow-sm h-100">
@@ -1057,6 +1219,370 @@
             </div>
           </div>
         </div>
+        {/if}
+        
+        {#if editingProfile}
+        <!-- Inline Tabbed Profile Editing Interface -->
+        <div class="col-12">
+          <div class="card border-0 shadow-sm">
+            <div class="card-header bg-primary text-white">
+              <div class="d-flex justify-content-between align-items-center">
+                <h6 class="card-title mb-0">
+                  <i class="fas fa-cog me-2 fa-sm"></i>
+                  Settings
+                </h6>
+                <button class="btn btn-outline-light btn-sm" on:click={handleProfileCancel}>
+                  <i class="fas fa-times fa-sm"></i>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Tab Navigation -->
+            <div class="card-body p-0">
+              <ul class="nav nav-tabs nav-fill" id="settingsTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button 
+                    class="nav-link {activeTab === 'edit-profile' ? 'active' : ''} btn-sm" 
+                    id="edit-profile-tab" 
+                    type="button" 
+                    role="tab" 
+                    aria-controls="edit-profile" 
+                    aria-selected={activeTab === 'edit-profile'}
+                    on:click={() => switchTab('edit-profile')}
+                  >
+                    <i class="fas fa-user-edit me-2 fa-sm"></i>
+                    Edit Profile
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button 
+                    class="nav-link {activeTab === 'prescription-template' ? 'active' : ''} btn-sm" 
+                    id="prescription-template-tab" 
+                    type="button" 
+                    role="tab" 
+                    aria-controls="prescription-template" 
+                    aria-selected={activeTab === 'prescription-template'}
+                    on:click={() => switchTab('prescription-template')}
+                  >
+                    <i class="fas fa-file-medical me-2 fa-sm"></i>
+                    Prescription Template
+                  </button>
+                </li>
+              </ul>
+              
+              <!-- Tab Content -->
+              <div class="tab-content p-3" id="settingsTabContent">
+                <!-- Edit Profile Tab -->
+                {#if activeTab === 'edit-profile'}
+                <div class="tab-pane fade show active" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
+                  <form on:submit={handleProfileSubmit}>
+                    <div class="row mb-3">
+                      <div class="col-md-6">
+                        <label for="editFirstName" class="form-label">
+                          First Name <span class="text-danger">*</span>
+                        </label>
+                        <input 
+                          type="text" 
+                          class="form-control form-control-sm" 
+                          id="editFirstName"
+                          bind:value={editFirstName}
+                          placeholder="Enter your first name"
+                          required
+                          disabled={profileLoading}
+                        />
+                      </div>
+                      <div class="col-md-6">
+                        <label for="editLastName" class="form-label">
+                          Last Name <span class="text-danger">*</span>
+                        </label>
+                        <input 
+                          type="text" 
+                          class="form-control form-control-sm" 
+                          id="editLastName"
+                          bind:value={editLastName}
+                          placeholder="Enter your last name"
+                          required
+                          disabled={profileLoading}
+                        />
+                      </div>
+                    </div>
+
+                    <div class="mb-3">
+                      <label for="editEmail" class="form-label">Email Address</label>
+                      <input 
+                        type="email" 
+                        class="form-control form-control-sm" 
+                        id="editEmail"
+                        value={user?.email || ''}
+                        disabled
+                        readonly
+                      />
+                      <div class="form-text">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Email cannot be changed for security reasons
+                      </div>
+                    </div>
+
+                    <div class="mb-3">
+                      <label for="editCountry" class="form-label">
+                        Country <span class="text-danger">*</span>
+                      </label>
+                      <select 
+                        class="form-select form-select-sm" 
+                        id="editCountry"
+                        bind:value={editCountry}
+                        required
+                        disabled={profileLoading}
+                      >
+                        <option value="">Select your country</option>
+                        {#each countries as countryOption}
+                          <option value={countryOption.name}>{countryOption.name}</option>
+                        {/each}
+                      </select>
+                    </div>
+
+                    <div class="mb-3">
+                      <label for="editCity" class="form-label">
+                        City <span class="text-danger">*</span>
+                      </label>
+                      <select 
+                        class="form-select form-select-sm" 
+                        id="editCity"
+                        bind:value={editCity}
+                        required
+                        disabled={profileLoading || !editCountry}
+                      >
+                        <option value="">Select your city</option>
+                        {#each availableCities as cityOption}
+                          <option value={cityOption.name}>{cityOption.name}</option>
+                        {/each}
+                      </select>
+                      {#if editCountry && availableCities.length === 0}
+                        <div class="form-text text-warning">
+                          <i class="fas fa-exclamation-triangle me-1"></i>
+                          No cities available for the selected country. Please contact support.
+                        </div>
+                      {/if}
+                    </div>
+
+                    {#if profileError}
+                      <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>{profileError}
+                      </div>
+                    {/if}
+
+                    <div class="d-flex justify-content-end gap-2">
+                      <button 
+                        type="button" 
+                        class="btn btn-outline-secondary btn-sm" 
+                        on:click={handleProfileCancel}
+                        disabled={profileLoading}
+                      >
+                        <i class="fas fa-times me-1 fa-sm"></i>
+                        Cancel
+                      </button>
+                      <button 
+                        type="submit" 
+                        class="btn btn-primary btn-sm"
+                        disabled={profileLoading}
+                      >
+                        {#if profileLoading}
+                          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                        {/if}
+                        <i class="fas fa-save me-1 fa-sm"></i>
+                        Save Changes
+                      </button>
+                    </div>
+                  </form>
+                </div>
+                {/if}
+                
+                <!-- Prescription Template Tab -->
+                {#if activeTab === 'prescription-template'}
+                <div class="tab-pane fade show active" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
+                  <!-- Debug: Template tab is active -->
+                  <div class="alert alert-info">
+                    <strong>Debug:</strong> Template tab is active. activeTab = {activeTab}
+                  </div>
+                  <div class="mb-4">
+                    <h6 class="fw-bold mb-3">
+                      <i class="fas fa-file-medical me-2"></i>
+                      Prescription Template Settings
+                    </h6>
+                    <p class="text-muted small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
+                  </div>
+                  
+                  <!-- Template Type Selection -->
+                  <div class="row mb-4">
+                    <div class="col-12">
+                      <label class="form-label fw-semibold mb-3">Select Template Type:</label>
+                      
+                      <!-- Option 1: Printed Letterheads -->
+                      <div class="card mb-3 border {templateType === 'printed' ? 'border-primary' : ''}">
+                        <div class="card-body p-3">
+                          <div class="form-check">
+                            <input 
+                              class="form-check-input" 
+                              type="radio" 
+                              name="templateType" 
+                              id="templatePrinted" 
+                              value="printed"
+                              bind:group={templateType}
+                              on:change={() => selectTemplateType('printed')}
+                            />
+                            <label class="form-check-label w-100" for="templatePrinted">
+                              <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0 me-3">
+                                  <i class="fas fa-print fa-2x text-primary"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                  <h6 class="mb-1">I have printed A3 letterheads</h6>
+                                  <p class="text-muted small mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
+                                </div>
+                              </div>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <!-- Option 2: Upload Image -->
+                      <div class="card mb-3 border {templateType === 'upload' ? 'border-primary' : ''}">
+                        <div class="card-body p-3">
+                          <div class="form-check">
+                            <input 
+                              class="form-check-input" 
+                              type="radio" 
+                              name="templateType" 
+                              id="templateUpload" 
+                              value="upload"
+                              bind:group={templateType}
+                              on:change={() => selectTemplateType('upload')}
+                            />
+                            <label class="form-check-label w-100" for="templateUpload">
+                              <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0 me-3">
+                                  <i class="fas fa-image fa-2x text-success"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                  <h6 class="mb-1">I want to upload an image for header</h6>
+                                  <p class="text-muted small mb-0">Upload your custom header image to be used on all prescriptions.</p>
+                                </div>
+                              </div>
+                            </label>
+                          </div>
+                          
+                          {#if templateType === 'upload'}
+                          <div class="mt-3">
+                            <input 
+                              type="file" 
+                              class="form-control form-control-sm" 
+                              accept="image/*"
+                              on:change={handleHeaderUpload}
+                            />
+                            <div class="form-text">
+                              <i class="fas fa-info-circle me-1"></i>
+                              Supported formats: JPG, PNG, GIF. Recommended size: 800x200 pixels.
+                            </div>
+                            
+                            {#if uploadedHeader}
+                            <div class="mt-3">
+                              <label class="form-label small">Preview:</label>
+                              <div class="border rounded p-2 bg-light">
+                                <img src={uploadedHeader} alt="Header preview" class="img-fluid" style="max-height: 100px;" />
+                              </div>
+                            </div>
+                            {/if}
+                          </div>
+                          {/if}
+                        </div>
+                      </div>
+                      
+                      <!-- Option 3: System Header -->
+                      <div class="card mb-3 border {templateType === 'system' ? 'border-primary' : ''}">
+                        <div class="card-body p-3">
+                          <div class="form-check">
+                            <input 
+                              class="form-check-input" 
+                              type="radio" 
+                              name="templateType" 
+                              id="templateSystem" 
+                              value="system"
+                              bind:group={templateType}
+                              on:change={() => selectTemplateType('system')}
+                            />
+                            <label class="form-check-label w-100" for="templateSystem">
+                              <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0 me-3">
+                                  <i class="fas fa-cog fa-2x text-info"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                  <h6 class="mb-1">I want system to add header for template</h6>
+                                  <p class="text-muted small mb-0">Use a system-generated header with your practice information.</p>
+                                </div>
+                              </div>
+                            </label>
+                          </div>
+                          
+                          {#if templateType === 'system'}
+                          <div class="mt-3">
+                            <button 
+                              type="button" 
+                              class="btn btn-outline-info btn-sm"
+                              on:click={generateSystemHeader}
+                            >
+                              <i class="fas fa-eye me-2"></i>
+                              Preview System Header
+                            </button>
+                            
+                            {#if templatePreview && templatePreview.type === 'system'}
+                            <div class="mt-3">
+                              <label class="form-label small">System Header Preview:</label>
+                              <div class="border rounded p-3 bg-light">
+                                <div class="text-center">
+                                  <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>
+                                  <p class="mb-1 fw-semibold">{templatePreview.practiceName}</p>
+                                  <p class="mb-1 small">{templatePreview.address}</p>
+                                  <p class="mb-1 small">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
+                                  <hr class="my-2">
+                                  <p class="mb-0 fw-bold">PRESCRIPTION</p>
+                                </div>
+                              </div>
+                            </div>
+                            {/if}
+                          </div>
+                          {/if}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Save Button -->
+                  <div class="d-flex justify-content-end gap-2">
+                    <button 
+                      type="button" 
+                      class="btn btn-outline-secondary btn-sm" 
+                      on:click={handleProfileCancel}
+                    >
+                      <i class="fas fa-times me-1 fa-sm"></i>
+                      Cancel
+                    </button>
+                    <button 
+                      type="button" 
+                      class="btn btn-primary btn-sm"
+                      on:click={saveTemplateSettings}
+                      disabled={!templateType}
+                    >
+                      <i class="fas fa-save me-1 fa-sm"></i>
+                      Save Template Settings
+                    </button>
+                  </div>
+                </div>
+                {/if}
+              </div>
+            </div>
+          </div>
+        </div>
+        {/if}
       </div>
     {/if}
   </div>

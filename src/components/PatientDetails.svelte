@@ -896,12 +896,6 @@
       // Generate and download PDF
       await generatePrescriptionPDF()
       
-      // Also try to open print dialog as fallback
-      setTimeout(() => {
-        console.log('🖨️ Opening print dialog as fallback...')
-        window.print()
-      }, 1000)
-      
       console.log('🎉 Prescriptions printed successfully')
     } catch (error) {
       console.error('❌ Error printing prescriptions:', error)
@@ -1249,11 +1243,7 @@
     try {
       console.log('🔄 Starting PDF generation...')
       
-      // Test jsPDF first
-      const jsPDFWorking = await testJsPDF()
-      if (!jsPDFWorking) {
-        throw new Error('jsPDF is not working properly')
-      }
+      // Skip jsPDF test to avoid multiple downloads
       
       // Try to import jsPDF
       let jsPDF
@@ -1307,14 +1297,6 @@
       doc.text('123 Medical Street, City', margin, 27)
       doc.text('Phone: (555) 123-4567', margin, 32)
       
-      // Date (right aligned)
-      doc.setFontSize(10)
-      doc.text(`Date: ${currentDate}`, pageWidth - margin, 22, { align: 'right' })
-      
-      // Prescription number
-      const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
-      doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, 32, { align: 'right' })
-      
       // Patient information section
       doc.setFontSize(12)
       doc.setFont('helvetica', 'bold')
@@ -1339,11 +1321,14 @@
         }
       }
       
+      // Name and Date on same line
       doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, margin, 52)
-      doc.text(`Age: ${patientAge}`, margin + 70, 52)
-      doc.text(`Gender: ${selectedPatient.gender || 'Not specified'}`, margin, 58)
-      doc.text(`Phone: ${selectedPatient.phone || 'Not provided'}`, margin + 70, 58)
-      doc.text(`Address: ${selectedPatient.address || 'Not provided'}`, margin, 64)
+      doc.text(`Date: ${currentDate}`, pageWidth - margin, 52, { align: 'right' })
+      
+      // Age and Prescription number on same line
+      doc.text(`Age: ${patientAge}`, margin, 58)
+      const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
+      doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, 58, { align: 'right' })
       
       // Prescription medications section
       let yPos = 75
@@ -1352,54 +1337,57 @@
         doc.setFontSize(12)
         doc.setFont('helvetica', 'bold')
         doc.text('PRESCRIPTION MEDICATIONS', margin, yPos)
-        yPos += 10
+        yPos += 6
         
         doc.setFontSize(9)
         doc.setFont('helvetica', 'normal')
         
         currentMedications.forEach((medication, index) => {
-          if (yPos > pageHeight - 40) {
+          if (yPos > pageHeight - 30) {
             doc.addPage()
             yPos = margin + 10
           }
           
-          // Medication header with number
+          // Medication header with drug name and dosage on same line
           doc.setFontSize(10)
           doc.setFont('helvetica', 'bold')
+          
+          // Drug name on the left
           doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
           
-          // Dosage and frequency
+          // Dosage on the right (bold and right-aligned)
+          doc.text(`${medication.dosage}`, pageWidth - margin, yPos, { align: 'right' })
+          
+          // Other medication details on next line
           doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
-          yPos += 6
-          doc.text(`   Dosage: ${medication.dosage}`, margin, yPos)
-          yPos += 5
-          doc.text(`   Frequency: ${medication.frequency}`, margin, yPos)
           
-          // Duration if available
+          // Build horizontal medication details string (excluding dosage since it's now on header line)
+          let medicationDetails = `Frequency: ${medication.frequency}`
+          
+          // Add duration if available
           if (medication.duration) {
-            yPos += 5
-            doc.text(`   Duration: ${medication.duration}`, margin, yPos)
+            medicationDetails += ` | Duration: ${medication.duration}`
           }
           
-          // Instructions
+          // AI suggested indicator removed from PDF
+          
+          yPos += 4
+          // Split text if too long for page width
+          const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
+          doc.text(detailsLines, margin, yPos)
+          yPos += detailsLines.length * 3
+          
+          // Add instructions on next line if available
           if (medication.instructions) {
-            yPos += 5
-            const instructions = doc.splitTextToSize(`   Instructions: ${medication.instructions}`, contentWidth - 10)
-            doc.text(instructions, margin, yPos)
-            yPos += instructions.length * 4
+            yPos += 2
+            const instructionText = `Instructions: ${medication.instructions}`
+            const instructionLines = doc.splitTextToSize(instructionText, contentWidth)
+            doc.text(instructionLines, margin, yPos)
+            yPos += instructionLines.length * 3
           }
           
-          // AI suggested indicator
-          if (medication.aiSuggested) {
-            yPos += 5
-            doc.setFontSize(8)
-            doc.setTextColor(100, 100, 100)
-            doc.text('   [AI Suggested]', margin, yPos)
-            doc.setTextColor(0, 0, 0) // Reset color
-          }
-          
-          yPos += 8 // Space between medications
+          yPos += 4 // Space between medications
         })
       } else {
         doc.setFontSize(10)
@@ -1418,13 +1406,13 @@
         doc.setFontSize(12)
         doc.setFont('helvetica', 'bold')
         doc.text('ADDITIONAL NOTES', margin, yPos)
-        yPos += 8
+        yPos += 5
         
         doc.setFontSize(9)
         doc.setFont('helvetica', 'normal')
         const notes = doc.splitTextToSize(prescriptionNotes, contentWidth)
         doc.text(notes, margin, yPos)
-        yPos += notes.length * 4
+        yPos += notes.length * 3
       }
       
       // Doctor signature section
@@ -1432,7 +1420,7 @@
         doc.addPage()
         yPos = pageHeight - 35
       } else {
-        yPos = Math.max(yPos + 10, pageHeight - 35)
+        yPos = Math.max(yPos + 6, pageHeight - 35)
       }
       
       doc.setFontSize(10)
@@ -1454,13 +1442,10 @@
       
       console.log('💾 Saving PDF with filename:', filename)
       
-      // Save the PDF
+      // Save the PDF (single download only)
       doc.save(filename)
       
       console.log('✅ A5 PDF generated and downloaded successfully:', filename)
-      
-      // Show success message to user
-      alert(`A5 Prescription PDF generated successfully: ${filename}`)
       
     } catch (error) {
       console.error('❌ Error generating PDF:', error)
@@ -1469,14 +1454,6 @@
       
       // Show error message to user
       alert(`Error generating PDF: ${error.message}`)
-      
-      // Try alternative approach - open print dialog
-      console.log('🔄 Trying alternative print approach...')
-      try {
-        window.print()
-      } catch (printError) {
-        console.error('❌ Print also failed:', printError)
-      }
     }
   }
   

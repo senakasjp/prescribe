@@ -17,6 +17,14 @@
   let loading = false
   let error = ''
   
+  // Prescription template variables
+  let prescriptionTemplates = []
+  let newTemplateName = ''
+  let newTemplateContent = ''
+  
+  // Tab management
+  let activeTab = 'edit-profile'
+  
   // Reactive variable for cities based on selected country
   $: availableCities = country ? getCitiesByCountry(country) : []
   
@@ -97,35 +105,77 @@
   const handleCancel = () => {
     dispatch('profile-cancelled')
   }
+  
+  // Handle tab switching
+  const switchTab = (tabName) => {
+    activeTab = tabName
+  }
 </script>
 
 <!-- Edit Profile Modal -->
 <div class="modal fade show d-block" style="background-color: rgba(var(--bs-dark-rgb), 0.5);" tabindex="-1">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title">
-          <i class="fas fa-user-edit me-2"></i>
-          Edit Profile
-        </h5>
+        <h6 class="modal-title">
+          <i class="fas fa-cog me-2 fa-sm"></i>
+          Settings
+        </h6>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-sm btn-outline-light" on:click={initializeForm} title="Reload current values">
-            <i class="fas fa-sync-alt"></i>
+            <i class="fas fa-sync-alt fa-sm"></i>
           </button>
           <button type="button" class="btn-close btn-close-white" on:click={handleCancel}></button>
         </div>
       </div>
       
-      <form on:submit={handleSubmit}>
-        <div class="modal-body">
-          <div class="row mb-3">
+      <!-- Tab Navigation -->
+      <div class="modal-body p-0">
+        <ul class="nav nav-tabs nav-fill" id="settingsTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button 
+              class="nav-link {activeTab === 'edit-profile' ? 'active' : ''} btn-sm" 
+              id="edit-profile-tab" 
+              type="button" 
+              role="tab" 
+              aria-controls="edit-profile" 
+              aria-selected={activeTab === 'edit-profile'}
+              on:click={() => switchTab('edit-profile')}
+            >
+              <i class="fas fa-user-edit me-2 fa-sm"></i>
+              Edit Profile
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button 
+              class="nav-link {activeTab === 'prescription-template' ? 'active' : ''} btn-sm" 
+              id="prescription-template-tab" 
+              type="button" 
+              role="tab" 
+              aria-controls="prescription-template" 
+              aria-selected={activeTab === 'prescription-template'}
+              on:click={() => switchTab('prescription-template')}
+            >
+              <i class="fas fa-file-medical me-2 fa-sm"></i>
+              Prescription Template
+            </button>
+          </li>
+        </ul>
+        
+        <!-- Tab Content -->
+        <div class="tab-content p-3" id="settingsTabContent">
+          <!-- Edit Profile Tab -->
+          {#if activeTab === 'edit-profile'}
+          <div class="tab-pane fade show active" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
+            <form on:submit={handleSubmit}>
+              <div class="row mb-3">
             <div class="col-md-6">
               <label for="editFirstName" class="form-label">
                 First Name <span class="text-danger">*</span>
               </label>
               <input 
                 type="text" 
-                class="form-control" 
+                class="form-control form-control-sm" 
                 id="editFirstName" 
                 bind:value={firstName}
                 placeholder="Enter your first name"
@@ -139,7 +189,7 @@
               </label>
               <input 
                 type="text" 
-                class="form-control" 
+                class="form-control form-control-sm" 
                 id="editLastName" 
                 bind:value={lastName}
                 placeholder="Enter your last name"
@@ -153,7 +203,7 @@
             <label for="editEmail" class="form-label">Email Address</label>
             <input 
               type="email" 
-              class="form-control" 
+              class="form-control form-control-sm" 
               id="editEmail" 
               value={email}
               disabled
@@ -170,7 +220,7 @@
               Country <span class="text-danger">*</span>
             </label>
             <select 
-              class="form-select" 
+              class="form-select form-select-sm" 
               id="editCountry" 
               bind:value={country}
               required
@@ -188,7 +238,7 @@
               City <span class="text-danger">*</span>
             </label>
             <select 
-              class="form-select" 
+              class="form-select form-select-sm" 
               id="editCity" 
               bind:value={city}
               required
@@ -212,26 +262,44 @@
               <i class="fas fa-exclamation-triangle me-2"></i>{error}
             </div>
           {/if}
+            </form>
+          </div>
+          {/if}
+          
+          <!-- Prescription Template Tab -->
+          {#if activeTab === 'prescription-template'}
+          <div class="tab-pane fade" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
+            <div class="text-center py-4">
+              <i class="fas fa-file-medical fa-3x text-muted mb-3"></i>
+              <h6 class="text-muted">Prescription Template Settings</h6>
+              <p class="text-muted small">Configure default prescription templates and formatting options.</p>
+              <button type="button" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-plus me-2"></i>
+                Add Template
+              </button>
+            </div>
+          </div>
+          {/if}
         </div>
+      </div>
         
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" on:click={handleCancel} disabled={loading}>
-            <i class="fas fa-times me-1"></i>
+          <button type="button" class="btn btn-secondary btn-sm" on:click={handleCancel} disabled={loading}>
+            <i class="fas fa-times me-1 fa-sm"></i>
             Cancel
           </button>
           <button 
             type="submit" 
-            class="btn btn-primary"
+            class="btn btn-primary btn-sm"
             disabled={loading}
           >
             {#if loading}
               <span class="spinner-border spinner-border-sm me-2" role="status"></span>
             {/if}
-            <i class="fas fa-save me-1"></i>
+            <i class="fas fa-save me-1 fa-sm"></i>
             Save Changes
           </button>
         </div>
-      </form>
     </div>
   </div>
 </div>

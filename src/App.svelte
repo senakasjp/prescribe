@@ -430,10 +430,6 @@
               </div>
               
               <!-- Action Buttons -->
-              <button class="btn btn-outline-light btn-sm me-2" on:click={handleEditProfile}>
-                <i class="fas fa-user-edit me-1"></i>
-                Edit Profile
-              </button>
               {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
                 <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
                   <i class="fas fa-shield-alt me-1"></i>
@@ -473,10 +469,6 @@
               
               <!-- Action Buttons Row -->
               <div class="d-flex gap-2">
-                <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleEditProfile}>
-                  <i class="fas fa-user-edit me-1"></i>
-                  Edit
-                </button>
                 {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
                   <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleAdminAccess}>
                     <i class="fas fa-shield-alt me-1"></i>
@@ -494,7 +486,7 @@
     </nav>
     
     <div class="container-fluid mt-3 mt-md-4 px-3 px-md-4">
-        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} />
+        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} on:profile-updated={handleProfileUpdate} />
     </div>
     {/if}
   {:else}
