@@ -33,6 +33,16 @@
   // Reactive statement to ensure PatientTabs gets updated enabledTabs
   $: console.log('🔄 enabledTabs changed:', enabledTabs)
   $: enabledTabsKey = enabledTabs.join(',') // Force reactivity by creating a key
+  
+  // Auto-navigate to overview tab when a new patient is selected
+  $: if (selectedPatient) {
+    console.log('🔄 New patient selected, navigating to overview tab')
+    activeTab = 'overview'
+    enabledTabs = ['overview'] // Reset to only overview enabled for new patient
+  }
+  
+  // Track AI diagnostics state
+  let isShowingAIDiagnostics = false
   let showIllnessForm = false
   let showMedicationForm = false
   let showSymptomsForm = false
@@ -738,7 +748,8 @@
         patientAge,
         doctorId,
         {
-          patientCountry: selectedPatient?.country || 'Not specified'
+          patientCountry: selectedPatient?.country || 'Not specified',
+          patientAllergies: selectedPatient?.allergies || 'None'
         }
       )
 
@@ -795,7 +806,6 @@
     console.log('💊 Added AI suggested drug:', medication)
     console.log('💊 Updated currentPrescription.medications:', currentPrescription.medications.length)
     console.log('🗑️ Removed suggestion from AI list, remaining:', aiDrugSuggestions.length)
-    notifySuccess(`Added ${medication.name} to prescription`)
     
     // Hide suggestions section if no suggestions remain
     if (aiDrugSuggestions.length === 0) {
@@ -867,8 +877,7 @@
           // Update prescriptions array
           prescriptions = [...prescriptions]
           
-          console.log('✅ Successfully deleted medication by index')
-          notifySuccess('Medication deleted successfully!')
+      console.log('✅ Successfully deleted medication by index')
         } else {
           console.error('❌ Medication not found at index:', index)
           notifyError('Medication not found')
@@ -1770,8 +1779,7 @@
           console.log('🔄 Reset AI analysis state')
         }
         
-        console.log('✅ Successfully deleted medication:', medicationId)
-        notifySuccess('Medication deleted successfully!')
+      console.log('✅ Successfully deleted medication:', medicationId)
       } else {
         console.log('❌ User cancelled deletion')
       }
@@ -1839,7 +1847,6 @@
       prescriptionFinished = true
       
       console.log('✅ Prescription finalized successfully')
-      notifySuccess('Prescription finalized successfully!')
       
     } catch (error) {
       console.error('❌ Error finalizing prescription:', error)
@@ -2850,7 +2857,7 @@
                 </div>
               {/each}
             </div>
-          {:else}
+          {:else if !isShowingAIDiagnostics}
             <div class="text-center p-4">
               <i class="fas fa-stethoscope fa-2x text-muted mb-3"></i>
               <p class="text-muted">No diagnoses recorded for this patient.</p>
@@ -2881,7 +2888,9 @@
               
               return null
             })() : null}
+            patientAllergies={selectedPatient?.allergies || null}
             {doctorId}
+            bind:isShowingAIDiagnostics
             on:ai-usage-updated={(event) => {
               if (addToPrescription) {
                 addToPrescription('ai-usage', event.detail)
@@ -2966,7 +2975,6 @@
               console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
               
               console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
-              notifySuccess('New prescription created! Click "Add Drug" to add medications.');
             } catch (error) {
               console.error('❌ Error creating new prescription:', error);
               notifyError('Failed to create new prescription: ' + error.message);
@@ -2982,7 +2990,6 @@
             
             showMedicationForm = true;
             editingMedication = null;
-            notifySuccess('Medication form opened - add drug details');
           }}
           onPrintPrescriptions={printPrescriptions}
           />

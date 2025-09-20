@@ -372,7 +372,7 @@
   
   {#if showAdminPanel}
     <!-- Admin Panel -->
-    <AdminPanel on:back-to-app={handleBackFromAdmin} />
+    <AdminPanel {user} on:back-to-app={handleBackFromAdmin} />
   {:else if loading}
     <div class="d-flex justify-content-center align-items-center vh-100">
       <div class="text-center">
@@ -381,29 +381,26 @@
       </div>
     </div>
   {:else if user}
-    {#if showAdminPanel}
-      <!-- Admin Panel (for super admin and regular admin users) -->
-      <AdminPanel {user} on:back-to-app={handleBackFromAdmin} />
-    {:else if user.role === 'pharmacist'}
+    {#if user.role === 'pharmacist'}
       <!-- Pharmacist Dashboard -->
-        <PharmacistDashboard pharmacist={user} />
+      <PharmacistDashboard pharmacist={user} />
     {:else}
     <!-- Doctor is logged in - Show patient management -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-        <div class="container-fluid px-2 px-md-3">
-        <span class="navbar-brand">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary" style="margin: 0 !important; padding: 0 !important;">
+        <div class="container-fluid px-0">
+        <span class="navbar-brand px-1">
             <i class="fas fa-user-md me-1 me-md-2"></i>
             <span class="d-none d-sm-inline">M-Prescribe</span>
             <span class="d-sm-none">M-P</span>
           </span>
           
           <!-- Mobile Toggle Button -->
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <button class="navbar-toggler me-1" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
           
           <!-- Navbar Content -->
-          <div class="collapse navbar-collapse" id="navbarNav">
+          <div class="collapse navbar-collapse px-1" id="navbarNav">
             <!-- Desktop Layout -->
             <div class="d-none d-lg-flex align-items-center ms-auto">
               <!-- User Info -->
@@ -485,16 +482,15 @@
       </div>
     </nav>
     
-    <div class="container-fluid mt-3 mt-md-4 px-3 px-md-4">
+    <div class="mt-3 mt-md-4 px-3 px-md-4">
         <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} on:profile-updated={handleProfileUpdate} />
     </div>
     {/if}
   {:else}
     <!-- User is not logged in - Show Bootstrap 5 authentication -->
-    <div class="min-vh-100 d-flex align-items-start justify-content-center bg-primary bg-gradient px-2 px-sm-3 px-md-4" style="padding-top: 2rem;">
-      <div class="container-fluid">
-    <div class="row justify-content-center">
-          <div class="col-12 col-sm-11 col-md-10 col-lg-8 col-xl-6 col-xxl-5">
+    <div class="min-vh-100 d-flex align-items-start justify-content-center bg-primary bg-gradient px-1 px-md-4" style="padding-top: 2rem;">
+      <div class="row justify-content-center w-100">
+          <div class="col-12 col-md-10 col-lg-8 col-xl-6 col-xxl-5">
             <!-- Main Auth Card -->
             <div class="card shadow-lg border-0 rounded-3 rounded-md-4 overflow-hidden">
               <!-- Card Header -->
@@ -578,7 +574,6 @@
           </div>
         </div>
       </div>
-    </div>
   {/if}
   
   <!-- Edit Profile Modal -->
@@ -604,10 +599,12 @@
     height: 50px !important;
     min-height: 50px !important;
     max-height: 50px !important;
-    padding: 0.25rem 1rem !important;
+    padding: 0 !important;
+    margin: 0 !important;
     background-color: var(--bs-primary) !important;
     display: flex !important;
     align-items: center !important;
+    width: 100% !important;
   }
   
   nav .navbar-brand {
@@ -617,6 +614,43 @@
     padding: 0.25rem 0 !important;
     margin: 0 !important;
   }
+  
+  /* Ensure container-fluid is full width */
+  nav .container-fluid {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  /* Global overrides to ensure full width navbar */
+  :global(body) {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  :global(html) {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  :global(.navbar) {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  :global(.container-fluid) {
+    margin: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  
+  :global(.navbar .container-fluid) {
+    padding-left: 0.75rem !important;
+    padding-right: 0 !important;
+  }
+  
+  
   
   nav .navbar-nav {
     display: flex !important;
@@ -641,16 +675,8 @@
   /* Bootstrap 5 styling only */
   
   /* Responsive adjustments */
-  @media (max-width: 1200px) {
-    .col-xl-5 {
-      max-width: 50%;
-    }
-  }
   
   @media (max-width: 992px) {
-    .col-lg-6 {
-      max-width: 60%;
-    }
     
     .auth-card .card-body {
       padding: 2rem !important;
@@ -658,12 +684,9 @@
   }
   
   @media (max-width: 768px) {
-    .col-md-8 {
-      max-width: 80%;
-    }
     
     .auth-card {
-      margin: 0.5rem;
+      margin: 0.25rem;
       border-radius: 1rem !important;
     }
     
@@ -700,12 +723,9 @@
   }
   
   @media (max-width: 576px) {
-    .col-sm-10 {
-      max-width: 95%;
-    }
     
     .auth-card {
-      margin: 0.25rem;
+      margin: 0.125rem;
       border-radius: 0.75rem !important;
     }
     

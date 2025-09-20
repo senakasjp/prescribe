@@ -58,7 +58,7 @@ Be concise. Medical info only.`
           messages: [
             {
               role: 'system',
-              content: 'Medical assistant. Be concise. Format: numbered lists only.'
+              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Be concise. Format: numbered lists only.'
             },
             {
               role: 'user',
@@ -134,7 +134,7 @@ Be brief. Medical info only.`
           messages: [
             {
               role: 'system',
-              content: 'Medical assistant. Be concise. Format: numbered lists only.'
+              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Be concise. Format: numbered lists only.'
             },
             {
               role: 'user',
@@ -221,7 +221,7 @@ Be brief. Critical info only.`
           messages: [
             {
               role: 'system',
-              content: 'Medical assistant. Report only critical interactions. Be concise.'
+              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Report only critical interactions. Be concise.'
             },
             {
               role: 'user',
@@ -378,7 +378,7 @@ Be concise. Medical info only.`
           messages: [
             {
               role: 'system',
-              content: 'Medical assistant. Provide concise analysis in numbered format.'
+              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Provide concise analysis in numbered format.'
             },
             {
               role: 'user',

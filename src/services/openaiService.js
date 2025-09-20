@@ -544,7 +544,7 @@ class OpenAIService {
           messages: [
             {
               role: 'system',
-              content: 'Medical AI assistant providing second opinion support to qualified doctors. Provide comprehensive prescription analysis with structured JSON output. CRITICAL: Consider regional healthcare practices, local drug availability, country-specific medical guidelines, and drug regulatory approvals. Assess if prescribed medications are available and approved in the patient\'s country. Suggest alternative medications if drugs are not available in the patient\'s region. Focus on key safety issues, effectiveness, and actionable recommendations tailored to the patient and doctor locations.'
+              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide comprehensive prescription analysis with structured JSON output. CRITICAL: Consider regional healthcare practices, local drug availability, country-specific medical guidelines, and drug regulatory approvals. Assess if prescribed medications are available and approved in the patient\'s country. Suggest alternative medications if drugs are not available in the patient\'s region. Focus on key safety issues, effectiveness, and actionable recommendations tailored to the patient and doctor locations.'
             },
             {
               role: 'user',
@@ -680,10 +680,16 @@ class OpenAIService {
         ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
         : 'No current medications'
 
-      // Get patient country from additional context
+      // Get patient country and allergies from additional context
       const patientCountry = additionalContext?.patientCountry || 'Not specified'
+      const patientAllergies = additionalContext?.patientAllergies || 'None'
 
-      const prompt = `Based on symptoms: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
+      // Include patient age and allergies in prompt
+      const ageText = patientAge ? `, Age: ${patientAge} years` : ''
+      const allergiesText = patientAllergies && patientAllergies !== 'None' ? `, Allergies: ${patientAllergies}` : ''
+
+      const prompt = `Patient: ${ageText}${allergiesText}
+Symptoms: ${symptomsText}
 ${currentMedsText}
 Patient Country: ${patientCountry}
 
@@ -714,7 +720,7 @@ IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
         messages: [
           {
             role: 'system',
-            content: 'Medical AI assistant providing drug suggestions for doctors. Return valid JSON only.'
+            content: 'Medical AI assistant providing drug suggestions for qualified medical doctors. The reader is a qualified medical doctor. CRITICAL: Consider patient age, allergies, and contraindications. Avoid medications that patient is allergic to. Account for age-related dosing adjustments. Return valid JSON only.'
           },
           {
             role: 'user',
@@ -736,6 +742,7 @@ IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
           symptoms: symptomsText,
           currentMedications: currentMedsText,
           patientAge,
+          patientAllergies,
           doctorId,
           patientCountry: patientCountry
         }
@@ -786,7 +793,7 @@ IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
   }
 
   // Generate combined analysis (recommendations + medication suggestions) in single call
-  async generateCombinedAnalysis(symptoms, currentMedications = [], patientAge = null, doctorId = null) {
+  async generateCombinedAnalysis(symptoms, currentMedications = [], patientAge = null, doctorId = null, patientAllergies = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured.')
     }
@@ -802,8 +809,13 @@ IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
         ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
         : 'No current medications'
 
-      // Ultra-concise prompt
-      const prompt = `Symptoms: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
+      // Include patient age and allergies in prompt
+      const ageText = patientAge ? `, Age: ${patientAge} years` : ''
+      const allergiesText = patientAllergies ? `, Allergies: ${patientAllergies}` : ''
+
+      // Ultra-concise prompt with patient data
+      const prompt = `Patient: ${ageText}${allergiesText}
+Symptoms: ${symptomsText}
 ${currentMedsText}
 
 Brief analysis:
@@ -819,7 +831,7 @@ Concise medical info only.`
         messages: [
           {
             role: 'system',
-              content: 'Medical AI assistant providing second opinion support to qualified doctors. Provide structured JSON analysis. Consider drug availability and regulatory approval in the patient\'s country. Suggest alternatives if medications are not available in the patient\'s region.'
+              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide structured JSON analysis. Consider patient age, allergies, drug availability and regulatory approval in the patient\'s country. Suggest alternatives if medications are not available in the patient\'s region. CRITICAL: Check for drug allergies and contraindications based on patient age and allergy profile.'
           },
           {
             role: 'user',
@@ -888,6 +900,7 @@ Concise medical info only.`
           symptoms: symptomsText,
           currentMedications: currentMedsText,
           patientAge,
+          patientAllergies,
           doctorId
         }
       )
