@@ -1243,6 +1243,30 @@
     try {
       console.log('🔄 Starting PDF generation...')
       
+      // Load template settings
+      let templateSettings = null
+      try {
+        console.log('🔍 PDF Generation - doctorId:', doctorId)
+        console.log('🔍 PDF Generation - currentUser:', currentUser)
+        
+        // Get the doctor from Firebase using email to get the correct ID
+        if (currentUser?.email) {
+          const doctor = await firebaseStorage.getDoctorByEmail(currentUser.email)
+          console.log('🔍 PDF Generation - doctor from Firebase:', doctor)
+          
+          if (doctor?.id) {
+            templateSettings = await firebaseStorage.getDoctorTemplateSettings(doctor.id)
+            console.log('📋 Template settings loaded:', templateSettings)
+          } else {
+            console.warn('⚠️ Doctor not found in Firebase for email:', currentUser.email)
+          }
+        } else {
+          console.warn('⚠️ No user email available for template settings')
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not load template settings:', error)
+      }
+      
       // Skip jsPDF test to avoid multiple downloads
       
       // Try to import jsPDF
@@ -1285,22 +1309,102 @@
       const margin = 10
       const contentWidth = pageWidth - (margin * 2)
       
-      // Header with clinic name
+      // Apply template settings to header
+      let headerYStart = 15
+      let contentYStart = 45
+      
+      if (templateSettings) {
+        console.log('🎨 Applying template settings:', templateSettings.templateType)
+        
+        if (templateSettings.templateType === 'upload' && templateSettings.uploadedHeader) {
+          // For uploaded header image, embed the actual image
+          console.log('🖼️ Embedding uploaded header image')
+          
+          try {
+            // Convert pixels to mm (approximate: 1px ≈ 0.264583mm)
+            const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
+            const headerWidthMm = pageWidth - (margin * 2) // Full width minus margins
+            
+            headerYStart = 10
+            contentYStart = headerYStart + headerHeightMm + 5
+            
+            console.log('🖼️ Header image dimensions:', headerWidthMm + 'mm x ' + headerHeightMm + 'mm')
+            
+            // Determine image format from base64 data
+            let imageFormat = 'JPEG' // default
+            if (templateSettings.uploadedHeader.includes('data:image/png')) {
+              imageFormat = 'PNG'
+            } else if (templateSettings.uploadedHeader.includes('data:image/jpeg') || templateSettings.uploadedHeader.includes('data:image/jpg')) {
+              imageFormat = 'JPEG'
+            } else if (templateSettings.uploadedHeader.includes('data:image/gif')) {
+              imageFormat = 'GIF'
+            }
+            
+            console.log('🖼️ Detected image format:', imageFormat)
+            
+            // Add the actual image to the PDF
+            doc.addImage(
+              templateSettings.uploadedHeader, // Base64 image data
+              imageFormat, // detected format
+              margin, // x position
+              headerYStart, // y position
+              headerWidthMm, // width
+              headerHeightMm, // height
+              undefined, // alias
+              'FAST' // compression
+            )
+            
+            console.log('✅ Header image embedded successfully')
+            
+          } catch (imageError) {
+            console.error('❌ Error embedding header image:', imageError)
+            // Fallback to placeholder if image embedding fails
+            const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
+            headerYStart = 10
+            contentYStart = headerYStart + headerHeightMm + 10
+            
+            doc.setFontSize(8)
+            doc.setFont('helvetica', 'italic')
+            doc.text('[Header Image Error - ' + Math.round(headerHeightMm) + 'mm height]', margin, headerYStart + 5)
+          }
+          
+        } else if (templateSettings.templateType === 'printed') {
+          // For printed letterheads, reserve space
+          const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
+          headerYStart = 10
+          contentYStart = headerYStart + headerHeightMm + 10
+          
+          console.log('🖨️ Printed letterhead space reserved:', headerHeightMm + 'mm')
+          
+          // Add a placeholder note for printed letterhead
+          doc.setFontSize(8)
+          doc.setFont('helvetica', 'italic')
+          doc.text('[Printed Letterhead Area - ' + Math.round(headerHeightMm) + 'mm height]', margin, headerYStart + 5)
+          
+        } else if (templateSettings.templateType === 'system') {
+          // System header - use the default header
+          console.log('🏥 Using system header')
+        }
+      }
+      
+      // Header with clinic name (only if not using uploaded/printed template)
+      if (!templateSettings || templateSettings.templateType === 'system') {
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
-      doc.text('MEDICAL PRESCRIPTION', margin, 15)
-      
-      // Clinic details
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
-      doc.text('Your Medical Clinic', margin, 22)
-      doc.text('123 Medical Street, City', margin, 27)
-      doc.text('Phone: (555) 123-4567', margin, 32)
+        doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
+        
+        // Clinic details
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'normal')
+        doc.text('Your Medical Clinic', margin, headerYStart + 7)
+        doc.text('123 Medical Street, City', margin, headerYStart + 12)
+        doc.text('Phone: (555) 123-4567', margin, headerYStart + 17)
+      }
       
       // Patient information section
       doc.setFontSize(12)
       doc.setFont('helvetica', 'bold')
-      doc.text('PATIENT INFORMATION', margin, 45)
+      doc.text('PATIENT INFORMATION', margin, contentYStart)
       
       // Patient details
       doc.setFontSize(10)
@@ -1322,16 +1426,16 @@
       }
       
       // Name and Date on same line
-      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, margin, 52)
-      doc.text(`Date: ${currentDate}`, pageWidth - margin, 52, { align: 'right' })
+      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, margin, contentYStart + 7)
+      doc.text(`Date: ${currentDate}`, pageWidth - margin, contentYStart + 7, { align: 'right' })
       
       // Age and Prescription number on same line
-      doc.text(`Age: ${patientAge}`, margin, 58)
+      doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
       const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
-      doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, 58, { align: 'right' })
+      doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
       
       // Prescription medications section
-      let yPos = 75
+      let yPos = contentYStart + 25
       
       if (currentMedications && currentMedications.length > 0) {
         doc.setFontSize(12)
@@ -1403,13 +1507,13 @@
           yPos = margin + 10
         }
         
-        doc.setFontSize(12)
+      doc.setFontSize(12)
         doc.setFont('helvetica', 'bold')
         doc.text('ADDITIONAL NOTES', margin, yPos)
         yPos += 5
         
         doc.setFontSize(9)
-        doc.setFont('helvetica', 'normal')
+      doc.setFont('helvetica', 'normal')
         const notes = doc.splitTextToSize(prescriptionNotes, contentWidth)
         doc.text(notes, margin, yPos)
         yPos += notes.length * 3

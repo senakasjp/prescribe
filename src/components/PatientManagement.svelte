@@ -690,6 +690,7 @@
   let templateType = '' // 'printed', 'upload', 'system'
   let uploadedHeader = null
   let templatePreview = null
+  let headerSize = 300 // Default header size in pixels
   
   // Reactive variable for cities based on selected country
   $: availableCities = editCountry ? getCitiesByCountry(editCountry) : []
@@ -722,9 +723,7 @@
   
   // Handle tab switching
   const switchTab = (tabName) => {
-    console.log('Switching to tab:', tabName)
     activeTab = tabName
-    console.log('Active tab is now:', activeTab)
   }
   
   // Handle profile form submission
@@ -805,28 +804,101 @@
     }
   }
   
+  // Load template settings
+  const loadTemplateSettings = async () => {
+    try {
+      if (!user?.email) {
+        console.log('⚠️ No user email available for loading template settings')
+        return
+      }
+
+      // Get the doctor from Firebase using email
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor) {
+        console.log('⚠️ Doctor not found in Firebase for email:', user.email)
+        return
+      }
+
+      // Load template settings from Firebase
+      const savedSettings = await firebaseStorage.getDoctorTemplateSettings(doctor.id)
+      
+      if (savedSettings) {
+        console.log('📋 Loading saved template settings:', savedSettings)
+        
+        // Restore the saved settings
+        templateType = savedSettings.templateType || 'system'
+        uploadedHeader = savedSettings.uploadedHeader || null
+        headerSize = savedSettings.headerSize || 300
+        templatePreview = savedSettings.templatePreview || null
+        
+        console.log('✅ Template settings loaded successfully:', {
+          templateType,
+          uploadedHeader: uploadedHeader ? 'Image restored' : null,
+          headerSize,
+          templatePreview
+        })
+      } else {
+        console.log('ℹ️ No saved template settings found')
+      }
+      
+    } catch (error) {
+      console.error('❌ Error loading template settings:', error)
+    }
+  }
+
   // Save template settings
   const saveTemplateSettings = async () => {
     try {
-      // Here you would save the template settings to Firebase
-      // For now, we'll just show a success message
-      console.log('Template settings saved:', {
+      console.log('🔍 saveTemplateSettings: User object:', user)
+      console.log('🔍 saveTemplateSettings: User.id:', user?.id)
+      console.log('🔍 saveTemplateSettings: User.uid:', user?.uid)
+      console.log('🔍 saveTemplateSettings: User.email:', user?.email)
+      
+      // Check if user is authenticated - try different ID properties
+      const userId = user?.id || user?.uid || user?.email
+      if (!userId) {
+        alert('User not authenticated')
+        return
+      }
+
+      // Get the doctor ID from Firebase using email
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor) {
+        alert('Doctor profile not found. Please try logging in again.')
+        return
+      }
+
+      const templateData = {
+        templateType,
+        uploadedHeader,
+        headerSize,
+        templatePreview,
+        doctorId: doctor.id,
+        updatedAt: new Date().toISOString()
+      }
+      
+      // Save to Firebase using the doctor's Firebase ID
+      await firebaseStorage.saveDoctorTemplateSettings(doctor.id, templateData)
+      
+      console.log('✅ Template settings saved:', {
         templateType,
         uploadedHeader: uploadedHeader ? 'Image uploaded' : null,
-        templatePreview
+        headerSize,
+        templatePreview,
+        doctorId: doctor.id
       })
       
-      // Show success message (you can implement a notification system)
       alert('Template settings saved successfully!')
       
     } catch (error) {
-      console.error('Error saving template settings:', error)
+      console.error('❌ Error saving template settings:', error)
       alert('Error saving template settings. Please try again.')
     }
   }
   
   onMount(() => {
     loadPatients()
+    loadTemplateSettings() // Load saved template settings
     // Create chart after a short delay to ensure DOM is ready
     setTimeout(() => {
       createPrescriptionsChart()
@@ -976,27 +1048,35 @@
                   class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
                   on:click={() => selectPatient(patient)}
                 >
-                  <div class="d-flex w-100 justify-content-between align-items-start">
+                  <div class="d-flex w-100 justify-content-between align-items-center">
                     <div class="flex-grow-1">
                       <h6 class="mb-1">
                         <i class="fas fa-user me-1"></i>
-                        <span class="d-inline d-sm-none">{patient.firstName} {patient.lastName}</span>
-                        <span class="d-none d-sm-inline">{patient.firstName} {patient.lastName}</span>
+                        {patient.firstName} {patient.lastName}
                       </h6>
-                      <p class="mb-1 text-muted small">
-                        <i class="fas fa-envelope me-1"></i>
-                        <span class="d-inline d-md-none">{patient.email.split('@')[0]}...</span>
-                        <span class="d-none d-md-inline">{patient.email}</span>
-                      </p>
+                    </div>
+                    <div class="text-end">
                       <small class="text-muted">
-                        <i class="fas fa-id-card me-1"></i>ID: {patient.idNumber}
+                        <i class="fas fa-calendar me-1"></i>
+                        {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
+                          {patient.age} years
+                        {:else if patient.dateOfBirth}
+                          {(() => {
+                            const birthDate = new Date(patient.dateOfBirth)
+                            if (!isNaN(birthDate.getTime())) {
+                              const today = new Date()
+                              const age = today.getFullYear() - birthDate.getFullYear()
+                              const monthDiff = today.getMonth() - birthDate.getMonth()
+                              const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+                              return calculatedAge + ' years'
+                            }
+                            return 'Age not specified'
+                          })()}
+                        {:else}
+                          Age not specified
+                        {/if}
                       </small>
                     </div>
-                    <small class="text-muted ms-2">
-                      <i class="fas fa-calendar me-1"></i>
-                      <span class="d-none d-lg-inline">{patient.dateOfBirth}</span>
-                      <span class="d-inline d-lg-none">{new Date(patient.dateOfBirth).getFullYear()}</span>
-                    </small>
                   </div>
                 </button>
               {/each}
@@ -1023,27 +1103,35 @@
                   class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
                   on:click={() => selectPatient(patient)}
                 >
-                  <div class="d-flex w-100 justify-content-between align-items-start">
+                  <div class="d-flex w-100 justify-content-between align-items-center">
                     <div class="flex-grow-1">
                       <h6 class="mb-1">
                         <i class="fas fa-user me-1"></i>
-                        <span class="d-inline d-sm-none">{patient.firstName} {patient.lastName}</span>
-                        <span class="d-none d-sm-inline">{patient.firstName} {patient.lastName}</span>
+                        {patient.firstName} {patient.lastName}
                       </h6>
-                      <p class="mb-1 text-muted small">
-                        <i class="fas fa-envelope me-1"></i>
-                        <span class="d-inline d-md-none">{patient.email.split('@')[0]}...</span>
-                        <span class="d-none d-md-inline">{patient.email}</span>
-                      </p>
+                    </div>
+                    <div class="text-end">
                       <small class="text-muted">
-                        <i class="fas fa-id-card me-1"></i>ID: {patient.idNumber}
+                        <i class="fas fa-calendar me-1"></i>
+                        {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
+                          {patient.age} years
+                        {:else if patient.dateOfBirth}
+                          {(() => {
+                            const birthDate = new Date(patient.dateOfBirth)
+                            if (!isNaN(birthDate.getTime())) {
+                              const today = new Date()
+                              const age = today.getFullYear() - birthDate.getFullYear()
+                              const monthDiff = today.getMonth() - birthDate.getMonth()
+                              const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+                              return calculatedAge + ' years'
+                            }
+                            return 'Age not specified'
+                          })()}
+                        {:else}
+                          Age not specified
+                        {/if}
                       </small>
                     </div>
-                    <small class="text-muted ms-2">
-                      <i class="fas fa-calendar me-1"></i>
-                      <span class="d-none d-lg-inline">{patient.dateOfBirth}</span>
-                      <span class="d-inline d-lg-none">{new Date(patient.dateOfBirth).getFullYear()}</span>
-                    </small>
                   </div>
                 </button>
               {/each}
@@ -1103,12 +1191,14 @@
                          </div>
                          <div class="flex-grow-1 ms-3">
                            <div class="d-flex justify-content-between align-items-center">
-                             <h4 class="card-title mb-1 fw-bold text-dark">
-                               Welcome, Dr. {doctorName}!
-                             </h4>
-                             <button class="btn btn-link p-2" on:click={handleEditProfile} title="Edit Profile Settings" data-bs-toggle="tooltip" data-bs-placement="bottom">
-                               <i class="fas fa-cog text-danger fa-sm"></i>
-                             </button>
+                             <div class="d-flex align-items-center">
+                               <h4 class="card-title mb-1 fw-bold text-dark me-2" style="cursor: pointer;" on:click={handleEditProfile} title="Click to edit profile">
+                                 Welcome, Dr. {doctorName}!
+                               </h4>
+                               <button class="btn btn-link p-1" on:click={handleEditProfile} title="Edit Profile Settings" data-bs-toggle="tooltip" data-bs-placement="bottom">
+                                 <i class="fas fa-cog text-danger fa-sm"></i>
+                               </button>
+                             </div>
                            </div>
                            <p class="card-text mb-0 text-muted">
                              Ready to provide excellent patient care with AI-powered assistance
@@ -1400,10 +1490,6 @@
                 <!-- Prescription Template Tab -->
                 {#if activeTab === 'prescription-template'}
                 <div class="tab-pane fade show active" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
-                  <!-- Debug: Template tab is active -->
-                  <div class="alert alert-info">
-                    <strong>Debug:</strong> Template tab is active. activeTab = {activeTab}
-                  </div>
                   <div class="mb-4">
                     <h6 class="fw-bold mb-3">
                       <i class="fas fa-file-medical me-2"></i>
@@ -1418,6 +1504,7 @@
                       <label class="form-label fw-semibold mb-3">Select Template Type:</label>
                       
                       <!-- Option 1: Printed Letterheads -->
+                      {#if templateType !== 'upload'}
                       <div class="card mb-3 border {templateType === 'printed' ? 'border-primary' : ''}">
                         <div class="card-body p-3">
                           <div class="form-check">
@@ -1442,8 +1529,97 @@
                               </div>
                             </label>
                           </div>
+                          
+                          {#if templateType === 'printed'}
+                          <div class="mt-3">
+                            <label class="form-label small">Header Size Adjustment:</label>
+                            <div class="row align-items-center">
+                              <div class="col-8">
+                                <input 
+                                  type="range" 
+                                  class="form-range" 
+                                  min="50" 
+                                  max="300" 
+                                  step="10"
+                                  bind:value={headerSize}
+                                />
+                              </div>
+                              <div class="col-4">
+                                <span class="badge bg-primary">{headerSize}px</span>
+                              </div>
+                            </div>
+                            <div class="form-text">
+                              <i class="fas fa-info-circle me-1"></i>
+                              Adjust the header space to match your printed letterhead height.
+                            </div>
+                            
+                            <!-- Template Preview -->
+                            <div class="mt-3">
+                              <label class="form-label small">Template Preview:</label>
+                              <div class="border rounded p-2 bg-light">
+                                <div class="template-preview">
+                                  <!-- Header Space (representing printed letterhead) -->
+                                  <div 
+                                    class="header-space border-bottom border-2 border-primary mb-3"
+                                    style="height: {headerSize}px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);"
+                                  >
+                                    <div class="d-flex align-items-center justify-content-center h-100">
+                                      <div class="text-center text-muted">
+                                        <i class="fas fa-print fa-2x mb-2"></i>
+                                        <div class="small">Printed Letterhead Area</div>
+                                        <div class="small fw-bold">{headerSize}px height</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  <!-- Prescription Content Area -->
+                                  <div class="prescription-content">
+                                    <div class="row mb-2">
+                                      <div class="col-6">
+                                        <strong>Patient Name:</strong> [Patient Name]
+                                      </div>
+                                      <div class="col-6 text-end">
+                                        <strong>Date:</strong> [Date]
+                                      </div>
+                                    </div>
+                                    <div class="row mb-2">
+                                      <div class="col-6">
+                                        <strong>Age:</strong> [Age]
+                                      </div>
+                                      <div class="col-6 text-end">
+                                        <strong>Prescription #:</strong> [Rx Number]
+                                      </div>
+                                    </div>
+                                    <hr class="my-3">
+                                    <div class="medications mb-3">
+                                      <strong>Medications:</strong>
+                                      <div class="mt-2">
+                                        <div class="d-flex justify-content-between">
+                                          <span>• Medication Name</span>
+                                          <span><strong>Dosage</strong></span>
+                                        </div>
+                                        <div class="small text-muted">Instructions and notes here</div>
+                                      </div>
+                                    </div>
+                                    <div class="signature-area border-top pt-2 mt-3">
+                                      <div class="row">
+                                        <div class="col-6">
+                                          <strong>Doctor's Signature:</strong> _______________
+                                        </div>
+                                        <div class="col-6 text-end">
+                                          <strong>Date:</strong> _______________
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          {/if}
                         </div>
                       </div>
+                      {/if}
                       
                       <!-- Option 2: Upload Image -->
                       <div class="card mb-3 border {templateType === 'upload' ? 'border-primary' : ''}">
@@ -1486,9 +1662,87 @@
                             
                             {#if uploadedHeader}
                             <div class="mt-3">
-                              <label class="form-label small">Preview:</label>
-                              <div class="border rounded p-2 bg-light">
-                                <img src={uploadedHeader} alt="Header preview" class="img-fluid" style="max-height: 100px;" />
+                              <label class="form-label small">Header Size Adjustment:</label>
+                              <div class="row align-items-center">
+                                <div class="col-8">
+                                  <input 
+                                    type="range" 
+                                    class="form-range" 
+                                    min="50" 
+                                    max="300" 
+                                    step="10"
+                                    bind:value={headerSize}
+                                  />
+                                </div>
+                                <div class="col-4">
+                                  <span class="badge bg-primary">{headerSize}px</span>
+                                </div>
+                              </div>
+                              <div class="form-text">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Adjust the header space to match your uploaded image height.
+                              </div>
+                              
+                              <!-- Template Preview with Uploaded Image -->
+                              <div class="mt-3">
+                                <label class="form-label small">Template Preview:</label>
+                                <div class="border rounded p-2 bg-light">
+                                  <div class="template-preview">
+                                    <!-- Header Space with Uploaded Image -->
+                                    <div 
+                                      class="header-space border-bottom border-2 border-primary mb-3"
+                                      style="height: {headerSize}px; background-image: url('{uploadedHeader}'); background-size: contain; background-repeat: no-repeat; background-position: center;"
+                                    >
+                                      <div class="d-flex align-items-center justify-content-center h-100">
+                                        <div class="text-center text-muted" style="background: rgba(255,255,255,0.8); padding: 0.5rem; border-radius: 0.25rem;">
+                                          <div class="small">Custom Header Image</div>
+                                          <div class="small fw-bold">{headerSize}px height</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    
+                                    <!-- Prescription Content Area -->
+                                    <div class="prescription-content">
+                                      <div class="row mb-2">
+                                        <div class="col-6">
+                                          <strong>Patient Name:</strong> [Patient Name]
+                                        </div>
+                                        <div class="col-6 text-end">
+                                          <strong>Date:</strong> [Date]
+                                        </div>
+                                      </div>
+                                      <div class="row mb-2">
+                                        <div class="col-6">
+                                          <strong>Age:</strong> [Age]
+                                        </div>
+                                        <div class="col-6 text-end">
+                                          <strong>Prescription #:</strong> [Rx Number]
+                                        </div>
+                                      </div>
+                                      <hr class="my-3">
+                                      <div class="medications mb-3">
+                                        <strong>Medications:</strong>
+                                        <div class="mt-2">
+                                          <div class="d-flex justify-content-between">
+                                            <span>• Medication Name</span>
+                                            <span><strong>Dosage</strong></span>
+                                          </div>
+                                          <div class="small text-muted">Instructions and notes here</div>
+                                        </div>
+                                      </div>
+                                      <div class="signature-area border-top pt-2 mt-3">
+                                        <div class="row">
+                                          <div class="col-6">
+                                            <strong>Doctor's Signature:</strong> _______________
+                                          </div>
+                                          <div class="col-6 text-end">
+                                            <strong>Date:</strong> _______________
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                             {/if}
@@ -1498,6 +1752,7 @@
                       </div>
                       
                       <!-- Option 3: System Header -->
+                      {#if templateType !== 'printed' && templateType !== 'upload'}
                       <div class="card mb-3 border {templateType === 'system' ? 'border-primary' : ''}">
                         <div class="card-body p-3">
                           <div class="form-check">
@@ -1553,6 +1808,7 @@
                           {/if}
                         </div>
                       </div>
+                      {/if}
                     </div>
                   </div>
                   
@@ -1591,3 +1847,48 @@
 <!-- Pharmacist Management View -->
 <PharmacistManagement {user} />
 {/if}
+
+<style>
+  /* Template Preview Styles */
+  .template-preview {
+    font-size: 0.85rem;
+    line-height: 1.4;
+  }
+
+  .template-preview .header-space {
+    position: relative;
+    border-radius: 0.375rem;
+    transition: height 0.3s ease;
+  }
+
+  .template-preview .prescription-content {
+    font-size: 0.8rem;
+  }
+
+  .template-preview .medications {
+    font-size: 0.75rem;
+  }
+
+  .template-preview .signature-area {
+    font-size: 0.75rem;
+  }
+
+  .form-range {
+    height: 0.5rem;
+  }
+
+  .form-range::-webkit-slider-thumb {
+    width: 1.2rem;
+    height: 1.2rem;
+    background: var(--bs-primary);
+    border-radius: 50%;
+  }
+
+  .form-range::-moz-range-thumb {
+    width: 1.2rem;
+    height: 1.2rem;
+    background: var(--bs-primary);
+    border-radius: 50%;
+    border: none;
+  }
+</style>

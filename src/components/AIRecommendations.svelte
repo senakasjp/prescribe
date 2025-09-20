@@ -233,7 +233,6 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
       <div class="alert alert-info" role="alert">
         <i class="fas fa-info-circle me-2"></i>
         <strong>No Symptoms Available:</strong> Please add symptoms in the Symptoms tab first to enable AI analysis.
-        <br><small>Debug: symptoms.length = {symptoms ? symptoms.length : 'undefined'}</small>
       </div>
     </div>
   {/if}

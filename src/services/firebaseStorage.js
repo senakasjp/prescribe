@@ -1147,6 +1147,50 @@ class FirebaseStorageService {
       throw error
     }
   }
+
+  // Template settings operations
+  async saveDoctorTemplateSettings(doctorId, templateData) {
+    try {
+      console.log('🔥 Firebase: Saving template settings for doctor:', doctorId)
+      
+      const doctorRef = doc(db, this.collections.doctors, doctorId)
+      
+      // Update the doctor document with template settings
+      await updateDoc(doctorRef, {
+        templateSettings: templateData,
+        templateUpdatedAt: new Date().toISOString()
+      })
+      
+      console.log('✅ Template settings saved successfully')
+      return true
+    } catch (error) {
+      console.error('❌ Error saving template settings:', error)
+      throw error
+    }
+  }
+
+  async getDoctorTemplateSettings(doctorId) {
+    try {
+      console.log('🔥 Firebase: Getting template settings for doctor:', doctorId)
+      
+      const doctorRef = doc(db, this.collections.doctors, doctorId)
+      const doctorSnap = await getDoc(doctorRef)
+      
+      if (doctorSnap.exists()) {
+        const doctorData = doctorSnap.data()
+        const templateSettings = doctorData.templateSettings || null
+        
+        console.log('✅ Template settings retrieved:', templateSettings)
+        return templateSettings
+      } else {
+        console.log('⚠️ Doctor document not found')
+        return null
+      }
+    } catch (error) {
+      console.error('❌ Error getting template settings:', error)
+      throw error
+    }
+  }
 }
 
 // Create singleton instance
