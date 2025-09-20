@@ -2,6 +2,24 @@
 
 All notable changes to M-Prescribe are documented in this file.
 
+## [1.4.0] - 2025-01-16
+
+### ✨ Added
+- **Smart Prescription History Logic**: Prescriptions only move to history and summary when saved or printed
+- **Conditional History Management**: Unsaved/unprinted prescriptions are discarded when new prescription starts
+- **Enhanced Status Tracking**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions
+- **Intelligent Prescription Workflow**: New prescription creation automatically handles previous prescription status
+
+### 🔧 Fixed
+- **Prescription History Accuracy**: Only completed work appears in prescription history
+- **Data Cleanup**: Unsaved draft prescriptions are properly removed from system
+- **Status Consistency**: Prescription status properly tracked throughout lifecycle
+
+### 🎨 Improved
+- **Prescription Workflow**: Clear separation between saved and unsaved prescriptions
+- **History Management**: Clean prescription history containing only finalized/sent prescriptions
+- **Status Definitions**: Clear status definitions for saved vs printed vs draft prescriptions
+
 ## [1.3.0] - 2025-01-16
 
 ### ✨ Added
@@ -80,6 +98,28 @@ All notable changes to M-Prescribe are documented in this file.
 
 ## Technical Details
 
+### Prescription Status Definitions (v1.4.0)
+```javascript
+// Prescription Status Types
+const PRESCRIPTION_STATUS = {
+  DRAFT: 'draft',           // New/unsaved prescription
+  PENDING: 'pending',       // Unsaved pending prescription
+  FINALIZED: 'finalized',   // Saved prescription (moves to history)
+  COMPLETED: 'completed',   // Saved prescription (moves to history)
+  SENT: 'sent',            // Printed prescription (moves to history)
+  SENT_TO_PHARMACY: true   // Printed prescription flag (moves to history)
+}
+
+// History Logic
+const shouldMoveToHistory = (prescription) => {
+  const isSaved = prescription.status === 'finalized' || prescription.status === 'completed';
+  const isPrinted = prescription.status === 'sent' || 
+                    prescription.sentToPharmacy || 
+                    prescription.printedAt;
+  return isSaved || isPrinted;
+}
+```
+
 ### Data Structure Changes
 ```javascript
 // Before (v1.1.0)
@@ -101,7 +141,11 @@ prescriptions: [
 ]
 ```
 
-### Key Functions Added/Modified
+### Key Functions Added/Modified (v1.4.0)
+- `onNewPrescription()` - Enhanced with status checking logic for history management
+- `finalizePrescription()` - Sets status to 'finalized' (saved)
+- `sendToPharmacy()` - Sets status to 'sent' and sentToPharmacy flag (printed)
+- `shouldMoveToHistory()` - Determines if prescription should move to history
 - `setupCurrentPrescription()` - Properly initializes current prescription from loaded data
 - `loadPatientData()` - Enhanced to call setup function
 - `filterCurrentPrescriptions()` - Updated to work with new structure

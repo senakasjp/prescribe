@@ -214,8 +214,8 @@
               <button 
                   class="btn btn-info btn-sm" 
                   on:click={onGenerateAIDrugSuggestions}
-                  disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured()}
-                  title={!symptoms || symptoms.length === 0 ? "Add symptoms first" : "Get AI-assisted drug suggestions"}
+                  disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured() || !currentPrescription || (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0))}
+                  title={!currentPrescription ? "Create a prescription first" : (!symptoms || symptoms.length === 0) ? "Add symptoms first" : (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0)) ? "Add at least one drug first" : "Get AI-assisted drug suggestions"}
               >
                 {#if loadingAIDrugSuggestions}
                   <i class="fas fa-spinner fa-spin me-1"></i>Generating...
@@ -405,8 +405,8 @@
             </div>
           {/if}
           
-          <!-- AI Suggestions Section - Show even when no prescriptions -->
-          {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0}
+          <!-- AI Suggestions Section - Show only when no prescriptions exist -->
+          {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0 && (!prescriptionsFinalized || currentMedications.length === 0)}
             <div class="mt-4 border-top pt-3">
               <div class="d-flex justify-content-between align-items-center mb-3">
                 <h6 class="text-info mb-0">

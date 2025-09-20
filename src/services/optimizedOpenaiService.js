@@ -343,7 +343,7 @@ Be brief. Critical info only.`
   }
 
   // Combined optimized analysis - single request instead of multiple
-  async generateCombinedAnalysisOptimized(symptoms, currentMedications = [], patientAge = null, doctorId = null) {
+  async generateCombinedAnalysisOptimized(symptoms, currentMedications = [], patientAge = null, doctorId = null, patientGender = null, longTermMedications = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured.')
     }
@@ -357,7 +357,8 @@ Be brief. Critical info only.`
         : 'No current medications'
 
       // Single comprehensive but minimal prompt
-      const prompt = `Patient: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}
+      const longTermMedsText = longTermMedications && longTermMedications !== 'None' ? `, Long-term medications: ${longTermMedications}` : ''
+      const prompt = `Patient: ${symptomsText}${patientAge ? `, Age: ${patientAge}` : ''}${patientGender ? `, Gender: ${patientGender}` : ''}${longTermMedsText}
 ${currentMedsText}
 
 Provide brief analysis:
@@ -378,7 +379,7 @@ Be concise. Medical info only.`
           messages: [
             {
               role: 'system',
-              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Provide concise analysis in numbered format.'
+              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Provide concise analysis in numbered format. Consider patient gender and long-term medications when providing medically relevant recommendations. Check for drug interactions with long-term medications.'
             },
             {
               role: 'user',

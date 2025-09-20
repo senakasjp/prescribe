@@ -23,6 +23,7 @@ class FirebaseStorageService {
       illnesses: 'illnesses',
       medications: 'medications',
       symptoms: 'symptoms',
+      longTermMedications: 'longTermMedications',
       drugDatabase: 'drugDatabase',
       pharmacists: 'pharmacists'
     }
@@ -806,6 +807,86 @@ class FirebaseStorageService {
       return symptoms
     } catch (error) {
       console.error('Error getting symptoms by patient ID:', error)
+      throw error
+    }
+  }
+
+  // Long-term medications operations
+  async createLongTermMedication(longTermMedicationData) {
+    try {
+      console.log('💊 Creating long-term medication:', longTermMedicationData)
+      
+      const longTermMedication = {
+        ...longTermMedicationData,
+        createdAt: new Date().toISOString()
+      }
+      
+      const docRef = await addDoc(collection(db, this.collections.longTermMedications), longTermMedication)
+      const newMedication = { id: docRef.id, ...longTermMedication }
+      
+      console.log('✅ Long-term medication created:', newMedication.id)
+      return newMedication
+    } catch (error) {
+      console.error('❌ Error creating long-term medication:', error)
+      throw error
+    }
+  }
+
+  async getLongTermMedicationsByPatientId(patientId) {
+    try {
+      console.log('🔍 Getting long-term medications for patient:', patientId)
+      
+      const q = query(
+        collection(db, this.collections.longTermMedications),
+        where('patientId', '==', patientId)
+      )
+      
+      const querySnapshot = await getDocs(q)
+      const medications = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      
+      // Sort by createdAt in JavaScript instead of Firestore
+      medications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
+      console.log('✅ Loaded long-term medications:', medications.length)
+      return medications
+    } catch (error) {
+      console.error('❌ Error getting long-term medications:', error)
+      throw error
+    }
+  }
+
+  async updateLongTermMedication(medicationId, updatedData) {
+    try {
+      console.log('💊 Updating long-term medication:', medicationId, updatedData)
+      
+      const medicationRef = doc(db, this.collections.longTermMedications, medicationId)
+      await updateDoc(medicationRef, {
+        ...updatedData,
+        updatedAt: new Date().toISOString()
+      })
+      
+      console.log('✅ Long-term medication updated:', medicationId)
+      return true
+    } catch (error) {
+      console.error('❌ Error updating long-term medication:', error)
+      throw error
+    }
+  }
+
+  async deleteLongTermMedication(medicationId) {
+    try {
+      console.log('🗑️ Deleting long-term medication:', medicationId)
+      
+      const medicationRef = doc(db, this.collections.longTermMedications, medicationId)
+      await deleteDoc(medicationRef)
+      
+      console.log('✅ Long-term medication deleted:', medicationId)
+      return true
+    } catch (error) {
+      console.error('❌ Error deleting long-term medication:', error)
       throw error
     }
   }

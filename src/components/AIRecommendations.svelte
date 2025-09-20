@@ -9,6 +9,7 @@
   export let patientAge = null
   export let patientAllergies = null
   export let doctorId = null
+  export let patientData = null
   
   // Expose AI diagnostics state to parent component
   export let isShowingAIDiagnostics = false
@@ -20,7 +21,6 @@
   let showRecommendations = false
   let showMedicationSuggestions = false
   let showRecommendationsInline = false
-  let showMedicationSuggestionsInline = false
   let showCombinedAnalysis = false
   
   // Chatbot variables
@@ -51,7 +51,7 @@
       console.log('🤖 OpenAI configured:', openaiService.isConfigured())
       
       // Use single API call for both recommendations and medication suggestions
-      const combinedResult = await openaiService.generateCombinedAnalysis(symptoms, currentMedications, patientAge, doctorId, patientAllergies)
+      const combinedResult = await openaiService.generateCombinedAnalysis(symptoms, currentMedications, patientAge, doctorId, patientAllergies, patientData?.gender, patientData?.longTermMedications)
       
       // Parse the combined result
       const combinedAnalysis = combinedResult.combinedAnalysis || combinedResult
@@ -59,7 +59,6 @@
       medicationSuggestions = combinedAnalysis // Same content for both sections
       showCombinedAnalysis = true
       showRecommendationsInline = false
-      showMedicationSuggestionsInline = false
       isShowingAIDiagnostics = true
       
       // Dispatch event to notify parent of AI usage
@@ -96,11 +95,6 @@
     recommendations = ''
   }
   
-  // Close inline medication suggestions
-  const closeMedicationSuggestionsInline = () => {
-    showMedicationSuggestionsInline = false
-    medicationSuggestions = ''
-  }
   
   // Close combined analysis
   const closeCombinedAnalysis = () => {
@@ -113,29 +107,53 @@
   // Check if OpenAI is configured
   $: isOpenAIConfigured = openaiService.isConfigured()
   
-  // Format AI recommendations for better display
+  // Format AI recommendations for better display with enhanced formatting
   const formatRecommendations = (text) => {
     if (!text) return ''
     
-    return text
-      // Remove hash symbols (###)
-      .replace(/#{1,6}\s*/g, '')
-      // Convert numbered lists to proper HTML (minimal spacing)
-      .replace(/(\d+\.\s)/g, '<strong>$1</strong>')
-      // Convert bullet points to proper HTML (minimal spacing)
-      .replace(/^[\s]*[-•]\s/gm, '• ')
-      // Convert section headers (lines that end with colon) - compact
-      .replace(/^([^:\n]+):$/gm, '<h6 class="text-primary mb-1 mt-1">$1:</h6>')
-      // Convert bold text patterns
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      // Convert italic text patterns
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      // Convert line breaks to minimal spacing
-      .replace(/\n/g, ' ')
-      // Clean up multiple spaces
-      .replace(/\s{2,}/g, ' ')
-      // Clean up leading/trailing spaces
-      .replace(/^\s+|\s+$/g, '')
+    // First, convert markdown-style formatting to HTML
+    let formattedText = text
+      // Convert headers with emojis and proper styling
+      .replace(/\*\*([📋🔍⚠️🎯📈🚨📝][^:]+):\*\*/g, '<h6 class="text-primary mb-2 mt-3 fw-bold">$1:</h6>')
+      // Convert other bold headers
+      .replace(/\*\*([^:]+):\*\*/g, '<h6 class="text-secondary mb-2 mt-3 fw-bold">$1:</h6>')
+      // Convert bold text
+      .replace(/\*\*([^*]+)\*\*/g, '<strong class="fw-semibold">$1</strong>')
+      // Convert italic text
+      .replace(/\*([^*]+)\*/g, '<em class="fst-italic">$1</em>')
+      
+    // Handle bullet points and lists
+    formattedText = formattedText
+      // Convert bullet points to proper HTML lists
+      .replace(/^[\s]*[-•]\s(.+)$/gm, '<li class="mb-1">$1</li>')
+      // Convert numbered lists
+      .replace(/^[\s]*(\d+\.)\s(.+)$/gm, '<li class="mb-1"><strong>$1</strong> $2</li>')
+      
+    // Wrap consecutive list items in ul tags
+    formattedText = formattedText.replace(/(<li[^>]*>.*<\/li>(\s*<li[^>]*>.*<\/li>)*)/gs, '<ul class="mb-2">$1</ul>')
+    
+    // Handle line breaks and paragraphs
+    formattedText = formattedText
+      // Convert double line breaks to paragraph breaks
+      .replace(/\n\n/g, '</p><p class="mb-2">')
+      // Convert single line breaks to br tags
+      .replace(/\n/g, '<br>')
+    
+    // Wrap in paragraphs and clean up
+    formattedText = '<p class="mb-2">' + formattedText + '</p>'
+    
+    // Clean up empty elements and spacing
+    formattedText = formattedText
+      .replace(/<p[^>]*><\/p>/g, '')
+      .replace(/<p[^>]*>\s*<\/p>/g, '')
+      .replace(/<p[^>]*>\s*<h6/g, '<h6')
+      .replace(/<\/h6>\s*<\/p>/g, '</h6>')
+      .replace(/<p[^>]*>\s*<ul/g, '<ul')
+      .replace(/<\/ul>\s*<\/p>/g, '</ul>')
+      .replace(/<br>\s*<\/p>/g, '</p>')
+      .replace(/<p[^>]*>\s*<br>/g, '<p class="mb-2">')
+    
+    return formattedText
   }
 
   // Chatbot functions
@@ -160,13 +178,15 @@
       // Generate token-optimized AI response for chat
       const symptomsText = symptoms && symptoms.length > 0 ? symptoms.map(s => s.symptom).join(', ') : 'No symptoms recorded'
       const analysisSummary = recommendations && recommendations.length > 0 ? recommendations.substring(0, 500) : 'No previous analysis available'
+      const patientGender = patientData?.gender ? `Patient gender: ${patientData.gender}` : ''
       
       const chatPrompt = `You are a medical AI assistant. Answer this question concisely and professionally: "${userMessage}". 
 
 Context: Patient symptoms: ${symptomsText}
+${patientGender}
 Previous analysis summary: ${analysisSummary}
 
-Provide a brief, focused answer (max 200 words) with clear medical guidance.`
+Provide a brief, focused answer (max 200 words) with clear medical guidance. Use proper formatting with headers, bullet points, and structured sections when appropriate. Consider patient gender in your recommendations when medically relevant.`
 
       console.log('🤖 Chat request:', { userMessage, symptomsText, analysisSummary })
 
@@ -175,14 +195,14 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
         messages: [
           {
             role: 'system',
-            content: 'You are a medical AI assistant. Provide concise, professional medical guidance. Keep responses brief and focused (under 200 words). Use clear formatting with headers and bullet points when appropriate.'
+            content: 'You are a medical AI assistant. Provide concise, professional medical guidance. Keep responses brief and focused (under 200 words). ALWAYS use proper formatting with **bold headers**, bullet points (- or •), and structured sections when appropriate. Format your responses with clear headings and organized information for better readability. Consider patient gender when providing medically relevant recommendations and consider gender-specific medication effects and contraindications.'
           },
           {
             role: 'user',
             content: chatPrompt
           }
         ],
-        max_tokens: 300,
+        max_tokens: 400,
         temperature: 0.1
       }, 'chatbotResponse', {
         symptoms: symptomsText,
@@ -311,54 +331,26 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
     </div>
   {/if}
   
-  <!-- Inline Medication Suggestions -->
-  {#if showMedicationSuggestionsInline}
-    <div class="ai-medication-suggestions-inline mt-3">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h6 class="mb-0">
-          <i class="fas fa-pills me-2 text-success"></i>AI Medication Suggestions
-        </h6>
-        <button 
-          type="button" 
-          class="btn-close btn-sm" 
-          on:click={closeMedicationSuggestionsInline}
-          title="Close medication suggestions"
-        ></button>
-      </div>
-      
-      <div>
-          <div class="alert alert-warning alert-sm mb-3" role="alert">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            <strong>Important:</strong> These medication suggestions are generated by AI and are for informational purposes only. Always consult with a healthcare professional before taking any medications.
-          </div>
-          
-          <div class="max-height-300 overflow-auto p-3 bg-light rounded border">
-            {#if medicationSuggestions}
-              <div class="suggestions-text">
-                {@html formatRecommendations(medicationSuggestions)}
-              </div>
-            {/if}
-          </div>
-        </div>
-    </div>
-  {/if}
   
   <!-- Combined AI Analysis -->
   {#if showCombinedAnalysis}
     <div class="ai-combined-analysis mt-3">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h6 class="mb-0 text-danger">
-          <i class="fas fa-brain me-2"></i>AI-Powered Medical Intelligence
-        </h6>
-        <button 
-          type="button" 
-          class="btn-close btn-sm" 
-          on:click={closeCombinedAnalysis}
-          title="Close AI analysis"
-        ></button>
-      </div>
-      
-      <div>
+      <div class="card border-primary">
+        <div class="card-header bg-light text-dark">
+          <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 text-danger">
+              <i class="fas fa-brain me-2"></i>AI-Powered Medical Intelligence
+            </h6>
+            <button 
+              type="button" 
+              class="btn-close btn-sm" 
+              on:click={closeCombinedAnalysis}
+              title="Close AI analysis"
+            ></button>
+          </div>
+        </div>
+        
+        <div class="card-body p-3">
           <div class="alert alert-info alert-sm mb-3" role="alert">
             <i class="fas fa-info-circle me-2"></i>
             <strong>Disclaimer:</strong> This analysis is generated by AI and is for informational purposes only. It should not replace professional medical consultation.
@@ -375,114 +367,102 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
             </div>
           {/if}
           
+          <!-- Divider between analysis and chat -->
+          <hr class="my-4">
+          
           <!-- AI Chatbot Interface -->
-          <div class="ai-chatbot-interface mt-3">
-            <div class="card border-primary">
-              <div class="card-header bg-light text-dark py-2">
-                <h6 class="mb-0 small">
-                  <i class="fas fa-comments me-1"></i>Ask AI Assistant
-                </h6>
-                <small class="small">Have follow-up questions? Ask our AI assistant for more details.</small>
-              </div>
-              <div class="card-body p-2 bg-light">
-                <div class="chat-messages mb-2" id="chatMessages">
-                  <!-- Initial AI message -->
-                  <div class="message ai-message mb-3">
+          <div class="ai-chatbot-interface">
+            <div class="d-flex align-items-center mb-3">
+              <i class="fas fa-comments me-2 text-primary"></i>
+              <h6 class="mb-0 text-primary">Ask AI Assistant</h6>
+            </div>
+            
+            <div class="chat-messages mb-3" id="chatMessages">
+              <!-- Dynamic chat messages -->
+              {#each chatMessages as message (message.timestamp)}
+                <div class="message {message.type}-message mb-3">
+                  {#if message.type === 'user'}
+                    <div class="message-content">
+                      <div class="message-bubble">
+                        {message.content}
+                      </div>
+                      <div class="message-time">
+                        {message.timestamp.toLocaleTimeString()}
+                      </div>
+                    </div>
+                    <div class="message-avatar">
+                      <i class="fas fa-user-md"></i>
+                    </div>
+                  {:else}
                     <div class="message-avatar">
                       <i class="fas fa-robot"></i>
                     </div>
                     <div class="message-content">
                       <div class="message-bubble">
-                        Hello! I've analyzed the patient's symptoms and provided recommendations above. Do you have any specific questions about the diagnosis, treatment options, or medication interactions? I'm here to help clarify any aspects of the analysis.
+                        {@html formatRecommendations(message.content)}
                       </div>
                       <div class="message-time">
-                        {new Date().toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <!-- Dynamic chat messages -->
-                  {#each chatMessages as message (message.timestamp)}
-                    <div class="message {message.type}-message mb-3">
-                      {#if message.type === 'user'}
-                        <div class="message-content">
-                          <div class="message-bubble">
-                            {message.content}
-                          </div>
-                          <div class="message-time">
-                            {message.timestamp.toLocaleTimeString()}
-                          </div>
-                        </div>
-                        <div class="message-avatar">
-                          <i class="fas fa-user-md"></i>
-                        </div>
-                      {:else}
-                        <div class="message-avatar">
-                          <i class="fas fa-robot"></i>
-                        </div>
-                        <div class="message-content">
-                          <div class="message-bubble">
-                            {@html formatRecommendations(message.content)}
-                          </div>
-                          <div class="message-time">
-                            {message.timestamp.toLocaleTimeString()}
-                          </div>
-                        </div>
-                      {/if}
-                    </div>
-                  {/each}
-                  
-                  <!-- Loading indicator -->
-                  {#if chatLoading}
-                    <div class="message ai-message mb-3">
-                      <div class="message-avatar">
-                        <i class="fas fa-robot"></i>
-                      </div>
-                      <div class="message-content">
-                        <div class="message-bubble">
-                          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                          Thinking...
-                        </div>
+                        {message.timestamp.toLocaleTimeString()}
                       </div>
                     </div>
                   {/if}
                 </div>
-                
-                <div class="chat-input">
-                  <div class="input-group input-group-sm">
-                    <textarea 
-                      class="form-control form-control-sm" 
-                      placeholder="Ask a question about the analysis..."
-                      bind:value={chatMessage}
-                      rows="2"
-                      on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
-                    ></textarea>
-                    <button 
-                      class="btn btn-danger" 
-                      type="button"
-                      on:click={sendChatMessage}
-                      disabled={!chatMessage.trim() || chatLoading}
-                    >
-                      {#if chatLoading}
-                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                      {/if}
-                      <i class="fas fa-paper-plane"></i>
-                    </button>
+              {/each}
+              
+              <!-- Loading indicator -->
+              {#if chatLoading}
+                <div class="message ai-message mb-3">
+                  <div class="message-avatar">
+                    <i class="fas fa-robot"></i>
+                  </div>
+                  <div class="message-content">
+                    <div class="message-bubble">
+                      <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                      Thinking...
+                    </div>
                   </div>
                 </div>
+              {/if}
+            </div>
+            
+            <div class="chat-input">
+              <div class="input-group input-group-sm">
+                <textarea 
+                  class="form-control form-control-sm" 
+                  placeholder="Ask a question about the analysis..."
+                  bind:value={chatMessage}
+                  rows="2"
+                  on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && sendChatMessage()}
+                ></textarea>
+                <button 
+                  class="btn btn-primary" 
+                  type="button"
+                  style="background-color: #007bff !important; border-color: #007bff !important; color: white !important;"
+                  on:click={sendChatMessage}
+                  disabled={!chatMessage.trim() || chatLoading}
+                >
+                  {#if chatLoading}
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    Sending...
+                  {:else}
+                    <i class="fas fa-paper-plane me-1"></i>
+                    Send
+                  {/if}
+                </button>
               </div>
             </div>
           </div>
         </div>
+      </div>
     </div>
   {/if}
 </div>
 
 <style>
 
-  /* Chatbot Interface Styling - Image Format */
+  /* Chatbot Interface Styling - Unified Card Format */
   .ai-chatbot-interface {
-    margin-top: 0.5rem;
+    margin-top: 0;
   }
 
   .chat-messages {
@@ -527,7 +507,8 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
   }
 
   .message-content {
-    max-width: 70%;
+    max-width: 100%;
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
@@ -542,25 +523,30 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
   }
 
   .message-bubble {
-    padding: 0.75rem 1rem;
-    border-radius: 1rem;
+    padding: 0.75rem 1rem !important;
+    border-radius: 1rem !important;
     word-wrap: break-word;
     font-size: 0.9rem;
     line-height: 1.4;
     max-width: 100%;
+    position: relative;
+    overflow: hidden;
   }
 
   .ai-message .message-bubble {
-    background-color: white;
-    color: #333;
-    border: 1px solid #e9ecef;
-    border-bottom-left-radius: 0.25rem;
+    background-color: #f8f9fa !important;
+    color: #333 !important;
+    border: 1px solid #dee2e6 !important;
+    border-bottom-left-radius: 0.25rem !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
   }
 
   .user-message .message-bubble {
-    background-color: #007bff;
-    color: white;
-    border-bottom-right-radius: 0.25rem;
+    background-color: #007bff !important;
+    color: white !important;
+    border: none !important;
+    border-bottom-right-radius: 0.25rem !important;
+    box-shadow: 0 1px 3px rgba(0,123,255,0.2) !important;
   }
 
   .message-time {
@@ -569,6 +555,19 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
     padding: 0 0.5rem;
   }
 
+  /* Override any conflicting styles for chat bubbles */
+  .chat-messages .message .message-bubble {
+    background-color: #f8f9fa !important;
+    border: 1px solid #dee2e6 !important;
+    color: #333 !important;
+  }
+  
+  .chat-messages .user-message .message-bubble {
+    background-color: #007bff !important;
+    border: none !important;
+    color: white !important;
+  }
+  
   .ai-message .message-bubble h6 {
     color: #007bff !important;
     font-weight: 600;
@@ -596,23 +595,59 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance.`
     font-size: 0.875rem;
     resize: none;
     min-height: 2.5rem;
-    border-color: #dc3545;
+    height: 2.5rem;
+    border-color: #dee2e6 !important;
+    border: 1px solid #dee2e6 !important;
   }
 
-  .chat-input .btn {
-    border-radius: 0 0.75rem 0.75rem 0;
-    font-size: 0.875rem;
-    align-self: flex-end;
-    border-color: #dc3545;
+  .chat-input .btn,
+  .chat-input .btn-primary,
+  .chat-input .btn-danger {
+    border-radius: 0 0.75rem 0.75rem 0 !important;
+    font-size: 0.875rem !important;
+    align-self: stretch !important;
+    height: 2.5rem !important;
+    min-height: 2.5rem !important;
+    min-width: 4rem !important;
+    padding: 0.375rem 0.75rem !important;
+    border-color: #007bff !important;
+    border: 1px solid #007bff !important;
+    background-color: #007bff !important;
+    color: white !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
 
   .chat-input .input-group {
-    align-items: flex-end;
+    align-items: stretch;
+  }
+  
+  /* Ensure clean input styling */
+  .chat-input .input-group .form-control {
+    border-right: none !important;
+  }
+  
+  .chat-input .input-group .btn {
+    border-left: none !important;
+  }
+  
+  /* Button hover and disabled states */
+  .chat-input .btn:hover {
+    background-color: #0056b3 !important;
+    border-color: #0056b3 !important;
+  }
+  
+  .chat-input .btn:disabled {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    opacity: 0.65 !important;
   }
 
   .chat-input .form-control:focus {
-    border-color: #dc3545;
-    box-shadow: 0 0 0 0.15rem rgba(220, 53, 69, 0.25);
+    border-color: #007bff !important;
+    box-shadow: 0 0 0 0.15rem rgba(0, 123, 255, 0.25) !important;
+    outline: none !important;
   }
 
   /* Ultra Compact AI Analysis Styling */

@@ -75,11 +75,13 @@
     idNumber: '',
     address: '',
     allergies: '',
+    longTermMedications: '',
     emergencyContact: '',
     emergencyPhone: ''
   }
   let editError = ''
   let savingPatient = false
+  let editLongTermMedications = null // For editing long-term medications in overview
   
   // AI analysis state
   let aiCheckComplete = false
@@ -253,6 +255,7 @@
         
         // Medical Information
         allergies: selectedPatient.allergies,
+        longTermMedications: selectedPatient.longTermMedications,
         medicalHistory: selectedPatient.medicalHistory,
         currentMedications: selectedPatient.currentMedications,
         emergencyContact: selectedPatient.emergencyContact,
@@ -503,6 +506,7 @@
       notifyError('Failed to delete symptom: ' + error.message)
     }
   }
+
   
   const handleMedicationAdded = async (event) => {
     const medicationData = event.detail
@@ -749,7 +753,9 @@
         doctorId,
         {
           patientCountry: selectedPatient?.country || 'Not specified',
-          patientAllergies: selectedPatient?.allergies || 'None'
+          patientAllergies: selectedPatient?.allergies || 'None',
+          patientGender: selectedPatient?.gender || 'Not specified',
+          longTermMedications: selectedPatient?.longTermMedications || 'None'
         }
       )
 
@@ -771,50 +777,76 @@
   }
 
   // Add AI suggested drug to prescription
-  const addAISuggestedDrug = (suggestion, suggestionIndex) => {
+  const addAISuggestedDrug = async (suggestion, suggestionIndex) => {
     if (!currentPrescription) {
       notifyError('Please create a prescription first.')
       return
     }
 
-    const medication = {
-      id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID for AI-suggested medication
-      name: suggestion.name,
-      dosage: suggestion.dosage,
-      frequency: suggestion.frequency,
-      duration: suggestion.duration,
-      instructions: suggestion.instructions || '',
-      aiSuggested: true,
-      aiReason: suggestion.reason || '',
-      patientId: selectedPatient.id,
-      doctorId: doctorId,
-      createdAt: new Date().toISOString()
-    }
+    try {
+      const medicationData = {
+        name: suggestion.name,
+        dosage: suggestion.dosage,
+        frequency: suggestion.frequency,
+        duration: suggestion.duration,
+        instructions: suggestion.instructions || '',
+        aiSuggested: true,
+        aiReason: suggestion.reason || '',
+        patientId: selectedPatient.id,
+        doctorId: doctorId
+      }
 
-    // Add medication to current prescription only
-    if (!currentPrescription.medications) {
-      currentPrescription.medications = []
-    }
-    currentPrescription.medications = [...currentPrescription.medications, medication]
-    
-    // Update currentMedications to include all medications from all prescriptions
-    currentMedications = [...currentMedications, medication]
-    
-    // Remove the suggestion from the AI suggestions list
-    aiDrugSuggestions = aiDrugSuggestions.filter((_, index) => index !== suggestionIndex)
-    
-    console.log('💊 Added AI suggested drug:', medication)
-    console.log('💊 Updated currentPrescription.medications:', currentPrescription.medications.length)
-    console.log('🗑️ Removed suggestion from AI list, remaining:', aiDrugSuggestions.length)
-    
-    // Hide suggestions section if no suggestions remain
-    if (aiDrugSuggestions.length === 0) {
-      showAIDrugSuggestions = false
-      console.log('🔍 Hiding AI suggestions section - all suggestions added')
-    }
+      // Save medication to database first to get proper ID
+      const savedMedication = await firebaseStorage.addMedicationToPrescription(
+        currentPrescription.id, 
+        medicationData
+      )
+      
+      console.log('💾 AI suggested medication saved to database:', savedMedication)
 
-    // Save to Firebase
-    saveCurrentPrescriptions()
+      // Update the current prescription object
+      if (!currentPrescription.medications) {
+        currentPrescription.medications = []
+      }
+      currentPrescription.medications.push(savedMedication)
+      currentPrescription.updatedAt = new Date().toISOString()
+      
+      // Update prescriptions array to trigger reactivity
+      const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id)
+      if (prescriptionIndex !== -1) {
+        prescriptions[prescriptionIndex] = currentPrescription
+        prescriptions = [...prescriptions]
+      }
+      
+      // Update current medications array for display
+      currentMedications = currentPrescription.medications
+      
+      // Remove the suggestion from the AI suggestions list
+      aiDrugSuggestions = aiDrugSuggestions.filter((_, index) => index !== suggestionIndex)
+      
+      console.log('💊 Added AI suggested drug:', savedMedication.name)
+      console.log('💊 Updated currentPrescription.medications:', currentPrescription.medications.length)
+      console.log('🗑️ Removed suggestion from AI list, remaining:', aiDrugSuggestions.length)
+      
+      // Hide suggestions section if no suggestions remain
+      if (aiDrugSuggestions.length === 0) {
+        showAIDrugSuggestions = false
+        console.log('🔍 Hiding AI suggestions section - all suggestions added')
+      }
+      
+      // Reset AI analysis state when medications change (only if prescription is not finished)
+      if (!prescriptionFinished) {
+        aiCheckComplete = false
+        aiCheckMessage = ''
+        lastAnalyzedMedications = []
+      }
+      
+      notifySuccess(`Added "${savedMedication.name}" to prescription`)
+      
+    } catch (error) {
+      console.error('❌ Error adding AI suggested drug:', error)
+      notifyError('Failed to add AI suggested drug: ' + error.message)
+    }
   }
 
   // Remove AI suggested drug from list
@@ -1078,8 +1110,31 @@
         return
       }
       
-      // Create prescription data from current medications
-      const prescriptions = [{
+      // Mark current prescription as sent to pharmacy (printed)
+      if (currentPrescription) {
+        currentPrescription.status = 'sent'
+        currentPrescription.sentToPharmacy = true
+        currentPrescription.sentAt = new Date().toISOString()
+        
+        // Update in Firebase
+        await firebaseStorage.updatePrescription(currentPrescription.id, {
+          status: 'sent',
+          sentToPharmacy: true,
+          sentAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        })
+        
+        // Update the prescription in the local array
+        const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id);
+        if (prescriptionIndex !== -1) {
+          prescriptions[prescriptionIndex] = currentPrescription;
+        }
+        
+        console.log('✅ Marked current prescription as sent to pharmacy');
+      }
+      
+      // Create prescription data from current medications for sending to pharmacy
+      const prescriptionsToSend = [{
         id: Date.now().toString(),
         patientId: selectedPatient.id,
         doctorId: doctor.id,
@@ -1088,7 +1143,7 @@
         createdAt: new Date().toISOString(),
         status: 'pending'
       }]
-      console.log('🔍 Created prescription data:', prescriptions)
+      console.log('🔍 Created prescription data:', prescriptionsToSend)
       
       // Get all pharmacists and find those connected to this doctor
       const allPharmacists = await firebaseStorage.getAllPharmacists()
@@ -1186,7 +1241,7 @@
             doctorName: `${doctor.firstName} ${doctor.lastName}`,
             patientId: selectedPatient.id,
             patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-            prescriptions: prescriptions,
+            prescriptions: prescriptionsToSend,
             sentAt: new Date().toISOString(),
             status: 'pending'
           }
@@ -1619,6 +1674,7 @@
       idNumber: selectedPatient.idNumber || '',
       address: selectedPatient.address || '',
       allergies: selectedPatient.allergies || '',
+      longTermMedications: selectedPatient.longTermMedications || '',
       emergencyContact: selectedPatient.emergencyContact || '',
       emergencyPhone: selectedPatient.emergencyPhone || ''
     }
@@ -1645,6 +1701,7 @@
       idNumber: '',
       address: '',
       allergies: '',
+      longTermMedications: '',
       emergencyContact: '',
       emergencyPhone: ''
     }
@@ -1714,6 +1771,41 @@
     } finally {
       savingPatient = false
     }
+  }
+
+  // Handle long-term medications editing in overview
+  const handleSaveLongTermMedications = async () => {
+    try {
+      console.log('💾 Saving long-term medications:', editLongTermMedications)
+      
+      // Update patient data
+      const updatedPatient = {
+        ...selectedPatient,
+        longTermMedications: editLongTermMedications || '',
+        updatedAt: new Date().toISOString()
+      }
+      
+      // Save to Firebase
+      await firebaseStorage.updatePatient(selectedPatient.id, updatedPatient)
+      
+      // Update local patient data
+      selectedPatient.longTermMedications = editLongTermMedications || ''
+      
+      // Reset edit state
+      editLongTermMedications = null
+      
+      console.log('✅ Long-term medications saved successfully')
+      notifySuccess('Long-term medications updated successfully!')
+      
+    } catch (error) {
+      console.error('❌ Error saving long-term medications:', error)
+      notifyError('Failed to save long-term medications: ' + error.message)
+    }
+  }
+
+  const handleCancelLongTermMedications = () => {
+    editLongTermMedications = null
+    console.log('❌ Cancelled editing long-term medications')
   }
   
   // Handle prescription actions
@@ -1830,7 +1922,7 @@
         return
       }
       
-      // Update prescription status
+      // Update prescription status to 'saved' (finalized)
       currentPrescription.status = 'finalized'
       currentPrescription.medications = currentMedications
       currentPrescription.finalizedAt = new Date().toISOString()
@@ -1843,10 +1935,16 @@
         updatedAt: new Date().toISOString()
       })
       
+      // Update the prescription in the local array
+      const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id);
+      if (prescriptionIndex !== -1) {
+        prescriptions[prescriptionIndex] = currentPrescription;
+      }
+      
       prescriptionsFinalized = true
       prescriptionFinished = true
       
-      console.log('✅ Prescription finalized successfully')
+      console.log('✅ Prescription finalized successfully (will move to history when new prescription starts)')
       
     } catch (error) {
       console.error('❌ Error finalizing prescription:', error)
@@ -2189,6 +2287,21 @@
                     <small class="form-text text-muted">Important: List all known allergies to medications, foods, or other substances</small>
                   </div>
                   
+                  <div class="mb-3">
+                    <label for="editLongTermMedications" class="form-label">
+                      <i class="fas fa-pills me-1"></i>Long Term Medications
+                    </label>
+                    <textarea 
+                      class="form-control" 
+                      id="editLongTermMedications" 
+                      rows="3" 
+                      bind:value={editPatientData.longTermMedications}
+                      placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
+                      disabled={savingPatient}
+                    ></textarea>
+                    <small class="form-text text-muted">List medications the patient is currently taking on a regular basis</small>
+                  </div>
+                  
                   <div class="row g-3">
                     <div class="col-12 col-md-6">
                       <div class="mb-3">
@@ -2249,28 +2362,38 @@
                 <div class="col-md-6">
                   <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
                   <p><strong>Email:</strong> {selectedPatient.email}</p>
-                  <p><strong>Phone:</strong> {selectedPatient.phone || 'Not provided'}</p>
-                  <p><strong>Gender:</strong> {selectedPatient.gender || 'Not specified'}</p>
+                  {#if selectedPatient.phone}
+                    <p><strong>Phone:</strong> {selectedPatient.phone}</p>
+                  {/if}
+                  {#if selectedPatient.gender}
+                    <p><strong>Gender:</strong> {selectedPatient.gender}</p>
+                  {/if}
+                  {#if selectedPatient.dateOfBirth}
                     <p><strong>Date of Birth:</strong> {selectedPatient.dateOfBirth}</p>
-                    <p><strong>Age:</strong> {selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || 'Not specified'}</p>
-                    {#if selectedPatient.weight}
-                      <p><strong>Weight:</strong> {selectedPatient.weight} kg</p>
-                    {/if}
-                    {#if selectedPatient.bloodGroup}
-                      <p><strong>Blood Group:</strong> <span class="badge bg-danger text-white">{selectedPatient.bloodGroup}</span></p>
-                    {/if}
+                  {/if}
+                  {#if selectedPatient.age || calculateAge(selectedPatient.dateOfBirth)}
+                    <p><strong>Age:</strong> {selectedPatient.age || calculateAge(selectedPatient.dateOfBirth)}</p>
+                  {/if}
+                  {#if selectedPatient.weight}
+                    <p><strong>Weight:</strong> {selectedPatient.weight} kg</p>
+                  {/if}
+                  {#if selectedPatient.bloodGroup}
+                    <p><strong>Blood Group:</strong> <span class="badge bg-danger text-white">{selectedPatient.bloodGroup}</span></p>
+                  {/if}
                 </div>
                 <div class="col-md-6">
-                  <p><strong>ID Number:</strong> {selectedPatient.idNumber}</p>
-                    {#if selectedPatient.address}
-                      <p><strong>Address:</strong> {selectedPatient.address}</p>
-                    {/if}
-                    {#if selectedPatient.emergencyContact}
-                      <p><strong>Emergency Contact:</strong> {selectedPatient.emergencyContact}</p>
-                    {/if}
-                    {#if selectedPatient.emergencyPhone}
-                      <p><strong>Emergency Phone:</strong> {selectedPatient.emergencyPhone}</p>
-                    {/if}
+                  {#if selectedPatient.idNumber}
+                    <p><strong>ID Number:</strong> {selectedPatient.idNumber}</p>
+                  {/if}
+                  {#if selectedPatient.address}
+                    <p><strong>Address:</strong> {selectedPatient.address}</p>
+                  {/if}
+                  {#if selectedPatient.emergencyContact}
+                    <p><strong>Emergency Contact:</strong> {selectedPatient.emergencyContact}</p>
+                  {/if}
+                  {#if selectedPatient.emergencyPhone}
+                    <p><strong>Emergency Phone:</strong> {selectedPatient.emergencyPhone}</p>
+                  {/if}
                 </div>
               </div>
                 
@@ -2282,6 +2405,96 @@
                           <i class="fas fa-exclamation-triangle me-2"></i>Allergies
                         </h6>
                         <p class="mb-0">{selectedPatient.allergies}</p>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+                
+                {#if selectedPatient.longTermMedications}
+                  <div class="row mt-3">
+                    <div class="col-12">
+                      <div class="alert alert-info">
+                        <div class="d-flex justify-content-between align-items-start">
+                          <h6 class="alert-heading mb-0">
+                            <i class="fas fa-pills me-2"></i>Long Term Medications
+                          </h6>
+                          <button 
+                            class="btn btn-outline-primary btn-sm" 
+                            on:click={() => editLongTermMedications = selectedPatient.longTermMedications}
+                            title="Edit long-term medications"
+                          >
+                            <i class="fas fa-edit me-1"></i>Edit
+                          </button>
+                        </div>
+                        <p class="mb-0 mt-2">{selectedPatient.longTermMedications}</p>
+                      </div>
+                    </div>
+                  </div>
+                {:else}
+                  <div class="row mt-3">
+                    <div class="col-12">
+                      <div class="alert alert-light">
+                        <div class="d-flex justify-content-between align-items-start">
+                          <h6 class="alert-heading mb-0">
+                            <i class="fas fa-pills me-2"></i>Long Term Medications
+                          </h6>
+                          <button 
+                            class="btn btn-outline-primary btn-sm" 
+                            on:click={() => editLongTermMedications = ''}
+                            title="Add long-term medications"
+                          >
+                            <i class="fas fa-plus me-1"></i>Add
+                          </button>
+                        </div>
+                        <p class="mb-0 mt-2 text-muted">No long-term medications recorded</p>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+                
+                <!-- Long-term medications edit form -->
+                {#if editLongTermMedications !== null}
+                  <div class="row mt-3">
+                    <div class="col-12">
+                      <div class="card border-primary">
+                        <div class="card-header bg-primary text-white">
+                          <h6 class="mb-0">
+                            <i class="fas fa-pills me-2"></i>
+                            {selectedPatient.longTermMedications ? 'Edit Long Term Medications' : 'Add Long Term Medications'}
+                          </h6>
+                        </div>
+                        <div class="card-body">
+                          <div class="mb-3">
+                            <label for="editLongTermMedicationsField" class="form-label">
+                              Long Term Medications
+                            </label>
+                            <textarea 
+                              class="form-control" 
+                              id="editLongTermMedicationsField" 
+                              rows="3" 
+                              bind:value={editLongTermMedications}
+                              placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
+                            ></textarea>
+                            <small class="form-text text-muted">List medications the patient is currently taking on a regular basis</small>
+                          </div>
+                          
+                          <div class="d-flex flex-column flex-sm-row gap-2">
+                            <button 
+                              type="button" 
+                              class="btn btn-success btn-sm flex-fill" 
+                              on:click={handleSaveLongTermMedications}
+                            >
+                              <i class="fas fa-save me-1"></i>Save
+                            </button>
+                            <button 
+                              type="button" 
+                              class="btn btn-secondary btn-sm flex-fill" 
+                              on:click={handleCancelLongTermMedications}
+                            >
+                              <i class="fas fa-times me-1"></i>Cancel
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2308,6 +2521,7 @@
       <!-- Symptoms Tab -->
       {#if activeTab === 'symptoms'}
         <div class="tab-pane active">
+          <!-- Symptoms Section -->
           <div class="d-flex justify-content-between align-items-center mb-3">
             <h6 class="mb-0">
               <i class="fas fa-thermometer-half me-2"></i>Symptoms
@@ -2327,9 +2541,8 @@
             onCancelSymptoms={handleCancelSymptoms}
           />
           
-          
           {#if symptoms && symptoms.length > 0}
-            <div class="list-group">
+            <div class="list-group mb-4">
               {#each symptoms as symptom, index}
                 <div class="list-group-item">
                   <div class="d-flex w-100 justify-content-between align-items-start">
@@ -2369,11 +2582,12 @@
               {/each}
             </div>
           {:else}
-            <div class="text-center p-4">
+            <div class="text-center p-4 mb-4">
               <i class="fas fa-thermometer-half fa-2x text-muted mb-3"></i>
               <p class="text-muted">No symptoms recorded for this patient.</p>
             </div>
           {/if}
+
           
           <!-- Navigation Buttons -->
           <div class="row mt-3">
@@ -2890,6 +3104,7 @@
             })() : null}
             patientAllergies={selectedPatient?.allergies || null}
             {doctorId}
+            patientData={selectedPatient}
             bind:isShowingAIDiagnostics
             on:ai-usage-updated={(event) => {
               if (addToPrescription) {
@@ -2951,7 +3166,6 @@
             console.log('🆕 New Prescription button clicked - Creating NEW prescription');
             showMedicationForm = false; 
             editingMedication = null;
-            prescriptionFinished = false;
             
             // Reset AI check state for new prescription
             aiCheckComplete = false;
@@ -2959,6 +3173,53 @@
             lastAnalyzedMedications = [];
             
             try {
+              // Check if current prescription should be moved to history
+              // Only move to history if it has been saved (finalized) or printed (sent to pharmacy)
+              if (currentPrescription && currentMedications && currentMedications.length > 0) {
+                const isSaved = currentPrescription.status === 'finalized' || currentPrescription.status === 'completed';
+                const isPrinted = currentPrescription.status === 'sent' || currentPrescription.sentToPharmacy || currentPrescription.printedAt;
+                
+                console.log('📋 Current prescription status check:', {
+                  status: currentPrescription.status,
+                  isSaved,
+                  isPrinted,
+                  medicationsCount: currentMedications.length
+                });
+                
+                if (isSaved || isPrinted) {
+                  console.log('📋 Moving current prescription to history (saved or printed)...');
+                  
+                  // Update prescription with end date to mark it as historical
+                  currentPrescription.endDate = new Date().toISOString().split('T')[0];
+                  
+                  // Save to Firebase
+                  await firebaseStorage.updatePrescription(currentPrescription.id, {
+                    endDate: new Date().toISOString().split('T')[0],
+                    updatedAt: new Date().toISOString()
+                  });
+                  
+                  // Update the prescription in the local array
+                  const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id);
+                  if (prescriptionIndex !== -1) {
+                    prescriptions[prescriptionIndex] = currentPrescription;
+                  }
+                  
+                  console.log('✅ Current prescription moved to history');
+                } else {
+                  console.log('⚠️ Current prescription not saved or printed - removing from prescriptions array');
+                  // Remove unsaved/unprinted prescriptions from the prescriptions array
+                  prescriptions = prescriptions.filter(p => p.id !== currentPrescription.id);
+                  
+                  // Also delete from Firebase if it exists
+                  try {
+                    await firebaseStorage.deletePrescription(currentPrescription.id);
+                    console.log('🗑️ Deleted unsaved prescription from Firebase');
+                  } catch (error) {
+                    console.log('⚠️ Could not delete prescription from Firebase (may not exist):', error.message);
+                  }
+                }
+              }
+              
               // Create new prescription
               const newPrescription = await firebaseStorage.createPrescription(
                 selectedPatient.id,
@@ -2969,10 +3230,15 @@
               
               currentPrescription = newPrescription;
               currentMedications = [];
+              prescriptionFinished = false;
+              prescriptionsFinalized = false;
               
               // Add the new prescription to the prescriptions array immediately
               prescriptions = [...prescriptions, currentPrescription];
               console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
+              
+              // Update prescriptions array to trigger reactivity
+              prescriptions = [...prescriptions];
               
               console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
             } catch (error) {

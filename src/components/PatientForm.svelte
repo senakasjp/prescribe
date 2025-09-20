@@ -15,6 +15,7 @@
   let idNumber = ''
   let address = ''
   let allergies = ''
+  let longTermMedications = ''
   let emergencyContact = ''
   let emergencyPhone = ''
   let error = ''
@@ -92,6 +93,7 @@
         idNumber: idNumber.trim() || '',
         address: address.trim() || '',
         allergies: allergies.trim() || '',
+        longTermMedications: longTermMedications.trim() || '',
         emergencyContact: emergencyContact.trim() || '',
         emergencyPhone: emergencyPhone.trim() || ''
       }
@@ -111,6 +113,7 @@
       idNumber = ''
       address = ''
       allergies = ''
+      longTermMedications = ''
       emergencyContact = ''
       emergencyPhone = ''
       
@@ -335,6 +338,21 @@
           disabled={loading}
         ></textarea>
         <small class="form-text text-muted">Important: List all known allergies to medications, foods, or other substances</small>
+      </div>
+      
+      <div class="mb-3">
+        <label for="longTermMedications" class="form-label">
+          <i class="fas fa-pills me-1"></i>Long Term Medications
+        </label>
+        <textarea 
+          class="form-control" 
+          id="longTermMedications" 
+          rows="3" 
+          bind:value={longTermMedications}
+          placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
+          disabled={loading}
+        ></textarea>
+        <small class="form-text text-muted">List medications the patient is currently taking on a regular basis</small>
       </div>
       
       <div class="row g-3">

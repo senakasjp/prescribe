@@ -2,6 +2,14 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🧠 Smart Prescription History Logic**
+- **Conditional History Management**: Prescriptions only move to history when saved or printed
+- **Status-Based Workflow**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions
+- **Intelligent Data Cleanup**: Unsaved/unprinted prescriptions are discarded when new prescription starts
+- **Enhanced Status Tracking**: Comprehensive status definitions for prescription lifecycle management
+- **Clean History Records**: Only completed work appears in prescription history and summary
+- **Automatic Workflow**: New prescription creation automatically handles previous prescription status
+
 ### **🟠 Dynamic Stock Availability System**
 - **Smart Stock Badges**: Real-time stock monitoring with color-coded availability indicators
 - **Pharmacy Integration**: Doctors can see medication availability from connected pharmacies
@@ -39,7 +47,10 @@
 - **Simplified Workflow**: Clear prescription creation process - click "New Prescription" to create a new prescription
 - **MedicalSummary Data Display**: Fixed display issues showing actual medication names, dosages, and durations instead of "Unknown prescription"
 
-### **🎯 New Prescription Logic**
+### **🎯 Smart Prescription History Logic**
+- **Conditional History Management**: Prescriptions only move to history when saved or printed
+- **Status-Based Workflow**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions
+- **Intelligent Data Cleanup**: Unsaved/unprinted prescriptions are discarded when new prescription starts
 - **Simple Rule**: Click "New Prescription" button = Always creates a new prescription
 - **Clear Workflow**: Must create prescription before adding medications
 - **User-Friendly**: Helpful error messages guide you through the process
@@ -283,7 +294,7 @@ Manage diagnosed conditions:
 - **Quick Overview** - Status and description summary
 
 ### Prescriptions Tab
-M-Prescribe and track prescriptions:
+M-Prescribe and track prescriptions with intelligent history management:
 
 #### Creating New Prescriptions
 1. **Click "New Prescription"** button (creates a new prescription)
@@ -301,6 +312,25 @@ M-Prescribe and track prescriptions:
 5. **Click "Save Medication"** (adds medication to current prescription)
 6. **Repeat steps 2-5** to add more medications to the same prescription
 7. **Complete/Send/Print** the prescription when finished
+
+#### Smart Prescription History Logic
+The system now intelligently manages prescription history based on their status:
+
+**Prescription Status Types:**
+- **Draft/Pending** - New or unsaved prescriptions (will be discarded)
+- **Finalized** - Saved prescriptions (moves to history)
+- **Sent** - Printed prescriptions sent to pharmacy (moves to history)
+
+**History Management Rules:**
+- **✅ Saved Prescriptions** (Finalized) → Move to history when new prescription starts
+- **✅ Printed Prescriptions** (Sent to pharmacy) → Move to history when new prescription starts
+- **❌ Unsaved Drafts** → Discarded when new prescription starts (no history entry)
+
+**What This Means:**
+- Only completed work appears in your prescription history
+- Unsaved drafts are automatically cleaned up
+- Your history contains only meaningful, finalized prescriptions
+- Clear separation between work-in-progress and completed prescriptions
 
 #### Editing Prescriptions
 1. **Click "Edit" button** next to any prescription

@@ -506,6 +506,7 @@ class OpenAIService {
         Allergies: ${patientData.allergies || 'None'}
         Medical History: ${patientData.medicalHistory || 'None'}
         Current Medications: ${patientData.currentMedications || 'None'}
+        Long-term Medications: ${patientData.longTermMedications || 'None'}
         Emergency Contact: ${patientData.emergencyContact || 'Not specified'}
 
         LOCATION INFORMATION:
@@ -544,7 +545,7 @@ class OpenAIService {
           messages: [
             {
               role: 'system',
-              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide comprehensive prescription analysis with structured JSON output. CRITICAL: Consider regional healthcare practices, local drug availability, country-specific medical guidelines, and drug regulatory approvals. Assess if prescribed medications are available and approved in the patient\'s country. Suggest alternative medications if drugs are not available in the patient\'s region. Focus on key safety issues, effectiveness, and actionable recommendations tailored to the patient and doctor locations.'
+              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide comprehensive prescription analysis with structured JSON output. CRITICAL: Consider regional healthcare practices, local drug availability, country-specific medical guidelines, and drug regulatory approvals. Assess if prescribed medications are available and approved in the patient\'s country. Suggest alternative medications if drugs are not available in the patient\'s region. Focus on key safety issues, effectiveness, and actionable recommendations tailored to the patient and doctor locations. Account for patient gender, age, and other demographic factors in medication recommendations and dosing considerations.'
             },
             {
               role: 'user',
@@ -680,15 +681,19 @@ class OpenAIService {
         ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
         : 'No current medications'
 
-      // Get patient country and allergies from additional context
+      // Get patient country, allergies, gender, and long-term medications from additional context
       const patientCountry = additionalContext?.patientCountry || 'Not specified'
       const patientAllergies = additionalContext?.patientAllergies || 'None'
+      const patientGender = additionalContext?.patientGender || 'Not specified'
+      const longTermMedications = additionalContext?.longTermMedications || 'None'
 
-      // Include patient age and allergies in prompt
+      // Include patient age, gender, allergies, and long-term medications in prompt
       const ageText = patientAge ? `, Age: ${patientAge} years` : ''
+      const genderText = patientGender && patientGender !== 'Not specified' ? `, Gender: ${patientGender}` : ''
       const allergiesText = patientAllergies && patientAllergies !== 'None' ? `, Allergies: ${patientAllergies}` : ''
+      const longTermMedsText = longTermMedications && longTermMedications !== 'None' ? `, Long-term medications: ${longTermMedications}` : ''
 
-      const prompt = `Patient: ${ageText}${allergiesText}
+      const prompt = `Patient: ${ageText}${genderText}${allergiesText}${longTermMedsText}
 Symptoms: ${symptomsText}
 ${currentMedsText}
 Patient Country: ${patientCountry}
@@ -720,7 +725,7 @@ IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
         messages: [
           {
             role: 'system',
-            content: 'Medical AI assistant providing drug suggestions for qualified medical doctors. The reader is a qualified medical doctor. CRITICAL: Consider patient age, allergies, and contraindications. Avoid medications that patient is allergic to. Account for age-related dosing adjustments. Return valid JSON only.'
+            content: 'Medical AI assistant providing drug suggestions for qualified medical doctors. The reader is a qualified medical doctor. CRITICAL: Consider patient age, gender, allergies, long-term medications, and contraindications. Avoid medications that patient is allergic to. Check for drug interactions with long-term medications. Account for age-related and gender-specific dosing adjustments. Consider gender-specific medication effects and contraindications. Return valid JSON only.'
           },
           {
             role: 'user',
@@ -793,7 +798,7 @@ IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
   }
 
   // Generate combined analysis (recommendations + medication suggestions) in single call
-  async generateCombinedAnalysis(symptoms, currentMedications = [], patientAge = null, doctorId = null, patientAllergies = null) {
+  async generateCombinedAnalysis(symptoms, currentMedications = [], patientAge = null, doctorId = null, patientAllergies = null, patientGender = null, longTermMedications = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI API key not configured.')
     }
@@ -809,12 +814,14 @@ IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
         ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
         : 'No current medications'
 
-      // Include patient age and allergies in prompt
+      // Include patient age, gender, allergies, and long-term medications in prompt
       const ageText = patientAge ? `, Age: ${patientAge} years` : ''
+      const genderText = patientGender && patientGender !== 'Not specified' ? `, Gender: ${patientGender}` : ''
       const allergiesText = patientAllergies ? `, Allergies: ${patientAllergies}` : ''
+      const longTermMedsText = longTermMedications && longTermMedications !== 'None' ? `, Long-term medications: ${longTermMedications}` : ''
 
       // Ultra-concise prompt with patient data
-      const prompt = `Patient: ${ageText}${allergiesText}
+      const prompt = `Patient: ${ageText}${genderText}${allergiesText}${longTermMedsText}
 Symptoms: ${symptomsText}
 ${currentMedsText}
 
@@ -831,7 +838,7 @@ Concise medical info only.`
         messages: [
           {
             role: 'system',
-              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide structured JSON analysis. Consider patient age, allergies, drug availability and regulatory approval in the patient\'s country. Suggest alternatives if medications are not available in the patient\'s region. CRITICAL: Check for drug allergies and contraindications based on patient age and allergy profile.'
+              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide structured JSON analysis. Consider patient age, gender, allergies, long-term medications, drug availability and regulatory approval in the patient\'s country. Suggest alternatives if medications are not available in the patient\'s region. CRITICAL: Check for drug allergies, contraindications, and interactions with long-term medications based on patient age, gender, and allergy profile. Account for gender-specific medication effects and dosing considerations.'
           },
           {
             role: 'user',

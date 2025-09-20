@@ -40,6 +40,14 @@ A comprehensive patient management system built with Svelte 4, Bootstrap 5, and 
 - **Doctor-Patient Isolation**: Doctors only see patients they created
 - **MedicalSummary Data Display**: Fixed "Unknown prescription" and "No dosage" issues by properly extracting medications from prescriptions
 
+### **🧠 Smart Prescription History Logic**
+- **Conditional History Management**: Prescriptions only move to history when saved or printed
+- **Status-Based Workflow**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions
+- **Intelligent Data Cleanup**: Unsaved/unprinted prescriptions are discarded when new prescription starts
+- **Enhanced Status Tracking**: Comprehensive status definitions for prescription lifecycle management
+- **Clean History Records**: Only completed work appears in prescription history and summary
+- **Automatic Workflow**: New prescription creation automatically handles previous prescription status
+
 ### **🎯 Simplified Prescription Logic**
 - **New Prescription Button**: Always creates a new prescription when clicked
 - **Clear Workflow**: Simple and intuitive prescription creation process
@@ -337,6 +345,16 @@ This project is for medical practice management and patient care.
 ## 🤝 Contributing
 
 This is a medical application. Please ensure all changes maintain data integrity and follow medical software best practices.
+
+## 📚 Documentation
+
+- **[CHANGELOG.md](CHANGELOG.md)** - Detailed changelog with technical implementation details
+- **[FEATURES.md](FEATURES.md)** - Comprehensive features overview
+- **[USER_GUIDE.md](USER_GUIDE.md)** - Complete user guide for doctors and pharmacists
+- **[PRESCRIPTION_HISTORY_LOGIC.md](PRESCRIPTION_HISTORY_LOGIC.md)** - Detailed documentation of smart prescription history logic
+- **[FIREBASE_SETUP.md](FIREBASE_SETUP.md)** - Firebase configuration guide
+- **[AI_FEATURES.md](AI_FEATURES.md)** - AI features setup and usage
+- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Testing and quality assurance guide
 
 ## 📞 Support
 
