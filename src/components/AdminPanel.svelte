@@ -81,7 +81,7 @@
     </div>
   {:else if currentAdmin}
     <!-- Admin Dashboard -->
-    <AdminDashboard on:admin-signed-out={handleAdminSignedOut} />
+    <AdminDashboard {currentAdmin} on:admin-signed-out={handleAdminSignedOut} />
   {:else}
     <!-- Admin Login -->
     <AdminLogin on:admin-signed-in={handleAdminSignedIn} />

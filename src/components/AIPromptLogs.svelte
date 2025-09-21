@@ -268,7 +268,7 @@
   <div class="card-header d-flex justify-content-between align-items-center">
     <div>
       <h5 class="mb-0">
-        <i class="fas fa-brain me-2"></i>
+        <i class="fas fa-brain me-2 text-danger"></i>
         AI Prompt Logs (Last 50)
       </h5>
       {#if unsubscribe}
@@ -385,7 +385,7 @@
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">
-            <i class="fas fa-brain me-2"></i>
+            <i class="fas fa-brain me-2 text-danger"></i>
             AI Prompt Details - {selectedPrompt.promptType || 'Unknown Type'}
           </h5>
           <button 
@@ -452,7 +452,7 @@
             </div>
             <div class="col-md-6">
               <h6 class="text-success">
-                <i class="fas fa-robot me-2"></i>
+                <i class="fas fa-brain me-2 text-danger"></i>
                 AI Response
               </h6>
               <div class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">

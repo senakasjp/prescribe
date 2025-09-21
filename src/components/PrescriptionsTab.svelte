@@ -220,7 +220,7 @@
                 {#if loadingAIDrugSuggestions}
                   <i class="fas fa-spinner fa-spin me-1"></i>Generating...
                 {:else}
-                  <i class="fas fa-brain me-1"></i>AI Suggestions
+                  <i class="fas fa-brain me-1 text-danger"></i>AI Suggestions
                 {/if}
               </button>
             </div>
@@ -247,7 +247,7 @@
                       {medication.name}
                       {#if medication.aiSuggested}
                         <span class="badge bg-info ms-2">
-                          <i class="fas fa-brain me-1"></i>AI Suggested
+                          <i class="fas fa-brain me-1 text-danger"></i>AI Suggested
                         </span>
                       {/if}
                       <!-- Availability Badge -->
@@ -320,7 +320,7 @@
               <div class="mt-4 border-top pt-3">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                   <h6 class="text-info mb-0">
-                    <i class="fas fa-brain me-2"></i>
+                    <i class="fas fa-brain me-2 text-danger"></i>
                     AI Drug Suggestions ({aiDrugSuggestions.length})
                   </h6>
                 </div>

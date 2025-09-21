@@ -122,6 +122,10 @@ class AITokenTracker {
       'gpt-4o': {
         prompt: 0.005,       // $0.005 per 1K tokens (input)
         completion: 0.015    // $0.015 per 1K tokens (output)
+      },
+      'gpt-4o-mini': {
+        prompt: 0.00015,     // $0.00015 per 1K tokens (input)
+        completion: 0.0006   // $0.0006 per 1K tokens (output)
       }
     }
 
@@ -213,6 +217,7 @@ class AITokenTracker {
       'gpt-4': { prompt: 0.03, completion: 0.06 },
       'gpt-4-turbo': { prompt: 0.01, completion: 0.03 },
       'gpt-4o': { prompt: 0.005, completion: 0.015 },
+      'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
       bufferFactor: 1.2,
       lastUpdated: '2024-12-19',
       note: 'Estimated costs with 20% buffer. Actual OpenAI billing may vary.'

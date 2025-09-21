@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte'
   import openaiService from '../services/openaiService.js'
+  import aiTokenTracker from '../services/aiTokenTracker.js'
   
   const dispatch = createEventDispatcher()
   
@@ -191,7 +192,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
       console.log('🤖 Chat request:', { userMessage, symptomsText, analysisSummary })
 
       const response = await openaiService.makeOpenAIRequest('chat/completions', {
-        model: 'gpt-4o-mini',
+model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -209,6 +210,17 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
         question: userMessage,
         doctorId: doctorId
       })
+
+      // Track token usage for chat
+      if (response.usage) {
+        aiTokenTracker.trackUsage(
+          'chatbotResponse',
+          response.usage.prompt_tokens,
+          response.usage.completion_tokens,
+          'gpt-4o-mini',
+          doctorId
+        )
+      }
       
       console.log('🤖 Chat response:', response)
       
@@ -269,7 +281,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
         {#if loading}
           <span class="spinner-border spinner-border-sm me-2" role="status"></span>
         {/if}
-        <i class="fas fa-brain me-2"></i>
+        <i class="fas fa-brain me-2 text-danger"></i>
         AI Assistant
       </button>
     </div>
@@ -304,7 +316,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
     <div class="ai-recommendations-inline mt-3">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="mb-0 text-danger">
-          <i class="fas fa-brain me-2"></i>AI-Powered Medical Intelligence
+          <i class="fas fa-brain me-2 text-danger"></i>AI-Powered Medical Intelligence
         </h6>
         <button 
           type="button" 
@@ -339,7 +351,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
         <div class="card-header bg-light text-dark">
           <div class="d-flex justify-content-between align-items-center">
             <h6 class="mb-0 text-danger">
-              <i class="fas fa-brain me-2"></i>AI-Powered Medical Intelligence
+              <i class="fas fa-brain me-2 text-danger"></i>AI-Powered Medical Intelligence
             </h6>
             <button 
               type="button" 
@@ -395,7 +407,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
                     </div>
                   {:else}
                     <div class="message-avatar">
-                      <i class="fas fa-robot"></i>
+                      <i class="fas fa-brain text-danger"></i>
                     </div>
                     <div class="message-content">
                       <div class="message-bubble">
@@ -413,7 +425,7 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
               {#if chatLoading}
                 <div class="message ai-message mb-3">
                   <div class="message-avatar">
-                    <i class="fas fa-robot"></i>
+                    <i class="fas fa-brain text-danger"></i>
                   </div>
                   <div class="message-content">
                     <div class="message-bubble">

@@ -153,13 +153,23 @@ class FirebaseStorageService {
 
   async getAllDoctors() {
     try {
-      const q = query(collection(db, this.collections.doctors), orderBy('createdAt', 'desc'))
+      // Get all doctors without orderBy to avoid index requirement
+      const q = query(collection(db, this.collections.doctors))
       const querySnapshot = await getDocs(q)
       
-      return querySnapshot.docs.map(doc => ({
+      const doctors = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }))
+      
+      // Sort in JavaScript instead of Firestore to avoid index requirement
+      doctors.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0)
+        const dateB = new Date(b.createdAt || 0)
+        return dateB - dateA // Descending order
+      })
+      
+      return doctors
     } catch (error) {
       console.error('Error getting all doctors:', error)
       throw error

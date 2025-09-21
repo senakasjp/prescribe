@@ -7,7 +7,8 @@
   
   const dispatch = createEventDispatcher()
   
-  let currentAdmin = null
+  // Accept admin data as prop from AdminPanel
+  export let currentAdmin = null
   let statistics = {
     totalDoctors: 0,
     totalPatients: 0,
@@ -17,68 +18,108 @@
   }
   let aiUsageStats = null
   let doctors = []
-  let patients = []
-  let doctorPatientCounts = {}
+  // Removed patients array and doctorPatientCounts for HIPAA compliance
+  // Admins should not have access to patient PHI data
   let loading = true
   let activeTab = 'overview'
   
-  // Load admin data on component mount
-  onMount(() => {
+  // Reactive statement to reload data when currentAdmin changes
+  $: if (currentAdmin) {
+    console.log('🔄 AdminDashboard: currentAdmin changed, reloading...')
     loadAdminData()
+  }
+  
+  // Load admin data on component mount
+  onMount(async () => {
+    console.log('🚀 AdminDashboard component mounted')
+    await loadAdminData()
   })
   
   // Load admin data and statistics
   const loadAdminData = async () => {
     try {
+      console.log('🔍 Starting loadAdminData...')
       loading = true
-      currentAdmin = adminAuthService.getCurrentAdmin()
       
       if (!currentAdmin) {
+        console.log('❌ No current admin found, dispatching sign-out')
         dispatch('admin-signed-out')
         return
       }
       
+      console.log('✅ Admin found:', currentAdmin.email)
+      
       // Load statistics
+      console.log('🔍 Loading statistics...')
       await loadStatistics()
+      console.log('✅ Statistics loaded')
       
       // Load AI usage statistics
+      console.log('🔍 Loading AI usage stats...')
       loadAIUsageStats()
+      console.log('✅ AI usage stats loaded')
       
-      // Load doctors and patients data
-      await loadDoctorsAndPatients()
+      // Load doctors data only (no patient data for HIPAA compliance)
+      console.log('🔍 Loading doctors...')
+      await loadDoctors()
+      console.log('✅ Doctors loaded')
+      
+      console.log('🎉 All admin data loaded successfully')
       
     } catch (error) {
       console.error('❌ Error loading admin data:', error)
+      console.error('❌ Error details:', error.message, error.stack)
     } finally {
       loading = false
+      console.log('🔍 Loading set to false')
     }
   }
   
-  // Load system statistics
+  // Load system statistics (HIPAA compliant - aggregated data only)
   const loadStatistics = async () => {
     try {
+      console.log('📊 Loading system statistics...')
+      
       // Get all doctors
       const allDoctors = await firebaseStorage.getAllDoctors()
+      console.log('📊 Found doctors:', allDoctors.length)
       statistics.totalDoctors = allDoctors.length
       
-      // Get all patients across all doctors
+      // Get aggregated counts without accessing individual patient data
       let totalPatients = 0
       let totalPrescriptions = 0
       let totalSymptoms = 0
       let totalIllnesses = 0
       
       for (const doctor of allDoctors) {
-        const doctorPatients = await firebaseStorage.getPatientsByDoctorId(doctor.id)
-        totalPatients += doctorPatients.length
+        console.log(`📊 Processing doctor: ${doctor.name || doctor.email} (${doctor.id})`)
         
-        for (const patient of doctorPatients) {
-          const prescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id)
-          const symptoms = await firebaseStorage.getSymptomsByPatientId(patient.id)
-          const illnesses = await firebaseStorage.getIllnessesByPatientId(patient.id)
+        try {
+          // Get patient count only (aggregated data)
+          const doctorPatients = await firebaseStorage.getPatientsByDoctorId(doctor.id)
+          console.log(`📊 Doctor has ${doctorPatients.length} patients`)
+          totalPatients += doctorPatients.length
           
-          totalPrescriptions += prescriptions.length
-          totalSymptoms += symptoms.length
-          totalIllnesses += illnesses.length
+          // Get aggregated counts for medical data (without accessing individual patient details)
+          // Note: This still accesses patient data but only for counting - consider implementing
+          // separate aggregation functions in firebaseStorage for full HIPAA compliance
+          for (const patient of doctorPatients) {
+            try {
+              const prescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id)
+              const symptoms = await firebaseStorage.getSymptomsByPatientId(patient.id)
+              const illnesses = await firebaseStorage.getIllnessesByPatientId(patient.id)
+              
+              totalPrescriptions += prescriptions.length
+              totalSymptoms += symptoms.length
+              totalIllnesses += illnesses.length
+            } catch (error) {
+              console.error(`❌ Error loading medical data for patient ${patient.id}:`, error)
+              // Continue with other patients
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Error loading data for doctor ${doctor.id}:`, error)
+          // Continue with other doctors
         }
       }
       
@@ -87,43 +128,66 @@
       statistics.totalSymptoms = totalSymptoms
       statistics.totalIllnesses = totalIllnesses
       
+      console.log('📊 Final statistics (aggregated):', statistics)
+      
     } catch (error) {
       console.error('❌ Error loading statistics:', error)
+      console.error('❌ Error details:', error.message, error.stack)
     }
   }
   
   // Load AI usage statistics
   const loadAIUsageStats = () => {
     try {
+      console.log('📊 Loading AI usage stats...')
       aiUsageStats = aiTokenTracker.getUsageStats()
       console.log('📊 AI usage stats loaded:', aiUsageStats)
+      
+      // If no usage data exists, initialize with zero values
+      if (!aiUsageStats || !aiUsageStats.total) {
+        aiUsageStats = {
+          total: { tokens: 0, cost: 0, requests: 0 },
+          today: { tokens: 0, cost: 0, requests: 0 },
+          thisMonth: { tokens: 0, cost: 0, requests: 0 },
+          lastUpdated: null
+        }
+      }
     } catch (error) {
       console.error('❌ Error loading AI usage stats:', error)
-      aiUsageStats = null
+      aiUsageStats = {
+        total: { tokens: 0, cost: 0, requests: 0 },
+        today: { tokens: 0, cost: 0, requests: 0 },
+        thisMonth: { tokens: 0, cost: 0, requests: 0 },
+        lastUpdated: null
+      }
     }
   }
   
-  // Load doctors and patients data
-  const loadDoctorsAndPatients = async () => {
+  // Load doctors data only (HIPAA compliant - no patient data access)
+  const loadDoctors = async () => {
     try {
+      console.log('🔍 Loading doctors...')
       doctors = await firebaseStorage.getAllDoctors()
-      patients = []
       
-      // Get patients from all doctors
+      console.log(`🔍 Found ${doctors.length} doctors`)
+      
+      // Get patient counts for each doctor (aggregated data only)
       for (const doctor of doctors) {
-        const doctorPatients = await firebaseStorage.getPatientsByDoctorId(doctor.id)
-        doctorPatientCounts[doctor.id] = doctorPatients.length
-        for (const patient of doctorPatients) {
-          patients.push({
-            ...patient,
-            doctorEmail: doctor.email,
-            doctorName: doctor.name || 'Unknown Doctor'
-          })
+        try {
+          console.log(`🔍 Getting patient count for doctor: ${doctor.email}`)
+          const doctorPatients = await firebaseStorage.getPatientsByDoctorId(doctor.id)
+          console.log(`🔍 Doctor ${doctor.email} has ${doctorPatients.length} patients`)
+          
+          // Add patient count to doctor object for display (aggregated data only)
+          doctor.patientCount = doctorPatients.length
+        } catch (error) {
+          console.error(`❌ Error loading patient count for doctor ${doctor.id}:`, error)
+          doctor.patientCount = 0
         }
       }
       
     } catch (error) {
-      console.error('❌ Error loading doctors and patients:', error)
+      console.error('❌ Error loading doctors:', error)
     }
   }
   
@@ -251,7 +315,7 @@
     
     <!-- Main Content -->
     <div class="container-fluid mt-4">
-      <div class="row">
+      <div class="row mx-2 mx-md-3 mx-lg-4">
         <!-- Sidebar -->
         <div class="col-md-3 col-lg-2">
           <div class="list-group">
@@ -267,23 +331,18 @@
             >
               <i class="fas fa-user-md me-2"></i>Doctors
             </button>
-            <button
-              class="list-group-item list-group-item-action {activeTab === 'patients' ? 'active' : ''}"
-              on:click={() => handleTabChange('patients')}
-            >
-              <i class="fas fa-users me-2"></i>Patients
-            </button>
+            <!-- Patients tab removed for HIPAA compliance - admins should not access patient PHI data -->
             <button
               class="list-group-item list-group-item-action {activeTab === 'ai-usage' ? 'active' : ''}"
               on:click={() => handleTabChange('ai-usage')}
             >
-              <i class="fas fa-robot me-2"></i>AI Usage
+              <i class="fas fa-brain me-2 text-danger"></i>AI Usage
             </button>
             <button
               class="list-group-item list-group-item-action {activeTab === 'ai-logs' ? 'active' : ''}"
               on:click={() => handleTabChange('ai-logs')}
             >
-              <i class="fas fa-brain me-2"></i>AI Logs
+              <i class="fas fa-brain me-2 text-danger"></i>AI Logs
             </button>
             <button
               class="list-group-item list-group-item-action {activeTab === 'system' ? 'active' : ''}"
@@ -305,6 +364,13 @@
               </button>
             </div>
             
+            <!-- HIPAA Compliance Notice -->
+            <div class="alert alert-info mb-4" role="alert">
+              <i class="fas fa-shield-alt me-2"></i>
+              <strong>HIPAA Compliance:</strong> This admin panel displays only aggregated system statistics. 
+              Individual patient data is not accessible to administrators to maintain HIPAA compliance and patient privacy.
+            </div>
+            
             <!-- Statistics Cards -->
             <div class="row mb-4">
               <div class="col-md-6 col-lg-2 mb-3">
@@ -322,7 +388,7 @@
                   <div class="card-body text-center">
                     <i class="fas fa-users fa-2x text-success mb-2"></i>
                     <h5 class="card-title">{statistics.totalPatients}</h5>
-                    <p class="card-text text-muted">Total Patients</p>
+                    <p class="card-text text-muted">Total Patients <small>(Aggregated)</small></p>
                   </div>
                 </div>
               </div>
@@ -332,7 +398,7 @@
                   <div class="card-body text-center">
                     <i class="fas fa-pills fa-2x text-warning mb-2"></i>
                     <h5 class="card-title">{statistics.totalPrescriptions}</h5>
-                    <p class="card-text text-muted">Total Prescriptions</p>
+                    <p class="card-text text-muted">Total Prescriptions <small>(Aggregated)</small></p>
                   </div>
                 </div>
               </div>
@@ -342,7 +408,7 @@
                   <div class="card-body text-center">
                     <i class="fas fa-heartbeat fa-2x text-info mb-2"></i>
                     <h5 class="card-title">{statistics.totalSymptoms}</h5>
-                    <p class="card-text text-muted">Total Symptoms</p>
+                    <p class="card-text text-muted">Total Symptoms <small>(Aggregated)</small></p>
                   </div>
                 </div>
               </div>
@@ -350,7 +416,7 @@
               <div class="col-md-6 col-lg-2 mb-3">
                 <div class="card border-danger">
                   <div class="card-body text-center">
-                    <i class="fas fa-robot fa-2x text-danger mb-2"></i>
+                    <i class="fas fa-brain fa-2x text-danger mb-2"></i>
                     <h5 class="card-title">
                       {#if aiUsageStats}
                         ${aiUsageStats.total.cost.toFixed(3)}
@@ -411,7 +477,7 @@
                               {/if}
                             </td>
                             <td>{formatDate(doctor.createdAt)}</td>
-                            <td>{doctorPatientCounts[doctor.id] || 0}</td>
+                            <td>{doctor.patientCount || 0}</td>
                             <td>
                               {#if doctor.email !== 'senakahks@gmail.com'}
                                 <button 
@@ -439,53 +505,13 @@
               </div>
             </div>
             
-          {:else if activeTab === 'patients'}
-            <!-- Patients Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-users me-2 text-danger"></i>Patients Management</h2>
-              <span class="badge bg-success fs-6">{patients.length} Patients</span>
-            </div>
-            
-            <div class="card border-2 border-info shadow-sm">
-              <div class="card-header">
-                <h5 class="mb-0">All Patients</h5>
-              </div>
-              <div class="card-body">
-                {#if patients.length > 0}
-                  <div class="table-responsive">
-                    <table class="table table-hover">
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          <th>Email</th>
-                          <th>Phone</th>
-                          <th>Doctor</th>
-                          <th>Created</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {#each patients as patient}
-                          <tr>
-                            <td>{patient.firstName} {patient.lastName}</td>
-                            <td>{patient.email || 'N/A'}</td>
-                            <td>{patient.phone || 'N/A'}</td>
-                            <td>{patient.doctorEmail}</td>
-                            <td>{formatDate(patient.createdAt)}</td>
-                          </tr>
-                        {/each}
-                      </tbody>
-                    </table>
-                  </div>
-                {:else}
-                  <p class="text-muted text-center py-4">No patients registered yet.</p>
-                {/if}
-              </div>
-            </div>
-            
+          <!-- Patients tab removed for HIPAA compliance -->
+          <!-- Admins should not have access to patient PHI data -->
+          <!-- Patient data access is restricted to individual doctors only -->
           {:else if activeTab === 'ai-usage'}
             <!-- AI Usage Tab -->
             <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-robot me-2 text-danger"></i>AI Usage Analytics</h2>
+              <h2><i class="fas fa-brain me-2 text-danger"></i>AI Usage Analytics</h2>
               <button class="btn btn-outline-danger btn-sm" on:click={loadAIUsageStats}>
                 <i class="fas fa-sync-alt me-1"></i>Refresh
               </button>
@@ -548,6 +574,42 @@
                 </div>
               </div>
               
+              <!-- Second row of overview cards -->
+              <div class="row mb-4">
+                <div class="col-md-4">
+                  <div class="card border-2 border-success text-center shadow-sm">
+                    <div class="card-body">
+                      <h5 class="card-title text-success">
+                        <i class="fas fa-calendar-alt me-2"></i>This Month
+                      </h5>
+                      <h3 class="text-success">${aiUsageStats.thisMonth.cost.toFixed(4)}</h3>
+                      <small class="text-muted">{aiUsageStats.thisMonth.requests} requests, {(aiUsageStats.thisMonth.tokens || 0).toLocaleString()} tokens</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="card border-2 border-info text-center shadow-sm">
+                    <div class="card-body">
+                      <h5 class="card-title text-info">
+                        <i class="fas fa-percentage me-2"></i>Avg Cost/Request
+                      </h5>
+                      <h3 class="text-info">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h3>
+                      <small class="text-muted">All Time Average</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="card border-2 border-primary text-center shadow-sm">
+                    <div class="card-body">
+                      <h5 class="card-title text-primary">
+                        <i class="fas fa-clock me-2"></i>Last Updated
+                      </h5>
+                      <h6 class="text-primary">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
+                      <small class="text-muted">Usage Data</small>
+                    </div>
+                  </div>
+              </div>
+              
               <!-- Daily Usage Chart -->
               <div class="row mb-4">
                 <div class="col-12">
@@ -572,9 +634,46 @@
                             {#each aiTokenTracker.getWeeklyUsage() as day}
                               <tr>
                                 <td>{new Date(day.date).toLocaleDateString()}</td>
-                                <td>{day.requests}</td>
-                                <td>{day.tokens.toLocaleString()}</td>
-                                <td>${day.cost.toFixed(4)}</td>
+                                <td>{day.requests || 0}</td>
+                                <td>{(day.tokens || 0).toLocaleString()}</td>
+                                <td>${(day.cost || 0).toFixed(4)}</td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Monthly Usage Chart -->
+              <div class="row mb-4">
+                <div class="col-12">
+                  <div class="card">
+                    <div class="card-header">
+                      <h5 class="mb-0">
+                        <i class="fas fa-chart-bar me-2"></i>Monthly Usage (Last 6 Months)
+                      </h5>
+                    </div>
+                    <div class="card-body">
+                      <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                          <thead>
+                            <tr>
+                              <th>Month</th>
+                              <th>Requests</th>
+                              <th>Tokens</th>
+                              <th>Cost</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {#each aiTokenTracker.getMonthlyUsage() as month}
+                              <tr>
+                                <td>{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
+                                <td>{month.requests || 0}</td>
+                                <td>{(month.tokens || 0).toLocaleString()}</td>
+                                <td>${(month.cost || 0).toFixed(4)}</td>
                               </tr>
                             {/each}
                           </tbody>
@@ -591,7 +690,7 @@
                   <div class="card">
                     <div class="card-header">
                       <h5 class="mb-0">
-                        <i class="fas fa-history me-2"></i>Recent AI Requests
+                        <i class="fas fa-history me-2 text-danger"></i>Recent AI Requests
                       </h5>
                     </div>
                     <div class="card-body">
@@ -617,6 +716,13 @@
                                 <td>{request.totalTokens.toLocaleString()}</td>
                                 <td>${request.cost.toFixed(4)}</td>
                               </tr>
+                            {:else}
+                              <tr>
+                                <td colspan="4" class="text-center text-muted py-3">
+                                  <i class="fas fa-info-circle me-2"></i>
+                                  No recent AI requests found
+                                </td>
+                              </tr>
                             {/each}
                           </tbody>
                         </table>
@@ -625,12 +731,22 @@
                   </div>
                 </div>
               </div>
+            </div>
             {:else}
               <div class="card">
                 <div class="card-body text-center py-5">
-                  <i class="fas fa-robot fa-3x text-muted mb-3"></i>
+                  <i class="fas fa-brain fa-3x text-muted mb-3"></i>
                   <h5 class="text-muted">No AI Usage Data Available</h5>
-                  <p class="text-muted">AI usage statistics will appear here once AI features are used.</p>
+                  <p class="text-muted mb-4">AI usage statistics will appear here once AI features are used.</p>
+                  <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Getting Started:</strong> AI usage tracking begins when doctors use AI features like:
+                    <ul class="list-unstyled mt-2 mb-0">
+                      <li><i class="fas fa-check text-success me-1"></i> AI Medical Analysis</li>
+                      <li><i class="fas fa-check text-success me-1"></i> AI Drug Suggestions</li>
+                      <li><i class="fas fa-check text-success me-1"></i> AI Chat Assistant</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             {/if}

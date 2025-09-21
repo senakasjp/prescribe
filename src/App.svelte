@@ -410,7 +410,7 @@
                 
                 <!-- AI Health Bar - Progress Bar -->
                 <div class="d-flex align-items-center me-3">
-                  <i class="fas fa-robot me-2 text-white"></i>
+                  <i class="fas fa-brain me-2 text-white"></i>
                   <div class="progress bg-danger border border-light" style="width: 120px; height: 20px;" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
                     <div class="progress-bar bg-white progress-bar-striped progress-bar-animated" 
                          role="progressbar" 
