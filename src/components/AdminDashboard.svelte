@@ -528,87 +528,87 @@
               
               <!-- Usage Overview Cards -->
               <div class="row mb-4">
-                <div class="col-md-3">
+                <div class="col-md-2 col-sm-6 mb-3">
                   <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body">
-                      <h5 class="card-title text-primary">
-                        <i class="fas fa-coins me-2"></i>Total Cost
-                      </h5>
-                      <h3 class="text-primary">${aiUsageStats.total.cost.toFixed(4)}</h3>
+                    <div class="card-body py-3">
+                      <h6 class="card-title text-primary mb-2">
+                        <i class="fas fa-coins me-1"></i>Total Cost
+                      </h6>
+                      <h5 class="text-primary mb-1">${aiUsageStats.total.cost.toFixed(4)}</h5>
                       <small class="text-muted">All Time</small>
                     </div>
                   </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2 col-sm-6 mb-3">
                   <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body">
-                      <h5 class="card-title text-success">
-                        <i class="fas fa-hashtag me-2"></i>Total Tokens
-                      </h5>
-                      <h3 class="text-success">{aiUsageStats.total.tokens.toLocaleString()}</h3>
+                    <div class="card-body py-3">
+                      <h6 class="card-title text-success mb-2">
+                        <i class="fas fa-hashtag me-1"></i>Total Tokens
+                      </h6>
+                      <h5 class="text-success mb-1">{aiUsageStats.total.tokens.toLocaleString()}</h5>
                       <small class="text-muted">All Time</small>
                     </div>
                   </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2 col-sm-6 mb-3">
                   <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body">
-                      <h5 class="card-title text-info">
-                        <i class="fas fa-bolt me-2"></i>Total Requests
-                      </h5>
-                      <h3 class="text-info">{aiUsageStats.total.requests}</h3>
+                    <div class="card-body py-3">
+                      <h6 class="card-title text-info mb-2">
+                        <i class="fas fa-bolt me-1"></i>Total Requests
+                      </h6>
+                      <h5 class="text-info mb-1">{aiUsageStats.total.requests}</h5>
                       <small class="text-muted">All Time</small>
                     </div>
                   </div>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2 col-sm-6 mb-3">
                   <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body">
-                      <h5 class="card-title text-warning">
-                        <i class="fas fa-calendar-day me-2"></i>Today
-                      </h5>
-                      <h3 class="text-warning">${aiUsageStats.today.cost.toFixed(4)}</h3>
+                    <div class="card-body py-3">
+                      <h6 class="card-title text-warning mb-2">
+                        <i class="fas fa-calendar-day me-1"></i>Today
+                      </h6>
+                      <h5 class="text-warning mb-1">${aiUsageStats.today.cost.toFixed(4)}</h5>
                       <small class="text-muted">{aiUsageStats.today.requests} requests</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-2 col-sm-6 mb-3">
+                  <div class="card border-2 border-success text-center shadow-sm">
+                    <div class="card-body py-3">
+                      <h6 class="card-title text-success mb-2">
+                        <i class="fas fa-calendar-alt me-1"></i>This Month
+                      </h6>
+                      <h5 class="text-success mb-1">${aiUsageStats.thisMonth.cost.toFixed(4)}</h5>
+                      <small class="text-muted">{aiUsageStats.thisMonth.requests} requests</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-2 col-sm-6 mb-3">
+                  <div class="card border-2 border-info text-center shadow-sm">
+                    <div class="card-body py-3">
+                      <h6 class="card-title text-info mb-2">
+                        <i class="fas fa-percentage me-1"></i>Avg Cost/Request
+                      </h6>
+                      <h5 class="text-info mb-1">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h5>
+                      <small class="text-muted">All Time Average</small>
                     </div>
                   </div>
                 </div>
               </div>
               
-              <!-- Second row of overview cards -->
+              <!-- Last Updated Card -->
               <div class="row mb-4">
-                <div class="col-md-4">
-                  <div class="card border-2 border-success text-center shadow-sm">
-                    <div class="card-body">
-                      <h5 class="card-title text-success">
-                        <i class="fas fa-calendar-alt me-2"></i>This Month
-                      </h5>
-                      <h3 class="text-success">${aiUsageStats.thisMonth.cost.toFixed(4)}</h3>
-                      <small class="text-muted">{aiUsageStats.thisMonth.requests} requests, {(aiUsageStats.thisMonth.tokens || 0).toLocaleString()} tokens</small>
-                    </div>
-                  </div>
-                </div>
-                <div class="col-md-4">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body">
-                      <h5 class="card-title text-info">
-                        <i class="fas fa-percentage me-2"></i>Avg Cost/Request
-                      </h5>
-                      <h3 class="text-info">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h3>
-                      <small class="text-muted">All Time Average</small>
-                    </div>
-                  </div>
-                </div>
-                <div class="col-md-4">
+                <div class="col-md-3 col-sm-6 mb-3">
                   <div class="card border-2 border-primary text-center shadow-sm">
-                    <div class="card-body">
-                      <h5 class="card-title text-primary">
-                        <i class="fas fa-clock me-2"></i>Last Updated
-                      </h5>
-                      <h6 class="text-primary">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
+                    <div class="card-body py-3">
+                      <h6 class="card-title text-primary mb-2">
+                        <i class="fas fa-clock me-1"></i>Last Updated
+                      </h6>
+                      <h6 class="text-primary mb-1">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
                       <small class="text-muted">Usage Data</small>
                     </div>
                   </div>
-              </div>
+                </div>
               
               <!-- Daily Usage Chart -->
               <div class="row mb-4">

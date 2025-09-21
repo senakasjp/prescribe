@@ -17,6 +17,11 @@ class AuthService {
       console.log('AuthService: Loaded current user from localStorage:', this.currentUser)
       if (this.currentUser) {
         console.log('AuthService: User country from localStorage:', this.currentUser.country)
+        // Check if user data is valid (has required fields)
+        if (!this.currentUser.email || !this.currentUser.role) {
+          console.warn('AuthService: Invalid user data found, clearing')
+          this.clearCurrentUser()
+        }
       }
     } catch (error) {
       console.error('Error loading current user:', error)

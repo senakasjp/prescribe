@@ -36,6 +36,15 @@
         return
       }
       
+      // Check for existing authentication state immediately to prevent login flash
+      console.log('🔍 Checking for existing authentication state...')
+      const existingUser = authService.getCurrentUser()
+      if (existingUser) {
+        console.log('✅ Found existing user in localStorage:', existingUser.email)
+        user = existingUser
+        loading = false // Set loading to false immediately
+      }
+      
       // Set up Firebase auth state listener
       const unsubscribe = firebaseAuthService.onAuthStateChanged(async (firebaseUser) => {
         console.log('🔥 FIREBASE AUTH LISTENER TRIGGERED!')
@@ -49,8 +58,22 @@
           return
         }
         
+        // If we already have a user from localStorage and no Firebase user, keep the existing user
+        if (!firebaseUser && user) {
+          console.log('No Firebase user but localStorage user exists, keeping existing user')
+          loading = false
+          return
+        }
+        
         if (firebaseUser) {
           console.log('✅ Received processed user from Firebase auth service:', firebaseUser.email)
+          
+          // If we already have a user with the same email, don't override unless it's a significant update
+          if (user && user.email === firebaseUser.email) {
+            console.log('User already exists with same email, keeping existing user data')
+            loading = false
+            return
+          }
           
           // Check if this is the super admin
           if (firebaseUser.email === superAdminEmail) {
@@ -141,13 +164,13 @@
       loading = false
     }
     
-    // Fallback timeout to ensure loading is set to false
+    // Fallback timeout to ensure loading is set to false (reduced from 2000ms to 1000ms)
     setTimeout(() => {
       if (loading) {
         console.log('Fallback: Setting loading to false')
-    loading = false
+        loading = false
       }
-    }, 2000)
+    }, 1000)
   })
   
   // Cleanup Firebase auth listener on destroy

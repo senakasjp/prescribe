@@ -405,56 +405,6 @@
             </div>
           {/if}
           
-          <!-- AI Suggestions Section - Show only when no prescriptions exist -->
-          {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0 && (!prescriptionsFinalized || currentMedications.length === 0)}
-            <div class="mt-4 border-top pt-3">
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="text-info mb-0">
-                  <i class="fas fa-brain me-2"></i>
-                  AI Drug Suggestions ({aiDrugSuggestions.length})
-                </h6>
-              </div>
-              <div class="row">
-                {#each aiDrugSuggestions as suggestion, index}
-                  <div class="col-12 col-md-6 col-lg-4 mb-3">
-                    <div class="card border-info">
-                      <div class="card-body p-2">
-                        <div class="d-flex justify-content-between align-items-start mb-1">
-                          <h6 class="card-title mb-0 text-primary">{suggestion.name}</h6>
-                          <div class="btn-group btn-group-sm">
-                            <button 
-                              class="btn btn-success btn-sm"
-                              on:click={() => onAddAISuggestedDrug(suggestion, index)}
-                              disabled={!currentPrescription}
-                              title="Add to prescription"
-                            >
-                              <i class="fas fa-plus"></i>
-                            </button>
-                            <button 
-                              class="btn btn-outline-danger btn-sm"
-                              on:click={() => onRemoveAISuggestedDrug(index)}
-                              title="Remove suggestion"
-                            >
-                              <i class="fas fa-times"></i>
-                            </button>
-                          </div>
-                        </div>
-                        <div class="small text-muted mb-1">
-                          <strong>Dosage:</strong> {suggestion.dosage} • <strong>Frequency:</strong> {suggestion.frequency}
-                        </div>
-                        {#if suggestion.reason}
-                          <div class="small text-info">
-                            <i class="fas fa-lightbulb me-1"></i>
-                            <strong>Reason:</strong> {suggestion.reason}
-                          </div>
-                        {/if}
-                      </div>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          {/if}
         </div>
       </div>
     </div>
