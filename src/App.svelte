@@ -391,16 +391,21 @@
   })
 </script>
 
-<main class="container-fluid">
+<main class="min-h-screen bg-gray-50">
   
   {#if showAdminPanel}
     <!-- Admin Panel -->
     <AdminPanel {user} on:back-to-app={handleBackFromAdmin} />
   {:else if loading}
-    <div class="d-flex justify-content-center align-items-center vh-100">
+    <div class="flex items-center justify-center min-h-screen">
       <div class="text-center">
-        <i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>
-        <p class="text-muted">Loading M-Prescribe...</p>
+        <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-blue-500 bg-white transition ease-in-out duration-150 cursor-not-allowed">
+          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Loading M-Prescribe...
+        </div>
       </div>
     </div>
   {:else if user}
@@ -409,194 +414,184 @@
       <PharmacistDashboard pharmacist={user} />
     {:else}
     <!-- Doctor is logged in - Show patient management -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary" style="margin: 0 !important; padding: 0 !important;">
-        <div class="container-fluid px-0">
-        <span class="navbar-brand px-1">
-            <i class="fas fa-user-md me-1 me-md-2"></i>
-            <span class="d-none d-sm-inline">M-Prescribe</span>
-            <span class="d-sm-none">M-P</span>
-          </span>
-          
-          <!-- Mobile Toggle Button -->
-          <button class="navbar-toggler me-1" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-          </button>
-          
-          <!-- Navbar Content -->
-          <div class="collapse navbar-collapse px-1" id="navbarNav">
-            <!-- Desktop Layout -->
-            <div class="d-none d-lg-flex align-items-center ms-auto">
-              <!-- User Info -->
-              <div class="navbar-text me-3 d-flex align-items-center">
-                <i class="fas fa-user me-2"></i>
-                <span class="me-3">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
-                
-                <!-- AI Health Bar - Progress Bar -->
-                <div class="d-flex align-items-center me-3">
-                  <i class="fas fa-brain me-2 text-white"></i>
-                  <div class="progress bg-danger border border-light" style="width: 120px; height: 20px;" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
-                    <div class="progress-bar bg-white progress-bar-striped progress-bar-animated" 
-                         role="progressbar" 
-                         style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%"
-                         aria-valuenow="{doctorUsageStats?.today?.tokens || 0}" 
-                         aria-valuemin="0" 
-                         aria-valuemax="100000">
-                      <span class="text-dark fw-bold" style="font-size: 0.7rem;">
-                        {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
-                      </span>
-                    </div>
+    <nav class="bg-blue-600 border-gray-200 dark:bg-gray-900">
+      <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4">
+        <a href="/" class="flex items-center space-x-3 rtl:space-x-reverse">
+          <i class="fas fa-user-md text-white text-xl"></i>
+          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">M-Prescribe</span>
+        </a>
+        
+        <!-- Mobile Toggle Button -->
+        <button data-collapse-toggle="navbar-default" type="button" class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600" aria-controls="navbar-default" aria-expanded="false">
+          <span class="sr-only">Open main menu</span>
+          <svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 17 14">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 1h15M1 7h15M1 13h15"/>
+          </svg>
+        </button>
+        
+        <!-- Navbar Content -->
+        <div class="hidden w-full md:block md:w-auto" id="navbar-default">
+          <!-- Desktop Layout -->
+          <div class="hidden lg:flex items-center space-x-4">
+            <!-- User Info -->
+            <div class="flex items-center space-x-3 text-white">
+              <i class="fas fa-user"></i>
+              <span class="text-sm font-medium">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
+              
+              <!-- AI Health Bar - Progress Bar -->
+              <div class="flex items-center space-x-2">
+                <i class="fas fa-brain text-white"></i>
+                <div class="w-32 bg-red-200 rounded-full h-5 dark:bg-red-800" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
+                  <div class="bg-white h-5 rounded-full flex items-center justify-center text-xs font-bold text-gray-900" 
+                       style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
+                    {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
                   </div>
                 </div>
               </div>
-              
-              <!-- Action Buttons -->
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="flex items-center space-x-2">
               {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
-                <button class="btn btn-outline-light btn-sm me-2" on:click={handleAdminAccess}>
-                  <i class="fas fa-shield-alt me-1"></i>
+                <button class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800" on:click={handleAdminAccess}>
+                  <i class="fas fa-shield-alt mr-1"></i>
                   Admin
                 </button>
               {/if}
-              <button class="btn btn-outline-light btn-sm" on:click={handleLogout}>
-                <i class="fas fa-sign-out-alt me-1"></i>
+              <button class="text-white bg-gray-700 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800" on:click={handleLogout}>
+                <i class="fas fa-sign-out-alt mr-1"></i>
                 Logout
               </button>
             </div>
+          </div>
+          
+          <!-- Mobile Layout -->
+          <div class="lg:hidden mt-4 space-y-3">
+            <!-- User Info Row -->
+            <div class="flex items-center space-x-2 text-white">
+              <i class="fas fa-user"></i>
+              <span class="text-sm">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
+            </div>
             
-            <!-- Mobile Layout -->
-            <div class="d-lg-none mt-2">
-              <!-- User Info Row -->
-              <div class="d-flex align-items-center mb-2">
-                <i class="fas fa-user me-2"></i>
-                <span class="text-light">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
-              </div>
-              
-              <!-- AI Health Bar Row -->
-              <div class="d-flex align-items-center mb-3">
-                <i class="fas fa-robot me-2 text-white"></i>
-                <div class="progress bg-danger border border-light flex-grow-1" style="height: 18px;" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
-                  <div class="progress-bar bg-white progress-bar-striped progress-bar-animated" 
-                       role="progressbar" 
-                       style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%"
-                       aria-valuenow="{doctorUsageStats?.today?.tokens || 0}" 
-                       aria-valuemin="0" 
-                       aria-valuemax="100000">
-                    <span class="text-dark fw-bold" style="font-size: 0.65rem;">
-                      {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
-                    </span>
-                  </div>
+            <!-- AI Health Bar Row -->
+            <div class="flex items-center space-x-2">
+              <i class="fas fa-robot text-white"></i>
+              <div class="flex-1 bg-red-200 rounded-full h-4 dark:bg-red-800" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
+                <div class="bg-white h-4 rounded-full flex items-center justify-center text-xs font-bold text-gray-900" 
+                     style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
+                  {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
                 </div>
-              </div>
-              
-              <!-- Action Buttons Row -->
-              <div class="d-flex gap-2">
-                {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
-                  <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleAdminAccess}>
-                    <i class="fas fa-shield-alt me-1"></i>
-                    Admin
-                  </button>
-                {/if}
-                <button class="btn btn-outline-light btn-sm flex-fill" on:click={handleLogout}>
-                  <i class="fas fa-sign-out-alt me-1"></i>
-                  Exit
-                </button>
               </div>
             </div>
-          </div>
-      </div>
-    </nav>
-    
-    <div class="mt-3 mt-md-4 px-3 px-md-4">
-        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} on:profile-updated={handleProfileUpdate} />
-    </div>
-    {/if}
-  {:else}
-    <!-- User is not logged in - Show Bootstrap 5 authentication -->
-    <div class="min-vh-100 d-flex align-items-start justify-content-center bg-primary bg-gradient px-1 px-md-4" style="padding-top: 2rem;">
-      <div class="row justify-content-center w-100">
-          <div class="col-12 col-md-10 col-lg-8 col-xl-6 col-xxl-5">
-            <!-- Main Auth Card -->
-            <div class="card shadow-lg border-0 rounded-3 rounded-md-4 overflow-hidden">
-              <!-- Card Header -->
-              <div class="card-header bg-white border-0 py-3 py-md-4">
-                <div class="text-center">
-                  <div class="mb-2 mb-md-3">
-                    <div class="bg-primary bg-opacity-10 rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px;">
-                      <i class="fas fa-stethoscope fa-lg text-primary"></i>
-                    </div>
-                  </div>
-                  <h1 class="card-title fw-bold text-dark mb-1 mb-md-2 fs-3 fs-md-2">M-Prescribe</h1>
-                  <p class="text-muted mb-0 small d-none d-sm-block">AI-Powered Medical Prescription System</p>
-                  <p class="text-muted mb-0 d-sm-none" style="font-size: 0.75rem;">AI-Powered Medical System</p>
-                </div>
-              </div>
-              
-              <!-- Card Body -->
-              <div class="card-body p-3 p-md-4">
-                <!-- Auth Mode Toggle -->
-                <div class="mb-3 mb-md-4">
-                  <div class="btn-group w-100" role="group" aria-label="Authentication mode">
-                    <button 
-                      type="button" 
-                      class="btn {authMode === 'doctor' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm"
-                      on:click={handleSwitchToDoctor}
-                    >
-                      <i class="fas fa-user-md me-1 me-md-2"></i>
-                      <span class="d-none d-sm-inline">Doctor</span>
-                      <span class="d-sm-none">Dr.</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      class="btn {authMode === 'pharmacist' ? 'btn-primary' : 'btn-outline-primary'} flex-fill btn-sm"
-                      on:click={handleSwitchToPharmacist}
-                    >
-                      <i class="fas fa-pills me-1 me-md-2"></i>
-                      <span class="d-none d-sm-inline">Pharmacist</span>
-                      <span class="d-sm-none">Pharm.</span>
-                    </button>
-                  </div>
-                </div>
-                
-                <!-- Auth Forms -->
-                <div class="bg-light rounded-2 rounded-md-3 p-3 p-md-4">
-                  {#if authMode === 'doctor'}
-                    <div class="text-center mb-3 mb-md-4">
-                      <h4 class="fw-semibold text-dark mb-0 fs-5 fs-md-4">
-                        <i class="fas fa-user-md text-primary me-1 me-md-2"></i>
-                        <span class="d-none d-sm-inline">Doctor Portal</span>
-                        <span class="d-sm-none">Doctor</span>
-                      </h4>
-                    </div>
-            <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
-                  {:else}
-                    <div class="text-center mb-3 mb-md-4">
-                      <h4 class="fw-semibold text-dark mb-0 fs-5 fs-md-4">
-                        <i class="fas fa-pills text-primary me-1 me-md-2"></i>
-                        <span class="d-none d-sm-inline">Pharmacist Portal</span>
-                        <span class="d-sm-none">Pharmacist</span>
-                      </h4>
-                    </div>
-                    <PharmacistAuth 
-                      on:pharmacist-login={handlePharmacistLogin}
-                      on:switch-to-doctor={handleSwitchToDoctor}
-                    />
-                  {/if}
-                </div>
-              </div>
-              
-              <!-- Card Footer -->
-              <div class="card-footer bg-light border-0 py-2 py-md-3">
-                <div class="text-center">
-                  <small class="text-muted">
-                    <i class="fas fa-shield-alt me-1"></i>
-                    <span class="d-none d-sm-inline">Secure • HIPAA Compliant • AI-Enhanced</span>
-                    <span class="d-sm-none">Secure • HIPAA • AI</span>
-                  </small>
-                </div>
-              </div>
+            
+            <!-- Action Buttons Row -->
+            <div class="flex space-x-2">
+              {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
+                <button class="flex-1 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800" on:click={handleAdminAccess}>
+                  <i class="fas fa-shield-alt mr-1"></i>
+                  Admin
+                </button>
+              {/if}
+              <button class="flex-1 text-white bg-gray-700 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800" on:click={handleLogout}>
+                <i class="fas fa-sign-out-alt mr-1"></i>
+                Exit
+              </button>
             </div>
           </div>
         </div>
       </div>
+    </nav>
+    
+    <div class="p-4">
+        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} on:profile-updated={handleProfileUpdate} />
+    </div>
+    {/if}
+  {:else}
+    <!-- User is not logged in - Show Flowbite authentication -->
+    <div class="min-h-screen flex items-start justify-center bg-gradient-to-br from-blue-600 to-blue-800 px-4 pt-8">
+      <div class="w-full max-w-md">
+        <!-- Main Auth Card -->
+        <div class="bg-white rounded-lg shadow-xl overflow-hidden">
+          <!-- Card Header -->
+          <div class="bg-white px-6 py-8">
+            <div class="text-center">
+              <div class="mb-4">
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full">
+                  <i class="fas fa-stethoscope text-blue-600 text-xl"></i>
+                </div>
+              </div>
+              <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe</h1>
+              <p class="text-gray-600 text-sm hidden sm:block">AI-Powered Medical Prescription System</p>
+              <p class="text-gray-600 text-xs sm:hidden">AI-Powered Medical System</p>
+            </div>
+          </div>
+          
+          <!-- Card Body -->
+          <div class="px-6 pb-6">
+            <!-- Auth Mode Toggle -->
+            <div class="mb-6">
+              <div class="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1" role="group" aria-label="Authentication mode">
+                <button 
+                  type="button" 
+                  class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md {authMode === 'doctor' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}"
+                  on:click={handleSwitchToDoctor}
+                >
+                  <i class="fas fa-user-md mr-2"></i>
+                  <span class="hidden sm:inline">Doctor</span>
+                  <span class="sm:hidden">Dr.</span>
+                </button>
+                <button 
+                  type="button" 
+                  class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md {authMode === 'pharmacist' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}"
+                  on:click={handleSwitchToPharmacist}
+                >
+                  <i class="fas fa-pills mr-2"></i>
+                  <span class="hidden sm:inline">Pharmacist</span>
+                  <span class="sm:hidden">Pharm.</span>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Auth Forms -->
+            <div class="bg-gray-50 rounded-lg p-4">
+              {#if authMode === 'doctor'}
+                <div class="text-center mb-4">
+                  <h4 class="text-lg font-semibold text-gray-900 mb-0">
+                    <i class="fas fa-user-md text-blue-600 mr-2"></i>
+                    <span class="hidden sm:inline">Doctor Portal</span>
+                    <span class="sm:hidden">Doctor</span>
+                  </h4>
+                </div>
+                <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+              {:else}
+                <div class="text-center mb-4">
+                  <h4 class="text-lg font-semibold text-gray-900 mb-0">
+                    <i class="fas fa-pills text-blue-600 mr-2"></i>
+                    <span class="hidden sm:inline">Pharmacist Portal</span>
+                    <span class="sm:hidden">Pharmacist</span>
+                  </h4>
+                </div>
+                <PharmacistAuth 
+                  on:pharmacist-login={handlePharmacistLogin}
+                  on:switch-to-doctor={handleSwitchToDoctor}
+                />
+              {/if}
+            </div>
+          </div>
+          
+          <!-- Card Footer -->
+          <div class="bg-gray-50 px-6 py-3">
+            <div class="text-center">
+              <small class="text-gray-500">
+                <i class="fas fa-shield-alt mr-1"></i>
+                <span class="hidden sm:inline">Secure • HIPAA Compliant • AI-Enhanced</span>
+                <span class="sm:hidden">Secure • HIPAA • AI</span>
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   {/if}
   
   <!-- Edit Profile Modal -->
@@ -613,231 +608,12 @@
 </main>
 
 <style>
-  :global(.container-fluid) {
-    min-height: 100vh;
-  }
-  
-  /* Force navbar height with important declarations */
-  nav {
-    height: 50px !important;
-    min-height: 50px !important;
-    max-height: 50px !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background-color: var(--bs-primary) !important;
-    display: flex !important;
-    align-items: center !important;
-    width: 100% !important;
-  }
-  
-  nav .navbar-brand {
-    font-size: 1.1rem !important;
-    font-weight: 600 !important;
-    color: var(--bs-white) !important;
-    padding: 0.25rem 0 !important;
-    margin: 0 !important;
-  }
-  
-  /* Ensure container-fluid is full width */
-  nav .container-fluid {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  
-  /* Global overrides to ensure full width navbar */
+  /* Custom styles for Flowbite components */
   :global(body) {
-    margin: 0 !important;
-    padding: 0 !important;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', system-ui, sans-serif;
   }
   
-  :global(html) {
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  
-  :global(.navbar) {
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  
-  :global(.container-fluid) {
-    margin: 0 !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-  }
-  
-  :global(.navbar .container-fluid) {
-    padding-left: 0.75rem !important;
-    padding-right: 0 !important;
-  }
-  
-  
-  
-  nav .navbar-nav {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  
-  nav .navbar-text {
-    color: rgba(255, 255, 255, 0.75) !important;
-    font-size: 0.85rem !important;
-    padding: 0.25rem 0 !important;
-    margin: 0 !important;
-  }
-  
-  nav .btn {
-    padding: 0.25rem 0.5rem !important;
-    font-size: 0.8rem !important;
-  }
-  
-  /* Bootstrap 5 styling only */
-  
-  /* Responsive adjustments */
-  
-  @media (max-width: 992px) {
-    
-    .auth-card .card-body {
-      padding: 2rem !important;
-    }
-  }
-  
-  @media (max-width: 768px) {
-    
-    .auth-card {
-      margin: 0.25rem;
-      border-radius: 1rem !important;
-    }
-    
-    .auth-card .card-body {
-      padding: 1.5rem !important;
-    }
-    
-    .auth-form-container {
-      padding: 1rem;
-      margin: 0.25rem 0;
-    }
-    
-    .btn-group .btn {
-      font-size: 0.9rem;
-      padding: 0.5rem 0.75rem;
-    }
-    
-    .toggle-option {
-      padding: 0.6rem 0.8rem;
-      font-size: 0.9rem;
-    }
-    
-    .form-control {
-      font-size: 0.95rem;
-    }
-    
-    h1 {
-      font-size: 1.75rem;
-    }
-    
-    h3 {
-      font-size: 1.25rem;
-    }
-  }
-  
-  @media (max-width: 576px) {
-    
-    .auth-card {
-      margin: 0.125rem;
-      border-radius: 0.75rem !important;
-    }
-    
-    .auth-card .card-body {
-      padding: 1rem !important;
-    }
-    
-    .auth-form-container {
-      padding: 0.75rem;
-      margin: 0.125rem 0;
-    }
-    
-    .btn-group .btn {
-      font-size: 0.85rem;
-      padding: 0.4rem 0.6rem;
-    }
-    
-    .toggle-option {
-      padding: 0.5rem 0.6rem;
-      font-size: 0.85rem;
-    }
-    
-    .form-control {
-      font-size: 0.9rem;
-      padding: 0.5rem 0.75rem;
-    }
-    
-    h1 {
-      font-size: 1.5rem;
-    }
-    
-    h3 {
-      font-size: 1.1rem;
-    }
-    
-    .bg-primary.bg-opacity-10 {
-      width: 60px !important;
-      height: 60px !important;
-    }
-    
-    .fa-2x {
-      font-size: 1.5rem !important;
-    }
-    
-    .fa-stethoscope {
-      font-size: 1.25rem !important;
-    }
-  }
-  
-  @media (max-width: 400px) {
-    .auth-card .card-body {
-      padding: 0.75rem !important;
-    }
-    
-    .auth-form-container {
-      padding: 0.5rem;
-    }
-    
-    .btn-group .btn {
-      font-size: 0.8rem;
-      padding: 0.35rem 0.5rem;
-    }
-    
-    .toggle-option {
-      padding: 0.4rem 0.5rem;
-      font-size: 0.8rem;
-    }
-    
-    .form-control {
-      font-size: 0.85rem;
-      padding: 0.4rem 0.6rem;
-    }
-    
-    h1 {
-      font-size: 1.25rem;
-    }
-    
-    h3 {
-      font-size: 1rem;
-    }
-    
-    .bg-primary.bg-opacity-10 {
-      width: 50px !important;
-      height: 50px !important;
-    }
-    
-    .fa-stethoscope {
-      font-size: 1rem !important;
-    }
-  }
   
 </style>
