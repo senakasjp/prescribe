@@ -8,6 +8,7 @@
   import PatientForms from './PatientForms.svelte'
   import PrescriptionList from './PrescriptionList.svelte'
   import PrescriptionPDF from './PrescriptionPDF.svelte'
+  import LoadingSpinner from './LoadingSpinner.svelte'
   import AIRecommendations from './AIRecommendations.svelte'
   import PrescriptionsTab from './PrescriptionsTab.svelte'
   
@@ -1989,6 +1990,14 @@
   })
 </script>
 
+{#if loading}
+  <LoadingSpinner 
+    size="large" 
+    color="teal" 
+    text="Loading patient details..." 
+    fullScreen={false}
+  />
+{:else}
 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
   <div class="bg-teal-600 text-white px-3 sm:px-6 py-3 sm:py-4 rounded-t-lg">
     <!-- Mobile: Stacked layout -->
@@ -3438,6 +3447,7 @@
     </div>
   </div>
 </div>
+{/if}
 
 <!-- Pharmacy Selection Modal -->
 {#if showPharmacyModal}

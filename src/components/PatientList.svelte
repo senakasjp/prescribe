@@ -1,4 +1,6 @@
 <script>
+  import LoadingSpinner from './LoadingSpinner.svelte'
+  
   export const patients = []
   export let filteredPatients = []
   export let selectedPatient = null
@@ -54,12 +56,12 @@
     <!-- Patient List -->
     <div class="p-0 overflow-auto" style="max-height: calc(100vh - 200px);">
       {#if loading}
-        <div class="text-center p-4">
-          <div class="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" role="status">
-            <span class="visually-hidden">Loading...</span>
-          </div>
-          <p class="mt-2 text-muted">Loading patients...</p>
-        </div>
+        <LoadingSpinner 
+          size="small" 
+          color="blue" 
+          text="Loading patients..." 
+          fullScreen={false}
+        />
       {:else if filteredPatients.length === 0}
         <div class="text-center p-4">
           <i class="fas fa-user-slash fa-2x text-muted mb-3"></i>

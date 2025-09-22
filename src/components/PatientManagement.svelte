@@ -7,12 +7,10 @@
   import PatientList from './PatientList.svelte'
   import MedicalSummary from './MedicalSummary.svelte'
   import PharmacistManagement from './PharmacistManagement.svelte'
-  import { Chart, registerables } from 'chart.js'
+  import ApexCharts from 'apexcharts'
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
-  
-  // Register Chart.js components
-  Chart.register(...registerables)
+  import LoadingSpinner from './LoadingSpinner.svelte'
   
   const dispatch = createEventDispatcher()
   export let user
@@ -79,6 +77,7 @@
   let showPatientForm = false
   let chartInstance = null
   let loading = true
+  let chartLoading = false
   let searchQuery = ''
   let filteredPatients = []
   let currentView = 'patients' // 'patients' or 'pharmacists'
@@ -405,9 +404,11 @@
   }
 
   
-  // Create responsive prescriptions per day chart using Chart.js
+  // Create responsive prescriptions per day chart using ApexCharts
   const createPrescriptionsChart = async () => {
     try {
+      chartLoading = true
+      
       // Destroy existing chart if it exists
       if (chartInstance) {
         chartInstance.destroy()
@@ -448,113 +449,160 @@
         prescriptionsPerDay.push(dayPrescriptions)
       }
       
-      // Create Chart.js chart with proper error handling
+      // Create ApexCharts chart with Flowbite styling
       setTimeout(() => {
-        const canvas = document.getElementById('prescriptionsChart')
-        if (!canvas) {
-          console.log('Canvas not found, skipping chart creation')
+        const chartElement = document.getElementById('prescriptionsChart')
+        if (!chartElement) {
+          console.log('Chart element not found, skipping chart creation')
           return
         }
         
-        // Check if canvas is already in use
-        if (canvas.chart) {
-          console.log('Canvas already has a chart, destroying it first')
-          canvas.chart.destroy()
-          canvas.chart = null
+        // Destroy existing chart if it exists
+        if (chartInstance) {
+          chartInstance.destroy()
+          chartInstance = null
         }
         
-        const ctx = canvas.getContext('2d')
-        
-        chartInstance = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: last30Days,
-                     datasets: [{
-                       label: 'Prescriptions',
-                       data: prescriptionsPerDay,
-                       backgroundColor: 'rgba(59, 130, 246, 0.8)', // blue-500 with opacity
-                       borderColor: 'rgba(59, 130, 246, 1)', // blue-500
-                       borderWidth: 1,
-                       borderRadius: 4,
-                       borderSkipped: false,
-                     }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                display: false
-              },
-                       tooltip: {
-                         backgroundColor: 'rgba(31, 41, 55, 0.9)', // gray-800 with opacity
-                         titleColor: '#f9fafb', // gray-50
-                         bodyColor: '#f9fafb', // gray-50
-                         borderColor: 'rgba(59, 130, 246, 1)', // blue-500
-                         borderWidth: 1,
-                         cornerRadius: 6,
-                         displayColors: false,
-                callbacks: {
-                  title: function(context) {
-                    return context[0].label
-                  },
-                  label: function(context) {
-                    return `${context.parsed.y} prescription${context.parsed.y !== 1 ? 's' : ''}`
-                  }
-                }
-              }
+        const options = {
+          chart: {
+            type: 'bar',
+            height: 250,
+            toolbar: {
+              show: false
             },
-            scales: {
-              x: {
-                grid: {
-                  display: false
-                },
-                         ticks: {
-                           color: '#6b7280', // gray-500
-                           font: {
-                             size: 10
-                           },
-                           maxRotation: 45,
-                           minRotation: 0,
-                           maxTicksLimit: 15
-                         }
-              },
-              y: {
-                beginAtZero: true,
-                grid: {
-                  color: 'rgba(31, 41, 55, 0.1)', // gray-800 with low opacity
-                  drawBorder: false
-                },
-                ticks: {
-                  color: '#6b7280', // gray-500
-                  font: {
-                    size: 11
-                  },
-                  stepSize: 1,
-                  callback: function(value) {
-                    return Number.isInteger(value) ? value : ''
-                  }
-                }
-              }
-            },
-            interaction: {
-              intersect: false,
-              mode: 'index'
-            },
-            animation: {
-              duration: 750,
-              easing: 'easeInOutQuart'
+            animations: {
+              enabled: true,
+              easing: 'easeinout',
+              speed: 750
             }
-          }
-        })
+          },
+          series: [{
+            name: 'Prescriptions',
+            data: prescriptionsPerDay
+          }],
+          xaxis: {
+            categories: last30Days,
+            labels: {
+              style: {
+                colors: '#6b7280', // gray-500
+                fontSize: '10px'
+              },
+              rotate: -45,
+              rotateAlways: false,
+              maxHeight: 60,
+              hideOverlappingLabels: true,
+              trim: true
+            },
+            axisBorder: {
+              show: false
+            },
+            axisTicks: {
+              show: false
+            }
+          },
+          yaxis: {
+            min: 0,
+            forceNiceScale: true,
+            labels: {
+              style: {
+                colors: '#6b7280', // gray-500
+                fontSize: '11px'
+              },
+              formatter: function(value) {
+                return Number.isInteger(value) ? value : ''
+              }
+            }
+          },
+          grid: {
+            borderColor: 'rgba(31, 41, 55, 0.1)', // gray-800 with low opacity
+            strokeDashArray: 3,
+            xaxis: {
+              lines: {
+                show: false
+              }
+            },
+            yaxis: {
+              lines: {
+                show: true
+              }
+            }
+          },
+          colors: ['#36807a'], // teal-600 - matching theme
+          plotOptions: {
+            bar: {
+              borderRadius: 4,
+              columnWidth: '60%',
+              dataLabels: {
+                position: 'top'
+              }
+            }
+          },
+          dataLabels: {
+            enabled: false
+          },
+          tooltip: {
+            theme: 'light',
+            style: {
+              fontSize: '12px'
+            },
+            fillSeriesColor: false,
+            custom: function({series, seriesIndex, dataPointIndex, w}) {
+              const date = w.globals.labels[dataPointIndex]
+              const value = series[seriesIndex][dataPointIndex]
+              return `
+                <div class="bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg border border-teal-500">
+                  <div class="font-semibold">${date}</div>
+                  <div>${value} prescription${value !== 1 ? 's' : ''}</div>
+                </div>
+              `
+            }
+          },
+          responsive: [{
+            breakpoint: 768,
+            options: {
+              chart: {
+                height: 200
+              },
+              xaxis: {
+                labels: {
+                  fontSize: '8px',
+                  rotate: -90,
+                  hideOverlappingLabels: true,
+                  trim: true,
+                  maxHeight: 80
+                },
+                tickAmount: 10
+              }
+            }
+          }, {
+            breakpoint: 480,
+            options: {
+              chart: {
+                height: 180
+              },
+              xaxis: {
+                labels: {
+                  fontSize: '7px',
+                  rotate: -90,
+                  hideOverlappingLabels: true,
+                  trim: true,
+                  maxHeight: 100
+                },
+                tickAmount: 8
+              }
+            }
+          }]
+        }
         
-        // Store chart reference on canvas for cleanup
-        canvas.chart = chartInstance
+        chartInstance = new ApexCharts(chartElement, options)
+        chartInstance.render()
         
       }, 200)
       
     } catch (error) {
       console.error('Error creating prescriptions chart:', error)
+    } finally {
+      chartLoading = false
     }
   }
   
@@ -911,6 +959,7 @@
       chartInstance.destroy()
       chartInstance = null
     }
+    chartLoading = false
   })
 </script>
 
@@ -1024,13 +1073,12 @@
       <div class="overflow-auto max-h-80">
         {#if searchQuery}
           {#if loading}
-            <div class="text-center p-4">
-              <svg class="animate-spin h-8 w-8 text-teal-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p class="text-gray-500">Loading patients...</p>
-            </div>
+            <LoadingSpinner 
+              size="medium" 
+              color="teal" 
+              text="Searching patients..." 
+              fullScreen={false}
+            />
           {:else if filteredPatients.length === 0}
             <div class="text-center p-4 text-gray-500">
               <i class="fas fa-search fa-2x mb-2"></i>
@@ -1082,13 +1130,12 @@
           {/if}
         {:else if !selectedPatient}
           {#if loading}
-            <div class="text-center p-4">
-              <svg class="animate-spin h-8 w-8 text-teal-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p class="text-gray-500">Loading patients...</p>
-            </div>
+            <LoadingSpinner 
+              size="medium" 
+              color="teal" 
+              text="Loading patients..." 
+              fullScreen={false}
+            />
           {:else if filteredPatients.length === 0}
             <div class="text-center p-4 text-gray-500">
               <i class="fas fa-user-plus fa-2x mb-2"></i>
@@ -1302,9 +1349,18 @@
               </h6>
             </div>
             <div class="p-4">
-              <div class="relative w-full" style="height: 250px;">
-                <canvas id="prescriptionsChart" class="rounded"></canvas>
-              </div>
+              {#if chartLoading}
+                <LoadingSpinner 
+                  size="medium" 
+                  color="teal" 
+                  text="Generating chart..." 
+                  fullScreen={false}
+                />
+              {:else}
+                <div class="relative w-full">
+                  <div id="prescriptionsChart" class="rounded"></div>
+                </div>
+              {/if}
             </div>
           </div>
         </div>
