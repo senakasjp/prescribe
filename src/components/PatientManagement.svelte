@@ -1194,7 +1194,7 @@
                            <div class="flex justify-between items-center">
                              <div class="flex items-center">
                                <h4 class="text-xl font-bold text-gray-900 mb-1 mr-3 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
-                                 Welcome, Dr. {doctorName}!
+                                  Welcome, Dr. {doctorName}! 🚀 UPDATED
                                </h4>
                                <button class="p-1 text-gray-400 hover:text-red-500 transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                  <i class="fas fa-cog text-sm"></i>
@@ -1218,69 +1218,73 @@
         {#if !editingProfile}
         <!-- Statistics Cards -->
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div class="bg-teal-500 text-white rounded-lg shadow-sm h-full">
+        <!-- Patients Card - Ocean Blue Outline -->
+        <div class="bg-white border-2 border-blue-500 text-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-blue-50">
           <div class="p-4">
             <div class="flex items-center">
               <div class="flex-shrink-0">
-                <div class="bg-white bg-opacity-25 rounded-full p-2">
-                  <i class="fas fa-users text-sm"></i>
+                <div class="bg-blue-100 border-2 border-blue-500 rounded-full p-3">
+                  <i class="fas fa-users text-lg text-blue-600"></i>
                 </div>
               </div>
               <div class="flex-1 ml-3">
-                <h4 class="text-2xl font-bold mb-0" id="totalPatients">{patients.length}</h4>
-                <small class="opacity-75 hidden sm:block">Patients Registered</small>
-                <small class="opacity-75 sm:hidden">Patients</small>
+                <h4 class="text-2xl font-bold mb-0 text-blue-600" id="totalPatients">{patients.length}</h4>
+                <small class="text-blue-500 hidden sm:block">Patients Registered</small>
+                <small class="text-blue-500 sm:hidden">Patients</small>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="bg-yellow-500 text-gray-900 rounded-lg shadow-sm h-full">
+        <!-- Prescriptions Card - Sunset Orange Outline -->
+        <div class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-orange-50">
           <div class="p-4">
             <div class="flex items-center">
               <div class="flex-shrink-0">
-                <div class="bg-white bg-opacity-25 rounded-full p-2">
-                  <i class="fas fa-prescription text-sm"></i>
+                <div class="bg-orange-100 border-2 border-orange-500 rounded-full p-3">
+                  <i class="fas fa-prescription text-lg text-orange-600"></i>
                 </div>
               </div>
               <div class="flex-1 ml-3">
-                <h4 class="text-2xl font-bold mb-0" id="totalPrescriptions">{totalPrescriptions}</h4>
-                <small class="opacity-75 hidden sm:block">Total Prescriptions</small>
-                <small class="opacity-75 sm:hidden">Prescriptions</small>
+                <h4 class="text-2xl font-bold mb-0 text-orange-600" id="totalPrescriptions">{totalPrescriptions}</h4>
+                <small class="text-orange-500 hidden sm:block">Total Prescriptions</small>
+                <small class="text-orange-500 sm:hidden">Prescriptions</small>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="bg-gray-600 text-white rounded-lg shadow-sm h-full">
+        <!-- Drugs Card - Forest Green Outline -->
+        <div class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-green-50">
           <div class="p-4">
             <div class="flex items-center">
               <div class="flex-shrink-0">
-                <div class="bg-white bg-opacity-25 rounded-full p-2">
-                  <i class="fas fa-pills text-sm"></i>
+                <div class="bg-green-100 border-2 border-green-500 rounded-full p-3">
+                  <i class="fas fa-pills text-lg text-green-600"></i>
                 </div>
               </div>
               <div class="flex-1 ml-3">
-                <h4 class="text-2xl font-bold mb-0" id="totalDrugs">{totalDrugs}</h4>
-                <small class="opacity-75 hidden sm:block">Total Drugs</small>
-                <small class="opacity-75 sm:hidden">Drugs</small>
+                <h4 class="text-2xl font-bold mb-0 text-green-600" id="totalDrugs">{totalDrugs}</h4>
+                <small class="text-green-500 hidden sm:block">Total Drugs</small>
+                <small class="text-green-500 sm:hidden">Drugs</small>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="bg-teal-500 text-white rounded-lg shadow-sm h-full">
+        <!-- Pharmacies Card - Royal Purple Outline -->
+        <div class="bg-white border-2 border-purple-500 text-purple-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-purple-50">
           <div class="p-4">
             <div class="flex items-center">
               <div class="flex-shrink-0">
-                <div class="bg-white bg-opacity-25 rounded-full p-2">
-                  <i class="fas fa-store text-sm"></i>
+                <div class="bg-purple-100 border-2 border-purple-500 rounded-full p-3">
+                  <i class="fas fa-store text-lg text-purple-600"></i>
                 </div>
               </div>
               <div class="flex-1 ml-3">
-                <h4 class="text-2xl font-bold mb-0" id="connectedPharmacies">{connectedPharmacies}</h4>
-                <small class="opacity-75 hidden sm:block">Connected Pharmacies</small>
-                <small class="opacity-75 sm:hidden">Pharmacies</small>
+                <h4 class="text-2xl font-bold mb-0 text-purple-600" id="connectedPharmacies">{connectedPharmacies}</h4>
+                <small class="text-purple-500 hidden sm:block">Connected Pharmacies</small>
+                <small class="text-purple-500 sm:hidden">Pharmacies</small>
               </div>
             </div>
           </div>
@@ -1309,7 +1313,7 @@
         {#if editingProfile}
         <!-- Inline Tabbed Profile Editing Interface -->
         <div class="col-span-full">
-          <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div class="bg-white border-2 border-teal-500 rounded-lg shadow-sm" style="border-color: #36807a;">
             <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
               <div class="flex justify-between items-center">
                 <h6 class="text-lg font-semibold mb-0">
@@ -1323,46 +1327,49 @@
             </div>
             
             <!-- Tab Navigation -->
-            <div class="p-0">
-              <ul class="flex border-b border-gray-200" id="settingsTabs" role="tablist">
+            <div class="border-b border-gray-200">
+              <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="default-tab" data-tabs-toggle="#default-tab-content" role="tablist">
                 <li class="flex-1" role="presentation">
                   <button 
-                    class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'edit-profile' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
+                    class="inline-block w-full p-4 border-b-2 rounded-t-lg {activeTab === 'edit-profile' ? 'text-teal-600 border-teal-600 active' : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'}" 
                     id="edit-profile-tab" 
+                    data-tabs-target="#edit-profile" 
                     type="button" 
                     role="tab" 
                     aria-controls="edit-profile" 
                     aria-selected={activeTab === 'edit-profile'}
                     on:click={() => switchTab('edit-profile')}
                   >
-                    <i class="fas fa-user-edit me-2 fa-sm"></i>
+                    <i class="fas fa-user-edit mr-2 fa-sm"></i>
                     Edit Profile
                   </button>
                 </li>
                 <li class="flex-1" role="presentation">
                   <button 
-                    class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'prescription-template' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
+                    class="inline-block w-full p-4 border-b-2 rounded-t-lg {activeTab === 'prescription-template' ? 'text-teal-600 border-teal-600 active' : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'}" 
                     id="prescription-template-tab" 
+                    data-tabs-target="#prescription-template" 
                     type="button" 
                     role="tab" 
                     aria-controls="prescription-template" 
                     aria-selected={activeTab === 'prescription-template'}
                     on:click={() => switchTab('prescription-template')}
                   >
-                    <i class="fas fa-file-medical me-2 fa-sm"></i>
+                    <i class="fas fa-file-medical mr-2 fa-sm"></i>
                     Prescription Template
                   </button>
                 </li>
               </ul>
+            </div>
               
-              <!-- Tab Content -->
-              <div class="tab-content p-3" id="settingsTabContent">
-                <!-- Edit Profile Tab -->
-                {#if activeTab === 'edit-profile'}
-                <div class="tab-pane fade show active" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
+            <!-- Tab Content -->
+            <div id="default-tab-content">
+              <!-- Edit Profile Tab -->
+              {#if activeTab === 'edit-profile'}
+              <div class="p-4 rounded-lg bg-white" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
                   <form on:submit={handleProfileSubmit}>
-                    <div class="row mb-3">
-                      <div class="col-md-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                      <div>
                         <label for="editFirstName" class="block text-sm font-medium text-gray-700 mb-1">
                           First Name <span class="text-red-600">*</span>
                         </label>
@@ -1376,7 +1383,7 @@
                           disabled={profileLoading}
                         />
                       </div>
-                      <div class="col-md-6">
+                      <div>
                         <label for="editLastName" class="block text-sm font-medium text-gray-700 mb-1">
                           Last Name <span class="text-red-600">*</span>
                         </label>
@@ -1451,15 +1458,15 @@
                     </div>
 
                     {#if profileError}
-                      <div class="bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
-                        <i class="fas fa-exclamation-triangle me-2"></i>{profileError}
+                      <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-3" role="alert">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>{profileError}
                       </div>
                     {/if}
 
                     <div class="flex justify-end gap-2">
                       <button 
                         type="button" 
-                        class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                         on:click={handleProfileCancel}
                         disabled={profileLoading}
                       >
@@ -1468,7 +1475,7 @@
                       </button>
                       <button 
                         type="submit" 
-                        class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                         disabled={profileLoading}
                       >
                         {#if profileLoading}
@@ -1482,9 +1489,9 @@
                 </div>
                 {/if}
                 
-                <!-- Prescription Template Tab -->
-                {#if activeTab === 'prescription-template'}
-                <div class="tab-pane fade show active" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
+              <!-- Prescription Template Tab -->
+              {#if activeTab === 'prescription-template'}
+              <div class="p-4 rounded-lg bg-white" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
                   <div class="mb-4">
                     <h6 class="fw-bold mb-3">
                       <i class="fas fa-file-medical me-2"></i>
@@ -1500,7 +1507,7 @@
                       
                       <!-- Option 1: Printed Letterheads -->
                       {#if templateType !== 'upload'}
-                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4 {templateType === 'printed' ? 'border-teal-500' : ''}">
+                      <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'printed' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'printed' ? '#36807a' : '#e5e7eb'};">
                         <div class="p-4">
                           <div class="flex items-center">
                             <input 
@@ -1617,7 +1624,7 @@
                       {/if}
                       
                       <!-- Option 2: Upload Image -->
-                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4 {templateType === 'upload' ? 'border-teal-500' : ''}">
+                      <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'upload' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'upload' ? '#36807a' : '#e5e7eb'};">
                         <div class="p-4">
                           <div class="flex items-center">
                             <input 
@@ -1748,7 +1755,7 @@
                       
                       <!-- Option 3: System Header -->
                       {#if templateType !== 'printed' && templateType !== 'upload'}
-                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4 {templateType === 'system' ? 'border-teal-500' : ''}">
+                      <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'system' ? '#36807a' : '#e5e7eb'};">
                         <div class="p-4">
                           <div class="flex items-center">
                             <input 
@@ -1777,7 +1784,7 @@
                           <div class="mt-3">
                             <button 
                               type="button" 
-                              class="inline-flex items-center px-3 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+                              class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                               on:click={generateSystemHeader}
                             >
                               <i class="fas fa-eye mr-2"></i>
@@ -1811,7 +1818,7 @@
                   <div class="flex justify-end gap-2">
                     <button 
                       type="button" 
-                      class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200" 
+                      class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
                       on:click={handleProfileCancel}
                     >
                       <i class="fas fa-times mr-1 fa-sm"></i>
@@ -1819,7 +1826,7 @@
                     </button>
                     <button 
                       type="button" 
-                      class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                       on:click={saveTemplateSettings}
                       disabled={!templateType}
                     >
@@ -1827,9 +1834,8 @@
                       Save Template Settings
                     </button>
                   </div>
-                </div>
-                {/if}
               </div>
+              {/if}
             </div>
           </div>
         </div>

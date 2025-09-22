@@ -70,30 +70,36 @@
     </div>
     <div class="p-0">
       <!-- Medical Summary Tabs -->
-      <div class="flex border-b border-gray-200" role="tablist">
+      <div class="flex flex-wrap border-b border-gray-200 overflow-hidden" role="tablist">
         <button 
-          class="flex-1 flex items-center justify-center px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-200 {activeMedicalTab === 'symptoms' ? 'border-yellow-500 text-yellow-600 bg-yellow-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" 
+          class="flex-1 min-w-0 flex items-center justify-center px-2 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors duration-200 {activeMedicalTab === 'symptoms' ? 'border-yellow-500 text-yellow-600 bg-yellow-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" 
           on:click={() => handleTabChange('symptoms')}
           role="tab"
         >
-          <i class="fas fa-thermometer-half mr-1"></i>Symptoms
-          <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{symptomsCount}</span>
+          <i class="fas fa-thermometer-half mr-1 text-xs sm:text-sm"></i>
+          <span class="hidden sm:inline">Symptoms</span>
+          <span class="sm:hidden">Sym</span>
+          <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{symptomsCount}</span>
         </button>
         <button 
-          class="flex-1 flex items-center justify-center px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-200 {activeMedicalTab === 'illnesses' ? 'border-red-500 text-red-600 bg-red-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" 
+          class="flex-1 min-w-0 flex items-center justify-center px-2 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors duration-200 {activeMedicalTab === 'illnesses' ? 'border-red-500 text-red-600 bg-red-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" 
           on:click={() => handleTabChange('illnesses')}
           role="tab"
         >
-          <i class="fas fa-heartbeat mr-1"></i>Illnesses
-          <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">{illnessesCount}</span>
+          <i class="fas fa-heartbeat mr-1 text-xs sm:text-sm"></i>
+          <span class="hidden sm:inline">Illnesses</span>
+          <span class="sm:hidden">Ill</span>
+          <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">{illnessesCount}</span>
         </button>
         <button 
-          class="flex-1 flex items-center justify-center px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-200 {activeMedicalTab === 'prescriptions' ? 'border-teal-500 text-teal-600 bg-teal-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" 
+          class="flex-1 min-w-0 flex items-center justify-center px-2 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors duration-200 {activeMedicalTab === 'prescriptions' ? 'border-teal-500 text-teal-600 bg-teal-50' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" 
           on:click={() => handleTabChange('prescriptions')}
           role="tab"
         >
-          <i class="fas fa-pills mr-1"></i>Prescriptions
-          <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{prescriptionsCount}</span>
+          <i class="fas fa-pills mr-1 text-xs sm:text-sm"></i>
+          <span class="hidden sm:inline">Prescriptions</span>
+          <span class="sm:hidden">Rx</span>
+          <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{prescriptionsCount}</span>
         </button>
       </div>
       

@@ -28,10 +28,16 @@
     console.log('🔄 AdminDashboard: currentAdmin changed, reloading...')
     loadAdminData()
   }
-  
-  // Load admin data on component mount
+
+  // Load admin data and initialize Flowbite components on mount
   onMount(async () => {
     console.log('🚀 AdminDashboard component mounted')
+    
+    // Initialize Flowbite dropdowns
+    if (typeof window !== 'undefined' && window.Flowbite) {
+      window.Flowbite.initDropdowns()
+    }
+    
     await loadAdminData()
   })
   
@@ -298,21 +304,34 @@
         
         <div class="flex items-center">
           <div class="relative">
-            <button class="text-white hover:text-gray-300 border-0 bg-transparent py-1 px-2 text-sm flex items-center" type="button" data-dropdown-toggle="adminDropdown">
+            <button 
+              class="text-white hover:text-gray-300 border-0 bg-transparent py-1 px-2 text-sm flex items-center transition-colors duration-200" 
+              type="button" 
+              data-dropdown-toggle="adminDropdown"
+              data-dropdown-placement="bottom-end"
+              aria-expanded="false"
+            >
               <i class="fas fa-user-shield mr-2"></i>
               {currentAdmin?.name || 'Admin'}
               <svg class="w-2.5 h-2.5 ml-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
               </svg>
             </button>
-            <div id="adminDropdown" class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700">
+            <div 
+              id="adminDropdown" 
+              class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700"
+            >
               <div class="px-4 py-3 text-sm text-gray-900 dark:text-white">
                 <div class="font-medium">Admin Account</div>
                 <div class="truncate">{currentAdmin?.email}</div>
               </div>
               <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
                 <li>
-                  <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white" on:click={handleSignOut}>
+                  <button 
+                    type="button"
+                    class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" 
+                    on:click={handleSignOut}
+                  >
                     <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
                   </button>
                 </li>

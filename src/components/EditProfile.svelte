@@ -133,39 +133,28 @@
         </div>
       </div>
       
-      <!-- Tab Navigation with explicit width control -->
-      <div class="border-b border-gray-200">
-        <div class="tab-container">
-          <button 
-            class="tab-button px-4 py-3 text-sm font-medium text-center border-b-2 transition-colors duration-200 {activeTab === 'edit-profile' ? 'text-teal-600 border-teal-600' : 'text-gray-500 border-gray-100 hover:text-gray-600 hover:border-gray-300'}" 
-            id="edit-profile-tab" 
-            type="button" 
-            role="tab" 
-            aria-controls="edit-profile" 
-            aria-selected={activeTab === 'edit-profile'}
-            on:click={() => switchTab('edit-profile')}
-          >
-            <i class="fas fa-user-edit mr-2"></i>
-            Edit Profile
-          </button>
-          <button 
-            class="tab-button px-4 py-3 text-sm font-medium text-center border-b-2 transition-colors duration-200 {activeTab === 'prescription-template' ? 'text-teal-600 border-teal-600' : 'text-gray-500 border-gray-100 hover:text-gray-600 hover:border-gray-300'}" 
-            id="prescription-template-tab" 
-            type="button" 
-            role="tab" 
-            aria-controls="prescription-template" 
-            aria-selected={activeTab === 'prescription-template'}
-            on:click={() => switchTab('prescription-template')}
-          >
-            <i class="fas fa-file-medical mr-2"></i>
-            Prescription Template
-          </button>
+      <!-- Clean Tab Navigation -->
+      <div class="mb-6">
+        <div class="flex border-b border-gray-300">
+          <div class="w-1/2">
+            <button 
+              class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'edit-profile' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
+              on:click={() => switchTab('edit-profile')}
+            >
+              <i class="fas fa-user-edit mr-2"></i>
+              Edit Profile
+            </button>
+          </div>
+          <div class="w-1/2">
+            <button 
+              class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'prescription-template' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
+              on:click={() => switchTab('prescription-template')}
+            >
+              <i class="fas fa-file-medical mr-2"></i>
+              Prescription Template
+            </button>
+          </div>
         </div>
-      </div>
-      
-      <!-- Debug Message -->
-      <div class="text-xs text-gray-400 text-center py-1 border-b border-gray-100">
-        Tab Layout Test - Loaded at: {new Date().toLocaleTimeString()}
       </div>
       
       <!-- Tab Content -->
@@ -311,16 +300,4 @@
   </div>
 </div>
 
-<style>
-  /* Force tab layout to prevent overlap */
-  .tab-container {
-    display: flex !important;
-    width: 100% !important;
-  }
-  
-  .tab-button {
-    flex: 1 !important;
-    max-width: 50% !important;
-    box-sizing: border-box !important;
-  }
-</style>
+<!-- No custom CSS - using pure Tailwind -->

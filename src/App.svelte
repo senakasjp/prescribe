@@ -24,6 +24,12 @@
   
   onMount(() => {
     try {
+      // Initialize Flowbite components
+      if (typeof window !== 'undefined' && window.Flowbite) {
+        window.Flowbite.initDropdowns()
+        window.Flowbite.initCollapses()
+      }
+      
       // Check for super admin auto-login first
       const superAdminEmail = 'senakahks@gmail.com'
       const urlParams = new URLSearchParams(window.location.search)
@@ -43,6 +49,14 @@
         console.log('✅ Found existing user in localStorage:', existingUser.email)
         user = existingUser
         loading = false // Set loading to false immediately
+        
+        // Set a flag to prevent Firebase from overriding this user
+        userJustUpdated = true
+        
+        // Reset the flag after a short delay to allow legitimate Firebase updates
+        setTimeout(() => {
+          userJustUpdated = false
+        }, 2000)
       }
       
       // Set up Firebase auth state listener
@@ -50,6 +64,16 @@
         console.log('🔥 FIREBASE AUTH LISTENER TRIGGERED!')
         console.log('Firebase auth state changed:', firebaseUser)
         console.log('User just updated flag:', userJustUpdated)
+        console.log('Current user before processing:', user?.email)
+        
+        // If we have a localStorage user and no Firebase user, don't clear the user
+        const localStorageUser = authService.getCurrentUser()
+        if (!firebaseUser && localStorageUser && !userJustUpdated) {
+          console.log('No Firebase user but localStorage user exists, keeping localStorage user')
+          user = localStorageUser
+          loading = false
+          return
+        }
         
         // Don't override user data if it was just updated
         if (userJustUpdated) {
@@ -61,6 +85,13 @@
         // If we already have a user from localStorage and no Firebase user, keep the existing user
         if (!firebaseUser && user) {
           console.log('No Firebase user but localStorage user exists, keeping existing user')
+          loading = false
+          return
+        }
+        
+        // If we have a localStorage user and Firebase user is null, don't clear the user
+        if (!firebaseUser && user && userJustUpdated) {
+          console.log('Firebase user is null but we have localStorage user, keeping existing user')
           loading = false
           return
         }
@@ -422,7 +453,13 @@
         </a>
         
         <!-- Mobile Toggle Button -->
-        <button data-collapse-toggle="navbar-default" type="button" class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600" aria-controls="navbar-default" aria-expanded="false">
+        <button 
+          data-collapse-toggle="navbar-default" 
+          type="button" 
+          class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600" 
+          aria-controls="navbar-default" 
+          aria-expanded="false"
+        >
           <span class="sr-only">Open main menu</span>
           <svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 17 14">
             <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 1h15M1 7h15M1 13h15"/>
@@ -453,12 +490,20 @@
             <!-- Action Buttons -->
             <div class="flex items-center space-x-2">
               {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
-                <button class="text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800" on:click={handleAdminAccess}>
+                <button 
+                  type="button" 
+                  class="text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-colors duration-200" 
+                  on:click={handleAdminAccess}
+                >
                   <i class="fas fa-shield-alt mr-1"></i>
                   Admin
                 </button>
               {/if}
-              <button class="text-white bg-gray-700 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800" on:click={handleLogout}>
+              <button 
+                type="button" 
+                class="text-white bg-gray-700 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800 transition-colors duration-200" 
+                on:click={handleLogout}
+              >
                 <i class="fas fa-sign-out-alt mr-1"></i>
                 Logout
               </button>
@@ -487,12 +532,20 @@
             <!-- Action Buttons Row -->
             <div class="flex space-x-2">
               {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
-                <button class="flex-1 text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800" on:click={handleAdminAccess}>
+                <button 
+                  type="button" 
+                  class="flex-1 text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-colors duration-200" 
+                  on:click={handleAdminAccess}
+                >
                   <i class="fas fa-shield-alt mr-1"></i>
                   Admin
                 </button>
               {/if}
-              <button class="flex-1 text-white bg-gray-700 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800" on:click={handleLogout}>
+              <button 
+                type="button" 
+                class="flex-1 text-white bg-gray-700 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800 transition-colors duration-200" 
+                on:click={handleLogout}
+              >
                 <i class="fas fa-sign-out-alt mr-1"></i>
                 Exit
               </button>

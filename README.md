@@ -40,13 +40,14 @@ A comprehensive patient management system built with Svelte 4, Bootstrap 5, and 
 - **Doctor-Patient Isolation**: Doctors only see patients they created
 - **MedicalSummary Data Display**: Fixed "Unknown prescription" and "No dosage" issues by properly extracting medications from prescriptions
 
-### **🧠 Smart Prescription History Logic**
-- **Conditional History Management**: Prescriptions only move to history when saved or printed
-- **Status-Based Workflow**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions
-- **Intelligent Data Cleanup**: Unsaved/unprinted prescriptions are discarded when new prescription starts
-- **Enhanced Status Tracking**: Comprehensive status definitions for prescription lifecycle management
-- **Clean History Records**: Only completed work appears in prescription history and summary
-- **Automatic Workflow**: New prescription creation automatically handles previous prescription status
+### **🧠 Updated Prescription History Logic (v1.5.0)**
+- **Immediate Prescription Removal**: Clicking "+ New Prescription" immediately removes current prescription from prescriptions tab
+- **Smart History Management**: Only sent/printed prescriptions appear in history and medical summary
+- **Enhanced Send to Pharmacy**: Prescriptions sent to pharmacy automatically move to history with `endDate`
+- **Enhanced Print PDF**: Prescriptions printed to PDF automatically move to history with `endDate`
+- **Automatic Data Cleanup**: Unsent/unprinted prescriptions are automatically deleted from system
+- **Intuitive Workflow**: Clear separation between active prescriptions and historical records
+- **User Experience**: Immediate feedback when starting new prescriptions
 
 ### **🎯 Simplified Prescription Logic**
 - **New Prescription Button**: Always creates a new prescription when clicked

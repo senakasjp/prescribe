@@ -2,6 +2,32 @@
 
 All notable changes to M-Prescribe are documented in this file.
 
+## [1.5.0] - 2025-01-16
+
+### ✨ Added
+- **Updated Prescription History Rules**: New logic for prescription visibility and history management
+- **Immediate Prescription Removal**: Clicking "+ New Prescription" immediately removes current prescription from prescriptions tab
+- **Enhanced Send to Pharmacy**: Prescriptions sent to pharmacy automatically move to history and medical summary
+- **Enhanced Print PDF**: Prescriptions printed to PDF automatically move to history and medical summary
+
+### 🔧 Fixed
+- **Prescription Visibility**: Clear separation between active prescriptions and historical records
+- **History Management**: Only sent/printed prescriptions appear in history and medical summary
+- **Data Cleanup**: Unsent/unprinted prescriptions are automatically deleted from system
+- **User Experience**: Intuitive workflow that matches user expectations
+
+### 🎨 Improved
+- **Prescription Workflow**: Immediate feedback when starting new prescriptions
+- **History Accuracy**: Clean prescription history containing only meaningful, completed prescriptions
+- **System Performance**: Reduced data volume in prescription queries
+- **Documentation**: Updated PRESCRIPTION_HISTORY_LOGIC.md with new rules and implementation details
+
+### 📋 Technical Changes
+- **PatientDetails.svelte**: Updated `onNewPrescription` handler to remove current prescription from prescriptions array
+- **PatientDetails.svelte**: Updated `sendToPharmacy` function to mark prescription as sent and add `endDate`
+- **PatientDetails.svelte**: Updated `printPrescriptions` function to mark prescription as printed and add `endDate`
+- **Firebase Integration**: Enhanced prescription status tracking with `endDate` for historical records
+
 ## [1.4.0] - 2025-01-16
 
 ### ✨ Added

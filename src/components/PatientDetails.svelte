@@ -931,6 +931,29 @@
       console.log('🔍 OpenAI configured:', openaiService.isConfigured())
       console.log('🔍 Current medications:', currentMedications.map(m => m.name))
       
+      // NEW RULE: When "Print PDF", mark prescription as printed and move to history/summary
+      if (currentPrescription) {
+        currentPrescription.status = 'sent'
+        currentPrescription.printedAt = new Date().toISOString()
+        currentPrescription.endDate = new Date().toISOString().split('T')[0] // Mark as historical
+        
+        // Update in Firebase
+        await firebaseStorage.updatePrescription(currentPrescription.id, {
+          status: 'sent',
+          printedAt: new Date().toISOString(),
+          endDate: new Date().toISOString().split('T')[0], // Add endDate for history
+          updatedAt: new Date().toISOString()
+        })
+        
+        // Update the prescription in the local array
+        const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id);
+        if (prescriptionIndex !== -1) {
+          prescriptions[prescriptionIndex] = currentPrescription;
+        }
+        
+        console.log('✅ Marked current prescription as printed and moved to history/summary');
+      }
+      
       // Save current prescriptions first
       await saveCurrentPrescriptions()
       
@@ -1110,17 +1133,19 @@
         return
       }
       
-      // Mark current prescription as sent to pharmacy (printed)
+      // NEW RULE: When "Send to Pharmacy", mark prescription as sent and move to history/summary
       if (currentPrescription) {
         currentPrescription.status = 'sent'
         currentPrescription.sentToPharmacy = true
         currentPrescription.sentAt = new Date().toISOString()
+        currentPrescription.endDate = new Date().toISOString().split('T')[0] // Mark as historical
         
         // Update in Firebase
         await firebaseStorage.updatePrescription(currentPrescription.id, {
           status: 'sent',
           sentToPharmacy: true,
           sentAt: new Date().toISOString(),
+          endDate: new Date().toISOString().split('T')[0], // Add endDate for history
           updatedAt: new Date().toISOString()
         })
         
@@ -1130,7 +1155,7 @@
           prescriptions[prescriptionIndex] = currentPrescription;
         }
         
-        console.log('✅ Marked current prescription as sent to pharmacy');
+        console.log('✅ Marked current prescription as sent to pharmacy and moved to history/summary');
       }
       
       // Create prescription data from current medications for sending to pharmacy
@@ -1965,21 +1990,22 @@
 </script>
 
 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
-  <div class="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
-    <div class="flex justify-between items-center">
-      <div class="flex items-center space-x-3">
+  <div class="bg-teal-600 text-white px-3 sm:px-6 py-3 sm:py-4 rounded-t-lg">
+    <!-- Mobile: Stacked layout -->
+    <div class="block sm:hidden">
+      <div class="flex items-center space-x-3 mb-3">
         <div class="flex-shrink-0">
-          <div class="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center">
-            <i class="fas fa-user text-white text-lg"></i>
+          <div class="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center">
+            <i class="fas fa-user text-white text-sm"></i>
           </div>
         </div>
-        <div>
-          <h5 class="text-xl font-bold text-white mb-1">
+        <div class="flex-1 min-w-0">
+          <h5 class="text-lg font-bold text-white mb-1 truncate">
             {selectedPatient.firstName} {selectedPatient.lastName}
           </h5>
-          <div class="flex items-center text-teal-100 text-sm">
-            <i class="fas fa-calendar-alt mr-2"></i>
-            <span>Age: {(() => {
+          <div class="flex items-center text-teal-100 text-xs">
+            <i class="fas fa-calendar-alt mr-1"></i>
+            <span class="truncate">Age: {(() => {
               // Use stored age field if available
               if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
                 return selectedPatient.age + ' years'
@@ -2003,86 +2029,224 @@
           </div>
         </div>
       </div>
-      <div class="flex space-x-3" role="group">
+      <div class="flex space-x-2" role="group">
         <button 
-          class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 {activeTab === 'history' ? 'bg-teal-500 text-white shadow-lg' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200'}"
+          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 {activeTab === 'history' ? 'bg-teal-500 text-white shadow-lg' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
         >
-          <i class="fas fa-history mr-2"></i>History
+          <i class="fas fa-history mr-1 text-xs"></i>
+          <span class="hidden xs:inline">History</span>
+          <span class="xs:hidden">Hist</span>
         </button>
         <button 
-          class="inline-flex items-center px-4 py-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 transition-all duration-200" 
+          class="flex-1 inline-flex items-center justify-center px-3 py-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 transition-all duration-200" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
         >
-          <i class="fas fa-edit mr-1"></i>Edit
+          <i class="fas fa-edit mr-1 text-xs"></i>
+          <span class="hidden xs:inline">Edit</span>
+          <span class="xs:hidden">Edit</span>
         </button>
+      </div>
+    </div>
+    
+    <!-- Desktop: Horizontal layout -->
+    <div class="hidden sm:block">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+          <div class="flex-shrink-0">
+            <div class="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center">
+              <i class="fas fa-user text-white text-lg"></i>
+            </div>
+          </div>
+      <div>
+            <h5 class="text-xl font-bold text-white mb-1">
+        {selectedPatient.firstName} {selectedPatient.lastName}
+      </h5>
+            <div class="flex items-center text-teal-100 text-sm">
+              <i class="fas fa-calendar-alt mr-2"></i>
+              <span>Age: {(() => {
+            // Use stored age field if available
+            if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+              return selectedPatient.age + ' years'
+            }
+            
+            // Fallback to dateOfBirth calculation only if no age field
+            if (selectedPatient.dateOfBirth) {
+              const birthDate = new Date(selectedPatient.dateOfBirth)
+              if (!isNaN(birthDate.getTime())) {
+                const today = new Date()
+                const age = today.getFullYear() - birthDate.getFullYear()
+                const monthDiff = today.getMonth() - birthDate.getMonth()
+                const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+                return calculatedAge + ' years'
+              }
+            }
+            
+            // If neither age field nor valid dateOfBirth
+            return 'Not specified'
+              })()}</span>
+      </div>
+          </div>
+        </div>
+        <div class="flex space-x-3" role="group">
+        <button 
+            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 {activeTab === 'history' ? 'bg-teal-500 text-white shadow-lg' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200'}"
+          on:click={() => handleTabChange('history')}
+          role="tab"
+          title="View patient history"
+        >
+            <i class="fas fa-history mr-2"></i>History
+        </button>
+        <button 
+            class="inline-flex items-center px-4 py-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 transition-all duration-200" 
+          on:click={startEditingPatient}
+          disabled={loading || isEditingPatient}
+          title="Edit patient information"
+        >
+            <i class="fas fa-edit mr-1"></i>Edit
+        </button>
+        </div>
       </div>
     </div>
   </div>
   
   <div class="p-4">
-    <!-- Progress Bar -->
-    <div class="mb-6">
-      <div class="flex justify-between items-center">
-        <div class="flex items-center cursor-pointer {enabledTabs.includes('overview') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
+    <!-- Responsive Progress Bar -->
+    <div class="mb-4 sm:mb-6">
+      <!-- Cache Busting Element - Remove after confirmation -->
+      <div class="text-center mb-2">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          📱 MAKING CARDS SAME SIZE - {new Date().toLocaleTimeString()}
+        </span>
+      </div>
+      <!-- Mobile: Horizontal scrollable tabs -->
+      <div class="block sm:hidden">
+        <div class="flex overflow-x-auto pb-2 space-x-2">
+          <button 
+            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'overview' ? 'bg-teal-600 text-white' : enabledTabs.includes('overview') ? 'bg-indigo-500 text-white hover:bg-indigo-600' : 'bg-gray-300 text-gray-500'}"
+            on:click={() => enabledTabs.includes('overview') && handleTabChange('overview')}
+            disabled={!enabledTabs.includes('overview')}
+            title={enabledTabs.includes('overview') ? 'View patient overview' : 'Complete previous steps to unlock'}
+          >
+            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'overview' ? 'bg-teal-600' : enabledTabs.includes('overview') ? 'bg-indigo-500' : 'bg-gray-300'}">
+              <i class="fas fa-user text-sm"></i>
+            </div>
+            <div class="text-xs font-medium text-center leading-tight">Overview</div>
+          </button>
+          
+          <button 
+            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'symptoms' ? 'bg-teal-600 text-white' : enabledTabs.includes('symptoms') ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-300 text-gray-500'}"
+            on:click={() => enabledTabs.includes('symptoms') && handleTabChange('symptoms')}
+            disabled={!enabledTabs.includes('symptoms')}
+            title={enabledTabs.includes('symptoms') ? 'Document patient symptoms' : 'Complete previous steps to unlock'}
+          >
+            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'symptoms' ? 'bg-teal-600' : enabledTabs.includes('symptoms') ? 'bg-orange-500' : 'bg-gray-300'}">
+              <i class="fas fa-thermometer-half text-sm"></i>
+            </div>
+            <div class="text-xs font-medium text-center leading-tight">Symptoms</div>
+          </button>
+          
+          <button 
+            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'reports' ? 'bg-teal-600 text-white' : enabledTabs.includes('reports') ? 'bg-purple-500 text-white hover:bg-purple-600' : 'bg-gray-300 text-gray-500'}"
+            on:click={() => enabledTabs.includes('reports') && handleTabChange('reports')}
+            disabled={!enabledTabs.includes('reports')}
+            title={enabledTabs.includes('reports') ? 'View medical reports' : 'Complete previous steps to unlock'}
+          >
+            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'reports' ? 'bg-teal-600' : enabledTabs.includes('reports') ? 'bg-purple-500' : 'bg-gray-300'}">
+              <i class="fas fa-file-medical text-sm"></i>
+            </div>
+            <div class="text-xs font-medium text-center leading-tight">Reports</div>
+          </button>
+          
+          <button 
+            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'diagnoses' ? 'bg-teal-600 text-white' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-gray-300 text-gray-500'}"
+            on:click={() => enabledTabs.includes('diagnoses') && handleTabChange('diagnoses')}
+            disabled={!enabledTabs.includes('diagnoses')}
+            title={enabledTabs.includes('diagnoses') ? 'View diagnoses' : 'Complete previous steps to unlock'}
+          >
+            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'diagnoses' ? 'bg-teal-600' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500' : 'bg-gray-300'}">
+              <i class="fas fa-stethoscope text-sm"></i>
+            </div>
+            <div class="text-xs font-medium text-center leading-tight">Diagnoses</div>
+          </button>
+          
+          <button 
+            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'prescriptions' ? 'bg-teal-600 text-white' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-gray-300 text-gray-500'}"
+            on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}
+            disabled={!enabledTabs.includes('prescriptions')}
+            title={enabledTabs.includes('prescriptions') ? 'View prescriptions' : 'Complete previous steps to unlock'}
+          >
+            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'prescriptions' ? 'bg-teal-600' : enabledTabs.includes('prescriptions') ? 'bg-rose-500' : 'bg-gray-300'}">
+              <i class="fas fa-pills text-sm"></i>
+            </div>
+            <div class="text-xs font-medium text-center leading-tight break-words">Prescriptions</div>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Desktop: Full progress bar with connectors -->
+      <div class="hidden sm:block">
+        <div class="flex justify-between items-center">
+          <div class="flex items-center cursor-pointer {enabledTabs.includes('overview') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('overview') && handleTabChange('overview')}>
-          <div class="flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'overview' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('overview') ? 'bg-blue-500 hover:bg-teal-600' : 'bg-gray-300'}">
-              <i class="fas fa-user"></i>
+            <div class="flex flex-col items-center">
+              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'overview' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('overview') ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-gray-300'}">
+                <i class="fas fa-user text-base"></i>
+              </div>
+              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'overview' ? 'text-teal-600' : enabledTabs.includes('overview') ? 'text-gray-700' : 'text-gray-400'}">Overview</div>
             </div>
-            <div class="text-sm font-medium mt-2 {activeTab === 'overview' ? 'text-teal-600' : enabledTabs.includes('overview') ? 'text-gray-700' : 'text-gray-400'}">Overview</div>
-          </div>
         </div>
         
-        <div class="flex-1 h-0.5 mx-4 {enabledTabs.includes('symptoms') ? 'bg-blue-500' : 'bg-gray-300'}"></div>
+          <div class="flex-1 h-0.5 mx-2 sm:mx-4 {enabledTabs.includes('symptoms') ? 'bg-orange-500' : 'bg-gray-300'}"></div>
         
-        <div class="flex items-center cursor-pointer {enabledTabs.includes('symptoms') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
+          <div class="flex items-center cursor-pointer {enabledTabs.includes('symptoms') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('symptoms') && handleTabChange('symptoms')}>
-          <div class="flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'symptoms' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('symptoms') ? 'bg-blue-500 hover:bg-teal-600' : 'bg-gray-300'}">
-              <i class="fas fa-thermometer-half"></i>
+            <div class="flex flex-col items-center">
+              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'symptoms' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('symptoms') ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-300'}">
+                <i class="fas fa-thermometer-half text-base"></i>
+              </div>
+              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'symptoms' ? 'text-teal-600' : enabledTabs.includes('symptoms') ? 'text-gray-700' : 'text-gray-400'}">Symptoms</div>
             </div>
-            <div class="text-sm font-medium mt-2 {activeTab === 'symptoms' ? 'text-teal-600' : enabledTabs.includes('symptoms') ? 'text-gray-700' : 'text-gray-400'}">Symptoms</div>
-          </div>
         </div>
         
-        <div class="flex-1 h-0.5 mx-4 {enabledTabs.includes('reports') ? 'bg-blue-500' : 'bg-gray-300'}"></div>
+          <div class="flex-1 h-0.5 mx-2 sm:mx-4 {enabledTabs.includes('reports') ? 'bg-purple-500' : 'bg-gray-300'}"></div>
         
-        <div class="flex items-center cursor-pointer {enabledTabs.includes('reports') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
+          <div class="flex items-center cursor-pointer {enabledTabs.includes('reports') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('reports') && handleTabChange('reports')}>
-          <div class="flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'reports' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('reports') ? 'bg-blue-500 hover:bg-teal-600' : 'bg-gray-300'}">
-              <i class="fas fa-file-medical"></i>
+            <div class="flex flex-col items-center">
+              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'reports' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('reports') ? 'bg-purple-500 hover:bg-purple-600' : 'bg-gray-300'}">
+                <i class="fas fa-file-medical text-base"></i>
+              </div>
+              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'reports' ? 'text-teal-600' : enabledTabs.includes('reports') ? 'text-gray-700' : 'text-gray-400'}">Reports</div>
             </div>
-            <div class="text-sm font-medium mt-2 {activeTab === 'reports' ? 'text-teal-600' : enabledTabs.includes('reports') ? 'text-gray-700' : 'text-gray-400'}">Reports</div>
-          </div>
         </div>
         
-        <div class="flex-1 h-0.5 mx-4 {enabledTabs.includes('diagnoses') ? 'bg-blue-500' : 'bg-gray-300'}"></div>
+          <div class="flex-1 h-0.5 mx-2 sm:mx-4 {enabledTabs.includes('diagnoses') ? 'bg-emerald-500' : 'bg-gray-300'}"></div>
         
-        <div class="flex items-center cursor-pointer {enabledTabs.includes('diagnoses') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
+          <div class="flex items-center cursor-pointer {enabledTabs.includes('diagnoses') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('diagnoses') && handleTabChange('diagnoses')}>
-          <div class="flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'diagnoses' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('diagnoses') ? 'bg-blue-500 hover:bg-teal-600' : 'bg-gray-300'}">
-              <i class="fas fa-stethoscope"></i>
+            <div class="flex flex-col items-center">
+              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'diagnoses' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-gray-300'}">
+                <i class="fas fa-stethoscope text-base"></i>
+              </div>
+              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'diagnoses' ? 'text-teal-600' : enabledTabs.includes('diagnoses') ? 'text-gray-700' : 'text-gray-400'}">Diagnoses</div>
             </div>
-            <div class="text-sm font-medium mt-2 {activeTab === 'diagnoses' ? 'text-teal-600' : enabledTabs.includes('diagnoses') ? 'text-gray-700' : 'text-gray-400'}">Diagnoses</div>
-          </div>
         </div>
         
-        <div class="flex-1 h-0.5 mx-4 {enabledTabs.includes('prescriptions') ? 'bg-blue-500' : 'bg-gray-300'}"></div>
+          <div class="flex-1 h-0.5 mx-2 sm:mx-4 {enabledTabs.includes('prescriptions') ? 'bg-rose-500' : 'bg-gray-300'}"></div>
         
-        <div class="flex items-center cursor-pointer {enabledTabs.includes('prescriptions') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
+          <div class="flex items-center cursor-pointer {enabledTabs.includes('prescriptions') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}>
-          <div class="flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'prescriptions' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('prescriptions') ? 'bg-blue-500 hover:bg-teal-600' : 'bg-gray-300'}">
-              <i class="fas fa-prescription-bottle-alt"></i>
+            <div class="flex flex-col items-center">
+              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'prescriptions' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 hover:bg-rose-600' : 'bg-gray-300'}">
+                <i class="fas fa-pills text-base"></i>
+              </div>
+              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'prescriptions' ? 'text-teal-600' : enabledTabs.includes('prescriptions') ? 'text-gray-700' : 'text-gray-400'}">Prescriptions</div>
             </div>
-            <div class="text-sm font-medium mt-2 {activeTab === 'prescriptions' ? 'text-teal-600' : enabledTabs.includes('prescriptions') ? 'text-gray-700' : 'text-gray-400'}">Prescriptions</div>
           </div>
         </div>
       </div>
@@ -2422,7 +2586,7 @@
                     <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                       <h6 class="text-sm font-semibold text-yellow-800 mb-2">
                         <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
-                      </h6>
+                        </h6>
                       <p class="text-sm text-yellow-700 mb-0">{selectedPatient.allergies}</p>
                     </div>
                   </div>
@@ -2434,15 +2598,15 @@
                       <div class="flex justify-between items-start mb-2">
                         <h6 class="text-sm font-semibold text-teal-800 mb-0">
                           <i class="fas fa-pills mr-2"></i>Long Term Medications
-                        </h6>
-                        <button 
+                          </h6>
+                          <button 
                           class="inline-flex items-center px-2 py-1 border border-blue-300 text-xs font-medium text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 rounded transition-colors duration-200" 
-                          on:click={() => editLongTermMedications = selectedPatient.longTermMedications}
-                          title="Edit long-term medications"
-                        >
+                            on:click={() => editLongTermMedications = selectedPatient.longTermMedications}
+                            title="Edit long-term medications"
+                          >
                           <i class="fas fa-edit mr-1"></i>Edit
-                        </button>
-                      </div>
+                          </button>
+                        </div>
                       <p class="text-sm text-blue-700 mb-0">{selectedPatient.longTermMedications}</p>
                     </div>
                   </div>
@@ -2452,15 +2616,15 @@
                       <div class="flex justify-between items-start mb-2">
                         <h6 class="text-sm font-semibold text-gray-700 mb-0">
                           <i class="fas fa-pills mr-2"></i>Long Term Medications
-                        </h6>
-                        <button 
+                          </h6>
+                          <button 
                           class="inline-flex items-center px-2 py-1 border border-blue-300 text-xs font-medium text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 rounded transition-colors duration-200" 
-                          on:click={() => editLongTermMedications = ''}
-                          title="Add long-term medications"
-                        >
+                            on:click={() => editLongTermMedications = ''}
+                            title="Add long-term medications"
+                          >
                           <i class="fas fa-plus mr-1"></i>Add
-                        </button>
-                      </div>
+                          </button>
+                        </div>
                       <p class="text-sm text-gray-500 mb-0">No long-term medications recorded</p>
                     </div>
                   </div>
@@ -2473,39 +2637,39 @@
                       <div class="bg-teal-600 text-white px-3 py-2 rounded-t-lg">
                         <h6 class="text-sm font-semibold text-white mb-0">
                           <i class="fas fa-pills mr-2"></i>
-                          {selectedPatient.longTermMedications ? 'Edit Long Term Medications' : 'Add Long Term Medications'}
-                        </h6>
-                      </div>
-                      <div class="p-3">
-                        <div class="mb-3">
-                          <label for="editLongTermMedicationsField" class="block text-sm font-medium text-gray-700 mb-1">
-                            Long Term Medications
-                          </label>
-                          <textarea 
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
-                            id="editLongTermMedicationsField" 
-                            rows="3" 
-                            bind:value={editLongTermMedications}
-                            placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
-                          ></textarea>
-                          <small class="text-gray-500 text-xs mt-1">List medications the patient is currently taking on a regular basis</small>
+                            {selectedPatient.longTermMedications ? 'Edit Long Term Medications' : 'Add Long Term Medications'}
+                          </h6>
                         </div>
+                      <div class="p-3">
+                          <div class="mb-3">
+                          <label for="editLongTermMedicationsField" class="block text-sm font-medium text-gray-700 mb-1">
+                              Long Term Medications
+                            </label>
+                            <textarea 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                              id="editLongTermMedicationsField" 
+                              rows="3" 
+                              bind:value={editLongTermMedications}
+                              placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
+                            ></textarea>
+                          <small class="text-gray-500 text-xs mt-1">List medications the patient is currently taking on a regular basis</small>
+                          </div>
                           
                         <div class="flex flex-col sm:flex-row gap-2">
-                          <button 
-                            type="button" 
+                            <button 
+                              type="button" 
                             class="flex-1 inline-flex items-center justify-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
-                            on:click={handleSaveLongTermMedications}
-                          >
+                              on:click={handleSaveLongTermMedications}
+                            >
                             <i class="fas fa-save mr-1"></i>Save
-                          </button>
-                          <button 
-                            type="button" 
+                            </button>
+                            <button 
+                              type="button" 
                             class="flex-1 inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
-                            on:click={handleCancelLongTermMedications}
-                          >
+                              on:click={handleCancelLongTermMedications}
+                            >
                             <i class="fas fa-times mr-1"></i>Cancel
-                          </button>
+                            </button>
                         </div>
                       </div>
                     </div>
@@ -2514,13 +2678,13 @@
                 
                 <!-- Next Button -->
                 <div class="mt-4 text-center">
-                  <button 
+                    <button 
                     class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
-                    on:click={goToNextTab}
-                    title="Continue to Symptoms tab"
-                  >
+                      on:click={goToNextTab}
+                      title="Continue to Symptoms tab"
+                    >
                     <i class="fas fa-arrow-right mr-2"></i>Next
-                  </button>
+                    </button>
                 </div>
               {/if}
             </div>
@@ -2565,17 +2729,17 @@
                         <p class="text-sm text-gray-700">
                           <span class="font-medium text-gray-900">Severity:</span> 
                           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {symptom.severity === 'mild' ? 'bg-green-100 text-teal-800' : symptom.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' : symptom.severity === 'severe' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'} capitalize">
-                            {symptom.severity || 'Unknown'}
-                          </span>
-                        </p>
+                          {symptom.severity || 'Unknown'}
+                        </span>
+                      </p>
                         <p class="text-sm text-gray-700">
                           <span class="font-medium text-gray-900">Duration:</span> {symptom.duration || 'Not specified'}
-                        </p>
-                        {#if symptom.notes}
+                      </p>
+                      {#if symptom.notes}
                           <p class="text-sm text-gray-700">
                             <span class="font-medium text-gray-900">Notes:</span> {symptom.notes}
-                          </p>
-                        {/if}
+                        </p>
+                      {/if}
                       </div>
                       <div class="text-xs text-gray-500">
                         <i class="fas fa-calendar mr-1"></i>
@@ -2603,20 +2767,20 @@
           
           <!-- Navigation Buttons -->
           <div class="mt-4 text-center">
-            <button 
+              <button 
               class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
-              on:click={goToPreviousTab}
-              title="Go back to Overview tab"
-            >
+                on:click={goToPreviousTab}
+                title="Go back to Overview tab"
+              >
               <i class="fas fa-arrow-left mr-2"></i>Back
-            </button>
-            <button 
+              </button>
+              <button 
               class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
-              on:click={goToNextTab}
-              title="Continue to Reports tab"
-            >
+                on:click={goToNextTab}
+                title="Continue to Reports tab"
+              >
               <i class="fas fa-arrow-right mr-2"></i>Next
-            </button>
+              </button>
           </div>
         </div>
       {/if}
@@ -2711,13 +2875,13 @@
             <h6 class="text-lg font-semibold text-gray-900 mb-0">
               <i class="fas fa-file-medical mr-2"></i>Medical Reports
             </h6>
-            <button 
+              <button 
               class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
               on:click={() => showReportForm = true}
             >
               <i class="fas fa-plus mr-1"></i>Add Report
-            </button>
-          </div>
+              </button>
+            </div>
           
           <!-- Add Report Form -->
           {#if showReportForm}
@@ -2725,7 +2889,7 @@
               <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 rounded-t-lg">
                 <h6 class="text-sm font-semibold text-gray-800 mb-0">
                   <i class="fas fa-plus mr-2 text-teal-600"></i>Add New Report
-                </h6>
+            </h6>
               </div>
               <div class="p-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -2737,7 +2901,7 @@
                       bind:value={reportTitle}
                       placeholder="e.g., Blood Test Results, X-Ray Report"
                     />
-                  </div>
+                </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Report Date</label>
                     <input 
@@ -2745,7 +2909,7 @@
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
                       bind:value={reportDate}
                     />
-                  </div>
+              </div>
                 </div>
                 
                 <div class="mb-4">
@@ -2815,11 +2979,11 @@
                         </small>
                       </div>
                     {/if}
-                  </div>
-                {/if}
+            </div>
+          {/if}
           
                 <div class="flex gap-3">
-                  <button 
+            <button 
                     class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
                     on:click={addReport}
                   >
@@ -2837,7 +3001,7 @@
                     }}
                   >
                     <i class="fas fa-times mr-1"></i>Cancel
-                  </button>
+            </button>
                 </div>
               </div>
             </div>
@@ -2850,34 +3014,34 @@
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                   <div class="flex justify-between items-center px-4 py-3 border-b border-gray-200">
                     <h6 class="text-sm font-semibold text-gray-900 mb-0">
-                      {#if report.type === 'text'}
+                        {#if report.type === 'text'}
                         <i class="fas fa-keyboard text-teal-600 mr-2"></i>
-                      {:else if report.type === 'pdf'}
+                        {:else if report.type === 'pdf'}
                         <i class="fas fa-file-pdf text-red-600 mr-2"></i>
-                      {:else}
+                        {:else}
                         <i class="fas fa-image text-teal-600 mr-2"></i>
-                      {/if}
-                      {report.title}
-                    </h6>
-                    <button 
+                        {/if}
+                        {report.title}
+                      </h6>
+              <button 
                       class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
-                      on:click={() => removeReport(report.id)}
-                      title="Remove report"
-                    >
-                      <i class="fas fa-trash"></i>
-                    </button>
-                  </div>
+                        on:click={() => removeReport(report.id)}
+                        title="Remove report"
+                      >
+                        <i class="fas fa-trash"></i>
+              </button>
+            </div>
                   <div class="p-4">
                     <p class="text-gray-500 text-xs mb-3">
                       <i class="fas fa-calendar mr-1"></i>
-                      {new Date(report.date).toLocaleDateString()}
-                    </p>
-                    {#if report.type === 'text'}
-                      <div class="report-content">
+                        {new Date(report.date).toLocaleDateString()}
+                      </p>
+                      {#if report.type === 'text'}
+                        <div class="report-content">
                         <p class="text-sm text-gray-700 mb-0">{report.content}</p>
-                      </div>
-                    {:else}
-                      <div class="wave-file-view">
+                        </div>
+                      {:else}
+                        <div class="wave-file-view">
                         <div class="wave-container flex items-end space-x-1 mb-3">
                           <div class="w-1 bg-blue-500 h-4 rounded"></div>
                           <div class="w-1 bg-blue-500 h-6 rounded"></div>
@@ -2887,16 +3051,16 @@
                           <div class="w-1 bg-blue-500 h-7 rounded"></div>
                           <div class="w-1 bg-blue-500 h-4 rounded"></div>
                           <div class="w-1 bg-blue-500 h-6 rounded"></div>
-                        </div>
+                          </div>
                         <div class="file-info text-center">
                           <i class="fas fa-file-upload text-teal-600 mb-2 text-lg"></i>
                           <p class="text-gray-500 text-xs mb-1">
-                            {report.files.length} file(s) uploaded
-                          </p>
+                              {report.files.length} file(s) uploaded
+                            </p>
                           <small class="text-gray-400 text-xs">
-                            {report.files[0]?.name || 'File uploaded'}
-                          </small>
-                        </div>
+                              {report.files[0]?.name || 'File uploaded'}
+                    </small>
+                          </div>
                       </div>
                     {/if}
                   </div>
@@ -2913,20 +3077,20 @@
           
           <!-- Navigation Buttons -->
           <div class="mt-4 text-center">
-            <button 
+                      <button 
               class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
-              on:click={goToPreviousTab}
-              title="Go back to Symptoms tab"
-            >
+                on:click={goToPreviousTab}
+                title="Go back to Symptoms tab"
+              >
               <i class="fas fa-arrow-left mr-2"></i>Back
-            </button>
-            <button 
+                      </button>
+                      <button 
               class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
-              on:click={goToNextTab}
-              title="Continue to Diagnoses tab"
-            >
+                on:click={goToNextTab}
+                title="Continue to Diagnoses tab"
+              >
               <i class="fas fa-arrow-right mr-2"></i>Next
-            </button>
+                      </button>
           </div>
                     </div>
                   {/if}
@@ -2934,60 +3098,63 @@
       <!-- Diagnoses Tab -->
       {#if activeTab === 'diagnoses'}
         <div class="tab-pane active">
-          <div class="flex justify-between items-center mb-4">
-            <h6 class="text-lg font-semibold text-gray-900 mb-0">
-              <i class="fas fa-stethoscope mr-2"></i>Medical Diagnoses
+          <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 sm:mb-4 gap-2 sm:gap-0">
+            <h6 class="text-base sm:text-lg font-semibold text-gray-900 mb-0">
+              <i class="fas fa-stethoscope mr-1 sm:mr-2 text-sm sm:text-base"></i>Medical Diagnoses
             </h6>
             <button 
-              class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+              class="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
               on:click={() => showDiagnosticForm = true}
             >
-              <i class="fas fa-plus mr-1"></i>Add Diagnosis
+              <i class="fas fa-plus mr-1 text-xs sm:text-sm"></i>
+              <span class="hidden sm:inline">Add Diagnosis</span>
+              <span class="sm:hidden">Add</span>
             </button>
-          </div>
+                </div>
           
           <!-- Add Diagnosis Form -->
           {#if showDiagnosticForm}
             <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mb-4">
-              <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 rounded-t-lg">
-                <h6 class="text-sm font-semibold text-gray-800 mb-0">
-                  <i class="fas fa-plus mr-2 text-teal-600"></i>Add New Diagnosis
+              <div class="bg-gray-100 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 rounded-t-lg">
+                <h6 class="text-xs sm:text-sm font-semibold text-gray-800 mb-0">
+                  <i class="fas fa-plus mr-1 sm:mr-2 text-teal-600"></i>Add New Diagnosis
                 </h6>
               </div>
-              <div class="p-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div class="p-3 sm:p-4">
+                <!-- Responsive grid: single column on mobile, two columns on tablet+ -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Diagnosis Title</label>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnosis Title</label>
                     <input 
                       type="text" 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                       bind:value={diagnosticTitle}
                       placeholder="e.g., Hypertension, Diabetes Type 2"
                     />
                   </div>
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Diagnosis Date</label>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnosis Date</label>
                     <input 
                       type="date" 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                       bind:value={diagnosticDate}
                     />
                   </div>
-                </div>
+            </div>
             
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Diagnostic Code (Optional)</label>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnostic Code (Optional)</label>
                     <input 
                       type="text" 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                       bind:value={diagnosticCode}
                       placeholder="e.g., ICD-10: I10, E11.9"
                     />
                   </div>
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Severity</label>
-                    <select class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" bind:value={diagnosticSeverity}>
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Severity</label>
+                    <select class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" bind:value={diagnosticSeverity}>
                       <option value="mild">Mild</option>
                       <option value="moderate">Moderate</option>
                       <option value="severe">Severe</option>
@@ -2995,25 +3162,28 @@
                   </div>
                 </div>
                 
-                <div class="mb-4">
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Diagnosis Description</label>
-                  <textarea 
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
-                    rows="4" 
+                <div class="mb-3 sm:mb-4">
+                  <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnosis Description</label>
+              <textarea 
+                    class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                    rows="3" 
                     bind:value={diagnosticDescription}
                     placeholder="Describe the diagnosis, symptoms, findings, and clinical assessment..."
-                  ></textarea>
-                </div>
-                
-                <div class="flex gap-3">
-                  <button 
-                    class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+              ></textarea>
+            </div>
+            
+                <!-- Responsive button layout: stacked on mobile, side-by-side on tablet+ -->
+                <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <button 
+                    class="flex-1 inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
                     on:click={addDiagnosis}
-                  >
-                    <i class="fas fa-save mr-1"></i>Save Diagnosis
-                  </button>
-                  <button 
-                    class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                    >
+                    <i class="fas fa-save mr-1 text-xs sm:text-sm"></i>
+                    <span class="hidden sm:inline">Save Diagnosis</span>
+                    <span class="sm:hidden">Save</span>
+                </button>
+                    <button 
+                    class="flex-1 inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
                     on:click={() => {
                       showDiagnosticForm = false
                       diagnosticTitle = ''
@@ -3023,8 +3193,10 @@
                       diagnosticDate = new Date().toISOString().split('T')[0]
                     }}
                   >
-                    <i class="fas fa-times mr-1"></i>Cancel
-                  </button>
+                    <i class="fas fa-times mr-1 text-xs sm:text-sm"></i>
+                    <span class="hidden sm:inline">Cancel</span>
+                    <span class="sm:hidden">Cancel</span>
+                    </button>
                 </div>
               </div>
             </div>
@@ -3032,50 +3204,50 @@
           
           <!-- Diagnoses List -->
           {#if diagnoses.length > 0}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
               {#each diagnoses as diagnosis (diagnosis.id)}
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-                  <div class="flex justify-between items-center px-4 py-3 border-b border-gray-200">
-                    <h6 class="text-sm font-semibold text-gray-900 mb-0">
-                      <i class="fas fa-stethoscope text-teal-600 mr-2"></i>
-                      {diagnosis.title}
-                    </h6>
+                  <div class="flex justify-between items-center px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
+                    <h6 class="text-xs sm:text-sm font-semibold text-gray-900 mb-0 truncate">
+                      <i class="fas fa-stethoscope text-teal-600 mr-1 sm:mr-2 text-xs sm:text-sm"></i>
+                      <span class="truncate">{diagnosis.title}</span>
+                      </h6>
                     <button 
-                      class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
-                      on:click={() => removeDiagnosis(diagnosis.id)}
-                      title="Remove diagnosis"
-                    >
-                      <i class="fas fa-trash"></i>
+                      class="inline-flex items-center px-1.5 sm:px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 flex-shrink-0"
+                        on:click={() => removeDiagnosis(diagnosis.id)}
+                        title="Remove diagnosis"
+                      >
+                      <i class="fas fa-trash text-xs"></i>
                     </button>
-                  </div>
-                  <div class="p-4">
-                    <div class="flex justify-between items-center mb-3">
+                </div>
+                  <div class="p-3 sm:p-4">
+                    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 sm:mb-3 gap-1 sm:gap-0">
                       <div class="text-gray-500 text-xs">
                         <i class="fas fa-calendar mr-1"></i>
-                        {new Date(diagnosis.date).toLocaleDateString()}
+                            {new Date(diagnosis.date).toLocaleDateString()}
+              </div>
+                      <span class="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-xs font-medium {diagnosis.severity === 'mild' ? 'bg-green-100 text-teal-800' : diagnosis.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'} self-start sm:self-auto">
+                            {diagnosis.severity.charAt(0).toUpperCase() + diagnosis.severity.slice(1)}
+                          </span>
                       </div>
-                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {diagnosis.severity === 'mild' ? 'bg-green-100 text-teal-800' : diagnosis.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}">
-                        {diagnosis.severity.charAt(0).toUpperCase() + diagnosis.severity.slice(1)}
-                      </span>
-                    </div>
-                    {#if diagnosis.code}
-                      <p class="text-gray-500 text-xs mb-3">
+                      {#if diagnosis.code}
+                      <p class="text-gray-500 text-xs mb-2 sm:mb-3 break-words">
                         <i class="fas fa-code mr-1"></i>
                         <span class="font-medium text-gray-900">Code:</span> {diagnosis.code}
-                      </p>
-                    {/if}
-                    <div class="diagnosis-description">
-                      <p class="text-sm text-gray-700 mb-0">{diagnosis.description}</p>
+                        </p>
+            {/if}
+                      <div class="diagnosis-description">
+                      <p class="text-xs sm:text-sm text-gray-700 mb-0 break-words">{diagnosis.description}</p>
                     </div>
                   </div>
                 </div>
               {/each}
             </div>
           {:else if !isShowingAIDiagnostics}
-            <div class="text-center py-8">
-              <i class="fas fa-stethoscope text-4xl text-gray-400 mb-3"></i>
-              <p class="text-gray-500">No diagnoses recorded for this patient.</p>
-              <p class="text-gray-400 text-sm">Record medical diagnoses, conditions, and assessments here.</p>
+            <div class="text-center py-6 sm:py-8">
+              <i class="fas fa-stethoscope text-3xl sm:text-4xl text-gray-400 mb-2 sm:mb-3"></i>
+              <p class="text-gray-500 text-sm sm:text-base">No diagnoses recorded for this patient.</p>
+              <p class="text-gray-400 text-xs sm:text-sm">Record medical diagnoses, conditions, and assessments here.</p>
             </div>
           {/if}
           
@@ -3115,20 +3287,20 @@
           
           <!-- Navigation Buttons -->
           <div class="mt-4 text-center">
-            <button 
+              <button 
               class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
-              on:click={goToPreviousTab}
-              title="Go back to Reports tab"
-            >
+                on:click={goToPreviousTab}
+                title="Go back to Reports tab"
+              >
               <i class="fas fa-arrow-left mr-2"></i>Back
-            </button>
-            <button 
+              </button>
+              <button 
               class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
-              on:click={goToNextTab}
-              title="Continue to Prescriptions tab"
-            >
+                on:click={goToNextTab}
+                title="Continue to Prescriptions tab"
+              >
               <i class="fas fa-arrow-right mr-2"></i>Next
-            </button>
+              </button>
           </div>
         </div>
       {/if}
@@ -3171,21 +3343,19 @@
             lastAnalyzedMedications = [];
             
             try {
-              // Check if current prescription should be moved to history
-              // Only move to history if it has been saved (finalized) or printed (sent to pharmacy)
+              // NEW RULE: When clicking "+ New Prescription", don't show current prescription under prescriptions anymore
+              // Remove current prescription from prescriptions array regardless of status
               if (currentPrescription && currentMedications && currentMedications.length > 0) {
-                const isSaved = currentPrescription.status === 'finalized' || currentPrescription.status === 'completed';
-                const isPrinted = currentPrescription.status === 'sent' || currentPrescription.sentToPharmacy || currentPrescription.printedAt;
+                console.log('📋 Removing current prescription from prescriptions array (New Prescription clicked)');
                 
-                console.log('📋 Current prescription status check:', {
-                  status: currentPrescription.status,
-                  isSaved,
-                  isPrinted,
-                  medicationsCount: currentMedications.length
-                });
+                // Remove from prescriptions array - this will hide it from prescriptions tab
+                prescriptions = prescriptions.filter(p => p.id !== currentPrescription.id);
                 
-                if (isSaved || isPrinted) {
-                  console.log('📋 Moving current prescription to history (saved or printed)...');
+                // If prescription was sent to pharmacy or printed, move it to history
+                const isSentToPharmacy = currentPrescription.status === 'sent' || currentPrescription.sentToPharmacy || currentPrescription.printedAt;
+                
+                if (isSentToPharmacy) {
+                  console.log('📋 Prescription was sent/printed - moving to history');
                   
                   // Update prescription with end date to mark it as historical
                   currentPrescription.endDate = new Date().toISOString().split('T')[0];
@@ -3196,22 +3366,13 @@
                     updatedAt: new Date().toISOString()
                   });
                   
-                  // Update the prescription in the local array
-                  const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id);
-                  if (prescriptionIndex !== -1) {
-                    prescriptions[prescriptionIndex] = currentPrescription;
-                  }
-                  
                   console.log('✅ Current prescription moved to history');
                 } else {
-                  console.log('⚠️ Current prescription not saved or printed - removing from prescriptions array');
-                  // Remove unsaved/unprinted prescriptions from the prescriptions array
-                  prescriptions = prescriptions.filter(p => p.id !== currentPrescription.id);
-                  
-                  // Also delete from Firebase if it exists
+                  console.log('⚠️ Prescription not sent/printed - deleting from Firebase');
+                  // Delete unsent/unprinted prescriptions from Firebase
                   try {
                     await firebaseStorage.deletePrescription(currentPrescription.id);
-                    console.log('🗑️ Deleted unsaved prescription from Firebase');
+                    console.log('🗑️ Deleted unsent prescription from Firebase');
                   } catch (error) {
                     console.log('⚠️ Could not delete prescription from Firebase (may not exist):', error.message);
                   }

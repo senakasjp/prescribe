@@ -2,12 +2,18 @@
 
 ## Overview
 
-The M-Prescribe system now implements intelligent prescription history management that ensures only completed work appears in the prescription history and summary. This document explains the logic, status definitions, and workflow.
+The M-Prescribe system implements intelligent prescription history management with clear rules for when prescriptions appear in different sections. This document explains the updated logic, status definitions, and workflow.
 
-## 🧠 Smart Prescription History Logic
+## 🧠 Updated Prescription History Logic
 
 ### Core Principle
-**Prescriptions only move to history and summary when they have been saved or printed.**
+**NEW RULE: When clicking "+ New Prescription", don't show current prescription under prescriptions anymore. When "Send to Pharmacy" or "Print PDF", show it under history and medical summary.**
+
+### Key Changes (Latest Update)
+- **"+ New Prescription"** → Removes current prescription from prescriptions tab immediately
+- **"Send to Pharmacy"** → Moves prescription to history and medical summary
+- **"Print PDF"** → Moves prescription to history and medical summary
+- **Unsaved prescriptions** → Deleted from system (no history entry)
 
 ### Status-Based Workflow
 The system distinguishes between three types of prescription states:
@@ -35,44 +41,78 @@ The system distinguishes between three types of prescription states:
 - **Generate PDF** → Status: `'sent'` + `printedAt: timestamp` (printed)
 
 ### 3. History Phase
-- **New Prescription Starts** → System checks current prescription status
-- **If Saved/Printed** → Move to history with `endDate` timestamp
-- **If Draft/Pending** → Remove from prescriptions array and delete from Firebase
+- **New Prescription Starts** → Remove current prescription from prescriptions array
+- **If Sent/Printed** → Move to history with `endDate` timestamp
+- **If Not Sent/Printed** → Delete from Firebase (no history entry)
 
 ## 🔧 Technical Implementation
 
-### Status Checking Logic
+### Updated Status Checking Logic
 ```javascript
-const shouldMoveToHistory = (prescription) => {
-  const isSaved = prescription.status === 'finalized' || prescription.status === 'completed';
-  const isPrinted = prescription.status === 'sent' || 
-                    prescription.sentToPharmacy || 
-                    prescription.printedAt;
-  return isSaved || isPrinted;
-}
-```
-
-### New Prescription Workflow
-```javascript
+// NEW RULE: When clicking "+ New Prescription", don't show current prescription under prescriptions anymore
 onNewPrescription: async () => {
-  // Check if current prescription should be moved to history
   if (currentPrescription && currentMedications && currentMedications.length > 0) {
-    const isSaved = currentPrescription.status === 'finalized' || currentPrescription.status === 'completed';
-    const isPrinted = currentPrescription.status === 'sent' || currentPrescription.sentToPharmacy || currentPrescription.printedAt;
+    // Remove from prescriptions array - this will hide it from prescriptions tab
+    prescriptions = prescriptions.filter(p => p.id !== currentPrescription.id);
     
-    if (isSaved || isPrinted) {
-      // Move to history with endDate timestamp
+    // If prescription was sent to pharmacy or printed, move it to history
+    const isSentToPharmacy = currentPrescription.status === 'sent' || 
+                            currentPrescription.sentToPharmacy || 
+                            currentPrescription.printedAt;
+    
+    if (isSentToPharmacy) {
+      // Update prescription with end date to mark it as historical
       currentPrescription.endDate = new Date().toISOString().split('T')[0];
-      await firebaseStorage.updatePrescription(currentPrescription.id, { endDate: currentPrescription.endDate });
+      await firebaseStorage.updatePrescription(currentPrescription.id, {
+        endDate: currentPrescription.endDate,
+        updatedAt: new Date().toISOString()
+      });
     } else {
-      // Remove unsaved prescription from system
-      prescriptions = prescriptions.filter(p => p.id !== currentPrescription.id);
+      // Delete unsent/unprinted prescriptions from Firebase
       await firebaseStorage.deletePrescription(currentPrescription.id);
     }
   }
   
   // Create new prescription
   const newPrescription = await firebaseStorage.createPrescription(patientId, doctorId, title, description);
+}
+```
+
+### Send to Pharmacy Logic
+```javascript
+// NEW RULE: When "Send to Pharmacy", mark prescription as sent and move to history/summary
+if (currentPrescription) {
+  currentPrescription.status = 'sent'
+  currentPrescription.sentToPharmacy = true
+  currentPrescription.sentAt = new Date().toISOString()
+  currentPrescription.endDate = new Date().toISOString().split('T')[0] // Mark as historical
+  
+  // Update in Firebase
+  await firebaseStorage.updatePrescription(currentPrescription.id, {
+    status: 'sent',
+    sentToPharmacy: true,
+    sentAt: new Date().toISOString(),
+    endDate: new Date().toISOString().split('T')[0],
+    updatedAt: new Date().toISOString()
+  })
+}
+```
+
+### Print PDF Logic
+```javascript
+// NEW RULE: When "Print PDF", mark prescription as printed and move to history/summary
+if (currentPrescription) {
+  currentPrescription.status = 'sent'
+  currentPrescription.printedAt = new Date().toISOString()
+  currentPrescription.endDate = new Date().toISOString().split('T')[0] // Mark as historical
+  
+  // Update in Firebase
+  await firebaseStorage.updatePrescription(currentPrescription.id, {
+    status: 'sent',
+    printedAt: new Date().toISOString(),
+    endDate: new Date().toISOString().split('T')[0],
+    updatedAt: new Date().toISOString()
+  })
 }
 ```
 
@@ -103,30 +143,32 @@ Prescriptions that are work-in-progress:
 ## 🎯 Benefits
 
 ### For Doctors
-- **Clean History**: Only meaningful, completed prescriptions appear in history
-- **No Clutter**: Unsaved drafts don't accumulate in prescription records
-- **Clear Workflow**: Obvious distinction between work-in-progress and completed work
-- **Data Integrity**: Prescription history contains only finalized prescriptions
+- **Clean Prescriptions Tab**: Only active prescriptions appear in prescriptions tab
+- **Immediate Feedback**: Clicking "+ New Prescription" immediately clears current prescription
+- **Clear History**: Only sent/printed prescriptions appear in history and medical summary
+- **No Confusion**: Clear distinction between active work and completed prescriptions
+- **Data Integrity**: Prescription history contains only meaningful, completed prescriptions
 
 ### For System
-- **Storage Efficiency**: Automatic cleanup of unused draft prescriptions
+- **Storage Efficiency**: Automatic cleanup of unsent/unprinted prescriptions
 - **Data Consistency**: Clear status tracking throughout prescription lifecycle
-- **Performance**: Reduced data volume in prescription history queries
+- **Performance**: Reduced data volume in prescription queries
 - **Reliability**: Predictable behavior for prescription management
+- **User Experience**: Intuitive workflow that matches user expectations
 
 ## 🔍 User Experience
 
 ### What Users See
-- **Current Prescription**: Always shows the active prescription being worked on
-- **History**: Only shows saved or printed prescriptions
-- **Summary**: Only includes completed prescriptions in medical summary
-- **Clean Interface**: No confusion between drafts and completed work
+- **Prescriptions Tab**: Only shows active prescriptions being worked on
+- **History Tab**: Only shows sent or printed prescriptions
+- **Medical Summary**: Only includes sent/printed prescriptions in medical summary
+- **Clean Interface**: Clear separation between active work and completed prescriptions
 
 ### What Happens Behind the Scenes
-- **Automatic Status Checking**: System checks prescription status before creating new ones
-- **Intelligent Cleanup**: Unsaved prescriptions are automatically removed
-- **History Management**: Only completed work moves to historical records
-- **Data Persistence**: Saved/printed prescriptions are properly archived
+- **Immediate Removal**: Clicking "+ New Prescription" immediately removes current prescription from prescriptions tab
+- **Smart History Management**: Only sent/printed prescriptions move to historical records
+- **Automatic Cleanup**: Unsent/unprinted prescriptions are automatically deleted
+- **Data Persistence**: Sent/printed prescriptions are properly archived with endDate
 
 ## 🚀 Future Enhancements
 
@@ -151,23 +193,24 @@ Prescriptions that are work-in-progress:
 - Test status transitions thoroughly
 
 ### For Users
-- Finalize prescriptions when work is complete
-- Use "Send to Pharmacy" for prescriptions that need to be delivered
-- Don't worry about unsaved drafts - they're automatically cleaned up
-- Check prescription history for completed work only
+- Use "Send to Pharmacy" for prescriptions that need to be delivered to pharmacies
+- Use "Print PDF" for prescriptions that need to be printed
+- Click "+ New Prescription" to start fresh (current prescription will be removed from prescriptions tab)
+- Check prescription history for sent/printed prescriptions only
+- Don't worry about unsent prescriptions - they're automatically cleaned up
 
 ## 🔧 Troubleshooting
 
 ### Common Issues
-- **Prescription Missing**: Check if it was saved or printed before creating new prescription
-- **History Empty**: Ensure prescriptions are finalized or sent before expecting them in history
-- **Status Confusion**: Use the status indicators to understand prescription state
-- **Data Loss**: Only unsaved drafts are discarded - saved/printed prescriptions are preserved
+- **Prescription Missing from Prescriptions Tab**: This is expected behavior when clicking "+ New Prescription"
+- **History Empty**: Ensure prescriptions are sent to pharmacy or printed before expecting them in history
+- **Status Confusion**: Use "Send to Pharmacy" or "Print PDF" to move prescriptions to history
+- **Data Loss**: Only unsent/unprinted prescriptions are discarded - sent/printed prescriptions are preserved
 
 ### Solutions
-- **Recovery**: Use "Finalize Prescription" to save current work
-- **History Check**: Look in prescription history for completed prescriptions
-- **Status Review**: Check prescription status before creating new ones
+- **Move to History**: Use "Send to Pharmacy" or "Print PDF" to move prescriptions to history
+- **History Check**: Look in prescription history for sent/printed prescriptions
+- **Start Fresh**: Click "+ New Prescription" to begin new prescription (current one will be removed from prescriptions tab)
 - **Data Backup**: Regular system backups protect against data loss
 
 ---
