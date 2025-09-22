@@ -17,6 +17,9 @@ class AITokenTracker {
         dailyUsage: {},
         monthlyUsage: {},
         requests: [],
+        doctorQuotas: {}, // New: Store doctor token quotas
+        defaultQuota: 50000, // Default monthly quota for new doctors
+        tokenPricePerMillion: 0.50, // Price per 1 million tokens (in USD)
         lastUpdated: null
       }
     } catch (error) {
@@ -27,6 +30,9 @@ class AITokenTracker {
         dailyUsage: {},
         monthlyUsage: {},
         requests: [],
+        doctorQuotas: {}, // New: Store doctor token quotas
+        defaultQuota: 50000, // Default monthly quota for new doctors
+        tokenPricePerMillion: 0.50, // Price per 1 million tokens (in USD)
         lastUpdated: null
       }
     }
@@ -277,6 +283,164 @@ class AITokenTracker {
       doctorId,
       stats: this.getDoctorUsageStats(doctorId)
     }))
+  }
+
+  // Quota Management Methods
+  
+  // Set monthly token quota for a doctor
+  setDoctorQuota(doctorId, monthlyQuota) {
+    if (!this.usageData.doctorQuotas) {
+      this.usageData.doctorQuotas = {}
+    }
+    
+    this.usageData.doctorQuotas[doctorId] = {
+      monthlyTokens: monthlyQuota,
+      setDate: new Date().toISOString(),
+      setBy: 'admin' // Could be enhanced to track who set the quota
+    }
+    
+    this.saveUsageData()
+    console.log(`✅ Set monthly quota for doctor ${doctorId}: ${monthlyQuota} tokens`)
+  }
+  
+  // Get doctor quota
+  getDoctorQuota(doctorId) {
+    return this.usageData.doctorQuotas?.[doctorId] || null
+  }
+  
+  // Get doctor's monthly usage for current month
+  getDoctorMonthlyUsage(doctorId) {
+    if (!doctorId) return null
+    
+    const currentMonth = new Date().toISOString().substring(0, 7) // YYYY-MM format
+    const doctorRequests = this.usageData.requests.filter(req => 
+      req.doctorId === doctorId && req.timestamp.startsWith(currentMonth)
+    )
+    
+    const monthlyTokens = doctorRequests.reduce((sum, req) => sum + req.totalTokens, 0)
+    const monthlyCost = doctorRequests.reduce((sum, req) => sum + req.cost, 0)
+    const monthlyRequests = doctorRequests.length
+    
+    return {
+      tokens: monthlyTokens,
+      cost: monthlyCost,
+      requests: monthlyRequests
+    }
+  }
+  
+  // Check if doctor has exceeded quota
+  isQuotaExceeded(doctorId) {
+    const quota = this.getDoctorQuota(doctorId)
+    if (!quota) return false
+    
+    const monthlyUsage = this.getDoctorMonthlyUsage(doctorId)
+    return monthlyUsage.tokens > quota.monthlyTokens
+  }
+  
+  // Get quota status for a doctor
+  getDoctorQuotaStatus(doctorId) {
+    const quota = this.getDoctorQuota(doctorId)
+    const monthlyUsage = this.getDoctorMonthlyUsage(doctorId)
+    
+    if (!quota) {
+      return {
+        hasQuota: false,
+        quotaTokens: 0,
+        usedTokens: monthlyUsage.tokens,
+        remainingTokens: null,
+        percentageUsed: null,
+        isExceeded: false
+      }
+    }
+    
+    const remainingTokens = Math.max(0, quota.monthlyTokens - monthlyUsage.tokens)
+    const percentageUsed = quota.monthlyTokens > 0 ? (monthlyUsage.tokens / quota.monthlyTokens) * 100 : 0
+    
+    return {
+      hasQuota: true,
+      quotaTokens: quota.monthlyTokens,
+      usedTokens: monthlyUsage.tokens,
+      remainingTokens: remainingTokens,
+      percentageUsed: percentageUsed,
+      isExceeded: monthlyUsage.tokens > quota.monthlyTokens
+    }
+  }
+  
+  // Get all doctors with quota information
+  getAllDoctorsWithQuotas() {
+    const doctorIds = [...new Set(this.usageData.requests.map(req => req.doctorId).filter(id => id))]
+    
+    return doctorIds.map(doctorId => ({
+      doctorId,
+      stats: this.getDoctorUsageStats(doctorId),
+      quota: this.getDoctorQuota(doctorId),
+      quotaStatus: this.getDoctorQuotaStatus(doctorId),
+      monthlyUsage: this.getDoctorMonthlyUsage(doctorId)
+    }))
+  }
+
+  // Configuration Management Methods
+  
+  // Set default quota for all doctors
+  setDefaultQuota(defaultQuota) {
+    this.usageData.defaultQuota = parseInt(defaultQuota)
+    this.saveUsageData()
+    console.log(`✅ Default quota set to: ${defaultQuota} tokens`)
+  }
+  
+  // Get default quota
+  getDefaultQuota() {
+    return this.usageData.defaultQuota || 50000
+  }
+  
+  // Set token price per million
+  setTokenPricePerMillion(price) {
+    this.usageData.tokenPricePerMillion = parseFloat(price)
+    this.saveUsageData()
+    console.log(`✅ Token price set to: $${price} per 1M tokens`)
+  }
+  
+  // Get token price per million
+  getTokenPricePerMillion() {
+    return this.usageData.tokenPricePerMillion || 0.50
+  }
+  
+  // Apply default quota to all doctors who don't have a quota set
+  applyDefaultQuotaToAllDoctors() {
+    const doctorIds = [...new Set(this.usageData.requests.map(req => req.doctorId).filter(id => id))]
+    const defaultQuota = this.getDefaultQuota()
+    let appliedCount = 0
+    
+    doctorIds.forEach(doctorId => {
+      const existingQuota = this.getDoctorQuota(doctorId)
+      if (!existingQuota) {
+        this.setDoctorQuota(doctorId, defaultQuota)
+        appliedCount++
+      }
+    })
+    
+    console.log(`✅ Applied default quota (${defaultQuota} tokens) to ${appliedCount} doctors`)
+    return appliedCount
+  }
+  
+  // Apply default quota to specific doctors
+  applyDefaultQuotaToDoctors(doctorIds) {
+    const defaultQuota = this.getDefaultQuota()
+    let appliedCount = 0
+    
+    doctorIds.forEach(doctorId => {
+      this.setDoctorQuota(doctorId, defaultQuota)
+      appliedCount++
+    })
+    
+    console.log(`✅ Applied default quota (${defaultQuota} tokens) to ${appliedCount} doctors`)
+    return appliedCount
+  }
+  
+  // Calculate cost based on current pricing
+  calculateCost(tokens) {
+    const pricePerMillion = this.getTokenPricePerMillion()
+    return (tokens / 1000000) * pricePerMillion
   }
 }
 

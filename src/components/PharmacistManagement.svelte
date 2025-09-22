@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import ThreeDots from './ThreeDots.svelte'
   
   export let user
   
@@ -389,7 +390,9 @@
     <div class="p-4">
       {#if loading}
         <div class="text-center py-8">
-          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div class="flex justify-center mb-2">
+            <ThreeDots size="medium" color="blue" />
+          </div>
           <p class="mt-2 text-gray-500">Loading pharmacists...</p>
         </div>
       {:else if filteredPharmacists.length === 0}

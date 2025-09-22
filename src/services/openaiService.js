@@ -681,13 +681,14 @@ class OpenAIService {
         ? `Current medications: ${currentMedications.map(med => med.name).join(', ')}`
         : 'No current medications'
 
-      // Get patient country, allergies, gender, and long-term medications from additional context
+      // Get patient country, allergies, gender, long-term medications, and doctor country from additional context
       const patientCountry = additionalContext?.patientCountry || 'Not specified'
       const patientAllergies = additionalContext?.patientAllergies || 'None'
       const patientGender = additionalContext?.patientGender || 'Not specified'
       const longTermMedications = additionalContext?.longTermMedications || 'None'
+      const doctorCountry = additionalContext?.doctorCountry || 'Not specified'
 
-      // Include patient age, gender, allergies, and long-term medications in prompt
+      // Include patient age, gender, allergies, long-term medications, and doctor country in prompt
       const ageText = patientAge ? `, Age: ${patientAge} years` : ''
       const genderText = patientGender && patientGender !== 'Not specified' ? `, Gender: ${patientGender}` : ''
       const allergiesText = patientAllergies && patientAllergies !== 'None' ? `, Allergies: ${patientAllergies}` : ''
@@ -697,8 +698,9 @@ class OpenAIService {
 Symptoms: ${symptomsText}
 ${currentMedsText}
 Patient Country: ${patientCountry}
+Doctor Country: ${doctorCountry}
 
-Suggest 3-5 specific PRESCRIPTION medications with dosages for qualified medical doctor to prescribe. Return as JSON object with "suggestions" array:
+Suggest 3-5 specific medications (both prescription and OTC) with dosages for qualified medical doctor to prescribe or recommend. Return as JSON object with "suggestions" array:
 {
   "suggestions": [
     {
@@ -707,25 +709,27 @@ Suggest 3-5 specific PRESCRIPTION medications with dosages for qualified medical
       "frequency": "Once daily",
       "duration": "7 days",
       "instructions": "Take with food",
-      "reason": "Brief reason for suggestion"
+      "reason": "Brief reason for suggestion",
+      "type": "prescription" or "OTC"
     }
   ]
 }
 
-IMPORTANT: PRESCRIPTION-ONLY MEDICATIONS:
-- Suggest ONLY prescription medications that require doctor's prescription
+IMPORTANT: MEDICATION SUGGESTIONS:
+- Suggest both prescription medications and OTC (over-the-counter) medications as appropriate
 - Use medication names commonly available in ${patientCountry}
 - Consider local drug regulations and approval status
 - Account for drug interactions and local prescribing practices
-- Suggest medications that are legally available and commonly prescribed in ${patientCountry}
-- DO NOT include OTC (over-the-counter) medications`
+- Suggest medications that are legally available and commonly used in ${patientCountry}
+- Consider endemic diseases and local health patterns in ${doctorCountry}
+- Account for gender-specific medication effects and contraindications`
 
       const requestBody = {
         model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: 'Medical AI assistant providing drug suggestions for qualified medical doctors. The reader is a qualified medical doctor. CRITICAL: Consider patient age, gender, allergies, long-term medications, and contraindications. Avoid medications that patient is allergic to. Check for drug interactions with long-term medications. Account for age-related and gender-specific dosing adjustments. Consider gender-specific medication effects and contraindications. Return valid JSON only.'
+            content: 'Medical AI assistant providing drug suggestions for qualified medical doctors. The reader is a qualified medical doctor. CRITICAL: Consider patient age, gender, allergies, long-term medications, and contraindications. Avoid medications that patient is allergic to. Check for drug interactions with long-term medications. Account for age-related and gender-specific dosing adjustments. Consider gender-specific medication effects and contraindications. Suggest both prescription and OTC medications as clinically appropriate. Consider endemic diseases and local health patterns based on doctor and patient locations. Return valid JSON only.'
           },
           {
             role: 'user',

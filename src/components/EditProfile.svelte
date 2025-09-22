@@ -4,6 +4,7 @@
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
+  import ThreeDots from './ThreeDots.svelte'
   
   
   const dispatch = createEventDispatcher()
@@ -290,7 +291,7 @@
             disabled={loading}
           >
           {#if loading}
-            <span class="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2" role="status"></span>
+            <ThreeDots size="small" color="white" />
           {/if}
           <i class="fas fa-save mr-1 fa-sm"></i>
           Save Changes

@@ -756,7 +756,8 @@
           patientCountry: selectedPatient?.country || 'Not specified',
           patientAllergies: selectedPatient?.allergies || 'None',
           patientGender: selectedPatient?.gender || 'Not specified',
-          longTermMedications: selectedPatient?.longTermMedications || 'None'
+          longTermMedications: selectedPatient?.longTermMedications || 'None',
+          doctorCountry: currentUser?.country || 'Not specified'
         }
       )
 
@@ -2799,7 +2800,7 @@
         <div class="tab-pane active">
           <div class="flex justify-between items-center mb-3">
             <h6 class="mb-0">
-              <i class="fas fa-heartbeat me-2"></i>Illnesses
+              <i class="fas fa-heartbeat mr-2"></i>Illnesses
             </h6>
             <button 
               class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
@@ -2821,9 +2822,9 @@
               {#each illnesses as illness, index}
                 <div class="list-group-item">
                   <div class="flex w-full justify-between items-start">
-                    <div class="flex-grow-1">
+                    <div class="flex-1">
                       <h6 class="mb-1">
-                        <i class="fas fa-heartbeat me-2"></i>
+                        <i class="fas fa-heartbeat mr-2"></i>
                         {illness.name || 'Unknown Illness'}
                       </h6>
                       <p class="mb-1">
@@ -2863,14 +2864,14 @@
       {/if}
       
           <!-- Next Button -->
-          <div class="row mt-3">
-            <div class="col-12 text-center">
+          <div class="flex justify-center mt-3">
+            <div class="w-full text-center">
                 <button 
                 class="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
                 on:click={goToNextTab}
                 title="Continue to Prescriptions tab"
               >
-                <i class="fas fa-arrow-right me-2"></i>Next
+                <i class="fas fa-arrow-right mr-2"></i>Next
                 </button>
               </div>
           </div>
@@ -3435,7 +3436,7 @@
         <div class="tab-pane active">
           <div class="flex justify-between items-center mb-3">
             <h6 class="mb-0">
-              <i class="fas fa-history me-2"></i>Prescription History
+              <i class="fas fa-history mr-2"></i>Prescription History
             </h6>
           </div>
           
@@ -3456,7 +3457,7 @@
       <div class="bg-white rounded-lg shadow-xl">
         <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
           <h5 class="text-lg font-semibold mb-0">
-            <i class="fas fa-paper-plane me-2"></i>
+            <i class="fas fa-paper-plane mr-2"></i>
             Send to Pharmacy
           </h5>
           <button type="button" class="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 rounded-md p-1" on:click={() => showPharmacyModal = false}></button>
@@ -3488,9 +3489,9 @@
                   checked={selectedPharmacies.includes(pharmacy.id)}
                   on:change={() => togglePharmacySelection(pharmacy.id)}
                 >
-                <div class="flex-grow-1">
+                <div class="flex-1">
                   <div class="fw-bold">
-                    <i class="fas fa-store me-2"></i>
+                    <i class="fas fa-store mr-2"></i>
                     {pharmacy.name}
                   </div>
                   <small class="text-muted">
@@ -3516,7 +3517,7 @@
         </div>
         <div class="bg-gray-50 px-6 py-3 rounded-b-lg">
           <button type="button" class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" on:click={() => showPharmacyModal = false}>
-            <i class="fas fa-times me-2"></i>
+            <i class="fas fa-times mr-2"></i>
             Cancel
           </button>
           <button 
@@ -3525,7 +3526,7 @@
             on:click={sendToSelectedPharmacies}
             disabled={selectedPharmacies.length === 0}
           >
-            <i class="fas fa-paper-plane me-2"></i>
+            <i class="fas fa-paper-plane mr-2"></i>
             Send to {selectedPharmacies.length} Pharmacy{selectedPharmacies.length !== 1 ? 'ies' : ''}
           </button>
         </div>
@@ -3541,7 +3542,7 @@
       <div class="bg-white rounded-lg shadow-xl">
         <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
           <h5 class="text-lg font-semibold mb-0">
-            <i class="fas fa-file-pdf me-2"></i>Prescription PDF
+            <i class="fas fa-file-pdf mr-2"></i>Prescription PDF
           </h5>
           <button 
             type="button" 

@@ -141,14 +141,14 @@
       </div>
       
       <div class="modal-body">
-        <div class="row">
-          <div class="col-md-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-1">
             <h6>Patient Information</h6>
             <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
             <p><strong>ID:</strong> {selectedPatient.idNumber}</p>
             <p><strong>DOB:</strong> {selectedPatient.dateOfBirth}</p>
           </div>
-          <div class="col-md-6">
+          <div class="md:col-span-1">
             <h6>Summary</h6>
             <p><strong>Illnesses:</strong> {illnesses.length}</p>
             <p><strong>Prescriptions:</strong> {prescriptions.length}</p>

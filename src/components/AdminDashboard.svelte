@@ -24,6 +24,15 @@
   let loading = true
   let activeTab = 'overview'
   
+  // Quota management variables
+  let showQuotaModal = false
+  let selectedDoctorId = ''
+  let quotaInput = 0
+  
+  // Configuration variables
+  let defaultQuotaInput = 0
+  let tokenPriceInput = 0
+  
   // Reactive statement to reload data when currentAdmin changes
   $: if (currentAdmin) {
     console.log('🔄 AdminDashboard: currentAdmin changed, reloading...')
@@ -35,7 +44,7 @@
     console.log('🚀 AdminDashboard component mounted')
     
     // Initialize Flowbite dropdowns
-    if (typeof window !== 'undefined' && window.Flowbite) {
+    if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initDropdowns === 'function') {
       window.Flowbite.initDropdowns()
     }
     
@@ -222,6 +231,127 @@
   // Refresh data
   const refreshData = async () => {
     await loadAdminData()
+  }
+
+  // Quota Management Functions
+  
+  // Get doctor name by ID
+  const getDoctorName = (doctorId) => {
+    const doctor = doctors.find(d => d.id === doctorId || d.uid === doctorId)
+    if (doctor) {
+      return doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'
+    }
+    return 'Unknown Doctor'
+  }
+  
+  // Open quota modal
+  const openQuotaModal = (doctorId, currentQuota = 0) => {
+    selectedDoctorId = doctorId
+    quotaInput = currentQuota
+    showQuotaModal = true
+  }
+  
+  // Close quota modal
+  const closeQuotaModal = () => {
+    showQuotaModal = false
+    selectedDoctorId = ''
+    quotaInput = 0
+  }
+  
+  // Save quota
+  const saveQuota = () => {
+    if (!selectedDoctorId || quotaInput < 0) return
+    
+    try {
+      aiTokenTracker.setDoctorQuota(selectedDoctorId, parseInt(quotaInput))
+      
+      // Show success notification
+      console.log(`✅ Quota set for doctor ${selectedDoctorId}: ${quotaInput} tokens`)
+      
+      // Close modal
+      closeQuotaModal()
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        loadAIUsageStats()
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Error setting quota:', error)
+    }
+  }
+
+  // Configuration Management Functions
+  
+  // Save default quota
+  const saveDefaultQuota = () => {
+    if (!defaultQuotaInput || defaultQuotaInput < 0) return
+    
+    try {
+      aiTokenTracker.setDefaultQuota(defaultQuotaInput)
+      console.log(`✅ Default quota saved: ${defaultQuotaInput} tokens`)
+      
+      // Clear input
+      defaultQuotaInput = 0
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        loadAIUsageStats()
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Error saving default quota:', error)
+    }
+  }
+  
+  // Apply default quota to all doctors
+  const applyDefaultQuotaToAll = () => {
+    try {
+      const appliedCount = aiTokenTracker.applyDefaultQuotaToAllDoctors()
+      console.log(`✅ Applied default quota to ${appliedCount} doctors`)
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        loadAIUsageStats()
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Error applying default quota:', error)
+    }
+  }
+  
+  // Save token price
+  const saveTokenPrice = () => {
+    if (!tokenPriceInput || tokenPriceInput < 0) return
+    
+    try {
+      aiTokenTracker.setTokenPricePerMillion(tokenPriceInput)
+      console.log(`✅ Token price saved: $${tokenPriceInput} per 1M tokens`)
+      
+      // Clear input
+      tokenPriceInput = 0
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        loadAIUsageStats()
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Error saving token price:', error)
+    }
+  }
+  
+  // Refresh cost estimates
+  const refreshCostEstimates = () => {
+    try {
+      console.log('🔄 Refreshing cost estimates...')
+      
+      // Refresh the page to show updated data
+      loadAIUsageStats()
+      
+    } catch (error) {
+      console.error('❌ Error refreshing cost estimates:', error)
+    }
   }
 
   // Delete doctor
@@ -708,6 +838,200 @@
                   </div>
                 </div>
               </div>
+              
+              <!-- AI Configuration Section -->
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-cog mr-2 text-red-600"></i>AI Configuration
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <!-- Default Quota Configuration -->
+                      <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h6 class="text-lg font-semibold text-gray-900 mb-3">
+                          <i class="fas fa-users mr-2 text-teal-600"></i>Default Quota
+                        </h6>
+                        <p class="text-sm text-gray-600 mb-4">
+                          Set the default monthly token quota for all doctors. This will be applied to new doctors and can be used to update existing doctors.
+                        </p>
+                        <div class="space-y-3">
+                          <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                              Monthly Token Quota:
+                            </label>
+                            <input
+                              type="number"
+                              bind:value={defaultQuotaInput}
+                              placeholder="Enter default quota"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                              min="0"
+                              step="1000"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">
+                              Current: {aiTokenTracker.getDefaultQuota().toLocaleString()} tokens
+                            </p>
+                          </div>
+                          <div class="flex space-x-2">
+                            <button
+                              class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+                              on:click={saveDefaultQuota}
+                              disabled={!defaultQuotaInput || defaultQuotaInput < 0}
+                            >
+                              <i class="fas fa-save mr-1"></i>Save Default
+                            </button>
+                            <button
+                              class="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors duration-200"
+                              on:click={applyDefaultQuotaToAll}
+                            >
+                              <i class="fas fa-user-plus mr-1"></i>Apply to All
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <!-- Token Pricing Configuration -->
+                      <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h6 class="text-lg font-semibold text-gray-900 mb-3">
+                          <i class="fas fa-dollar-sign mr-2 text-teal-600"></i>Token Pricing
+                        </h6>
+                        <p class="text-sm text-gray-600 mb-4">
+                          Set the cost per 1 million tokens. This affects cost calculations and estimates throughout the system.
+                        </p>
+                        <div class="space-y-3">
+                          <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                              Price per 1M Tokens (USD):
+                            </label>
+                            <input
+                              type="number"
+                              bind:value={tokenPriceInput}
+                              placeholder="Enter price per million tokens"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                              min="0"
+                              step="0.01"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">
+                              Current: ${aiTokenTracker.getTokenPricePerMillion().toFixed(2)} per 1M tokens
+                            </p>
+                          </div>
+                          <div class="flex space-x-2">
+                            <button
+                              class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+                              on:click={saveTokenPrice}
+                              disabled={!tokenPriceInput || tokenPriceInput < 0}
+                            >
+                              <i class="fas fa-save mr-1"></i>Save Price
+                            </button>
+                            <button
+                              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                              on:click={refreshCostEstimates}
+                            >
+                              <i class="fas fa-sync-alt mr-1"></i>Refresh Costs
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Doctor Token Quotas Section -->
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-user-md mr-2 text-red-600"></i>Doctor Token Quotas
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monthly Quota</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Used This Month</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each aiTokenTracker.getAllDoctorsWithQuotas() as doctor}
+                            <tr class="hover:bg-gray-50">
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <div class="font-medium text-gray-900">{getDoctorName(doctor.doctorId)}</div>
+                                <div class="text-xs text-gray-500">ID: {doctor.doctorId}</div>
+                              </td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {#if doctor.quota}
+                                  {doctor.quota.monthlyTokens.toLocaleString()} tokens
+                                {:else}
+                                  <span class="text-gray-400">No quota set</span>
+                                {/if}
+                              </td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {doctor.monthlyUsage.tokens.toLocaleString()} tokens
+                                <br>
+                                <small class="text-gray-500">${doctor.monthlyUsage.cost.toFixed(4)}</small>
+                              </td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {#if doctor.quotaStatus.hasQuota}
+                                  {doctor.quotaStatus.remainingTokens.toLocaleString()} tokens
+                                {:else}
+                                  <span class="text-gray-400">-</span>
+                                {/if}
+                              </td>
+                              <td class="px-6 py-4 whitespace-nowrap">
+                                {#if doctor.quotaStatus.hasQuota}
+                                  {#if doctor.quotaStatus.isExceeded}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                      <i class="fas fa-exclamation-triangle mr-1"></i>Exceeded
+                                    </span>
+                                  {:else if doctor.quotaStatus.percentageUsed > 80}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                      <i class="fas fa-exclamation-circle mr-1"></i>Warning
+                                    </span>
+                                  {:else}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      <i class="fas fa-check-circle mr-1"></i>Good
+                                    </span>
+                                  {/if}
+                                  <br>
+                                  <small class="text-gray-500">{doctor.quotaStatus.percentageUsed.toFixed(1)}% used</small>
+                                {:else}
+                                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    No Quota
+                                  </span>
+                                {/if}
+                              </td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                <button 
+                                  class="text-red-600 hover:text-red-900 font-medium"
+                                  on:click={() => openQuotaModal(doctor.doctorId, doctor.quota?.monthlyTokens || 0)}
+                                >
+                                  <i class="fas fa-edit mr-1"></i>Set Quota
+                                </button>
+                              </td>
+                            </tr>
+                          {:else}
+                            <tr>
+                              <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                No doctors with AI usage found
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
             {:else}
               <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="text-center py-8">
@@ -791,5 +1115,61 @@
     </div>
   {/if}
 </div>
+
+<!-- Quota Management Modal -->
+{#if showQuotaModal}
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" on:click={closeQuotaModal}>
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" on:click|stopPropagation>
+      <div class="mt-3">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-medium text-gray-900">
+            <i class="fas fa-user-md mr-2 text-red-600"></i>Set Token Quota
+          </h3>
+          <button class="text-gray-400 hover:text-gray-600" on:click={closeQuotaModal}>
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            Doctor: <span class="font-semibold text-red-600">{getDoctorName(selectedDoctorId)}</span>
+            <br>
+            <span class="text-xs text-gray-500">ID: {selectedDoctorId}</span>
+          </label>
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            Monthly Token Quota:
+          </label>
+          <input
+            type="number"
+            bind:value={quotaInput}
+            placeholder="Enter monthly token quota"
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+            min="0"
+            step="1000"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            Set the maximum number of tokens this doctor can use per month
+          </p>
+        </div>
+        
+        <div class="flex justify-end space-x-3">
+          <button
+            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+            on:click={closeQuotaModal}
+          >
+            Cancel
+          </button>
+          <button
+            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+            on:click={saveQuota}
+            disabled={!quotaInput || quotaInput < 0}
+          >
+            <i class="fas fa-save mr-1"></i>Save Quota
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Flowbite styling -->

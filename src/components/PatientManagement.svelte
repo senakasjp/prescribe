@@ -11,6 +11,7 @@
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
   import LoadingSpinner from './LoadingSpinner.svelte'
+  import ThreeDots from './ThreeDots.svelte'
   
   const dispatch = createEventDispatcher()
   export let user
@@ -1103,9 +1104,8 @@
                     </div>
                     <div class="text-right">
                       <small class="text-gray-500">
-                        <i class="fas fa-calendar mr-1"></i>
-                        {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
-                          {patient.age} years
+                        Age: {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
+                          {patient.age}
                         {:else if patient.dateOfBirth}
                           {(() => {
                             const birthDate = new Date(patient.dateOfBirth)
@@ -1114,12 +1114,12 @@
                               const age = today.getFullYear() - birthDate.getFullYear()
                               const monthDiff = today.getMonth() - birthDate.getMonth()
                               const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-                              return calculatedAge + ' years'
+                              return calculatedAge
                             }
-                            return 'Age not specified'
+                            return 'Unknown'
                           })()}
                         {:else}
-                          Age not specified
+                          Unknown
                         {/if}
                       </small>
                     </div>
@@ -1160,9 +1160,8 @@
                     </div>
                     <div class="text-right">
                       <small class="text-gray-500">
-                        <i class="fas fa-calendar mr-1"></i>
-                        {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
-                          {patient.age} years
+                        Age: {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
+                          {patient.age}
                         {:else if patient.dateOfBirth}
                           {(() => {
                             const birthDate = new Date(patient.dateOfBirth)
@@ -1171,12 +1170,12 @@
                               const age = today.getFullYear() - birthDate.getFullYear()
                               const monthDiff = today.getMonth() - birthDate.getMonth()
                               const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-                              return calculatedAge + ' years'
+                              return calculatedAge
                             }
-                            return 'Age not specified'
+                            return 'Unknown'
                           })()}
                         {:else}
-                          Age not specified
+                          Unknown
                         {/if}
                       </small>
                     </div>
@@ -1350,12 +1349,14 @@
             </div>
             <div class="p-4">
               {#if chartLoading}
-                <LoadingSpinner 
-                  size="medium" 
-                  color="teal" 
-                  text="Generating chart..." 
-                  fullScreen={false}
-                />
+                <div class="flex items-center justify-center h-64">
+                  <LoadingSpinner 
+                    size="medium" 
+                    color="teal" 
+                    text="Generating chart..." 
+                    fullScreen={false}
+                  />
+                </div>
               {:else}
                 <div class="relative w-full">
                   <div id="prescriptionsChart" class="rounded"></div>
@@ -1373,7 +1374,7 @@
             <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
               <div class="flex justify-between items-center">
                 <h6 class="text-lg font-semibold mb-0">
-                  <i class="fas fa-cog me-2 fa-sm"></i>
+                  <i class="fas fa-cog mr-2 fa-sm"></i>
                   Settings
                 </h6>
                 <button class="inline-flex items-center px-3 py-2 border border-white text-white bg-transparent hover:bg-white hover:text-teal-600 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 transition-colors duration-200" on:click={handleProfileCancel}>
@@ -1466,7 +1467,7 @@
                         readonly
                       />
                       <div class="text-sm text-gray-500">
-                        <i class="fas fa-info-circle me-1"></i>
+                        <i class="fas fa-info-circle mr-1"></i>
                         Email cannot be changed for security reasons
                       </div>
                     </div>
@@ -1507,7 +1508,7 @@
                       </select>
                       {#if editCountry && availableCities.length === 0}
                         <div class="text-sm text-yellow-600">
-                          <i class="fas fa-exclamation-triangle me-1"></i>
+                          <i class="fas fa-exclamation-triangle mr-1"></i>
                           No cities available for the selected country. Please contact support.
                         </div>
                       {/if}
@@ -1535,7 +1536,7 @@
                         disabled={profileLoading}
                       >
                         {#if profileLoading}
-                          <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          <ThreeDots size="small" color="white" />
                         {/if}
                         <i class="fas fa-save mr-1 fa-sm"></i>
                         Save Changes
@@ -1550,7 +1551,7 @@
               <div class="p-4 rounded-lg bg-white" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
                   <div class="mb-4">
                     <h6 class="fw-bold mb-3">
-                      <i class="fas fa-file-medical me-2"></i>
+                      <i class="fas fa-file-medical mr-2"></i>
                       Prescription Template Settings
                     </h6>
                     <p class="text-muted small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
@@ -1580,7 +1581,7 @@
                                 <div class="flex-shrink-0 mr-3">
                                   <i class="fas fa-print text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow">
+                                <div class="flex-1">
                                   <h6 class="text-sm font-semibold text-gray-900 mb-1">I have printed A3 letterheads</h6>
                                   <p class="text-gray-500 text-sm mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
                                 </div>
@@ -1636,7 +1637,7 @@
                                       <div class="col-6">
                                         <strong>Patient Name:</strong> [Patient Name]
                                       </div>
-                                      <div class="col-6 text-end">
+                                      <div class="col-6 text-right">
                                         <strong>Date:</strong> [Date]
                                       </div>
                                     </div>
@@ -1644,7 +1645,7 @@
                                       <div class="col-6">
                                         <strong>Age:</strong> [Age]
                                       </div>
-                                      <div class="col-6 text-end">
+                                      <div class="col-6 text-right">
                                         <strong>Prescription #:</strong> [Rx Number]
                                       </div>
                                     </div>
@@ -1664,7 +1665,7 @@
                                         <div class="col-6">
                                           <strong>Doctor's Signature:</strong> _______________
                                         </div>
-                                        <div class="col-6 text-end">
+                                        <div class="col-6 text-right">
                                           <strong>Date:</strong> _______________
                                         </div>
                                       </div>
@@ -1697,7 +1698,7 @@
                                 <div class="flex-shrink-0 mr-3">
                                   <i class="fas fa-image text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow">
+                                <div class="flex-1">
                                   <h6 class="text-sm font-semibold text-gray-900 mb-1">I want to upload an image for header</h6>
                                   <p class="text-gray-500 text-sm mb-0">Upload your custom header image to be used on all prescriptions.</p>
                                 </div>
@@ -1714,7 +1715,7 @@
                               on:change={handleHeaderUpload}
                             />
                             <div class="text-sm text-gray-500">
-                              <i class="fas fa-info-circle me-1"></i>
+                              <i class="fas fa-info-circle mr-1"></i>
                               Supported formats: JPG, PNG, GIF. Recommended size: 800x200 pixels.
                             </div>
                             
@@ -1765,7 +1766,7 @@
                                         <div class="col-6">
                                           <strong>Patient Name:</strong> [Patient Name]
                                         </div>
-                                        <div class="col-6 text-end">
+                                        <div class="col-6 text-right">
                                           <strong>Date:</strong> [Date]
                                         </div>
                                       </div>
@@ -1773,7 +1774,7 @@
                                         <div class="col-6">
                                           <strong>Age:</strong> [Age]
                                         </div>
-                                        <div class="col-6 text-end">
+                                        <div class="col-6 text-right">
                                           <strong>Prescription #:</strong> [Rx Number]
                                         </div>
                                       </div>
@@ -1793,7 +1794,7 @@
                                           <div class="col-6">
                                             <strong>Doctor's Signature:</strong> _______________
                                           </div>
-                                          <div class="col-6 text-end">
+                                          <div class="col-6 text-right">
                                             <strong>Date:</strong> _______________
                                           </div>
                                         </div>
@@ -1828,7 +1829,7 @@
                                 <div class="flex-shrink-0 mr-3">
                                   <i class="fas fa-cog text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow">
+                                <div class="flex-1">
                                   <h6 class="text-sm font-semibold text-gray-900 mb-1">I want system to add header for template</h6>
                                   <p class="text-gray-500 text-sm mb-0">Use a system-generated header with your practice information.</p>
                                 </div>

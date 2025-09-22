@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte'
+  import ThreeDots from './ThreeDots.svelte'
   
   const dispatch = createEventDispatcher()
   
@@ -139,10 +140,10 @@
   </div>
   <div class="p-4">
     <form on:submit={handleSubmit}>
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="firstName" class="form-label">
+            <label for="firstName" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-user mr-1"></i>First Name <span class="text-red-600">*</span>
             </label>
             <input 
@@ -155,9 +156,9 @@
             >
           </div>
         </div>
-        <div class="col-12 col-md-6">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="lastName" class="form-label">Last Name</label>
+            <label for="lastName" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
             <input 
               type="text" 
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
@@ -169,10 +170,10 @@
         </div>
       </div>
       
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="email" class="form-label">
+            <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-envelope mr-1"></i>Email Address
             </label>
             <input 
@@ -184,9 +185,9 @@
             >
           </div>
         </div>
-        <div class="col-12 col-md-6">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="phone" class="form-label">Phone Number</label>
+            <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
             <input 
               type="tel" 
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
@@ -198,10 +199,10 @@
         </div>
       </div>
       
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="gender" class="form-label">
+            <label for="gender" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-venus-mars mr-1"></i>Gender
             </label>
             <select 
@@ -220,10 +221,10 @@
         </div>
       </div>
       
-      <div class="row g-3">
-        <div class="col-12 col-md-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="dateOfBirth" class="form-label">
+            <label for="dateOfBirth" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-calendar mr-1"></i>Date of Birth
             </label>
             <input 
@@ -236,9 +237,9 @@
             >
           </div>
         </div>
-        <div class="col-12 col-md-3">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="age" class="form-label">
+            <label for="age" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-birthday-cake mr-1"></i>Age <span class="text-red-600">*</span>
             </label>
             <input 
@@ -251,12 +252,12 @@
               placeholder="Auto-calculated"
               disabled={loading}
             >
-            <small class="form-text text-muted">Auto-calculated</small>
+            <small class="text-xs text-gray-500">Auto-calculated</small>
           </div>
         </div>
-        <div class="col-12 col-md-3">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="weight" class="form-label">
+            <label for="weight" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-weight mr-1"></i>Weight
             </label>
             <input 
@@ -270,12 +271,12 @@
               placeholder="kg"
               disabled={loading}
             >
-            <small class="form-text text-muted">Weight in kilograms</small>
+            <small class="text-xs text-gray-500">Weight in kilograms</small>
           </div>
         </div>
-        <div class="col-12 col-md-3">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="bloodGroup" class="form-label">
+            <label for="bloodGroup" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-tint mr-1"></i>Blood Group
             </label>
             <select 
@@ -294,15 +295,15 @@
               <option value="O+">O+</option>
               <option value="O-">O-</option>
             </select>
-            <small class="form-text text-muted">Important for medical procedures</small>
+            <small class="text-xs text-gray-500">Important for medical procedures</small>
           </div>
         </div>
       </div>
       
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="idNumber" class="form-label">ID Number</label>
+            <label for="idNumber" class="block text-sm font-medium text-gray-700 mb-1">ID Number</label>
             <input 
               type="text" 
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
@@ -315,7 +316,7 @@
       </div>
       
       <div class="mb-3">
-        <label for="address" class="form-label">Address</label>
+        <label for="address" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
         <textarea 
           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           id="address" 
@@ -326,7 +327,7 @@
       </div>
       
       <div class="mb-3">
-        <label for="allergies" class="form-label">
+        <label for="allergies" class="block text-sm font-medium text-gray-700 mb-1">
           <i class="fas fa-exclamation-triangle mr-1"></i>Allergies
         </label>
         <textarea 
@@ -337,11 +338,11 @@
           placeholder="List any known allergies (e.g., Penicillin, Shellfish, Latex, etc.)"
           disabled={loading}
         ></textarea>
-        <small class="form-text text-muted">Important: List all known allergies to medications, foods, or other substances</small>
+        <small class="text-xs text-gray-500">Important: List all known allergies to medications, foods, or other substances</small>
       </div>
       
       <div class="mb-3">
-        <label for="longTermMedications" class="form-label">
+        <label for="longTermMedications" class="block text-sm font-medium text-gray-700 mb-1">
           <i class="fas fa-pills mr-1"></i>Long Term Medications
         </label>
         <textarea 
@@ -352,13 +353,13 @@
           placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
           disabled={loading}
         ></textarea>
-        <small class="form-text text-muted">List medications the patient is currently taking on a regular basis</small>
+        <small class="text-xs text-gray-500">List medications the patient is currently taking on a regular basis</small>
       </div>
       
-      <div class="row g-3">
-        <div class="col-12 col-md-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="emergencyContact" class="form-label">Emergency Contact</label>
+            <label for="emergencyContact" class="block text-sm font-medium text-gray-700 mb-1">Emergency Contact</label>
             <input 
               type="text" 
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
@@ -368,9 +369,9 @@
             >
           </div>
         </div>
-        <div class="col-12 col-md-6">
+        <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="emergencyPhone" class="form-label">Emergency Phone</label>
+            <label for="emergencyPhone" class="block text-sm font-medium text-gray-700 mb-1">Emergency Phone</label>
             <input 
               type="tel" 
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
@@ -391,17 +392,17 @@
       <div class="flex flex-col sm:flex-row gap-2">
         <button 
           type="submit" 
-          class="btn btn-primary flex-fill" 
+          class="w-full bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" 
           disabled={loading}
         >
           {#if loading}
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <ThreeDots size="small" color="white" />
           {/if}
           <i class="fas fa-save mr-1"></i>Save Patient
         </button>
         <button 
           type="button" 
-          class="btn btn-secondary flex-fill" 
+          class="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" 
           on:click={handleCancel}
           disabled={loading}
         >

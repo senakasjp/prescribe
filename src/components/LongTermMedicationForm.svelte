@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte'
+  import ThreeDots from './ThreeDots.svelte'
   
   export let visible = true
   export let editingMedication = null // Medication data when editing
@@ -203,7 +204,7 @@
           disabled={loading}
         >
           {#if loading}
-            <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+            <ThreeDots size="small" color="white" />
           {/if}
           <i class="fas fa-save mr-1"></i>{editingMedication ? 'Update Medication' : 'Save Medication'}
         </button>

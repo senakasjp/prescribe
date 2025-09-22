@@ -19,6 +19,7 @@
   let showAdminPanel = false
   let showEditProfileModal = false
   let doctorUsageStats = null
+  let doctorQuotaStatus = null
   let refreshInterval = null
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
@@ -26,8 +27,10 @@
   onMount(() => {
     try {
       // Initialize Flowbite components
-      if (typeof window !== 'undefined' && window.Flowbite) {
+      if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initDropdowns === 'function') {
         window.Flowbite.initDropdowns()
+      }
+      if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initCollapses === 'function') {
         window.Flowbite.initCollapses()
       }
       
@@ -50,51 +53,27 @@
         console.log('✅ Found existing user in localStorage:', existingUser.email)
         user = existingUser
         loading = false // Set loading to false immediately
-        
-        // Set a flag to prevent Firebase from overriding this user
-        userJustUpdated = true
-        
-        // Reset the flag after a short delay to allow legitimate Firebase updates
-        setTimeout(() => {
-          userJustUpdated = false
-        }, 2000)
+        console.log('✅ User loaded from localStorage, skipping Firebase auth listener')
+        return // Skip Firebase auth listener if we have a valid user
       }
       
-      // Set up Firebase auth state listener
+      // Set up Firebase auth state listener only if no localStorage user
       const unsubscribe = firebaseAuthService.onAuthStateChanged(async (firebaseUser) => {
-        console.log('🔥 FIREBASE AUTH LISTENER TRIGGERED!')
-        console.log('Firebase auth state changed:', firebaseUser)
-        console.log('User just updated flag:', userJustUpdated)
-        console.log('Current user before processing:', user?.email)
         
-        // If we have a localStorage user and no Firebase user, don't clear the user
-        const localStorageUser = authService.getCurrentUser()
-        if (!firebaseUser && localStorageUser && !userJustUpdated) {
-          console.log('No Firebase user but localStorage user exists, keeping localStorage user')
-          user = localStorageUser
-          loading = false
-          return
-        }
-        
-        // Don't override user data if it was just updated
-        if (userJustUpdated) {
-          console.log('Skipping Firebase auth update - user was just updated')
-          userJustUpdated = false // Reset the flag
-          return
-        }
-        
-        // If we already have a user from localStorage and no Firebase user, keep the existing user
-        if (!firebaseUser && user) {
-          console.log('No Firebase user but localStorage user exists, keeping existing user')
-          loading = false
-          return
-        }
-        
-        // If we have a localStorage user and Firebase user is null, don't clear the user
-        if (!firebaseUser && user && userJustUpdated) {
-          console.log('Firebase user is null but we have localStorage user, keeping existing user')
-          loading = false
-          return
+        // If Firebase user is null, check localStorage as fallback
+        if (!firebaseUser) {
+          const localStorageUser = authService.getCurrentUser()
+          if (localStorageUser) {
+            console.log('No Firebase user but localStorage user exists, keeping localStorage user')
+            user = localStorageUser
+            loading = false
+            return
+          } else {
+            console.log('No Firebase user and no localStorage user, clearing user')
+            user = null
+            loading = false
+            return
+          }
         }
         
         if (firebaseUser) {
@@ -169,6 +148,11 @@
               }
             }
           }
+          
+          // Save the processed user to localStorage for persistence
+          if (user) {
+            authService.saveCurrentUser(user)
+          }
         } else if (!user) {
           // No Firebase user, check local auth service
     user = authService.getCurrentUser()
@@ -184,9 +168,10 @@
       // Store unsubscribe function for cleanup
       window.firebaseUnsubscribe = unsubscribe
       
-      // Load doctor's AI usage stats only for doctors
+      // Load doctor's AI usage stats and quota status only for doctors
       if (user?.id && user?.role === 'doctor') {
         doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+        doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(user.id)
       }
       
       console.log('Setting loading to false')
@@ -392,7 +377,9 @@
   const refreshDoctorUsageStats = () => {
     if (user?.id) {
       doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
+      doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(user.id)
       console.log('🔄 Doctor usage stats refreshed:', doctorUsageStats)
+      console.log('🔄 Doctor quota status refreshed:', doctorQuotaStatus)
     }
   }
 
@@ -400,6 +387,7 @@
   $: if (user) {
     const userId = user?.id || user?.uid || user?.email || 'default-user'
     doctorUsageStats = aiTokenTracker.getDoctorUsageStats(userId)
+    doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(userId)
     
     // Clear existing interval and set up new one
     if (refreshInterval) {
@@ -410,6 +398,7 @@
       if (user) {
         const currentUserId = user?.id || user?.uid || user?.email || 'default-user'
         doctorUsageStats = aiTokenTracker.getDoctorUsageStats(currentUserId)
+        doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(currentUserId)
       }
     }, 5000)
   }
@@ -471,15 +460,17 @@
               <i class="fas fa-user"></i>
               <span class="text-sm font-medium">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
               
-              <!-- AI Health Bar - Progress Bar -->
+              <!-- AI Health Bar - Tailwind Progress Bar -->
               <div class="flex items-center space-x-2">
                 <i class="fas fa-brain text-white"></i>
-                <div class="w-32 bg-red-200 rounded-full h-5 dark:bg-red-800" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
-                  <div class="bg-white h-5 rounded-full flex items-center justify-center text-xs font-bold text-gray-900" 
-                       style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
-                    {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
+                <div class="w-32 bg-gray-200 rounded-full h-2 dark:bg-gray-700" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / {doctorQuotaStatus?.quotaTokens?.toLocaleString() || 'No quota'} tokens">
+                  <div class="h-2 rounded-full transition-all duration-300 ease-in-out {doctorQuotaStatus?.isExceeded ? 'bg-red-600' : doctorQuotaStatus?.percentageUsed > 80 ? 'bg-yellow-500' : 'bg-teal-500'}" 
+                       style="width: {doctorQuotaStatus?.hasQuota ? Math.min(doctorQuotaStatus.percentageUsed, 100) : Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
                   </div>
                 </div>
+                <span class="text-xs text-white font-medium">
+                  {doctorQuotaStatus?.hasQuota ? Math.round(doctorQuotaStatus.percentageUsed) : Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
+                </span>
               </div>
             </div>
             
@@ -516,13 +507,15 @@
             
             <!-- AI Health Bar Row -->
             <div class="flex items-center space-x-2">
-              <i class="fas fa-robot text-white"></i>
-              <div class="flex-1 bg-red-200 rounded-full h-4 dark:bg-red-800" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / 100,000 tokens">
-                <div class="bg-white h-4 rounded-full flex items-center justify-center text-xs font-bold text-gray-900" 
-                     style="width: {Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
-                  {Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
+              <i class="fas fa-brain text-white"></i>
+              <div class="flex-1 bg-gray-200 rounded-full h-2 dark:bg-gray-700" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / {doctorQuotaStatus?.quotaTokens?.toLocaleString() || 'No quota'} tokens">
+                <div class="h-2 rounded-full transition-all duration-300 ease-in-out {doctorQuotaStatus?.isExceeded ? 'bg-red-600' : doctorQuotaStatus?.percentageUsed > 80 ? 'bg-yellow-500' : 'bg-teal-500'}" 
+                     style="width: {doctorQuotaStatus?.hasQuota ? Math.min(doctorQuotaStatus.percentageUsed, 100) : Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
                 </div>
               </div>
+              <span class="text-xs text-white font-medium">
+                {doctorQuotaStatus?.hasQuota ? Math.round(doctorQuotaStatus.percentageUsed) : Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
+              </span>
             </div>
             
             <!-- Action Buttons Row -->

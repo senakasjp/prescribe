@@ -24,6 +24,71 @@ class FirebaseAuthService {
     })
   }
 
+  // Handle user login - process Firebase user and sync with our system
+  async handleUserLogin(firebaseUser) {
+    console.log('🔄 handleUserLogin called with user:', firebaseUser?.email)
+    
+    // Check if this is the super admin email
+    const isSuperAdmin = firebaseUser.email.toLowerCase() === 'senakahks@gmail.com'
+    
+    // Check if user exists in our system
+    let existingUser = null
+    try {
+      existingUser = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      console.log('🔍 Existing doctor found:', existingUser ? 'Yes' : 'No')
+    } catch (error) {
+      console.error('❌ Error checking for existing doctor:', error)
+    }
+
+    if (existingUser) {
+      console.log('✅ Updating existing user with Firebase data')
+      // Update existing user with Firebase data
+      const updatedUser = {
+        ...existingUser,
+        uid: firebaseUser.uid,
+        displayName: firebaseUser.displayName,
+        photoURL: firebaseUser.photoURL,
+        provider: 'google',
+        isAdmin: isSuperAdmin // Set admin flag for super admin
+      }
+      
+      try {
+        await firebaseStorage.updateDoctor(updatedUser)
+        console.log('✅ Doctor updated in Firebase:', updatedUser.email)
+        return updatedUser
+      } catch (error) {
+        console.error('❌ Error updating doctor:', error)
+        return existingUser // Return existing user if update fails
+      }
+    } else {
+      console.log('🆕 Creating new user in Firebase')
+      // Create new user
+      const doctorData = {
+        email: firebaseUser.email,
+        firstName: firebaseUser.displayName?.split(' ')[0] || '',
+        lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || '',
+        name: firebaseUser.displayName || '',
+        role: 'doctor',
+        uid: firebaseUser.uid,
+        displayName: firebaseUser.displayName,
+        photoURL: firebaseUser.photoURL,
+        provider: 'google',
+        isAdmin: isSuperAdmin, // Set admin flag for super admin
+        createdAt: new Date().toISOString()
+      }
+      
+      try {
+        console.log('🏥 Creating doctor with data:', doctorData)
+        const newDoctor = await firebaseStorage.createDoctor(doctorData)
+        console.log('✅ Doctor created in Firebase:', newDoctor)
+        return newDoctor
+      } catch (error) {
+        console.error('❌ Error creating doctor:', error)
+        throw error
+      }
+    }
+  }
+
   // Notify all auth state listeners
   async notifyAuthStateListeners(user) {
     console.log('🔥 Firebase auth state changed, processing user:', user?.email)

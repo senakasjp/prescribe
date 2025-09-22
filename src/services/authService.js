@@ -13,15 +13,22 @@ class AuthService {
   loadCurrentUser() {
     try {
       const stored = localStorage.getItem('prescribe-current-user')
+      console.log('AuthService: Raw localStorage data:', stored)
       this.currentUser = stored ? JSON.parse(stored) : null
       console.log('AuthService: Loaded current user from localStorage:', this.currentUser)
       if (this.currentUser) {
+        console.log('AuthService: User email:', this.currentUser.email)
+        console.log('AuthService: User role:', this.currentUser.role)
         console.log('AuthService: User country from localStorage:', this.currentUser.country)
         // Check if user data is valid (has required fields)
         if (!this.currentUser.email || !this.currentUser.role) {
           console.warn('AuthService: Invalid user data found, clearing')
           this.clearCurrentUser()
+        } else {
+          console.log('AuthService: User data is valid')
         }
+      } else {
+        console.log('AuthService: No user found in localStorage')
       }
     } catch (error) {
       console.error('Error loading current user:', error)
@@ -233,6 +240,8 @@ class AuthService {
 
   // Get current user
   getCurrentUser() {
+    // Always reload from localStorage to ensure we have the latest data
+    this.loadCurrentUser()
     return this.currentUser
   }
 
