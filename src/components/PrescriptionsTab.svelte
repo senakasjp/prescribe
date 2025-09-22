@@ -178,55 +178,55 @@
   })
 </script>
 
-<div class="prescriptions-responsive-container">
-  <!-- Full Width Layout -->
-  <div class="row">
-    <!-- Main Prescription Column - Full Width -->
-    <div class="col-12 mb-3">
-      <!-- Prescription Card -->
-      <div class="card border-2 border-info shadow-sm">
-        <div class="card-header">
-          <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
-            <h5 class="card-title mb-2 mb-md-0">
-              <i class="fas fa-prescription-bottle-alt me-2"></i>Prescription
-            </h5>
-            <div class="d-flex flex-wrap gap-2">
-              <!-- New Prescription Button -->
-              <button 
-                class="btn btn-success btn-sm" 
-                on:click={onNewPrescription}
-                title="Create a new prescription"
-              >
-                <i class="fas fa-plus me-1"></i>New Prescription
-              </button>
-              
-              <!-- Add Drug Button -->
-              <button 
-                  class="btn btn-primary btn-sm" 
-                  on:click={onAddDrug}
-                  disabled={showMedicationForm || !currentPrescription}
-                  title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
-              >
-                <i class="fas fa-plus me-1"></i>Add Drug
-              </button>
-              
-              <!-- AI Drug Suggestions Button -->
-              <button 
-                  class="btn btn-info btn-sm" 
-                  on:click={onGenerateAIDrugSuggestions}
-                  disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured() || !currentPrescription || (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0))}
-                  title={!currentPrescription ? "Create a prescription first" : (!symptoms || symptoms.length === 0) ? "Add symptoms first" : (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0)) ? "Add at least one drug first" : "Get AI-assisted drug suggestions"}
-              >
-                {#if loadingAIDrugSuggestions}
-                  <i class="fas fa-spinner fa-spin me-1"></i>Generating...
-                {:else}
-                  <i class="fas fa-brain me-1 text-danger"></i>AI Suggestions
-                {/if}
-              </button>
-            </div>
-          </div>
+<div class="space-y-4">
+  <!-- Prescription Card -->
+  <div class="bg-white border-2 border-gray-200 rounded-lg shadow-sm">
+    <div class="bg-gray-100 text-gray-800 px-4 py-3 rounded-t-lg">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+        <h5 class="text-lg font-semibold mb-2 md:mb-0">
+          <i class="fas fa-prescription-bottle-alt mr-2"></i>Prescription
+        </h5>
+        <div class="flex flex-wrap gap-2">
+          <!-- New Prescription Button -->
+          <button 
+            class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200" 
+            on:click={onNewPrescription}
+            title="Create a new prescription"
+          >
+            <i class="fas fa-plus mr-1"></i>New Prescription
+          </button>
+          
+          <!-- Add Drug Button -->
+          <button 
+              class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed" 
+              on:click={onAddDrug}
+              disabled={showMedicationForm || !currentPrescription}
+              title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
+          >
+            <i class="fas fa-plus mr-1"></i>Add Drug
+          </button>
+          
+          <!-- AI Drug Suggestions Button -->
+          <button 
+              class="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed" 
+              on:click={onGenerateAIDrugSuggestions}
+              disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured() || !currentPrescription || (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0))}
+              title={!currentPrescription ? "Create a prescription first" : (!symptoms || symptoms.length === 0) ? "Add symptoms first" : (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0)) ? "Add at least one drug first" : "Get AI-assisted drug suggestions"}
+          >
+            {#if loadingAIDrugSuggestions}
+              <svg class="animate-spin -ml-1 mr-1 h-3 w-3 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Generating...
+            {:else}
+              <i class="fas fa-brain mr-1 text-red-600"></i>AI Suggestions
+            {/if}
+          </button>
         </div>
-        <div class="card-body">
+      </div>
+    </div>
+    <div class="p-4">
           <!-- Patient Forms -->
           <PatientForms 
             {showMedicationForm}
@@ -241,13 +241,13 @@
           {#if currentMedications && currentMedications.length > 0}
             <div class="medication-list">
               {#each currentMedications as medication, index}
-                <div class="medication-item d-flex justify-content-between align-items-center py-2 border-bottom">
-                  <div class="flex-grow-1">
-                    <div class="fw-bold fs-6">
+                <div class="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-900">
                       {medication.name}
                       {#if medication.aiSuggested}
-                        <span class="badge bg-info ms-2">
-                          <i class="fas fa-brain me-1 text-danger"></i>AI Suggested
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ml-2">
+                          <i class="fas fa-brain mr-1 text-red-600"></i>AI Suggested
                         </span>
                       {/if}
                       <!-- Availability Badge -->
@@ -255,44 +255,44 @@
                         {@const availability = isMedicationAvailable(medication)}
                         {#if availability !== null && availability.available}
                           {@const isLowStock = availability.stockItem && availability.stockItem.initialQuantity && availability.quantity <= (availability.stockItem.initialQuantity * 0.1)}
-                          <span class="badge {isLowStock ? 'bg-danger' : 'bg-warning'} ms-2">
-                            <i class="fas fa-check-circle me-1"></i>In Stock
+                          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {isLowStock ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'} ml-2">
+                            <i class="fas fa-check-circle mr-1"></i>In Stock
                           </span>
                         {/if}
                       {:else}
-                        <span class="badge bg-secondary ms-2">
-                          <i class="fas fa-spinner fa-spin me-1"></i>Checking...
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ml-2">
+                          <i class="fas fa-spinner fa-spin mr-1"></i>Checking...
                         </span>
                       {/if}
                     </div>
-                    <small class="text-muted">
+                    <div class="text-gray-500 text-sm">
                       {medication.dosage} • {medication.frequency} • {medication.duration}
-                    </small>
+                    </div>
                     {#if medication.instructions}
                       <div class="mt-1">
-                        <small class="text-muted">{medication.instructions}</small>
+                        <div class="text-gray-500 text-sm">{medication.instructions}</div>
                       </div>
                     {/if}
                     {#if medication.aiReason}
                       <div class="mt-1">
-                        <small class="text-info">
-                          <i class="fas fa-lightbulb me-1"></i>
-                          <strong>AI Reason:</strong> {medication.aiReason}
-                        </small>
+                        <div class="text-gray-700 text-sm">
+                          <i class="fas fa-lightbulb mr-1"></i>
+                          <span class="font-medium">AI Reason:</span> {medication.aiReason}
+                        </div>
                       </div>
                     {/if}
                   </div>
                   {#if !prescriptionsFinalized}
-                    <div class="btn-group btn-group-sm">
+                    <div class="flex gap-2">
                       <button 
-                        class="btn btn-outline-primary btn-sm"
+                        class="inline-flex items-center px-2 py-1 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                         on:click={() => onEditPrescription(medication, index)}
                         title="Edit medication"
                       >
                         <i class="fas fa-edit"></i>
                       </button>
                       <button 
-                        class="btn btn-outline-danger btn-sm"
+                        class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
                         on:click={() => {
                           if (medication.id) {
                             onDeletePrescription(medication.id, index)
@@ -307,8 +307,8 @@
                       </button>
                     </div>
                   {:else}
-                    <div class="text-muted">
-                      <small><i class="fas fa-check-circle me-1"></i>Finalized</small>
+                    <div class="text-gray-500">
+                      <div class="text-sm"><i class="fas fa-check-circle mr-1"></i>Finalized</div>
                     </div>
                   {/if}
                 </div>
@@ -317,48 +317,46 @@
             
             <!-- AI Suggestions Section - Inside Prescription Card -->
             {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0}
-              <div class="mt-4 border-top pt-3">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                  <h6 class="text-info mb-0">
-                    <i class="fas fa-brain me-2 text-danger"></i>
+              <div class="mt-4 border-t border-gray-200 pt-4">
+                <div class="flex justify-between items-center mb-4">
+                  <h6 class="text-lg font-semibold text-gray-700 mb-0">
+                    <i class="fas fa-brain mr-2 text-red-600"></i>
                     AI Drug Suggestions ({aiDrugSuggestions.length})
                   </h6>
                 </div>
-                <div class="row">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {#each aiDrugSuggestions as suggestion, index}
-                    <div class="col-12 col-md-6 col-lg-4 mb-3">
-                      <div class="card border-info">
-                        <div class="card-body p-2">
-                          <div class="d-flex justify-content-between align-items-start mb-1">
-                            <h6 class="card-title mb-0 text-primary">{suggestion.name}</h6>
-                            <div class="btn-group btn-group-sm">
-                              <button 
-                                class="btn btn-success btn-sm"
-                                on:click={() => onAddAISuggestedDrug(suggestion, index)}
-                                disabled={!currentPrescription}
-                                title="Add to prescription"
-                              >
-                                <i class="fas fa-plus"></i>
-                              </button>
-                              <button 
-                                class="btn btn-outline-danger btn-sm"
-                                on:click={() => onRemoveAISuggestedDrug(index)}
-                                title="Remove suggestion"
-                              >
-                                <i class="fas fa-times"></i>
-                              </button>
-                            </div>
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                      <div class="p-3">
+                        <div class="flex justify-between items-start mb-2">
+                          <h6 class="text-sm font-semibold text-gray-700 mb-0">{suggestion.name}</h6>
+                          <div class="flex gap-1">
+                            <button 
+                              class="inline-flex items-center px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                              on:click={() => onAddAISuggestedDrug(suggestion, index)}
+                              disabled={!currentPrescription}
+                              title="Add to prescription"
+                            >
+                              <i class="fas fa-plus"></i>
+                            </button>
+                            <button 
+                              class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+                              on:click={() => onRemoveAISuggestedDrug(index)}
+                              title="Remove suggestion"
+                            >
+                              <i class="fas fa-times"></i>
+                            </button>
                           </div>
-                          <div class="small text-muted mb-1">
-                            <strong>Dosage:</strong> {suggestion.dosage} • <strong>Frequency:</strong> {suggestion.frequency}
-                          </div>
-                          {#if suggestion.reason}
-                            <div class="small text-info">
-                              <i class="fas fa-lightbulb me-1"></i>
-                              <strong>Reason:</strong> {suggestion.reason}
-                            </div>
-                          {/if}
                         </div>
+                        <div class="text-gray-500 text-sm mb-2">
+                          <span class="font-medium">Dosage:</span> {suggestion.dosage} • <span class="font-medium">Frequency:</span> {suggestion.frequency}
+                        </div>
+                        {#if suggestion.reason}
+                          <div class="text-gray-700 text-sm">
+                            <i class="fas fa-lightbulb mr-1"></i>
+                            <span class="font-medium">Reason:</span> {suggestion.reason}
+                          </div>
+                        {/if}
                       </div>
                     </div>
                   {/each}
@@ -367,40 +365,40 @@
             {/if}
             
             <!-- Prescription Actions -->
-            <div class="mt-3 d-flex gap-2 justify-content-center">
+            <div class="mt-4 flex gap-3 justify-center">
               {#if !prescriptionsFinalized}
                 <button 
-                  class="btn btn-success btn-sm"
+                  class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   on:click={onFinalizePrescription}
                   disabled={currentMedications.length === 0}
                   title="Finalize this prescription"
                 >
-                  <i class="fas fa-check me-1"></i>Finalize Prescription
+                  <i class="fas fa-check mr-1"></i>Finalize Prescription
                 </button>
               {:else}
                 <button 
-                  class="btn btn-warning btn-sm"
+                  class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200"
                   on:click={onShowPharmacyModal}
                   title="Send to pharmacy"
                 >
-                  <i class="fas fa-paper-plane me-1"></i>Send to Pharmacy
+                  <i class="fas fa-paper-plane mr-1"></i>Send to Pharmacy
                 </button>
               {/if}
               
               <!-- Print/PDF Button - Only available after finalizing -->
               {#if prescriptionsFinalized && currentMedications.length > 0}
                 <button 
-                  class="btn btn-info btn-sm"
+                  class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                   on:click={onPrintPrescriptions}
                   title="Generate and download prescription PDF"
                 >
-                  <i class="fas fa-file-pdf me-1"></i>Print PDF
+                  <i class="fas fa-file-pdf mr-1"></i>Print PDF
                 </button>
               {/if}
             </div>
           {:else}
-            <div class="text-center text-muted py-3">
-              <i class="fas fa-pills fa-2x mb-2"></i>
+            <div class="text-center text-gray-500 py-8">
+              <i class="fas fa-pills text-4xl mb-3"></i>
               <p>No current prescriptions for today</p>
             </div>
           {/if}
@@ -408,21 +406,17 @@
         </div>
       </div>
     </div>
-  </div>
   
   <!-- Navigation Buttons -->
-  <div class="row mt-3">
-    <div class="col-12 text-center">
-      <button 
-        class="btn btn-outline-secondary btn-sm"
-        on:click={onGoToPreviousTab}
-        title="Go back to Diagnoses tab"
-      >
-        <i class="fas fa-arrow-left me-2"></i>Back
-      </button>
-    </div>
+  <div class="mt-4 text-center">
+    <button 
+      class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
+      on:click={onGoToPreviousTab}
+      title="Go back to Diagnoses tab"
+    >
+      <i class="fas fa-arrow-left mr-2"></i>Back
+    </button>
   </div>
-</div>
 
 <style>
   /* Component-specific styles - main responsive styles are in PatientDetails.svelte */

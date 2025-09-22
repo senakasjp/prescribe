@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx,svelte}",
@@ -37,9 +37,5 @@ module.exports = {
       }
     },
   },
-  plugins: [
-    require('flowbite/plugin'),
-    require('@tailwindcss/forms'),
-    require('@tailwindcss/typography')
-  ],
+  plugins: [],
 }

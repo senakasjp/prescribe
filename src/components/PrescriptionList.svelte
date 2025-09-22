@@ -24,63 +24,63 @@
 </script>
 
 {#if prescriptionsWithMedications && prescriptionsWithMedications.length > 0}
-  <div class="prescription-history">
+  <div class="space-y-4">
     {#each prescriptionsWithMedications as prescription, prescriptionIndex}
-      <div class="card mb-3 shadow-sm border-2 {prescriptionIndex % 2 === 0 ? 'border-primary' : 'border-success'}">
+      <div class="bg-white rounded-lg shadow-sm border-2 {prescriptionIndex % 2 === 0 ? 'border-teal-200' : 'border-teal-200'}">
         <!-- Prescription Header -->
-        <div class="card-header bg-primary text-white py-2">
-          <div class="d-flex align-items-center">
-            <i class="fas fa-prescription-bottle-alt me-2"></i>
-            <h6 class="mb-0 fw-bold">
+        <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
+          <div class="flex items-center">
+            <i class="fas fa-prescription-bottle-alt mr-2"></i>
+            <h6 class="text-lg font-semibold mb-0">
               Prescription #{prescriptionIndex + 1} on {formatPrescriptionDate(prescription.createdAt)}
             </h6>
           </div>
           {#if prescription.notes}
-            <small class="opacity-75 mt-1 d-block">
-              <i class="fas fa-sticky-note me-1"></i>
+            <div class="text-sm opacity-90 mt-1">
+              <i class="fas fa-sticky-note mr-1"></i>
               {prescription.notes}
-            </small>
+            </div>
           {/if}
         </div>
         
         <!-- Medications List -->
-        <div class="card-body p-0">
+        <div class="divide-y divide-gray-200">
           {#each prescription.medications as medication, medicationIndex}
-            <div class="border-bottom p-3 {medicationIndex === prescription.medications.length - 1 ? 'border-bottom-0' : ''} {prescriptionIndex % 2 === 0 ? 'border-primary' : 'border-success'}">
-              <div class="row g-2">
-                <div class="col-12">
-                  <h6 class="mb-2 text-primary">
-                    <i class="fas fa-pills me-2"></i>
+            <div class="p-4 {medicationIndex === prescription.medications.length - 1 ? '' : 'border-b border-gray-200'}">
+              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="col-span-full">
+                  <h6 class="text-lg font-semibold text-teal-600 mb-2">
+                    <i class="fas fa-pills mr-2"></i>
                     {medication.name || 'Unknown Medication'}
                   </h6>
                 </div>
-                <div class="col-sm-6 col-md-3">
-                  <small class="text-muted d-block">Dosage</small>
-                  <span class="fw-bold">{medication.dosage || 'Not specified'}</span>
+                <div>
+                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Dosage</div>
+                  <div class="font-semibold text-gray-900">{medication.dosage || 'Not specified'}</div>
                 </div>
-                <div class="col-sm-6 col-md-3">
-                  <small class="text-muted d-block">Duration</small>
-                  <span class="fw-bold">{medication.duration || 'Not specified'}</span>
+                <div>
+                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</div>
+                  <div class="font-semibold text-gray-900">{medication.duration || 'Not specified'}</div>
                 </div>
-                <div class="col-sm-6 col-md-3">
-                  <small class="text-muted d-block">Frequency</small>
-                  <span class="fw-bold">{medication.frequency || 'Not specified'}</span>
+                <div>
+                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Frequency</div>
+                  <div class="font-semibold text-gray-900">{medication.frequency || 'Not specified'}</div>
                 </div>
-                <div class="col-sm-6 col-md-3">
-                  <small class="text-muted d-block">Added</small>
-                  <span class="text-muted">
-                    <i class="fas fa-calendar me-1"></i>
+                <div>
+                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Added</div>
+                  <div class="text-gray-600">
+                    <i class="fas fa-calendar mr-1"></i>
                     {medication.createdAt ? new Date(medication.createdAt).toLocaleDateString() : 'Unknown date'}
-                  </span>
+                  </div>
                 </div>
-                <div class="col-12">
-                  <small class="text-muted d-block">Instructions</small>
-                  <p class="mb-1">{medication.instructions || 'No instructions provided'}</p>
+                <div class="col-span-full">
+                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Instructions</div>
+                  <p class="text-gray-700">{medication.instructions || 'No instructions provided'}</p>
                 </div>
                 {#if medication.notes}
-                  <div class="col-12">
-                    <small class="text-muted d-block">Notes</small>
-                    <p class="mb-0 text-info">{medication.notes}</p>
+                  <div class="col-span-full">
+                    <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Notes</div>
+                    <p class="text-teal-600">{medication.notes}</p>
                   </div>
                 {/if}
               </div>
@@ -91,9 +91,9 @@
     {/each}
   </div>
 {:else}
-  <div class="text-center p-4">
-    <i class="fas fa-pills fa-2x text-muted mb-3"></i>
-    <p class="text-muted">No prescriptions found for this patient.</p>
+  <div class="text-center py-8">
+    <i class="fas fa-pills text-4xl text-gray-400 mb-3"></i>
+    <p class="text-gray-500">No prescriptions found for this patient.</p>
   </div>
 {/if}
 

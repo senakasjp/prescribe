@@ -31,29 +31,30 @@
 
 {#if visible}
   <div 
-    class="toast show position-fixed top-0 end-0 m-3" 
+    class="fixed top-4 right-4 z-50 max-w-sm w-full bg-white rounded-lg shadow-lg border border-gray-200" 
     role="alert" 
     aria-live="assertive" 
     aria-atomic="true"
-    style="z-index: 9999; min-width: 300px;"
   >
-    <div class="toast-header bg-{type === 'success' ? 'success' : type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'info'} text-white">
-      <i class="fas fa-{type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
-      <strong class="me-auto">
+    <div class="flex items-center p-4 rounded-t-lg {type === 'success' ? 'bg-teal-500' : type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'} text-white">
+      <i class="fas fa-{type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'} mr-2"></i>
+      <span class="font-semibold flex-1">
         {type === 'success' ? 'Success' : type === 'error' ? 'Error' : type === 'warning' ? 'Warning' : 'Info'}
-      </strong>
+      </span>
       <button 
         type="button" 
-        class="btn-close btn-close-white" 
+        class="text-white hover:text-gray-200 ml-2" 
         on:click={handleClose}
         aria-label="Close"
-      ></button>
+      >
+        <i class="fas fa-times"></i>
+      </button>
     </div>
-    <div class="toast-body bg-white text-dark">
+    <div class="p-4 bg-white text-gray-900 rounded-b-lg">
       {message}
     </div>
   </div>
 {/if}
 
-<!-- Bootstrap 5 toast styling is handled by Bootstrap classes -->
+<!-- Flowbite notification styling -->
 

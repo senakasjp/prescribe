@@ -217,16 +217,16 @@
   })
 </script>
 
-<div class="card border-2 border-info shadow-sm medication-form-card">
-  <div class="card-header">
-    <h6 class="mb-0">
-      <i class="fas fa-pills me-2"></i>Add New Medication
+<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+  <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
+    <h6 class="text-lg font-semibold mb-0">
+      <i class="fas fa-pills mr-2"></i>{editingMedication ? 'Edit Medication' : 'Add New Medication'}
     </h6>
   </div>
-  <div class="card-body">
-    <form on:submit={handleSubmit}>
-      <div class="mb-3">
-        <label for="medicationName" class="form-label">Medication Name <span class="text-danger">*</span></label>
+  <div class="p-4">
+    <form on:submit={handleSubmit} class="space-y-4">
+      <div>
+        <label for="medicationName" class="block text-sm font-medium text-gray-700 mb-1">Medication Name <span class="text-red-500">*</span></label>
         <DrugAutocomplete 
           bind:value={name}
           placeholder="e.g., Metformin, Lisinopril"
@@ -236,70 +236,66 @@
         />
       </div>
       
-      <div class="row">
-        <div class="col-12 col-sm-6">
-          <div class="mb-3">
-            <label for="medicationDosage" class="form-label">Dosage <span class="text-danger">*</span></label>
-            <div class="input-group">
-              <input 
-                type="text" 
-                class="form-control form-control-sm" 
-                id="medicationDosage" 
-                bind:value={dosage}
-                required
-                disabled={loading}
-                placeholder="500"
-              >
-              <select 
-                class="form-select form-select-sm" 
-                id="dosageUnit" 
-                bind:value={dosageUnit}
-                disabled={loading}
-              >
-                <option value="mg">mg</option>
-                <option value="g">g</option>
-                <option value="ml">ml</option>
-                <option value="l">l</option>
-                <option value="units">units</option>
-                <option value="mcg">mcg</option>
-                <option value="tablets">tablets</option>
-                <option value="pills">pills</option>
-                <option value="capsules">capsules</option>
-                <option value="drops">drops</option>
-                <option value="patches">patches</option>
-                <option value="injections">injections</option>
-                <option value="sachets">sachets</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="col-12 col-sm-6">
-          <div class="mb-3">
-            <label for="medicationFrequency" class="form-label">Frequency <span class="text-danger">*</span></label>
-            <select 
-              class="form-select form-select-sm" 
-              id="medicationFrequency" 
-              bind:value={frequency}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="medicationDosage" class="block text-sm font-medium text-gray-700 mb-1">Dosage <span class="text-red-500">*</span></label>
+          <div class="flex">
+            <input 
+              type="text" 
+              class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              id="medicationDosage" 
+              bind:value={dosage}
               required
               disabled={loading}
+              placeholder="500"
             >
-              <option value="">Select frequency</option>
-              <option value="once daily">Once daily</option>
-              <option value="twice daily">Twice daily</option>
-              <option value="three times daily">Three times daily</option>
-              <option value="four times daily">Four times daily</option>
-              <option value="as needed">As needed</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
+            <select 
+              class="px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              id="dosageUnit" 
+              bind:value={dosageUnit}
+              disabled={loading}
+            >
+              <option value="mg">mg</option>
+              <option value="g">g</option>
+              <option value="ml">ml</option>
+              <option value="l">l</option>
+              <option value="units">units</option>
+              <option value="mcg">mcg</option>
+              <option value="tablets">tablets</option>
+              <option value="pills">pills</option>
+              <option value="capsules">capsules</option>
+              <option value="drops">drops</option>
+              <option value="patches">patches</option>
+              <option value="injections">injections</option>
+              <option value="sachets">sachets</option>
             </select>
           </div>
         </div>
+        <div>
+          <label for="medicationFrequency" class="block text-sm font-medium text-gray-700 mb-1">Frequency <span class="text-red-500">*</span></label>
+          <select 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="medicationFrequency" 
+            bind:value={frequency}
+            required
+            disabled={loading}
+          >
+            <option value="">Select frequency</option>
+            <option value="once daily">Once daily</option>
+            <option value="twice daily">Twice daily</option>
+            <option value="three times daily">Three times daily</option>
+            <option value="four times daily">Four times daily</option>
+            <option value="as needed">As needed</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
       </div>
       
-      <div class="mb-3">
-        <label for="medicationInstructions" class="form-label">Instructions <span class="text-danger">*</span></label>
+      <div>
+        <label for="medicationInstructions" class="block text-sm font-medium text-gray-700 mb-1">Instructions <span class="text-red-500">*</span></label>
         <textarea 
-          class="form-control form-control-sm" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="medicationInstructions" 
           rows="2" 
           bind:value={instructions}
@@ -309,50 +305,44 @@
         ></textarea>
       </div>
       
-      <div class="row">
-        <div class="col-12 col-sm-6 col-lg-4">
-          <div class="mb-3">
-            <label for="medicationDuration" class="form-label">Duration <span class="text-danger">*</span></label>
-            <input 
-              type="text" 
-              class="form-control form-control-sm" 
-              id="medicationDuration" 
-              bind:value={duration}
-              disabled={loading}
-              placeholder="e.g., 30 days, 3 months"
-            >
-          </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div>
+          <label for="medicationDuration" class="block text-sm font-medium text-gray-700 mb-1">Duration <span class="text-red-500">*</span></label>
+          <input 
+            type="text" 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="medicationDuration" 
+            bind:value={duration}
+            disabled={loading}
+            placeholder="e.g., 30 days, 3 months"
+          >
         </div>
-        <div class="col-12 col-sm-6 col-lg-4">
-          <div class="mb-3">
-            <label for="medicationStartDate" class="form-label">Start Date <small class="text-muted">(Optional)</small></label>
-            <input 
-              type="date" 
-              class="form-control form-control-sm" 
-              id="medicationStartDate" 
-              bind:value={startDate}
-              disabled={loading}
-            >
-          </div>
+        <div>
+          <label for="medicationStartDate" class="block text-sm font-medium text-gray-700 mb-1">Start Date <span class="text-gray-500 text-xs">(Optional)</span></label>
+          <input 
+            type="date" 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="medicationStartDate" 
+            bind:value={startDate}
+            disabled={loading}
+          >
         </div>
-        <div class="col-12 col-sm-12 col-lg-4">
-          <div class="mb-3">
-            <label for="medicationEndDate" class="form-label">End Date</label>
-            <input 
-              type="date" 
-              class="form-control form-control-sm" 
-              id="medicationEndDate" 
-              bind:value={endDate}
-              disabled={loading}
-            >
-          </div>
+        <div>
+          <label for="medicationEndDate" class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <input 
+            type="date" 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="medicationEndDate" 
+            bind:value={endDate}
+            disabled={loading}
+          >
         </div>
       </div>
       
-      <div class="mb-3">
-        <label for="medicationNotes" class="form-label">Additional Notes</label>
+      <div>
+        <label for="medicationNotes" class="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
         <textarea 
-          class="form-control form-control-sm" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="medicationNotes" 
           rows="2" 
           bind:value={notes}
@@ -362,29 +352,33 @@
       </div>
       
       {#if error}
-        <div class="alert alert-danger" role="alert">
-          <i class="fas fa-exclamation-triangle me-2"></i>{error}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
+          <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+          <span class="text-sm text-red-700">{error}</span>
         </div>
       {/if}
       
-      <div class="d-flex flex-column flex-sm-row gap-2">
+      <div class="flex flex-col sm:flex-row gap-3">
         <button 
           type="submit" 
-          class="btn btn-primary btn-sm flex-fill" 
+          class="flex-1 bg-teal-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center" 
           disabled={loading}
         >
           {#if loading}
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
           {/if}
-          <i class="fas fa-save me-1"></i>Save Medication
+          <i class="fas fa-save mr-1"></i>Save Medication
         </button>
         <button 
           type="button" 
-          class="btn btn-secondary btn-sm flex-fill" 
+          class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center" 
           on:click={handleCancel}
           disabled={loading}
         >
-          <i class="fas fa-times me-1"></i>Cancel
+          <i class="fas fa-times mr-1"></i>Cancel
         </button>
       </div>
     </form>
@@ -392,101 +386,6 @@
 </div>
 
 <style>
-  /* Responsive medication form styling */
-  .medication-form-card {
-    margin-bottom: 1rem;
-  }
-  
-  .medication-form-card .card-body {
-    padding: 1rem;
-  }
-  
-  .medication-form-card .form-label {
-    font-size: 0.9rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-  }
-  
-  .medication-form-card .form-control,
-  .medication-form-card .form-select {
-    font-size: 0.9rem;
-  }
-  
-  .medication-form-card .btn {
-    font-size: 0.85rem;
-    padding: 0.5rem 1rem;
-  }
-  
-  /* Mobile-first responsive adjustments */
-  @media (max-width: 576px) {
-    .medication-form-card .card-body {
-      padding: 0.75rem;
-    }
-    
-    .medication-form-card .form-label {
-      font-size: 0.85rem;
-    }
-    
-    .medication-form-card .form-control,
-    .medication-form-card .form-select {
-      font-size: 0.85rem;
-      padding: 0.5rem 0.75rem;
-    }
-    
-    .medication-form-card .btn {
-      font-size: 0.8rem;
-      padding: 0.45rem 0.8rem;
-    }
-    
-    .medication-form-card .d-flex.gap-2 {
-      flex-direction: column;
-    }
-    
-    .medication-form-card .d-flex.gap-2 .btn {
-      width: 100%;
-      margin-bottom: 0.5rem;
-    }
-    
-    .medication-form-card .d-flex.gap-2 .btn:last-child {
-      margin-bottom: 0;
-    }
-  }
-  
-  /* Tablet adjustments */
-  @media (min-width: 577px) and (max-width: 768px) {
-    .medication-form-card .card-body {
-      padding: 0.9rem;
-    }
-    
-    .medication-form-card .form-label {
-      font-size: 0.88rem;
-    }
-    
-    .medication-form-card .form-control,
-    .medication-form-card .form-select {
-      font-size: 0.88rem;
-    }
-  }
-  
-  /* Ensure proper spacing on all screen sizes */
-  .medication-form-card .row {
-    margin-left: -0.5rem;
-    margin-right: -0.5rem;
-  }
-  
-  .medication-form-card .row > [class*="col-"] {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
-  
-  /* Better spacing for form elements */
-  .medication-form-card .mb-3 {
-    margin-bottom: 1rem;
-  }
-  
-  @media (max-width: 576px) {
-    .medication-form-card .mb-3 {
-      margin-bottom: 0.75rem;
-    }
-  }
+  /* Minimal custom styles for MedicationForm component */
+  /* All styling is now handled by Tailwind CSS utility classes */
 </style>

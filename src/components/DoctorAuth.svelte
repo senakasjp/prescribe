@@ -123,14 +123,14 @@
   }
 </script>
 
-<form on:submit={handleSubmit}>
+<form on:submit={handleSubmit} class="space-y-4">
   {#if isRegistering}
-    <div class="row g-2 mb-3">
-      <div class="col-12 col-sm-6">
-        <label for="firstName" class="form-label small">First Name</label>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label for="firstName" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
         <input 
           type="text" 
-          class="form-control form-control-sm" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="firstName" 
           bind:value={firstName}
           placeholder="Enter first name"
@@ -138,11 +138,11 @@
           disabled={loading}
         >
       </div>
-      <div class="col-12 col-sm-6">
-        <label for="lastName" class="form-label small">Last Name</label>
+      <div>
+        <label for="lastName" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
         <input 
           type="text" 
-          class="form-control form-control-sm" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="lastName" 
           bind:value={lastName}
           placeholder="Enter last name"
@@ -153,11 +153,11 @@
     </div>
   {/if}
   
-  <div class="mb-3">
-    <label for="email" class="form-label small">Email Address</label>
+  <div>
+    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
     <input 
       type="email" 
-      class="form-control form-control-sm" 
+      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
       id="email" 
       bind:value={email}
       placeholder="Enter email address"
@@ -167,12 +167,12 @@
   </div>
   
   {#if isRegistering}
-    <div class="mb-3">
-      <label for="country" class="form-label small">
-        Country <span class="text-danger">*</span>
+    <div>
+      <label for="country" class="block text-sm font-medium text-gray-700 mb-1">
+        Country <span class="text-red-500">*</span>
       </label>
       <select 
-        class="form-select form-select-sm" 
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
         id="country" 
         bind:value={country}
         required
@@ -186,11 +186,11 @@
     </div>
   {/if}
   
-  <div class="mb-3">
-    <label for="password" class="form-label small">Password</label>
+  <div>
+    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
     <input 
       type="password" 
-      class="form-control form-control-sm" 
+      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
       id="password" 
       bind:value={password}
       placeholder="Enter password"
@@ -199,19 +199,19 @@
       disabled={loading}
     >
     {#if isRegistering}
-      <div class="form-text">
-        <i class="fas fa-shield-alt me-1"></i>
+      <div class="mt-1 text-xs text-gray-600">
+        <i class="fas fa-shield-alt mr-1"></i>
         Password must be at least 8 characters with uppercase, lowercase, number, and special character
       </div>
     {/if}
   </div>
   
   {#if isRegistering}
-    <div class="mb-3">
-      <label for="confirmPassword" class="form-label small">Confirm Password</label>
+    <div>
+      <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
       <input 
         type="password" 
-        class="form-control form-control-sm" 
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
         id="confirmPassword" 
         bind:value={confirmPassword}
         placeholder="Confirm password"
@@ -222,20 +222,23 @@
   {/if}
   
   {#if error}
-    <div class="alert alert-danger alert-sm" role="alert">
-      <i class="fas fa-exclamation-triangle me-1"></i>
-      <small>{error}</small>
+    <div class="bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
+      <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+      <span class="text-sm text-red-700">{error}</span>
     </div>
   {/if}
   
-  <div class="d-grid gap-2 mb-3">
+  <div class="space-y-3">
     <button 
       type="submit" 
-      class="btn btn-primary btn-sm" 
+      class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center" 
       disabled={loading || googleLoading}
     >
       {#if loading}
-        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
       {/if}
       {isRegistering ? 'Register' : 'Login'}
     </button>
@@ -243,24 +246,27 @@
     <!-- Google Login Button -->
     <button 
       type="button" 
-      class="btn btn-outline-danger btn-sm" 
+      class="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center" 
       on:click={handleGoogleLogin}
       disabled={loading || googleLoading}
     >
       {#if googleLoading}
-        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
       {:else}
-        <i class="fab fa-google me-1"></i>
+        <i class="fab fa-google text-red-500 mr-2"></i>
       {/if}
-      <span class="d-none d-sm-inline">Continue with Google</span>
-      <span class="d-sm-none">Google</span>
+      <span class="hidden sm:inline">Continue with Google</span>
+      <span class="sm:hidden">Google</span>
     </button>
   </div>
   
-  <div class="text-center mt-3">
+  <div class="text-center pt-3">
     <button 
       type="button" 
-      class="btn btn-link" 
+      class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400" 
       on:click={toggleMode}
       disabled={loading}
     >

@@ -10,38 +10,38 @@
   export let onShowAddPatientForm
 </script>
 
-<div class="card border-2 border-info shadow-sm">
-  <div class="card-header bg-light">
-    <div class="d-flex justify-content-between align-items-center">
+<div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm">
+  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+    <div class="flex justify-between items-center">
       <h6 class="mb-0">
-        <i class="fas fa-users me-2"></i>Patients
+        <i class="fas fa-users mr-2"></i>Patients
       </h6>
       <button 
-        class="btn btn-primary btn-sm" 
+        class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded" 
         on:click={onShowAddPatientForm}
         disabled={loading}
       >
-        <i class="fas fa-plus me-1"></i>Add Patient
+        <i class="fas fa-plus mr-1"></i>Add Patient
       </button>
     </div>
   </div>
-  <div class="card-body p-0">
+  <div class="p-0">
     <!-- Search Box -->
-    <div class="p-3 border-bottom">
-      <div class="input-group">
-        <span class="input-group-text">
+    <div class="p-3 border-b border-gray-200">
+      <div class="flex">
+        <span class="px-3 py-2 bg-gray-50 border border-gray-300 border-r-0 rounded-l-lg">
           <i class="fas fa-search"></i>
         </span>
         <input 
           type="text" 
-          class="form-control" 
+          class="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           placeholder="Search patients..." 
           bind:value={searchQuery}
           on:input={onSearch}
         />
         {#if searchQuery}
           <button 
-            class="btn btn-outline-secondary" 
+            class="px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 rounded" 
             type="button" 
             on:click={onClearSearch}
           >
@@ -55,7 +55,7 @@
     <div class="p-0 overflow-auto" style="max-height: calc(100vh - 200px);">
       {#if loading}
         <div class="text-center p-4">
-          <div class="spinner-border text-primary" role="status">
+          <div class="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" role="status">
             <span class="visually-hidden">Loading...</span>
           </div>
           <p class="mt-2 text-muted">Loading patients...</p>
@@ -68,10 +68,10 @@
           </p>
           {#if !searchQuery}
             <button 
-              class="btn btn-primary btn-sm" 
+              class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded" 
               on:click={onShowAddPatientForm}
             >
-              <i class="fas fa-plus me-1"></i>Add First Patient
+              <i class="fas fa-plus mr-1"></i>Add First Patient
             </button>
           {/if}
         </div>
@@ -83,23 +83,23 @@
               on:click={() => onSelectPatient(patient)}
               disabled={loading}
             >
-              <div class="d-flex w-100 justify-content-between align-items-center">
+              <div class="flex w-full justify-between items-center">
                 <div>
                   <h6 class="mb-1">
                     {patient.firstName} {patient.lastName}
                   </h6>
                   <p class="mb-1 text-muted small">
-                    <i class="fas fa-calendar me-1"></i>
+                    <i class="fas fa-calendar mr-1"></i>
                     DOB: {patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : 'Not specified'}
                   </p>
                   <p class="mb-0 text-muted small">
-                    <i class="fas fa-phone me-1"></i>
+                    <i class="fas fa-phone mr-1"></i>
                     {patient.phone || 'No phone number'}
                   </p>
                 </div>
                 <div class="text-end">
                   <small class="text-muted">
-                    <i class="fas fa-id-card me-1"></i>
+                    <i class="fas fa-id-card mr-1"></i>
                     ID: {patient.id.slice(-8)}
                   </small>
                 </div>

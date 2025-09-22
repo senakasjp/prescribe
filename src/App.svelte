@@ -399,8 +399,8 @@
   {:else if loading}
     <div class="flex items-center justify-center min-h-screen">
       <div class="text-center">
-        <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-blue-500 bg-white transition ease-in-out duration-150 cursor-not-allowed">
-          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-teal-500 bg-white transition ease-in-out duration-150 cursor-not-allowed">
+          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-teal-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
@@ -414,7 +414,7 @@
       <PharmacistDashboard pharmacist={user} />
     {:else}
     <!-- Doctor is logged in - Show patient management -->
-    <nav class="bg-blue-600 border-gray-200 dark:bg-gray-900">
+    <nav class="bg-teal-600 border-gray-200 dark:bg-gray-900">
       <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4">
         <a href="/" class="flex items-center space-x-3 rtl:space-x-reverse">
           <i class="fas fa-user-md text-white text-xl"></i>
@@ -453,7 +453,7 @@
             <!-- Action Buttons -->
             <div class="flex items-center space-x-2">
               {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
-                <button class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800" on:click={handleAdminAccess}>
+                <button class="text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800" on:click={handleAdminAccess}>
                   <i class="fas fa-shield-alt mr-1"></i>
                   Admin
                 </button>
@@ -487,7 +487,7 @@
             <!-- Action Buttons Row -->
             <div class="flex space-x-2">
               {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
-                <button class="flex-1 text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800" on:click={handleAdminAccess}>
+                <button class="flex-1 text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800" on:click={handleAdminAccess}>
                   <i class="fas fa-shield-alt mr-1"></i>
                   Admin
                 </button>
@@ -508,7 +508,7 @@
     {/if}
   {:else}
     <!-- User is not logged in - Show Flowbite authentication -->
-    <div class="min-h-screen flex items-start justify-center bg-gradient-to-br from-blue-600 to-blue-800 px-4 pt-8">
+    <div class="min-h-screen flex items-start justify-center bg-teal-600 px-4 pt-8">
       <div class="w-full max-w-md">
         <!-- Main Auth Card -->
         <div class="bg-white rounded-lg shadow-xl overflow-hidden">
@@ -516,8 +516,8 @@
           <div class="bg-white px-6 py-8">
             <div class="text-center">
               <div class="mb-4">
-                <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full">
-                  <i class="fas fa-stethoscope text-blue-600 text-xl"></i>
+                <div class="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full">
+                  <i class="fas fa-stethoscope text-teal-600 text-xl"></i>
                 </div>
               </div>
               <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe</h1>
@@ -530,10 +530,10 @@
           <div class="px-6 pb-6">
             <!-- Auth Mode Toggle -->
             <div class="mb-6">
-              <div class="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1" role="group" aria-label="Authentication mode">
+              <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1 w-full" role="group" aria-label="Authentication mode">
                 <button 
                   type="button" 
-                  class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md {authMode === 'doctor' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}"
+                  class="flex-1 flex items-center justify-center px-6 py-3 text-sm font-medium rounded-md transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
                   on:click={handleSwitchToDoctor}
                 >
                   <i class="fas fa-user-md mr-2"></i>
@@ -542,7 +542,7 @@
                 </button>
                 <button 
                   type="button" 
-                  class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md {authMode === 'pharmacist' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}"
+                  class="flex-1 flex items-center justify-center px-6 py-3 text-sm font-medium rounded-md transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
                   on:click={handleSwitchToPharmacist}
                 >
                   <i class="fas fa-pills mr-2"></i>
@@ -557,7 +557,7 @@
               {#if authMode === 'doctor'}
                 <div class="text-center mb-4">
                   <h4 class="text-lg font-semibold text-gray-900 mb-0">
-                    <i class="fas fa-user-md text-blue-600 mr-2"></i>
+                    <i class="fas fa-user-md text-teal-600 mr-2"></i>
                     <span class="hidden sm:inline">Doctor Portal</span>
                     <span class="sm:hidden">Doctor</span>
                   </h4>
@@ -566,7 +566,7 @@
               {:else}
                 <div class="text-center mb-4">
                   <h4 class="text-lg font-semibold text-gray-900 mb-0">
-                    <i class="fas fa-pills text-blue-600 mr-2"></i>
+                    <i class="fas fa-pills text-teal-600 mr-2"></i>
                     <span class="hidden sm:inline">Pharmacist Portal</span>
                     <span class="sm:hidden">Pharmacist</span>
                   </h4>

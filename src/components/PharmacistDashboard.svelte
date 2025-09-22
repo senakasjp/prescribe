@@ -293,57 +293,65 @@
   })
 </script>
 
-<div class="container-fluid">
+<div class="max-w-screen-xl mx-auto px-4 py-6">
   <!-- Compact Header -->
-  <div class="bg-white shadow-sm mb-3 py-2">
-    <div class="d-flex justify-content-between align-items-center px-3 w-100">
-      <div class="d-flex align-items-center">
-        <i class="fas fa-pills text-primary me-2"></i>
-        <span class="fw-bold text-primary">M-Prescribe - Pharmacist Portal</span>
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 py-3">
+    <div class="flex justify-between items-center px-4">
+      <div class="flex items-center">
+        <i class="fas fa-pills text-blue-600 mr-2"></i>
+        <span class="font-bold text-blue-600">M-Prescribe - Pharmacist Portal</span>
       </div>
-      <div class="dropdown">
-        <button class="btn btn-link dropdown-toggle d-flex align-items-center p-0 text-decoration-none" type="button" data-bs-toggle="dropdown">
-          <i class="fas fa-user-circle me-2"></i>
-          <span class="d-none d-md-inline">{pharmacist.businessName}</span>
+      <div class="relative">
+        <button class="text-gray-700 hover:text-gray-900 flex items-center p-0" type="button" data-dropdown-toggle="pharmacistDropdown">
+          <i class="fas fa-user-circle mr-2"></i>
+          <span class="hidden md:inline">{pharmacist.businessName}</span>
+          <svg class="w-2.5 h-2.5 ml-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
+          </svg>
         </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-          <li><h6 class="dropdown-header">{pharmacist.businessName}</h6></li>
-          <li><span class="dropdown-item-text small text-muted">ID: {pharmacist.pharmacistNumber}</span></li>
-          <li><hr class="dropdown-divider"></li>
-          <li><button class="dropdown-item" on:click={handleSignOut}>
-            <i class="fas fa-sign-out-alt me-2"></i>Sign Out
-          </button></li>
-        </ul>
+        <div id="pharmacistDropdown" class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700">
+          <div class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+            <div class="font-medium">{pharmacist.businessName}</div>
+            <div class="truncate text-xs text-gray-500">ID: {pharmacist.pharmacistNumber}</div>
+          </div>
+          <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
+            <li>
+              <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white" on:click={handleSignOut}>
+                <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
+              </button>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
   
   <!-- Main Content -->
-  <div class="row">
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
     <!-- Sidebar -->
-    <div class="col-lg-3 mb-4">
-      <div class="card border-2 border-info shadow-sm">
-        <div class="card-header bg-primary text-white">
-          <h6 class="card-title mb-0">
-            <i class="fas fa-info-circle me-2"></i>
+    <div class="lg:col-span-3">
+      <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm">
+        <div class="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
+          <h6 class="text-lg font-semibold mb-0">
+            <i class="fas fa-info-circle mr-2"></i>
             Pharmacy Information
           </h6>
         </div>
-        <div class="card-body">
+        <div class="p-4">
           <div class="mb-3">
-            <label class="form-label fw-bold">Business Name:</label>
-            <p class="mb-0">{pharmacist.businessName || pharmacist.name || 'Not specified'}</p>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Business Name:</label>
+            <p class="text-gray-900">{pharmacist.businessName || pharmacist.name || 'Not specified'}</p>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-bold">Pharmacist ID:</label>
-            <p class="mb-0 text-primary fw-bold">{pharmacist.pharmacistNumber || pharmacist.id || 'Not specified'}</p>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Pharmacist ID:</label>
+            <p class="text-blue-600 font-semibold">{pharmacist.pharmacistNumber || pharmacist.id || 'Not specified'}</p>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-bold">Connected Doctors:</label>
-            <p class="mb-0">{connectedDoctors.length}</p>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Connected Doctors:</label>
+            <p class="text-gray-900">{connectedDoctors.length}</p>
           </div>
           <div class="mb-0">
-            <label class="form-label fw-bold">Total Prescriptions:</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Total Prescriptions:</label>
             <p class="mb-0">{prescriptions.length}</p>
           </div>
         </div>
@@ -351,20 +359,20 @@
       
       <!-- Connected Doctors -->
       {#if connectedDoctors.length > 0}
-        <div class="card border-2 border-info shadow-sm mt-3">
-          <div class="card-header bg-info text-white">
-            <h6 class="card-title mb-0">
-              <i class="fas fa-user-md me-2"></i>
+        <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-4">
+          <div class="bg-blue-500 text-white px-4 py-3 rounded-t-lg">
+            <h6 class="text-lg font-semibold mb-0">
+              <i class="fas fa-user-md mr-2"></i>
               Connected Doctors
             </h6>
           </div>
-          <div class="card-body">
+          <div class="p-4">
             {#each connectedDoctors as doctor}
-              <div class="d-flex align-items-center mb-2">
-                <i class="fas fa-user-md text-primary me-2"></i>
+              <div class="flex items-center mb-3">
+                <i class="fas fa-user-md text-blue-600 mr-2"></i>
                 <div>
-                  <div class="fw-bold">{doctor.name || `${doctor.firstName} ${doctor.lastName}` || doctor.email}</div>
-                  <small class="text-muted">{doctor.email}</small>
+                  <div class="font-semibold text-gray-900">{doctor.name || `${doctor.firstName} ${doctor.lastName}` || doctor.email}</div>
+                  <small class="text-gray-500">{doctor.email}</small>
                 </div>
               </div>
             {/each}
@@ -374,49 +382,47 @@
     </div>
     
     <!-- Main Content with Tabs -->
-    <div class="col-lg-9">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white border-bottom">
-          <div class="d-flex justify-content-between align-items-center">
-            <ul class="nav nav-tabs card-header-tabs" role="tablist">
-              <li class="nav-item" role="presentation">
-                <button 
-                  class="nav-link {activeTab === 'prescriptions' ? 'active' : ''}" 
-                  on:click={() => activeTab = 'prescriptions'}
-                  type="button"
-                >
-                  <i class="fas fa-prescription me-2"></i>
-                  Prescriptions
-                </button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button 
-                  class="nav-link {activeTab === 'stock' ? 'active' : ''}" 
-                  on:click={() => activeTab = 'stock'}
-                  type="button"
-                >
-                  <i class="fas fa-boxes me-2"></i>
-                  Drug Stock
-                </button>
-              </li>
-            </ul>
-            <div class="btn-group" role="group">
+    <div class="lg:col-span-9">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+        <div class="bg-white border-b border-gray-200 px-4 py-3">
+          <div class="flex justify-between items-center">
+            <div class="flex space-x-1" role="tablist">
+              <button 
+                class="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'prescriptions' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
+                on:click={() => activeTab = 'prescriptions'}
+                type="button"
+                role="tab"
+              >
+                <i class="fas fa-prescription mr-2"></i>
+                Prescriptions
+              </button>
+              <button 
+                class="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'stock' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
+                on:click={() => activeTab = 'stock'}
+                type="button"
+                role="tab"
+              >
+                <i class="fas fa-boxes mr-2"></i>
+                Drug Stock
+              </button>
+            </div>
+            <div class="flex space-x-2" role="group">
               {#if activeTab === 'prescriptions'}
-                <button class="btn btn-outline-primary btn-sm" on:click={loadPharmacistData}>
-                  <i class="fas fa-sync-alt me-1"></i>
+                <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={loadPharmacistData}>
+                  <i class="fas fa-sync-alt mr-1"></i>
                   Refresh
                 </button>
-                <button class="btn btn-outline-danger btn-sm" on:click={clearAllPrescriptions}>
-                  <i class="fas fa-trash me-1"></i>
+                <button class="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={clearAllPrescriptions}>
+                  <i class="fas fa-trash mr-1"></i>
                   Clear All
                 </button>
               {:else if activeTab === 'stock'}
-                <button class="btn btn-outline-primary btn-sm" on:click={loadDrugStock}>
-                  <i class="fas fa-sync-alt me-1"></i>
+                <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={loadDrugStock}>
+                  <i class="fas fa-sync-alt mr-1"></i>
                   Refresh
                 </button>
-                <button class="btn btn-success btn-sm" on:click={openAddStockModal}>
-                  <i class="fas fa-plus me-1"></i>
+                <button class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={openAddStockModal}>
+                  <i class="fas fa-plus mr-1"></i>
                   Add Stock
                 </button>
               {/if}
@@ -424,62 +430,65 @@
           </div>
         </div>
         
-        <div class="card-body">
+        <div class="p-4">
           {#if activeTab === 'prescriptions'}
             {#if loading}
               <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                  <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 text-muted">Loading prescriptions...</p>
+                <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="mt-2 text-gray-500">Loading prescriptions...</p>
               </div>
             {:else if prescriptions.length === 0}
-              <div class="text-center py-5">
-                <i class="fas fa-prescription fa-3x text-muted mb-3"></i>
-                <h5 class="text-muted">No Prescriptions Available</h5>
-                <p class="text-muted">Prescriptions from connected doctors will appear here.</p>
+              <div class="text-center py-8">
+                <i class="fas fa-prescription text-4xl text-gray-400 mb-3"></i>
+                <h5 class="text-gray-500">No Prescriptions Available</h5>
+                <p class="text-gray-500">Prescriptions from connected doctors will appear here.</p>
               </div>
             {:else}
-              <div class="table-responsive">
-                <table class="table table-hover">
-                  <thead class="table-light">
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead class="bg-gray-50">
                     <tr>
-                      <th>Patient</th>
-                      <th>Doctor</th>
-                      <th>Medications</th>
-                      <th>Date</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medications</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody class="bg-white divide-y divide-gray-200">
                     {#each prescriptions as prescription}
-                      <tr>
-                        <td>
-                          <div class="fw-bold">{prescription.patientName || 'Unknown Patient'}</div>
-                          <small class="text-muted">{prescription.patientEmail || 'No email'}</small>
+                      <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <div class="font-semibold text-gray-900">{prescription.patientName || 'Unknown Patient'}</div>
+                          <div class="text-sm text-gray-500">{prescription.patientEmail || 'No email'}</div>
                         </td>
-                        <td>
-                          <div class="fw-bold">{prescription.doctorName || getDoctorName(prescription.doctorId)}</div>
-                          <small class="text-muted">ID: {prescription.doctorId}</small>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <div class="font-semibold text-gray-900">{prescription.doctorName || getDoctorName(prescription.doctorId)}</div>
+                          <div class="text-sm text-gray-500">ID: {prescription.doctorId}</div>
                         </td>
-                        <td>
-                          <span class="badge bg-primary">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             {prescription.prescriptions ? prescription.prescriptions.reduce((total, p) => total + (p.medications ? p.medications.length : 0), 0) : 0} medication(s)
                           </span>
                         </td>
-                        <td>
-                          <small>{formatDate(prescription.receivedAt || prescription.sentAt || prescription.createdAt)}</small>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(prescription.receivedAt || prescription.sentAt || prescription.createdAt)}
                         </td>
-                        <td>
-                          <span class="badge bg-warning text-dark">{prescription.status || 'Pending'}</span>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            {prescription.status || 'Pending'}
+                          </span>
                         </td>
-                        <td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button 
-                            class="btn btn-outline-primary btn-sm"
+                            class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
                             on:click={() => viewPrescription(prescription)}
                           >
-                            <i class="fas fa-eye me-1"></i>
+                            <i class="fas fa-eye mr-1"></i>
                             View
                           </button>
                         </td>
@@ -492,87 +501,88 @@
           {:else if activeTab === 'stock'}
             {#if stockLoading}
               <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                  <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 text-muted">Loading drug stock...</p>
+                <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p class="mt-2 text-gray-500">Loading drug stock...</p>
               </div>
             {:else if drugStock.length === 0}
-              <div class="text-center py-5">
-                <i class="fas fa-boxes fa-3x text-muted mb-3"></i>
-                <h5 class="text-muted">No Drug Stock Available</h5>
-                <p class="text-muted">Add your drug inventory to manage stock levels.</p>
-                <button class="btn btn-primary btn-sm" on:click={openAddStockModal}>
-                  <i class="fas fa-plus me-1"></i>
+              <div class="text-center py-8">
+                <i class="fas fa-boxes text-4xl text-gray-400 mb-3"></i>
+                <h5 class="text-gray-500">No Drug Stock Available</h5>
+                <p class="text-gray-500">Add your drug inventory to manage stock levels.</p>
+                <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors duration-200" on:click={openAddStockModal}>
+                  <i class="fas fa-plus mr-1"></i>
                   Add First Stock Item
                 </button>
               </div>
             {:else}
-              <div class="table-responsive">
-                <table class="table table-hover">
-                  <thead class="table-light">
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead class="bg-gray-50">
                     <tr>
-                      <th>Drug Name</th>
-                      <th>Generic Name</th>
-                      <th>Manufacturer</th>
-                      <th>Quantity</th>
-                      <th>Strength</th>
-                      <th>Expiry Date</th>
-                      <th>Price</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drug Name</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Generic Name</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manufacturer</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Strength</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody class="bg-white divide-y divide-gray-200">
                     {#each drugStock as stockItem}
                       {@const status = getStockStatus(stockItem.quantity, stockItem.expiryDate)}
-                      <tr>
-                        <td>
-                          <div class="fw-bold">{stockItem.drugName}</div>
-                          <small class="text-muted">Batch: {stockItem.batchNumber || 'N/A'}</small>
+                      <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <div class="font-semibold text-gray-900">{stockItem.drugName}</div>
+                          <div class="text-sm text-gray-500">Batch: {stockItem.batchNumber || 'N/A'}</div>
                         </td>
-                        <td>{stockItem.genericName || 'N/A'}</td>
-                        <td>{stockItem.manufacturer || 'N/A'}</td>
-                        <td>
-                          <span class="fw-bold">{stockItem.quantity}</span>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stockItem.genericName || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stockItem.manufacturer || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <span class="font-semibold text-gray-900">{stockItem.quantity}</span>
                         </td>
-                        <td>
+                        <td class="px-6 py-4 whitespace-nowrap">
                           {#if stockItem.strength && stockItem.strengthUnit}
-                            <span class="badge bg-info">{stockItem.strength}{stockItem.strengthUnit}</span>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{stockItem.strength}{stockItem.strengthUnit}</span>
                           {:else if stockItem.strength}
-                            <span class="badge bg-info">{stockItem.strength}</span>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{stockItem.strength}</span>
                           {:else}
-                            <small class="text-muted">N/A</small>
+                            <span class="text-sm text-gray-500">N/A</span>
                           {/if}
                         </td>
-                        <td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {#if stockItem.expiryDate}
-                            <small>{new Date(stockItem.expiryDate).toLocaleDateString()}</small>
+                            {new Date(stockItem.expiryDate).toLocaleDateString()}
                           {:else}
-                            <small class="text-muted">N/A</small>
+                            <span class="text-gray-500">N/A</span>
                           {/if}
                         </td>
-                        <td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {#if stockItem.price > 0}
-                            <span class="fw-bold">${stockItem.price.toFixed(2)}</span>
+                            <span class="font-semibold">${stockItem.price.toFixed(2)}</span>
                           {:else}
-                            <small class="text-muted">N/A</small>
+                            <span class="text-gray-500">N/A</span>
                           {/if}
                         </td>
-                        <td>
-                          <span class="badge bg-{status.class}">{status.text}</span>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {status.class === 'success' ? 'bg-teal-100 text-teal-800' : status.class === 'warning' ? 'bg-yellow-100 text-yellow-800' : status.class === 'danger' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}">{status.text}</span>
                         </td>
-                        <td>
-                          <div class="btn-group" role="group">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div class="flex space-x-2" role="group">
                             <button 
-                              class="btn btn-outline-primary btn-sm"
+                              class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-sm font-medium transition-colors duration-200"
                               on:click={() => openEditStockModal(stockItem)}
                               title="Edit"
                             >
                               <i class="fas fa-edit"></i>
                             </button>
                             <button 
-                              class="btn btn-outline-danger btn-sm"
+                              class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-2 py-1 rounded text-sm font-medium transition-colors duration-200"
                               on:click={() => deleteStockItem(stockItem.id)}
                               title="Delete"
                             >
@@ -595,84 +605,84 @@
 
 <!-- Prescription Details Modal -->
 {#if showPrescriptionDetails && selectedPrescription}
-  <div class="modal fade show d-block" style="background-color: rgba(var(--bs-dark-rgb), 0.5);" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header bg-primary text-white">
-          <h5 class="modal-title">
-            <i class="fas fa-prescription me-2"></i>
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" tabindex="-1">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
+      <div class="bg-white rounded-lg shadow-xl">
+        <div class="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
+          <h5 class="text-lg font-semibold mb-0">
+            <i class="fas fa-prescription mr-2"></i>
             Prescription Details
           </h5>
-          <button type="button" class="btn-close btn-close-white" on:click={closePrescriptionDetails}></button>
+          <button type="button" class="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600 rounded-md p-1" on:click={closePrescriptionDetails}></button>
         </div>
-        <div class="modal-body">
+        <div class="p-6">
           <!-- Patient Information -->
-          <div class="row mb-4">
-            <div class="col-md-6">
-              <h6 class="fw-bold text-primary">Patient Information</h6>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div>
+              <h6 class="font-semibold text-blue-600">Patient Information</h6>
               <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
               <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
               {#if selectedPrescription.patientAge}
                 <p><strong>Age:</strong> {selectedPrescription.patientAge}</p>
               {/if}
             </div>
-            <div class="col-md-6">
-              <h6 class="fw-bold text-primary">Prescription Information</h6>
+            <div>
+              <h6 class="font-semibold text-blue-600">Prescription Information</h6>
               <p><strong>Doctor:</strong> {selectedPrescription.doctorName || getDoctorName(selectedPrescription.doctorId)}</p>
               <p><strong>Date:</strong> {formatDate(selectedPrescription.receivedAt || selectedPrescription.sentAt || selectedPrescription.createdAt)}</p>
-              <p><strong>Status:</strong> <span class="badge bg-warning text-dark">{selectedPrescription.status || 'Pending'}</span></p>
+              <p><strong>Status:</strong> <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{selectedPrescription.status || 'Pending'}</span></p>
             </div>
           </div>
           
           <!-- Prescriptions -->
           <div class="mb-4">
-            <h6 class="fw-bold text-primary">Prescriptions</h6>
+            <h6 class="font-semibold text-blue-600">Prescriptions</h6>
             {#if selectedPrescription.prescriptions && selectedPrescription.prescriptions.length > 0}
               {#each selectedPrescription.prescriptions as prescription}
-                <div class="card mb-3">
-                  <div class="card-header">
-                    <h6 class="mb-0">Prescription ID: {prescription.id}</h6>
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h6 class="text-sm font-semibold mb-0">Prescription ID: {prescription.id}</h6>
                   </div>
-                  <div class="card-body">
+                  <div class="p-4">
                     <!-- Medications for this prescription -->
                     {#if prescription.medications && prescription.medications.length > 0}
-                      <div class="table-responsive">
-                        <table class="table table-bordered">
-                          <thead class="table-light">
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                          <thead class="bg-gray-50">
                             <tr>
-                              <th>Medication</th>
-                              <th>Dosage</th>
-                              <th>Frequency</th>
-                              <th>Duration</th>
-                              <th>Instructions</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medication</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dosage</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frequency</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Instructions</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody class="bg-white divide-y divide-gray-200">
                             {#each prescription.medications as medication}
-                              <tr>
-                                <td class="fw-bold">{medication.name}</td>
-                                <td>{medication.dosage}</td>
-                                <td>{medication.frequency}</td>
-                                <td>{medication.duration}</td>
-                                <td>{medication.instructions}</td>
+                              <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{medication.name}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{medication.dosage}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{medication.frequency}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{medication.duration}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{medication.instructions}</td>
                               </tr>
                             {/each}
                           </tbody>
                         </table>
                       </div>
                     {:else}
-                      <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        No medications found in this prescription.
+                      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <i class="fas fa-info-circle mr-2 text-blue-600"></i>
+                        <span class="text-blue-700">No medications found in this prescription.</span>
                       </div>
                     {/if}
                   </div>
                 </div>
               {/each}
             {:else}
-              <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                No prescriptions found.
+              <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <i class="fas fa-info-circle mr-2 text-blue-600"></i>
+                <span class="text-blue-700">No prescriptions found.</span>
               </div>
             {/if}
           </div>
@@ -680,22 +690,24 @@
           <!-- Notes -->
           {#if selectedPrescription.notes}
             <div class="mb-4">
-              <h6 class="fw-bold text-primary">Doctor's Notes</h6>
-              <div class="alert alert-light">
-                {selectedPrescription.notes}
+              <h6 class="font-semibold text-blue-600">Doctor's Notes</h6>
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <span class="text-gray-700">{selectedPrescription.notes}</span>
               </div>
             </div>
           {/if}
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" on:click={closePrescriptionDetails}>
-            <i class="fas fa-times me-1"></i>
-            Close
-          </button>
-          <button type="button" class="btn btn-success btn-sm">
-            <i class="fas fa-check me-1"></i>
-            Mark as Dispensed
-          </button>
+        <div class="bg-gray-50 px-6 py-3 rounded-b-lg">
+          <div class="flex justify-end space-x-3">
+            <button type="button" class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200" on:click={closePrescriptionDetails}>
+              <i class="fas fa-times mr-1"></i>
+              Close
+            </button>
+            <button type="button" class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200">
+              <i class="fas fa-check mr-1"></i>
+              Mark as Dispensed
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -704,54 +716,55 @@
 
 <!-- Add/Edit Stock Item Modal -->
 {#if showAddStockModal}
-  <div class="modal fade show d-block" style="background-color: rgba(var(--bs-dark-rgb), 0.5);" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header bg-success text-white">
-          <h5 class="modal-title">
-            <i class="fas fa-plus me-2"></i>
-            {editingStockItem ? 'Edit Stock Item' : 'Add New Stock Item'}
-          </h5>
-          <button type="button" class="btn-close btn-close-white" on:click={closeStockModal}></button>
-        </div>
-        <div class="modal-body">
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
+      <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
+        <h5 class="text-lg font-semibold mb-0">
+          <i class="fas fa-plus mr-2"></i>
+          {editingStockItem ? 'Edit Stock Item' : 'Add New Stock Item'}
+        </h5>
+        <button type="button" class="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 rounded-md p-1" on:click={closeStockModal}>
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="p-6">
           <form on:submit|preventDefault={editingStockItem ? updateStockItem : addStockItem}>
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label for="drugName" class="form-label">Drug Name *</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="mb-4">
+                <label for="drugName" class="block text-sm font-medium text-gray-700 mb-1">Drug Name *</label>
                 <input 
                   type="text" 
-                  class="form-control" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="drugName"
                   bind:value={formData.drugName}
                   required
                 >
               </div>
-              <div class="col-md-6 mb-3">
-                <label for="genericName" class="form-label">Generic Name</label>
+              <div class="mb-4">
+                <label for="genericName" class="block text-sm font-medium text-gray-700 mb-1">Generic Name</label>
                 <input 
                   type="text" 
-                  class="form-control" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="genericName"
                   bind:value={formData.genericName}
                 >
               </div>
             </div>
             
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label for="manufacturer" class="form-label">Manufacturer</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="mb-4">
+                <label for="manufacturer" class="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
                 <input 
                   type="text" 
-                  class="form-control" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="manufacturer"
                   bind:value={formData.manufacturer}
                 >
               </div>
-              <div class="col-md-6 mb-3">
-                <label for="category" class="form-label">Category</label>
+              <div class="mb-4">
+                <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
                 <select 
-                  class="form-select" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="category"
                   bind:value={formData.category}
                 >
@@ -763,12 +776,12 @@
               </div>
             </div>
             
-            <div class="row">
-              <div class="col-md-4 mb-3">
-                <label for="quantity" class="form-label">Quantity *</label>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div class="mb-4">
+                <label for="quantity" class="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
                 <input 
                   type="number" 
-                  class="form-control" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="quantity"
                   bind:value={formData.quantity}
                   min="0"
@@ -776,18 +789,18 @@
                   required
                 >
               </div>
-              <div class="col-md-4 mb-3">
-                <label for="strength" class="form-label">Strength/Type</label>
-                <div class="input-group">
+              <div class="mb-4">
+                <label for="strength" class="block text-sm font-medium text-gray-700 mb-1">Strength/Type</label>
+                <div class="flex">
                   <input 
                     type="text" 
-                    class="form-control" 
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                     id="strength"
                     bind:value={formData.strength}
                     placeholder="50"
                   >
                   <select 
-                    class="form-select" 
+                    class="px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                     id="strengthUnit"
                     bind:value={formData.strengthUnit}
                   >
@@ -807,11 +820,11 @@
                   </select>
                 </div>
               </div>
-              <div class="col-md-4 mb-3">
-                <label for="price" class="form-label">Price ($)</label>
+              <div class="mb-4">
+                <label for="price" class="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
                 <input 
                   type="number" 
-                  class="form-control" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="price"
                   bind:value={formData.price}
                   min="0"
@@ -820,34 +833,34 @@
               </div>
             </div>
             
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <label for="expiryDate" class="form-label">Expiry Date</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="mb-4">
+                <label for="expiryDate" class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
                 <input 
                   type="date" 
-                  class="form-control" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="expiryDate"
                   bind:value={formData.expiryDate}
                 >
               </div>
-              <div class="col-md-6 mb-3">
-                <label for="batchNumber" class="form-label">Batch Number</label>
+              <div class="mb-4">
+                <label for="batchNumber" class="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
                 <input 
                   type="text" 
-                  class="form-control" 
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                   id="batchNumber"
                   bind:value={formData.batchNumber}
                 >
               </div>
             </div>
             
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary btn-sm" on:click={closeStockModal}>
-                <i class="fas fa-times me-1"></i>
+            <div class="bg-gray-50 px-6 py-3 rounded-b-lg">
+              <button type="button" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" on:click={closeStockModal}>
+                <i class="fas fa-times mr-1"></i>
                 Cancel
               </button>
-              <button type="submit" class="btn btn-success btn-sm">
-                <i class="fas fa-save me-1"></i>
+              <button type="submit" class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 ml-3">
+                <i class="fas fa-save mr-1"></i>
                 {editingStockItem ? 'Update Stock Item' : 'Add Stock Item'}
               </button>
             </div>
@@ -855,35 +868,8 @@
         </div>
       </div>
     </div>
-  </div>
 {/if}
 
 <style>
-  .card {
-    border-radius: 10px;
-  }
-  
-  .btn {
-    border-radius: 6px;
-  }
-  
-  .table th {
-    border-top: none;
-    font-weight: 600;
-  }
-  
-  .badge {
-    font-size: 0.75em;
-  }
-  
-  .modal-content {
-    border-radius: 10px;
-  }
-  
-  .modal-header {
-    border-radius: 10px 10px 0 0;
-  }
-  
-  /* Compact header styles - using Bootstrap 5 utility classes */
-  
+  /* Custom styles for enhanced UI */
 </style>

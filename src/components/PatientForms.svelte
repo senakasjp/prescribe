@@ -18,39 +18,21 @@
 </script>
 
 {#if showIllnessForm}
-  <div class="card mb-3">
-    <div class="card-header">
-      <h6 class="mb-0">
-        <i class="fas fa-heartbeat me-2"></i>Add Illness
-      </h6>
-    </div>
-    <div class="card-body">
-      <IllnessForm 
-        {selectedPatient}
-        visible={showIllnessForm}
-        on:illness-added={onIllnessAdded}
-        on:cancel={onCancelIllness}
-      />
-    </div>
-  </div>
+  <IllnessForm 
+    {selectedPatient}
+    visible={showIllnessForm}
+    on:illness-added={onIllnessAdded}
+    on:cancel={onCancelIllness}
+  />
 {/if}
 
 {#if showSymptomsForm}
-  <div class="card mb-3">
-    <div class="card-header">
-      <h6 class="mb-0">
-        <i class="fas fa-thermometer-half me-2"></i>Add Symptoms
-      </h6>
-    </div>
-    <div class="card-body">
-      <SymptomsForm 
-        {selectedPatient}
-        visible={showSymptomsForm}
-        on:symptoms-added={onSymptomsAdded}
-        on:cancel={onCancelSymptoms}
-      />
-    </div>
-  </div>
+  <SymptomsForm 
+    {selectedPatient}
+    visible={showSymptomsForm}
+    on:symptoms-added={onSymptomsAdded}
+    on:cancel={onCancelSymptoms}
+  />
 {/if}
 
 {#if showMedicationForm}

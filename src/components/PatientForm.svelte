@@ -131,23 +131,23 @@
   }
 </script>
 
-<div class="card border-2 border-info shadow-sm">
-  <div class="card-header">
-    <h5 class="mb-0">
-      <i class="fas fa-user-plus me-2"></i>Add New Patient
+<div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm">
+  <div class="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
+    <h5 class="text-lg font-semibold mb-0">
+      <i class="fas fa-user-plus mr-2"></i>Add New Patient
     </h5>
   </div>
-  <div class="card-body">
+  <div class="p-4">
     <form on:submit={handleSubmit}>
       <div class="row g-3">
         <div class="col-12 col-md-6">
           <div class="mb-3">
             <label for="firstName" class="form-label">
-              <i class="fas fa-user me-1"></i>First Name <span class="text-danger">*</span>
+              <i class="fas fa-user mr-1"></i>First Name <span class="text-red-600">*</span>
             </label>
             <input 
               type="text" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="firstName" 
               bind:value={firstName}
               required
@@ -160,7 +160,7 @@
             <label for="lastName" class="form-label">Last Name</label>
             <input 
               type="text" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="lastName" 
               bind:value={lastName}
               disabled={loading}
@@ -173,11 +173,11 @@
         <div class="col-12 col-md-6">
           <div class="mb-3">
             <label for="email" class="form-label">
-              <i class="fas fa-envelope me-1"></i>Email Address
+              <i class="fas fa-envelope mr-1"></i>Email Address
             </label>
             <input 
               type="email" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="email" 
               bind:value={email}
               disabled={loading}
@@ -189,7 +189,7 @@
             <label for="phone" class="form-label">Phone Number</label>
             <input 
               type="tel" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="phone" 
               bind:value={phone}
               disabled={loading}
@@ -202,7 +202,7 @@
         <div class="col-12 col-md-6">
           <div class="mb-3">
             <label for="gender" class="form-label">
-              <i class="fas fa-venus-mars me-1"></i>Gender
+              <i class="fas fa-venus-mars mr-1"></i>Gender
             </label>
             <select 
               class="form-select" 
@@ -224,11 +224,11 @@
         <div class="col-12 col-md-3">
           <div class="mb-3">
             <label for="dateOfBirth" class="form-label">
-              <i class="fas fa-calendar me-1"></i>Date of Birth
+              <i class="fas fa-calendar mr-1"></i>Date of Birth
             </label>
             <input 
               type="date" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="dateOfBirth" 
               bind:value={dateOfBirth}
               on:change={handleDateOfBirthChange}
@@ -239,11 +239,11 @@
         <div class="col-12 col-md-3">
           <div class="mb-3">
             <label for="age" class="form-label">
-              <i class="fas fa-birthday-cake me-1"></i>Age <span class="text-danger">*</span>
+              <i class="fas fa-birthday-cake mr-1"></i>Age <span class="text-red-600">*</span>
             </label>
             <input 
               type="number" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="age" 
               bind:value={age}
               min="0"
@@ -257,11 +257,11 @@
         <div class="col-12 col-md-3">
           <div class="mb-3">
             <label for="weight" class="form-label">
-              <i class="fas fa-weight me-1"></i>Weight
+              <i class="fas fa-weight mr-1"></i>Weight
             </label>
             <input 
               type="number" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="weight" 
               bind:value={weight}
               min="0"
@@ -276,10 +276,10 @@
         <div class="col-12 col-md-3">
           <div class="mb-3">
             <label for="bloodGroup" class="form-label">
-              <i class="fas fa-tint me-1"></i>Blood Group
+              <i class="fas fa-tint mr-1"></i>Blood Group
             </label>
             <select 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="bloodGroup" 
               bind:value={bloodGroup}
               disabled={loading}
@@ -305,7 +305,7 @@
             <label for="idNumber" class="form-label">ID Number</label>
             <input 
               type="text" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="idNumber" 
               bind:value={idNumber}
               disabled={loading}
@@ -317,7 +317,7 @@
       <div class="mb-3">
         <label for="address" class="form-label">Address</label>
         <textarea 
-          class="form-control" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           id="address" 
           rows="3" 
           bind:value={address}
@@ -327,10 +327,10 @@
       
       <div class="mb-3">
         <label for="allergies" class="form-label">
-          <i class="fas fa-exclamation-triangle me-1"></i>Allergies
+          <i class="fas fa-exclamation-triangle mr-1"></i>Allergies
         </label>
         <textarea 
-          class="form-control" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           id="allergies" 
           rows="3" 
           bind:value={allergies}
@@ -342,10 +342,10 @@
       
       <div class="mb-3">
         <label for="longTermMedications" class="form-label">
-          <i class="fas fa-pills me-1"></i>Long Term Medications
+          <i class="fas fa-pills mr-1"></i>Long Term Medications
         </label>
         <textarea 
-          class="form-control" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           id="longTermMedications" 
           rows="3" 
           bind:value={longTermMedications}
@@ -361,7 +361,7 @@
             <label for="emergencyContact" class="form-label">Emergency Contact</label>
             <input 
               type="text" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="emergencyContact" 
               bind:value={emergencyContact}
               disabled={loading}
@@ -373,7 +373,7 @@
             <label for="emergencyPhone" class="form-label">Emergency Phone</label>
             <input 
               type="tel" 
-              class="form-control" 
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="emergencyPhone" 
               bind:value={emergencyPhone}
               disabled={loading}
@@ -388,7 +388,7 @@
         </div>
       {/if}
       
-      <div class="d-flex flex-column flex-sm-row gap-2">
+      <div class="flex flex-col sm:flex-row gap-2">
         <button 
           type="submit" 
           class="btn btn-primary flex-fill" 
@@ -397,7 +397,7 @@
           {#if loading}
             <span class="spinner-border spinner-border-sm me-2" role="status"></span>
           {/if}
-          <i class="fas fa-save me-1"></i>Save Patient
+          <i class="fas fa-save mr-1"></i>Save Patient
         </button>
         <button 
           type="button" 
@@ -405,7 +405,7 @@
           on:click={handleCancel}
           disabled={loading}
         >
-          <i class="fas fa-times me-1"></i>Cancel
+          <i class="fas fa-times mr-1"></i>Cancel
         </button>
       </div>
     </form>

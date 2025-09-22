@@ -126,7 +126,7 @@
 </script>
 
 <div class="modal show d-block" tabindex="-1" role="dialog">
-  <div class="modal-dialog modal-lg" role="document">
+  <div class="max-w-4xl mx-auto" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">
@@ -209,18 +209,18 @@
       <div class="modal-footer">
         <button 
           type="button" 
-          class="btn btn-primary" 
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200" 
           on:click={generatePDF}
           disabled={loading}
         >
           {#if loading}
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <span class="animate-spin h-3 w-3 border-2 border-gray-600 border-t-transparent rounded-full mr-2" role="status"></span>
           {/if}
           <i class="fas fa-download me-1"></i>Generate & Download PDF
         </button>
         <button 
           type="button" 
-          class="btn btn-secondary" 
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200" 
           on:click={handleClose}
           disabled={loading}
         >

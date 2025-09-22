@@ -68,31 +68,24 @@
   }
 </script>
 
-<div class="card border-2 border-info shadow-sm">
-  <div class="card-header">
-    <h6 class="mb-0">
-      <i class="fas fa-heartbeat me-2"></i>Add New Illness
-    </h6>
-  </div>
-  <div class="card-body">
-    <form on:submit={handleSubmit}>
-      <div class="mb-3">
-        <label for="illnessName" class="form-label">Illness Name *</label>
+<form on:submit={handleSubmit}>
+      <div class="mb-4">
+        <label for="illnessName" class="block text-sm font-medium text-gray-700 mb-1">Illness Name <span class="text-red-500">*</span></label>
         <input 
           type="text" 
-          class="form-control" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="illnessName" 
           bind:value={name}
           required
           disabled={loading}
           placeholder="e.g., Diabetes, Hypertension"
-        >
+        />
       </div>
       
-      <div class="mb-3">
-        <label for="illnessDescription" class="form-label">Description</label>
+      <div class="mb-4">
+        <label for="illnessDescription" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
         <textarea 
-          class="form-control" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="illnessDescription" 
           rows="3" 
           bind:value={description}
@@ -101,42 +94,38 @@
         ></textarea>
       </div>
       
-      <div class="row">
-        <div class="col-md-6">
-          <div class="mb-3">
-            <label for="illnessStatus" class="form-label">Status</label>
-            <select 
-              class="form-select" 
-              id="illnessStatus" 
-              bind:value={status}
-              disabled={loading}
-            >
-              <option value="active">Active</option>
-              <option value="chronic">Chronic</option>
-              <option value="resolved">Resolved</option>
-              <option value="monitoring">Under Monitoring</option>
-            </select>
-          </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label for="illnessStatus" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <select 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="illnessStatus" 
+            bind:value={status}
+            disabled={loading}
+          >
+            <option value="active">Active</option>
+            <option value="chronic">Chronic</option>
+            <option value="resolved">Resolved</option>
+            <option value="monitoring">Under Monitoring</option>
+          </select>
         </div>
-        <div class="col-md-6">
-          <div class="mb-3">
-            <label for="diagnosisDate" class="form-label">Diagnosis Date *</label>
-            <input 
-              type="date" 
-              class="form-control" 
-              id="diagnosisDate" 
-              bind:value={diagnosisDate}
-              required
-              disabled={loading}
-            >
-          </div>
+        <div>
+          <label for="diagnosisDate" class="block text-sm font-medium text-gray-700 mb-1">Diagnosis Date <span class="text-red-500">*</span></label>
+          <input 
+            type="date" 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="diagnosisDate" 
+            bind:value={diagnosisDate}
+            required
+            disabled={loading}
+          />
         </div>
       </div>
       
-      <div class="mb-3">
-        <label for="illnessNotes" class="form-label">Additional Notes</label>
+      <div class="mb-4">
+        <label for="illnessNotes" class="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
         <textarea 
-          class="form-control" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="illnessNotes" 
           rows="2" 
           bind:value={notes}
@@ -146,31 +135,32 @@
       </div>
       
       {#if error}
-        <div class="alert alert-danger" role="alert">
-          <i class="fas fa-exclamation-triangle me-2"></i>{error}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4" role="alert">
+          <i class="fas fa-exclamation-triangle mr-2 text-red-600"></i><span class="text-red-700">{error}</span>
         </div>
       {/if}
       
-      <div class="d-flex gap-2">
+      <div class="flex gap-3">
         <button 
           type="submit" 
-          class="btn btn-primary" 
+          class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200" 
           disabled={loading}
         >
           {#if loading}
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
           {/if}
-          <i class="fas fa-save me-1"></i>Save Illness
+          <i class="fas fa-save mr-1"></i>Save Illness
         </button>
         <button 
           type="button" 
-          class="btn btn-secondary" 
+          class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors duration-200" 
           on:click={handleCancel}
           disabled={loading}
         >
-          <i class="fas fa-times me-1"></i>Cancel
+          <i class="fas fa-times mr-1"></i>Cancel
         </button>
       </div>
     </form>
-  </div>
-</div>

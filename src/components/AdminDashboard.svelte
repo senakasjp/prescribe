@@ -239,7 +239,7 @@
       const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
       if (deleteButton) {
         deleteButton.disabled = true
-        deleteButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Deleting...'
+        deleteButton.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Deleting...'
       }
       
       console.log('🗑️ Admin: Deleting doctor:', doctor.email)
@@ -267,230 +267,226 @@
       const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
       if (deleteButton) {
         deleteButton.disabled = false
-        deleteButton.innerHTML = '<i class="fas fa-trash me-2"></i>Delete'
+        deleteButton.innerHTML = '<i class="fas fa-trash mr-2"></i>Delete'
       }
     }
   }
 </script>
 
-<div class="min-vh-100 bg-light">
+<div class="min-h-screen bg-gray-50">
   {#if loading}
-    <div class="d-flex justify-content-center align-items-center vh-100">
+    <div class="flex items-center justify-center h-screen">
       <div class="text-center">
-        <div class="spinner-border text-danger mb-3" role="status">
-          <span class="visually-hidden">Loading...</span>
+        <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-red-500 bg-white transition ease-in-out duration-150 cursor-not-allowed">
+          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Loading admin dashboard...
         </div>
-        <p class="text-muted">Loading admin dashboard...</p>
+        <p class="text-gray-500 mt-3">Please wait while we load the admin panel...</p>
       </div>
     </div>
   {:else}
     <!-- Admin Header -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark" style="height: 50px; min-height: 50px; max-height: 50px; padding: 0.25rem 1rem;">
-      <div class="container-fluid">
-        <span class="navbar-brand fs-5 fw-semibold text-white py-1 my-0">
-          <i class="fas fa-shield-alt me-2"></i>
+    <nav class="bg-gray-900 border-gray-200 dark:bg-gray-900" style="height: 50px; min-height: 50px; max-height: 50px;">
+      <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto px-4 py-1">
+        <span class="text-lg font-semibold text-white">
+          <i class="fas fa-shield-alt mr-2"></i>
           Admin Panel
         </span>
         
-        <div class="navbar-nav ms-auto d-flex flex-row align-items-center m-0 p-0">
-          <div class="nav-item dropdown">
-            <button class="nav-link dropdown-toggle text-white border-0 bg-transparent py-1 px-2 small" type="button" data-bs-toggle="dropdown">
-              <i class="fas fa-user-shield me-2"></i>
+        <div class="flex items-center">
+          <div class="relative">
+            <button class="text-white hover:text-gray-300 border-0 bg-transparent py-1 px-2 text-sm flex items-center" type="button" data-dropdown-toggle="adminDropdown">
+              <i class="fas fa-user-shield mr-2"></i>
               {currentAdmin?.name || 'Admin'}
+              <svg class="w-2.5 h-2.5 ml-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
+              </svg>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li><h6 class="dropdown-header">Admin Account</h6></li>
-              <li><span class="dropdown-item-text">{currentAdmin?.email}</span></li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <button class="dropdown-item" on:click={handleSignOut}>
-                  <i class="fas fa-sign-out-alt me-2"></i>Sign Out
-                </button>
-              </li>
-            </ul>
+            <div id="adminDropdown" class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700">
+              <div class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                <div class="font-medium">Admin Account</div>
+                <div class="truncate">{currentAdmin?.email}</div>
+              </div>
+              <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
+                <li>
+                  <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white" on:click={handleSignOut}>
+                    <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
+                  </button>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
     </nav>
     
     <!-- Main Content -->
-    <div class="container-fluid mt-4">
-      <div class="row mx-2 mx-md-3 mx-lg-4">
+    <div class="max-w-screen-xl mx-auto px-4 py-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <!-- Sidebar -->
-        <div class="col-md-3 col-lg-2">
-          <div class="list-group">
-            <button
-              class="list-group-item list-group-item-action {activeTab === 'overview' ? 'active' : ''}"
-              on:click={() => handleTabChange('overview')}
-            >
-              <i class="fas fa-chart-bar me-2"></i>Overview
-            </button>
-            <button
-              class="list-group-item list-group-item-action {activeTab === 'doctors' ? 'active' : ''}"
-              on:click={() => handleTabChange('doctors')}
-            >
-              <i class="fas fa-user-md me-2"></i>Doctors
-            </button>
-            <!-- Patients tab removed for HIPAA compliance - admins should not access patient PHI data -->
-            <button
-              class="list-group-item list-group-item-action {activeTab === 'ai-usage' ? 'active' : ''}"
-              on:click={() => handleTabChange('ai-usage')}
-            >
-              <i class="fas fa-brain me-2 text-danger"></i>AI Usage
-            </button>
-            <button
-              class="list-group-item list-group-item-action {activeTab === 'ai-logs' ? 'active' : ''}"
-              on:click={() => handleTabChange('ai-logs')}
-            >
-              <i class="fas fa-brain me-2 text-danger"></i>AI Logs
-            </button>
-            <button
-              class="list-group-item list-group-item-action {activeTab === 'system' ? 'active' : ''}"
-              on:click={() => handleTabChange('system')}
-            >
-              <i class="fas fa-cog me-2"></i>System
-            </button>
+        <div class="lg:col-span-3">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="p-4">
+              <nav class="space-y-2">
+                <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'overview' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+                  on:click={() => handleTabChange('overview')}
+                >
+                  <i class="fas fa-chart-bar mr-3"></i>Overview
+                </button>
+                <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'doctors' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+                  on:click={() => handleTabChange('doctors')}
+                >
+                  <i class="fas fa-user-md mr-3"></i>Doctors
+                </button>
+                <!-- Patients tab removed for HIPAA compliance - admins should not access patient PHI data -->
+                <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'ai-usage' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+                  on:click={() => handleTabChange('ai-usage')}
+                >
+                  <i class="fas fa-brain mr-3 text-red-500"></i>AI Usage
+                </button>
+                <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'ai-logs' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+                  on:click={() => handleTabChange('ai-logs')}
+                >
+                  <i class="fas fa-brain mr-3 text-red-500"></i>AI Logs
+                </button>
+                <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'system' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+                  on:click={() => handleTabChange('system')}
+                >
+                  <i class="fas fa-cog mr-3"></i>System
+                </button>
+              </nav>
+            </div>
           </div>
         </div>
         
         <!-- Main Content Area -->
-        <div class="col-md-9 col-lg-10">
+        <div class="lg:col-span-9">
           {#if activeTab === 'overview'}
             <!-- Overview Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-chart-bar me-2 text-danger"></i>System Overview</h2>
-              <button class="btn btn-outline-primary btn-sm" on:click={refreshData}>
-                <i class="fas fa-sync-alt me-2"></i>Refresh
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-chart-bar mr-2 text-red-500"></i>System Overview</h2>
+              <button class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center" on:click={refreshData}>
+                <i class="fas fa-sync-alt mr-2"></i>Refresh
               </button>
             </div>
             
             <!-- HIPAA Compliance Notice -->
-            <div class="alert alert-info mb-4" role="alert">
-              <i class="fas fa-shield-alt me-2"></i>
-              <strong>HIPAA Compliance:</strong> This admin panel displays only aggregated system statistics. 
-              Individual patient data is not accessible to administrators to maintain HIPAA compliance and patient privacy.
+            <div class="bg-blue-50 border border-teal-200 rounded-lg p-4 mb-6" role="alert">
+              <i class="fas fa-shield-alt text-blue-500 mr-2"></i>
+              <span class="text-sm text-blue-700">
+                <strong>HIPAA Compliance:</strong> This admin panel displays only aggregated system statistics. 
+                Individual patient data is not accessible to administrators to maintain HIPAA compliance and patient privacy.
+              </span>
             </div>
             
             <!-- Statistics Cards -->
-            <div class="row mb-4">
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-primary">
-                  <div class="card-body text-center">
-                    <i class="fas fa-user-md fa-2x text-primary mb-2"></i>
-                    <h5 class="card-title">{statistics.totalDoctors}</h5>
-                    <p class="card-text text-muted">Total Doctors</p>
-                  </div>
-                </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+              <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-user-md text-2xl text-blue-500 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalDoctors}</h3>
+                <p class="text-sm text-gray-500">Total Doctors</p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-success">
-                  <div class="card-body text-center">
-                    <i class="fas fa-users fa-2x text-success mb-2"></i>
-                    <h5 class="card-title">{statistics.totalPatients}</h5>
-                    <p class="card-text text-muted">Total Patients <small>(Aggregated)</small></p>
-                  </div>
-                </div>
+              <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-users text-2xl text-teal-500 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalPatients}</h3>
+                <p class="text-sm text-gray-500">Total Patients <small>(Aggregated)</small></p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-warning">
-                  <div class="card-body text-center">
-                    <i class="fas fa-pills fa-2x text-warning mb-2"></i>
-                    <h5 class="card-title">{statistics.totalPrescriptions}</h5>
-                    <p class="card-text text-muted">Total Prescriptions <small>(Aggregated)</small></p>
-                  </div>
-                </div>
+              <div class="bg-white border-2 border-yellow-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-pills text-2xl text-yellow-600 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalPrescriptions}</h3>
+                <p class="text-sm text-gray-500">Total Prescriptions <small>(Aggregated)</small></p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-info">
-                  <div class="card-body text-center">
-                    <i class="fas fa-heartbeat fa-2x text-info mb-2"></i>
-                    <h5 class="card-title">{statistics.totalSymptoms}</h5>
-                    <p class="card-text text-muted">Total Symptoms <small>(Aggregated)</small></p>
-                  </div>
-                </div>
+              <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-heartbeat text-2xl text-teal-600 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalSymptoms}</h3>
+                <p class="text-sm text-gray-500">Total Symptoms <small>(Aggregated)</small></p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-danger">
-                  <div class="card-body text-center">
-                    <i class="fas fa-brain fa-2x text-danger mb-2"></i>
-                    <h5 class="card-title">
-                      {#if aiUsageStats}
-                        ${aiUsageStats.total.cost.toFixed(3)}
-                      {:else}
-                        $0.000
-                      {/if}
-                    </h5>
-                    <p class="card-text text-muted">AI Cost <small>(Est.)</small></p>
-                  </div>
-                </div>
+              <div class="bg-white border-2 border-red-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-brain text-2xl text-red-600 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">
+                  {#if aiUsageStats}
+                    ${aiUsageStats.total.cost.toFixed(3)}
+                  {:else}
+                    $0.000
+                  {/if}
+                </h3>
+                <p class="text-sm text-gray-500">AI Cost <small>(Est.)</small></p>
               </div>
             </div>
             
             <!-- Recent Activity -->
-            <div class="card border-2 border-info shadow-sm">
-              <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Recent Activity</h5>
+            <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0"><i class="fas fa-clock mr-2"></i>Recent Activity</h5>
               </div>
-              <div class="card-body">
-                <p class="text-muted">Recent system activity will be displayed here.</p>
+              <div class="p-4">
+                <p class="text-gray-500">Recent system activity will be displayed here.</p>
               </div>
             </div>
             
           {:else if activeTab === 'doctors'}
             <!-- Doctors Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-user-md me-2 text-danger"></i>Doctors Management</h2>
-              <span class="badge bg-primary fs-6">{doctors.length} Doctors</span>
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-user-md mr-2 text-red-600"></i>Doctors Management</h2>
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctors.length} Doctors</span>
             </div>
             
-            <div class="card border-2 border-info shadow-sm">
-              <div class="card-header">
-                <h5 class="mb-0">All Registered Doctors</h5>
+            <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">All Registered Doctors</h5>
               </div>
-              <div class="card-body">
+              <div class="p-4">
                 {#if doctors.length > 0}
-                  <div class="table-responsive">
-                    <table class="table table-hover">
-                      <thead>
+                  <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                      <thead class="bg-gray-50">
                         <tr>
-                          <th>Email</th>
-                          <th>Name</th>
-                          <th>Role</th>
-                          <th>Created</th>
-                          <th>Patients</th>
-                          <th>Actions</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patients</th>
+                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody class="bg-white divide-y divide-gray-200">
                         {#each doctors as doctor}
-                          <tr>
-                            <td>{doctor.email}</td>
-                            <td>{doctor.name || 'N/A'}</td>
-                            <td>
-                              <span class="badge bg-primary">{doctor.role}</span>
+                          <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{doctor.email}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{doctor.name || 'N/A'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctor.role}</span>
                               {#if doctor.isAdmin}
-                                <span class="badge bg-danger ms-1">Admin</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 ml-1">Admin</span>
                               {/if}
                             </td>
-                            <td>{formatDate(doctor.createdAt)}</td>
-                            <td>{doctor.patientCount || 0}</td>
-                            <td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(doctor.createdAt)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{doctor.patientCount || 0}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                               {#if doctor.email !== 'senakahks@gmail.com'}
                                 <button 
-                                  class="btn btn-outline-danger btn-sm"
+                                  class="inline-flex items-center px-3 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
                                   data-doctor-id={doctor.id}
                                   on:click={() => deleteDoctor(doctor)}
                                   title="Delete doctor and all related data"
                                 >
-                                  <i class="fas fa-trash me-2"></i>Delete
+                                  <i class="fas fa-trash mr-2"></i>Delete
                                 </button>
                               {:else}
-                                <span class="text-muted small">
-                                  <i class="fas fa-shield-alt me-1"></i>Super Admin
+                                <span class="text-gray-500 text-sm">
+                                  <i class="fas fa-shield-alt mr-1"></i>Super Admin
                                 </span>
                               {/if}
                             </td>
@@ -500,7 +496,7 @@
                     </table>
                   </div>
                 {:else}
-                  <p class="text-muted text-center py-4">No doctors registered yet.</p>
+                  <p class="text-gray-500 text-center py-8">No doctors registered yet.</p>
                 {/if}
               </div>
             </div>
@@ -510,133 +506,104 @@
           <!-- Patient data access is restricted to individual doctors only -->
           {:else if activeTab === 'ai-usage'}
             <!-- AI Usage Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-brain me-2 text-danger"></i>AI Usage Analytics</h2>
-              <button class="btn btn-outline-danger btn-sm" on:click={loadAIUsageStats}>
-                <i class="fas fa-sync-alt me-1"></i>Refresh
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-brain mr-2 text-red-600"></i>AI Usage Analytics</h2>
+              <button class="inline-flex items-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg" on:click={loadAIUsageStats}>
+                <i class="fas fa-sync-alt mr-2"></i>Refresh
               </button>
             </div>
             
             {#if aiUsageStats}
               <!-- Cost Disclaimer -->
-              <div class="alert alert-warning mb-4" role="alert">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                <strong>Cost Disclaimer:</strong> These cost estimates are approximate and may not reflect actual OpenAI billing. 
+              <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6" role="alert">
+                <i class="fas fa-exclamation-triangle mr-2 text-yellow-600"></i>
+                <strong class="text-yellow-800">Cost Disclaimer:</strong> <span class="text-yellow-700">These cost estimates are approximate and may not reflect actual OpenAI billing. 
                 Actual costs may be higher due to taxes, fees, or pricing changes. 
-                Check your <a href="https://platform.openai.com/usage" target="_blank" class="alert-link">OpenAI dashboard</a> for exact billing amounts.
+                Check your <a href="https://platform.openai.com/usage" target="_blank" class="text-yellow-600 hover:text-yellow-800 underline">OpenAI dashboard</a> for exact billing amounts.</span>
               </div>
               
               <!-- Usage Overview Cards -->
-              <div class="row mb-4">
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-primary mb-2">
-                        <i class="fas fa-coins me-1"></i>Total Cost
-                      </h6>
-                      <h5 class="text-primary mb-1">${aiUsageStats.total.cost.toFixed(4)}</h5>
-                      <small class="text-muted">All Time</small>
-                    </div>
-                  </div>
+              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-coins mr-1"></i>Total Cost
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.cost.toFixed(4)}</h5>
+                  <small class="text-gray-500">All Time</small>
                 </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-success mb-2">
-                        <i class="fas fa-hashtag me-1"></i>Total Tokens
-                      </h6>
-                      <h5 class="text-success mb-1">{aiUsageStats.total.tokens.toLocaleString()}</h5>
-                      <small class="text-muted">All Time</small>
-                    </div>
-                  </div>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-hashtag mr-1"></i>Total Tokens
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">{aiUsageStats.total.tokens.toLocaleString()}</h5>
+                  <small class="text-gray-500">All Time</small>
                 </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-info mb-2">
-                        <i class="fas fa-bolt me-1"></i>Total Requests
-                      </h6>
-                      <h5 class="text-info mb-1">{aiUsageStats.total.requests}</h5>
-                      <small class="text-muted">All Time</small>
-                    </div>
-                  </div>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-bolt mr-1"></i>Total Requests
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">{aiUsageStats.total.requests}</h5>
+                  <small class="text-gray-500">All Time</small>
                 </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-warning mb-2">
-                        <i class="fas fa-calendar-day me-1"></i>Today
-                      </h6>
-                      <h5 class="text-warning mb-1">${aiUsageStats.today.cost.toFixed(4)}</h5>
-                      <small class="text-muted">{aiUsageStats.today.requests} requests</small>
-                    </div>
-                  </div>
+                <div class="bg-white border-2 border-yellow-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-yellow-600 font-semibold mb-2">
+                    <i class="fas fa-calendar-day mr-1"></i>Today
+                  </h6>
+                  <h5 class="text-yellow-600 text-xl font-bold mb-1">${aiUsageStats.today.cost.toFixed(4)}</h5>
+                  <small class="text-gray-500">{aiUsageStats.today.requests} requests</small>
                 </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-success text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-success mb-2">
-                        <i class="fas fa-calendar-alt me-1"></i>This Month
-                      </h6>
-                      <h5 class="text-success mb-1">${aiUsageStats.thisMonth.cost.toFixed(4)}</h5>
-                      <small class="text-muted">{aiUsageStats.thisMonth.requests} requests</small>
-                    </div>
-                  </div>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-calendar-alt mr-1"></i>This Month
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.thisMonth.cost.toFixed(4)}</h5>
+                  <small class="text-gray-500">{aiUsageStats.thisMonth.requests} requests</small>
                 </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-info mb-2">
-                        <i class="fas fa-percentage me-1"></i>Avg Cost/Request
-                      </h6>
-                      <h5 class="text-info mb-1">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h5>
-                      <small class="text-muted">All Time Average</small>
-                    </div>
-                  </div>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-percentage mr-1"></i>Avg Cost/Request
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h5>
+                  <small class="text-gray-500">All Time Average</small>
                 </div>
               </div>
               
               <!-- Last Updated Card -->
-              <div class="row mb-4">
-                <div class="col-md-3 col-sm-6 mb-3">
-                  <div class="card border-2 border-primary text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-primary mb-2">
-                        <i class="fas fa-clock me-1"></i>Last Updated
-                      </h6>
-                      <h6 class="text-primary mb-1">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
-                      <small class="text-muted">Usage Data</small>
-                    </div>
-                  </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-clock mr-1"></i>Last Updated
+                  </h6>
+                  <h6 class="text-teal-600 text-lg font-bold mb-1">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
+                  <small class="text-gray-500">Usage Data</small>
                 </div>
               
               <!-- Daily Usage Chart -->
-              <div class="row mb-4">
-                <div class="col-12">
-                  <div class="card">
-                    <div class="card-header">
-                      <h5 class="mb-0">
-                        <i class="fas fa-chart-line me-2"></i>Daily Usage (Last 7 Days)
-                      </h5>
-                    </div>
-                    <div class="card-body">
-                      <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                          <thead>
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-chart-line mr-2"></i>Daily Usage (Last 7 Days)
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                          <thead class="bg-gray-50">
                             <tr>
-                              <th>Date</th>
-                              <th>Requests</th>
-                              <th>Tokens</th>
-                              <th>Cost</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody class="bg-white divide-y divide-gray-200">
                             {#each aiTokenTracker.getWeeklyUsage() as day}
-                              <tr>
-                                <td>{new Date(day.date).toLocaleDateString()}</td>
-                                <td>{day.requests || 0}</td>
-                                <td>{(day.tokens || 0).toLocaleString()}</td>
-                                <td>${(day.cost || 0).toFixed(4)}</td>
+                              <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(day.date).toLocaleDateString()}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{day.requests || 0}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(day.tokens || 0).toLocaleString()}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(day.cost || 0).toFixed(4)}</td>
                               </tr>
                             {/each}
                           </tbody>
@@ -648,103 +615,98 @@
               </div>
               
               <!-- Monthly Usage Chart -->
-              <div class="row mb-4">
-                <div class="col-12">
-                  <div class="card">
-                    <div class="card-header">
-                      <h5 class="mb-0">
-                        <i class="fas fa-chart-bar me-2"></i>Monthly Usage (Last 6 Months)
-                      </h5>
-                    </div>
-                    <div class="card-body">
-                      <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                          <thead>
-                            <tr>
-                              <th>Month</th>
-                              <th>Requests</th>
-                              <th>Tokens</th>
-                              <th>Cost</th>
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-chart-bar mr-2"></i>Monthly Usage (Last 6 Months)
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each aiTokenTracker.getMonthlyUsage() as month}
+                            <tr class="hover:bg-gray-50">
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{month.requests || 0}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(month.tokens || 0).toLocaleString()}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(month.cost || 0).toFixed(4)}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {#each aiTokenTracker.getMonthlyUsage() as month}
-                              <tr>
-                                <td>{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
-                                <td>{month.requests || 0}</td>
-                                <td>{(month.tokens || 0).toLocaleString()}</td>
-                                <td>${(month.cost || 0).toFixed(4)}</td>
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
-                      </div>
+                          {/each}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
               </div>
               
               <!-- Recent Requests -->
-              <div class="row">
-                <div class="col-12">
-                  <div class="card">
-                    <div class="card-header">
-                      <h5 class="mb-0">
-                        <i class="fas fa-history me-2 text-danger"></i>Recent AI Requests
-                      </h5>
-                    </div>
-                    <div class="card-body">
-                      <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                          <thead>
-                            <tr>
-                              <th>Time</th>
-                              <th>Type</th>
-                              <th>Tokens</th>
-                              <th>Cost</th>
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-history mr-2 text-red-600"></i>Recent AI Requests
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each aiTokenTracker.getRecentRequests(10) as request}
+                            <tr class="hover:bg-gray-50">
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(request.timestamp).toLocaleString()}</td>
+                              <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                                  {request.type.replace('generate', '').replace('check', '')}
+                                </span>
+                              </td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{request.totalTokens.toLocaleString()}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${request.cost.toFixed(4)}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {#each aiTokenTracker.getRecentRequests(10) as request}
-                              <tr>
-                                <td>{new Date(request.timestamp).toLocaleString()}</td>
-                                <td>
-                                  <span class="badge bg-primary">
-                                    {request.type.replace('generate', '').replace('check', '')}
-                                  </span>
-                                </td>
-                                <td>{request.totalTokens.toLocaleString()}</td>
-                                <td>${request.cost.toFixed(4)}</td>
-                              </tr>
-                            {:else}
-                              <tr>
-                                <td colspan="4" class="text-center text-muted py-3">
-                                  <i class="fas fa-info-circle me-2"></i>
-                                  No recent AI requests found
-                                </td>
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
-                      </div>
+                          {:else}
+                            <tr>
+                              <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                No recent AI requests found
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
             {:else}
-              <div class="card">
-                <div class="card-body text-center py-5">
-                  <i class="fas fa-brain fa-3x text-muted mb-3"></i>
-                  <h5 class="text-muted">No AI Usage Data Available</h5>
-                  <p class="text-muted mb-4">AI usage statistics will appear here once AI features are used.</p>
-                  <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>
-                    <strong>Getting Started:</strong> AI usage tracking begins when doctors use AI features like:
-                    <ul class="list-unstyled mt-2 mb-0">
-                      <li><i class="fas fa-check text-success me-1"></i> AI Medical Analysis</li>
-                      <li><i class="fas fa-check text-success me-1"></i> AI Drug Suggestions</li>
-                      <li><i class="fas fa-check text-success me-1"></i> AI Chat Assistant</li>
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="text-center py-8">
+                  <i class="fas fa-brain text-4xl text-gray-400 mb-3"></i>
+                  <h5 class="text-gray-500">No AI Usage Data Available</h5>
+                  <p class="text-gray-500 mb-6">AI usage statistics will appear here once AI features are used.</p>
+                  <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <i class="fas fa-info-circle mr-2 text-blue-600"></i>
+                    <strong class="text-blue-800">Getting Started:</strong> <span class="text-blue-700">AI usage tracking begins when doctors use AI features like:</span>
+                    <ul class="list-disc list-inside mt-2 text-sm text-blue-700">
+                      <li><i class="fas fa-check text-teal-600 mr-1"></i> AI Medical Analysis</li>
+                      <li><i class="fas fa-check text-teal-600 mr-1"></i> AI Drug Suggestions</li>
+                      <li><i class="fas fa-check text-teal-600 mr-1"></i> AI Chat Assistant</li>
                     </ul>
                   </div>
                 </div>
@@ -753,60 +715,62 @@
             
           {:else if activeTab === 'ai-logs'}
             <!-- AI Logs Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-brain me-2 text-danger"></i>AI Prompt Logs</h2>
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-brain mr-2 text-red-600"></i>AI Prompt Logs</h2>
             </div>
             
             <AIPromptLogs />
             
           {:else if activeTab === 'system'}
             <!-- System Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-cog me-2 text-danger"></i>System Settings</h2>
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-cog mr-2 text-red-600"></i>System Settings</h2>
             </div>
             
-            <div class="row">
-              <div class="col-md-6">
-                <div class="card">
-                  <div class="card-header">
-                    <h5 class="mb-0">System Information</h5>
-                  </div>
-                  <div class="card-body">
-                    <dl class="row">
-                      <dt class="col-sm-4">Version:</dt>
-                      <dd class="col-sm-8">1.0.0</dd>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">System Information</h5>
+                </div>
+                <div class="p-4">
+                    <dl class="grid grid-cols-1 gap-4">
+                      <div class="flex justify-between">
+                        <dt class="text-sm font-medium text-gray-500">Version:</dt>
+                        <dd class="text-sm text-gray-900">1.0.0</dd>
+                      </div>
                       
-                      <dt class="col-sm-4">Last Updated:</dt>
-                      <dd class="col-sm-8">{new Date().toLocaleDateString()}</dd>
+                      <div class="flex justify-between">
+                        <dt class="text-sm font-medium text-gray-500">Last Updated:</dt>
+                        <dd class="text-sm text-gray-900">{new Date().toLocaleDateString()}</dd>
+                      </div>
                       
-                      <dt class="col-sm-4">Admin Email:</dt>
-                      <dd class="col-sm-8">senakahks@gmail.com</dd>
+                      <div class="flex justify-between">
+                        <dt class="text-sm font-medium text-gray-500">Admin Email:</dt>
+                        <dd class="text-sm text-gray-900">senakahks@gmail.com</dd>
+                      </div>
                     </dl>
                   </div>
                 </div>
               </div>
               
-              <div class="col-md-6">
-                <div class="card">
-                  <div class="card-header">
-                    <h5 class="mb-0">Quick Actions</h5>
-                  </div>
-                  <div class="card-body">
-                    <div class="d-grid gap-2">
-                      <button class="btn btn-outline-primary btn-sm">
-                        <i class="fas fa-download me-2"></i>Export Data
-                      </button>
-                      <button class="btn btn-outline-warning btn-sm">
-                        <i class="fas fa-backup me-2"></i>Backup System
-                      </button>
-                      <button class="btn btn-outline-info btn-sm" on:click={refreshData}>
-                        <i class="fas fa-sync-alt me-2"></i>Refresh Data
-                      </button>
-                    </div>
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Quick Actions</h5>
+                </div>
+                <div class="p-4">
+                  <div class="space-y-3">
+                    <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg">
+                      <i class="fas fa-download mr-2"></i>Export Data
+                    </button>
+                    <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-yellow-300 text-yellow-700 bg-white hover:bg-yellow-50 text-sm font-medium rounded-lg">
+                      <i class="fas fa-backup mr-2"></i>Backup System
+                    </button>
+                    <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg" on:click={refreshData}>
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh Data
+                    </button>
                   </div>
                 </div>
               </div>
-            </div>
           {/if}
         </div>
       </div>
@@ -814,4 +778,4 @@
   {/if}
 </div>
 
-<!-- Bootstrap 5 styling handled by utility classes -->
+<!-- Flowbite styling -->

@@ -108,11 +108,11 @@
   }
 </script>
 
-<div class="position-relative drug-autocomplete-container">
-  <div class="input-group input-group-sm">
+<div class="relative">
+  <div class="flex">
     <input 
       type="text" 
-      class="form-control form-control-sm" 
+      class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
       bind:value={value}
       {placeholder}
       {disabled}
@@ -122,7 +122,7 @@
       on:keydown={handleKeydown}
     >
     <button 
-      class="btn btn-outline-primary btn-sm d-none d-sm-inline-flex" 
+      class="hidden sm:inline-flex items-center px-3 py-2 border border-gray-300 border-l-0 text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
       type="button" 
       {disabled}
       on:click={() => {
@@ -151,11 +151,11 @@
       }}
       title="Add to database"
     >
-      <i class="fas fa-database me-1"></i><span class="d-none d-md-inline">To database</span>
+      <i class="fas fa-database mr-1"></i><span class="hidden md:inline">To database</span>
     </button>
     {#if value}
       <button 
-        class="btn btn-outline-secondary btn-sm" 
+        class="inline-flex items-center px-3 py-2 border border-gray-300 border-l-0 text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
         type="button" 
         {disabled}
         on:click={clearSearch}
@@ -168,9 +168,9 @@
   
   <!-- Mobile database button (shown on small screens) -->
   {#if value && value.trim()}
-    <div class="d-block d-sm-none mt-2">
+    <div class="block sm:hidden mt-2">
       <button 
-        class="btn btn-outline-primary btn-sm w-100" 
+        class="w-full inline-flex items-center justify-center px-3 py-2 border border-blue-300 text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed rounded-lg" 
         type="button" 
         {disabled}
         on:click={() => {
@@ -196,31 +196,31 @@
           }
         }}
       >
-        <i class="fas fa-database me-1"></i>Add to Database
+        <i class="fas fa-database mr-1"></i>Add to Database
       </button>
     </div>
   {/if}
   
   <!-- Dropdown Results -->
   {#if showDropdown && searchResults.length > 0}
-    <div class="dropdown-menu show w-100 position-absolute top-100 start-0" style="z-index: 1000;">
+    <div class="absolute top-full left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
       {#each searchResults as drug, index}
         <button 
-          class="dropdown-item {selectedIndex === index ? 'active' : ''}" 
+          class="w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100 last:border-b-0 {selectedIndex === index ? 'bg-blue-50' : ''}" 
           type="button"
           on:click={() => selectDrug(drug)}
           on:mouseenter={() => selectedIndex = index}
         >
-          <div class="d-flex justify-content-between align-items-center">
+          <div class="flex justify-between items-center">
             <div>
-              <strong>{drug.displayName}</strong>
+              <div class="font-semibold text-gray-900">{drug.displayName}</div>
               {#if drug.dosage}
-                <br><small class="text-muted">Dosage: {drug.dosage}</small>
+                <div class="text-sm text-gray-500 mt-1">Dosage: {drug.dosage}</div>
               {/if}
             </div>
-            <small class="text-muted">
+            <div class="text-gray-400">
               <i class="fas fa-pills"></i>
-            </small>
+            </div>
           </div>
         </button>
       {/each}
@@ -229,82 +229,32 @@
 </div>
 
 <style>
-  .drug-autocomplete-container {
-    width: 100%;
+  /* Minimal custom styles for DrugAutocomplete component */
+  .relative {
+    position: relative;
   }
   
-  .drug-autocomplete-container .input-group {
-    width: 100%;
+  /* Ensure dropdown appears above other elements */
+  .absolute {
+    position: absolute;
   }
   
-  .dropdown-menu {
-    max-height: 200px;
-    overflow-y: auto;
-    font-size: 0.9rem;
+  /* Custom scrollbar for dropdown */
+  .overflow-y-auto::-webkit-scrollbar {
+    width: 6px;
   }
   
-  .dropdown-item {
-    white-space: normal;
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
-    border: none;
-    text-align: left;
-    width: 100%;
+  .overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
   }
   
-  .dropdown-item:hover,
-  .dropdown-item.active {
-    background-color: var(--bs-primary);
-    color: white;
+  .overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
   }
   
-  .dropdown-item strong {
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
-  
-  .dropdown-item small {
-    font-size: 0.8rem;
-  }
-  
-  /* Mobile responsive adjustments */
-  @media (max-width: 576px) {
-    .dropdown-menu {
-      font-size: 0.85rem;
-      max-height: 150px;
-    }
-    
-    .dropdown-item {
-      padding: 0.4rem 0.8rem;
-      font-size: 0.85rem;
-    }
-    
-    .dropdown-item strong {
-      font-size: 0.85rem;
-    }
-    
-    .dropdown-item small {
-      font-size: 0.75rem;
-    }
-    
-    .drug-autocomplete-container .btn {
-      font-size: 0.8rem;
-      padding: 0.4rem 0.6rem;
-    }
-  }
-  
-  /* Tablet adjustments */
-  @media (min-width: 577px) and (max-width: 768px) {
-    .dropdown-menu {
-      font-size: 0.88rem;
-    }
-    
-    .dropdown-item {
-      font-size: 0.88rem;
-    }
-    
-    .dropdown-item strong {
-      font-size: 0.88rem;
-    }
+  .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
   }
 </style>

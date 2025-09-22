@@ -472,8 +472,8 @@
                      datasets: [{
                        label: 'Prescriptions',
                        data: prescriptionsPerDay,
-                       backgroundColor: 'rgba(var(--bs-primary-rgb), 0.8)',
-                       borderColor: 'rgba(var(--bs-primary-rgb), 1)',
+                       backgroundColor: 'rgba(59, 130, 246, 0.8)', // blue-500 with opacity
+                       borderColor: 'rgba(59, 130, 246, 1)', // blue-500
                        borderWidth: 1,
                        borderRadius: 4,
                        borderSkipped: false,
@@ -487,10 +487,10 @@
                 display: false
               },
                        tooltip: {
-                         backgroundColor: 'rgba(var(--bs-dark-rgb), 0.8)',
-                         titleColor: 'var(--bs-light)',
-                         bodyColor: 'var(--bs-light)',
-                         borderColor: 'rgba(var(--bs-primary-rgb), 1)',
+                         backgroundColor: 'rgba(31, 41, 55, 0.9)', // gray-800 with opacity
+                         titleColor: '#f9fafb', // gray-50
+                         bodyColor: '#f9fafb', // gray-50
+                         borderColor: 'rgba(59, 130, 246, 1)', // blue-500
                          borderWidth: 1,
                          cornerRadius: 6,
                          displayColors: false,
@@ -510,7 +510,7 @@
                   display: false
                 },
                          ticks: {
-                           color: 'var(--bs-secondary)',
+                           color: '#6b7280', // gray-500
                            font: {
                              size: 10
                            },
@@ -522,11 +522,11 @@
               y: {
                 beginAtZero: true,
                 grid: {
-                  color: 'rgba(var(--bs-dark-rgb), 0.1)',
+                  color: 'rgba(31, 41, 55, 0.1)', // gray-800 with low opacity
                   drawBorder: false
                 },
                 ticks: {
-                  color: 'var(--bs-secondary)',
+                  color: '#6b7280', // gray-500
                   font: {
                     size: 11
                   },
@@ -915,71 +915,66 @@
 </script>
 
 <!-- Navigation Tabs -->
-<div class="card mb-3">
-  <div class="card-body py-2 px-2 px-md-3">
-    <ul class="nav nav-pills nav-fill">
-      <li class="nav-item">
-        <button 
-          class="nav-link {currentView === 'patients' ? 'active' : ''} btn-sm"
-          on:click={() => currentView = 'patients'}
-        >
-          <i class="fas fa-users me-1 me-md-2"></i>
-          <span class="d-none d-sm-inline">Patients</span>
-          <span class="d-sm-none">Patients</span>
-        </button>
-      </li>
-      <li class="nav-item">
-        <button 
-          class="nav-link {currentView === 'pharmacists' ? 'active' : ''} btn-sm"
-          on:click={() => currentView = 'pharmacists'}
-        >
-          <i class="fas fa-pills me-1 me-md-2"></i>
-          <span class="d-none d-sm-inline">Pharmacists</span>
-          <span class="d-sm-none">Pharmacy</span>
-        </button>
-      </li>
-    </ul>
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
+  <div class="p-3">
+    <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1" role="group" aria-label="View selection">
+      <button 
+        class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 {currentView === 'patients' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+        on:click={() => currentView = 'patients'}
+      >
+        <i class="fas fa-users mr-2"></i>
+        <span class="hidden sm:inline">Patients</span>
+        <span class="sm:hidden">Patients</span>
+      </button>
+      <button 
+        class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 {currentView === 'pharmacists' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+        on:click={() => currentView = 'pharmacists'}
+      >
+        <i class="fas fa-pills mr-2"></i>
+        <span class="hidden sm:inline">Pharmacists</span>
+        <span class="sm:hidden">Pharmacists</span>
+      </button>
+    </div>
   </div>
 </div>
 
 {#if currentView === 'patients'}
-<div class="row g-3">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
   <!-- Patient List Sidebar -->
-  <div class="col-12 col-lg-4">
+  <div class="lg:col-span-4">
     <!-- Patients Card -->
-    <div class="card border-2 border-info mb-3 shadow-sm">
+    <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mb-3">
       <!-- Fixed Header -->
-      <div class="card-header px-2 px-md-3">
-        <div class="d-flex justify-content-between align-items-center mb-2 mb-md-3">
-          <h5 class="mb-0 fs-6 fs-md-5">
-            <i class="fas fa-users me-1 me-md-2"></i>
-            <span class="d-none d-sm-inline">Patients</span>
-            <span class="d-sm-none">Patients</span>
+      <div class="px-3 py-4 border-b border-gray-200">
+        <div class="flex justify-between items-center mb-3">
+          <h5 class="text-lg font-semibold text-gray-900 mb-0">
+            <i class="fas fa-users text-teal-600 mr-2"></i>
+            Patients
           </h5>
           <button 
-            class="btn btn-primary btn-sm" 
+            class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200" 
             on:click={showAddPatientForm}
           >
-            <i class="fas fa-plus me-1"></i>
-            <span class="d-none d-sm-inline">Add Patient</span>
-            <span class="d-sm-none">Add</span>
+            <i class="fas fa-plus mr-1"></i>
+            <span class="hidden sm:inline">Add Patient</span>
+            <span class="sm:hidden">Add</span>
           </button>
         </div>
         
         <!-- Search Bar -->
-        <div class="input-group input-group-sm">
-          <span class="input-group-text">
-            <i class="fas fa-search"></i>
-          </span>
+        <div class="relative">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <i class="fas fa-search text-gray-400"></i>
+          </div>
           <input 
             type="text" 
-            class="form-control" 
+            class="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
             placeholder="Search patients..."
             bind:value={searchQuery}
           >
           {#if searchQuery}
             <button 
-              class="btn btn-outline-secondary btn-sm" 
+              class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600" 
               type="button" 
               on:click={clearSearch}
               title="Clear search"
@@ -991,8 +986,8 @@
         
         {#if searchQuery}
           <div class="mt-2">
-            <small class="text-muted">
-              <i class="fas fa-info-circle me-1"></i>
+            <small class="text-gray-500">
+              <i class="fas fa-info-circle mr-1"></i>
               Showing {filteredPatients.length} of {patients.filter(p => {
                 const query = searchQuery.toLowerCase().trim()
                 const fullName = `${p.firstName} ${p.lastName}`.toLowerCase()
@@ -1015,8 +1010,8 @@
                        (p.phone && p.phone.toLowerCase().includes(query)) ||
                        (p.dateOfBirth && p.dateOfBirth.includes(query))
               }).length > 20}
-                <br><small class="text-warning">
-                  <i class="fas fa-exclamation-triangle me-1"></i>
+                <br><small class="text-yellow-600">
+                  <i class="fas fa-exclamation-triangle mr-1"></i>
                   Showing first 20 results. Refine your search for more specific results.
                 </small>
               {/if}
@@ -1026,38 +1021,41 @@
       </div>
       
       <!-- Scrollable Content Area -->
-      <div class="card-body p-0 overflow-auto" style="max-height: 300px;">
+      <div class="overflow-auto max-h-80">
         {#if searchQuery}
           {#if loading}
-            <div class="text-center p-3">
-              <i class="fas fa-spinner fa-spin fa-2x text-primary mb-2"></i>
-              <p class="text-muted">Loading patients...</p>
+            <div class="text-center p-4">
+              <svg class="animate-spin h-8 w-8 text-teal-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p class="text-gray-500">Loading patients...</p>
             </div>
           {:else if filteredPatients.length === 0}
-            <div class="text-center p-3 text-muted">
+            <div class="text-center p-4 text-gray-500">
               <i class="fas fa-search fa-2x mb-2"></i>
               <p>No patients found matching "{searchQuery}"</p>
-              <button class="btn btn-outline-primary btn-sm" on:click={clearSearch}>
-                <i class="fas fa-times me-1"></i>Clear Search
+              <button class="bg-teal-100 hover:bg-teal-200 text-teal-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={clearSearch}>
+                <i class="fas fa-times mr-1"></i>Clear Search
               </button>
             </div>
           {:else}
-            <div class="list-group list-group-flush">
+            <div class="divide-y divide-gray-200">
               {#each filteredPatients as patient}
                 <button 
-                  class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
+                  class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200 {selectedPatient?.id === patient.id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}"
                   on:click={() => selectPatient(patient)}
                 >
-                  <div class="d-flex w-100 justify-content-between align-items-center">
-                    <div class="flex-grow-1">
-                      <h6 class="mb-1">
-                        <i class="fas fa-user me-1"></i>
+                  <div class="flex justify-between items-center">
+                    <div class="flex-1">
+                      <h6 class="text-sm font-medium text-gray-900 mb-1">
+                        <i class="fas fa-user text-gray-400 mr-2"></i>
                         {patient.firstName} {patient.lastName}
                       </h6>
                     </div>
-                    <div class="text-end">
-                      <small class="text-muted">
-                        <i class="fas fa-calendar me-1"></i>
+                    <div class="text-right">
+                      <small class="text-gray-500">
+                        <i class="fas fa-calendar mr-1"></i>
                         {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
                           {patient.age} years
                         {:else if patient.dateOfBirth}
@@ -1084,35 +1082,38 @@
           {/if}
         {:else if !selectedPatient}
           {#if loading}
-            <div class="text-center p-3">
-              <i class="fas fa-spinner fa-spin fa-2x text-primary mb-2"></i>
-              <p class="text-muted">Loading patients...</p>
+            <div class="text-center p-4">
+              <svg class="animate-spin h-8 w-8 text-teal-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p class="text-gray-500">Loading patients...</p>
             </div>
           {:else if filteredPatients.length === 0}
-            <div class="text-center p-3 text-muted">
+            <div class="text-center p-4 text-gray-500">
               <i class="fas fa-user-plus fa-2x mb-2"></i>
               <p>No patients yet. Add your first patient!</p>
-              <button class="btn btn-primary btn-sm" on:click={showAddPatientForm}>
-                <i class="fas fa-plus me-1"></i>Get Started
+              <button class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200" on:click={showAddPatientForm}>
+                <i class="fas fa-plus mr-1"></i>Get Started
               </button>
             </div>
           {:else}
-            <div class="list-group list-group-flush">
+            <div class="divide-y divide-gray-200">
               {#each filteredPatients as patient}
                 <button 
-                  class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
+                  class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200 {selectedPatient?.id === patient.id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}"
                   on:click={() => selectPatient(patient)}
                 >
-                  <div class="d-flex w-100 justify-content-between align-items-center">
-                    <div class="flex-grow-1">
-                      <h6 class="mb-1">
-                        <i class="fas fa-user me-1"></i>
+                  <div class="flex justify-between items-center">
+                    <div class="flex-1">
+                      <h6 class="text-sm font-medium text-gray-900 mb-1">
+                        <i class="fas fa-user text-gray-400 mr-2"></i>
                         {patient.firstName} {patient.lastName}
                       </h6>
                     </div>
-                    <div class="text-end">
-                      <small class="text-muted">
-                        <i class="fas fa-calendar me-1"></i>
+                    <div class="text-right">
+                      <small class="text-gray-500">
+                        <i class="fas fa-calendar mr-1"></i>
                         {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
                           {patient.age} years
                         {:else if patient.dateOfBirth}
@@ -1166,7 +1167,7 @@
   </div>
   
   <!-- Main Content Area -->
-    <div class="col-12 col-lg-8">
+    <div class="lg:col-span-8">
       {#if showPatientForm}
         <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
       {:else if selectedPatient}
@@ -1180,32 +1181,32 @@
         />
       {:else}
       <!-- Welcome Dashboard -->
-      <div class="row g-3">
+      <div class="space-y-4">
                  <!-- Welcome Message -->
-                 <div class="col-12" key={userKey}>
-                   <div class="card border-2 border-info shadow-sm">
-                     <div class="card-body bg-transparent text-dark rounded-3">
-                       <div class="d-flex align-items-center">
+                 <div key={userKey}>
+                   <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+                     <div class="p-6">
+                       <div class="flex items-center">
                          <div class="flex-shrink-0">
-                           <i class="fas fa-user-md fa-2x text-primary"></i>
+                           <i class="fas fa-user-md fa-2x text-teal-600"></i>
                          </div>
-                         <div class="flex-grow-1 ms-3">
-                           <div class="d-flex justify-content-between align-items-center">
-                             <div class="d-flex align-items-center">
-                               <h4 class="card-title mb-1 fw-bold text-dark me-2" style="cursor: pointer;" on:click={handleEditProfile} title="Click to edit profile">
+                         <div class="flex-1 ml-4">
+                           <div class="flex justify-between items-center">
+                             <div class="flex items-center">
+                               <h4 class="text-xl font-bold text-gray-900 mb-1 mr-3 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
                                  Welcome, Dr. {doctorName}!
                                </h4>
-                               <button class="btn btn-link p-1" on:click={handleEditProfile} title="Edit Profile Settings" data-bs-toggle="tooltip" data-bs-placement="bottom">
-                                 <i class="fas fa-cog text-danger fa-sm"></i>
+                               <button class="p-1 text-gray-400 hover:text-red-500 transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                                 <i class="fas fa-cog text-sm"></i>
                                </button>
                              </div>
                            </div>
-                           <p class="card-text mb-0 text-muted">
+                           <p class="text-gray-600 mb-0">
                              Ready to provide excellent patient care with AI-powered assistance
                            </p>
                            <!-- Added Country Information -->
-                           <p class="card-text mt-2 mb-0 text-muted small">
-                             <i class="fas fa-map-marker-alt me-1"></i>
+                           <p class="text-gray-500 mt-2 mb-0 text-sm">
+                             <i class="fas fa-map-marker-alt mr-1"></i>
                              Location: {doctorCity || 'Not specified'}, {doctorCountry || 'Not specified'}
                            </p>
                          </div>
@@ -1216,94 +1217,88 @@
         
         {#if !editingProfile}
         <!-- Statistics Cards -->
-        <div class="col-6 col-md-4">
-          <div class="card border-0 shadow-sm h-100">
-            <div class="card-body bg-info text-white rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
-                <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-users fa-sm fa-md-lg"></i>
-                  </div>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div class="bg-teal-500 text-white rounded-lg shadow-sm h-full">
+          <div class="p-4">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <div class="bg-white bg-opacity-25 rounded-full p-2">
+                  <i class="fas fa-users text-sm"></i>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPatients">{patients.length}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Patients Registered</small>
-                  <small class="opacity-75 d-sm-none">Patients</small>
-                </div>
+              </div>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0" id="totalPatients">{patients.length}</h4>
+                <small class="opacity-75 hidden sm:block">Patients Registered</small>
+                <small class="opacity-75 sm:hidden">Patients</small>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-6 col-md-4">
-          <div class="card border-0 shadow-sm h-100">
-            <div class="card-body bg-warning text-dark rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
-                <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-prescription fa-sm fa-md-lg"></i>
-                  </div>
+        <div class="bg-yellow-500 text-gray-900 rounded-lg shadow-sm h-full">
+          <div class="p-4">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <div class="bg-white bg-opacity-25 rounded-full p-2">
+                  <i class="fas fa-prescription text-sm"></i>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPrescriptions">{totalPrescriptions}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Total Prescriptions</small>
-                  <small class="opacity-75 d-sm-none">Prescriptions</small>
-                </div>
+              </div>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0" id="totalPrescriptions">{totalPrescriptions}</h4>
+                <small class="opacity-75 hidden sm:block">Total Prescriptions</small>
+                <small class="opacity-75 sm:hidden">Prescriptions</small>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-6 col-md-4">
-          <div class="card border border-light shadow-sm h-100">
-            <div class="card-body bg-secondary text-white rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
-                <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-pills fa-sm fa-md-lg"></i>
-                  </div>
+        <div class="bg-gray-600 text-white rounded-lg shadow-sm h-full">
+          <div class="p-4">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <div class="bg-white bg-opacity-25 rounded-full p-2">
+                  <i class="fas fa-pills text-sm"></i>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalDrugs">{totalDrugs}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Total Drugs</small>
-                  <small class="opacity-75 d-sm-none">Drugs</small>
-                </div>
+              </div>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0" id="totalDrugs">{totalDrugs}</h4>
+                <small class="opacity-75 hidden sm:block">Total Drugs</small>
+                <small class="opacity-75 sm:hidden">Drugs</small>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-6 col-md-4">
-          <div class="card border border-light shadow-sm h-100">
-            <div class="card-body bg-success text-white rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
-                <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-store fa-sm fa-md-lg"></i>
-                  </div>
+        <div class="bg-teal-500 text-white rounded-lg shadow-sm h-full">
+          <div class="p-4">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <div class="bg-white bg-opacity-25 rounded-full p-2">
+                  <i class="fas fa-store text-sm"></i>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="connectedPharmacies">{connectedPharmacies}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Connected Pharmacies</small>
-                  <small class="opacity-75 d-sm-none">Pharmacies</small>
-                </div>
+              </div>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0" id="connectedPharmacies">{connectedPharmacies}</h4>
+                <small class="opacity-75 hidden sm:block">Connected Pharmacies</small>
+                <small class="opacity-75 sm:hidden">Pharmacies</small>
               </div>
             </div>
           </div>
+        </div>
         </div>
         
         <!-- Prescriptions Per Day Chart -->
-        <div class="col-12">
-          <div class="card border border-light shadow-sm">
-            <div class="card-header bg-light border-0 py-2 py-md-3 px-2 px-md-3">
-              <h6 class="card-title mb-0 fw-bold text-dark fs-6 fs-md-5">
-                <i class="fas fa-chart-line me-1 me-md-2 text-primary"></i>
-                <span class="d-none d-sm-inline">Prescriptions Per Day (Last 30 Days)</span>
-                <span class="d-sm-none">Prescriptions Per Day</span>
+        <div class="col-span-full">
+          <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div class="bg-gray-50 border-b border-gray-200 py-3 px-4">
+              <h6 class="text-lg font-semibold text-gray-900 mb-0">
+                <i class="fas fa-chart-line mr-2 text-teal-600"></i>
+                <span class="hidden sm:inline">Prescriptions Per Day (Last 30 Days)</span>
+                <span class="sm:hidden">Prescriptions Per Day</span>
               </h6>
             </div>
-            <div class="card-body p-2 p-md-4">
-              <div class="chart-container position-relative w-100" style="height: 250px;">
+            <div class="p-4">
+              <div class="relative w-full" style="height: 250px;">
                 <canvas id="prescriptionsChart" class="rounded"></canvas>
               </div>
             </div>
@@ -1313,26 +1308,26 @@
         
         {#if editingProfile}
         <!-- Inline Tabbed Profile Editing Interface -->
-        <div class="col-12">
-          <div class="card border-0 shadow-sm">
-            <div class="card-header bg-primary text-white">
-              <div class="d-flex justify-content-between align-items-center">
-                <h6 class="card-title mb-0">
+        <div class="col-span-full">
+          <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
+              <div class="flex justify-between items-center">
+                <h6 class="text-lg font-semibold mb-0">
                   <i class="fas fa-cog me-2 fa-sm"></i>
                   Settings
                 </h6>
-                <button class="btn btn-outline-light btn-sm" on:click={handleProfileCancel}>
+                <button class="inline-flex items-center px-3 py-2 border border-white text-white bg-transparent hover:bg-white hover:text-teal-600 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 transition-colors duration-200" on:click={handleProfileCancel}>
                   <i class="fas fa-times fa-sm"></i>
                 </button>
               </div>
             </div>
             
             <!-- Tab Navigation -->
-            <div class="card-body p-0">
-              <ul class="nav nav-tabs nav-fill" id="settingsTabs" role="tablist">
-                <li class="nav-item" role="presentation">
+            <div class="p-0">
+              <ul class="flex border-b border-gray-200" id="settingsTabs" role="tablist">
+                <li class="flex-1" role="presentation">
                   <button 
-                    class="nav-link {activeTab === 'edit-profile' ? 'active' : ''} btn-sm" 
+                    class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'edit-profile' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
                     id="edit-profile-tab" 
                     type="button" 
                     role="tab" 
@@ -1344,9 +1339,9 @@
                     Edit Profile
                   </button>
                 </li>
-                <li class="nav-item" role="presentation">
+                <li class="flex-1" role="presentation">
                   <button 
-                    class="nav-link {activeTab === 'prescription-template' ? 'active' : ''} btn-sm" 
+                    class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 {activeTab === 'prescription-template' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
                     id="prescription-template-tab" 
                     type="button" 
                     role="tab" 
@@ -1368,12 +1363,12 @@
                   <form on:submit={handleProfileSubmit}>
                     <div class="row mb-3">
                       <div class="col-md-6">
-                        <label for="editFirstName" class="form-label">
-                          First Name <span class="text-danger">*</span>
+                        <label for="editFirstName" class="block text-sm font-medium text-gray-700 mb-1">
+                          First Name <span class="text-red-600">*</span>
                         </label>
                         <input 
                           type="text" 
-                          class="form-control form-control-sm" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                           id="editFirstName"
                           bind:value={editFirstName}
                           placeholder="Enter your first name"
@@ -1382,12 +1377,12 @@
                         />
                       </div>
                       <div class="col-md-6">
-                        <label for="editLastName" class="form-label">
-                          Last Name <span class="text-danger">*</span>
+                        <label for="editLastName" class="block text-sm font-medium text-gray-700 mb-1">
+                          Last Name <span class="text-red-600">*</span>
                         </label>
                         <input 
                           type="text" 
-                          class="form-control form-control-sm" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                           id="editLastName"
                           bind:value={editLastName}
                           placeholder="Enter your last name"
@@ -1398,27 +1393,27 @@
                     </div>
 
                     <div class="mb-3">
-                      <label for="editEmail" class="form-label">Email Address</label>
+                      <label for="editEmail" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                       <input 
                         type="email" 
-                        class="form-control form-control-sm" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                         id="editEmail"
                         value={user?.email || ''}
                         disabled
                         readonly
                       />
-                      <div class="form-text">
+                      <div class="text-sm text-gray-500">
                         <i class="fas fa-info-circle me-1"></i>
                         Email cannot be changed for security reasons
                       </div>
                     </div>
 
                     <div class="mb-3">
-                      <label for="editCountry" class="form-label">
-                        Country <span class="text-danger">*</span>
+                      <label for="editCountry" class="block text-sm font-medium text-gray-700 mb-1">
+                        Country <span class="text-red-600">*</span>
                       </label>
                       <select 
-                        class="form-select form-select-sm" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                         id="editCountry"
                         bind:value={editCountry}
                         required
@@ -1432,11 +1427,11 @@
                     </div>
 
                     <div class="mb-3">
-                      <label for="editCity" class="form-label">
-                        City <span class="text-danger">*</span>
+                      <label for="editCity" class="block text-sm font-medium text-gray-700 mb-1">
+                        City <span class="text-red-600">*</span>
                       </label>
                       <select 
-                        class="form-select form-select-sm" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                         id="editCity"
                         bind:value={editCity}
                         required
@@ -1448,7 +1443,7 @@
                         {/each}
                       </select>
                       {#if editCountry && availableCities.length === 0}
-                        <div class="form-text text-warning">
+                        <div class="text-sm text-yellow-600">
                           <i class="fas fa-exclamation-triangle me-1"></i>
                           No cities available for the selected country. Please contact support.
                         </div>
@@ -1456,30 +1451,30 @@
                     </div>
 
                     {#if profileError}
-                      <div class="alert alert-danger" role="alert">
+                      <div class="bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
                         <i class="fas fa-exclamation-triangle me-2"></i>{profileError}
                       </div>
                     {/if}
 
-                    <div class="d-flex justify-content-end gap-2">
+                    <div class="flex justify-end gap-2">
                       <button 
                         type="button" 
-                        class="btn btn-outline-secondary btn-sm" 
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                         on:click={handleProfileCancel}
                         disabled={profileLoading}
                       >
-                        <i class="fas fa-times me-1 fa-sm"></i>
+                        <i class="fas fa-times mr-1 fa-sm"></i>
                         Cancel
                       </button>
                       <button 
                         type="submit" 
-                        class="btn btn-primary btn-sm"
+                        class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                         disabled={profileLoading}
                       >
                         {#if profileLoading}
-                          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                          <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                         {/if}
-                        <i class="fas fa-save me-1 fa-sm"></i>
+                        <i class="fas fa-save mr-1 fa-sm"></i>
                         Save Changes
                       </button>
                     </div>
@@ -1500,16 +1495,16 @@
                   
                   <!-- Template Type Selection -->
                   <div class="row mb-4">
-                    <div class="col-12">
-                      <label class="form-label fw-semibold mb-3">Select Template Type:</label>
+                    <div class="col-span-full">
+                      <label class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</label>
                       
                       <!-- Option 1: Printed Letterheads -->
                       {#if templateType !== 'upload'}
-                      <div class="card mb-3 border {templateType === 'printed' ? 'border-primary' : ''}">
-                        <div class="card-body p-3">
-                          <div class="form-check">
+                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4 {templateType === 'printed' ? 'border-teal-500' : ''}">
+                        <div class="p-4">
+                          <div class="flex items-center">
                             <input 
-                              class="form-check-input" 
+                              class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
                               type="radio" 
                               name="templateType" 
                               id="templatePrinted" 
@@ -1517,53 +1512,53 @@
                               bind:group={templateType}
                               on:change={() => selectTemplateType('printed')}
                             />
-                            <label class="form-check-label w-100" for="templatePrinted">
-                              <div class="d-flex align-items-center">
-                                <div class="flex-shrink-0 me-3">
-                                  <i class="fas fa-print fa-2x text-primary"></i>
+                            <label class="w-full cursor-pointer" for="templatePrinted">
+                              <div class="flex items-center">
+                                <div class="flex-shrink-0 mr-3">
+                                  <i class="fas fa-print text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow-1">
-                                  <h6 class="mb-1">I have printed A3 letterheads</h6>
-                                  <p class="text-muted small mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
+                                <div class="flex-grow">
+                                  <h6 class="text-sm font-semibold text-gray-900 mb-1">I have printed A3 letterheads</h6>
+                                  <p class="text-gray-500 text-sm mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
                                 </div>
                               </div>
                             </label>
                           </div>
                           
                           {#if templateType === 'printed'}
-                          <div class="mt-3">
-                            <label class="form-label small">Header Size Adjustment:</label>
-                            <div class="row align-items-center">
-                              <div class="col-8">
+                          <div class="mt-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
+                            <div class="flex items-center">
+                              <div class="flex-1 mr-4">
                                 <input 
                                   type="range" 
-                                  class="form-range" 
+                                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
                                   min="50" 
                                   max="300" 
                                   step="10"
                                   bind:value={headerSize}
                                 />
                               </div>
-                              <div class="col-4">
-                                <span class="badge bg-primary">{headerSize}px</span>
+                              <div class="flex-shrink-0">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{headerSize}px</span>
                               </div>
                             </div>
-                            <div class="form-text">
-                              <i class="fas fa-info-circle me-1"></i>
+                            <div class="text-sm text-gray-500 mt-2">
+                              <i class="fas fa-info-circle mr-1"></i>
                               Adjust the header space to match your printed letterhead height.
                             </div>
                             
                             <!-- Template Preview -->
-                            <div class="mt-3">
-                              <label class="form-label small">Template Preview:</label>
-                              <div class="border rounded p-2 bg-light">
+                            <div class="mt-4">
+                              <label class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</label>
+                              <div class="border rounded p-2 bg-gray-50">
                                 <div class="template-preview">
                                   <!-- Header Space (representing printed letterhead) -->
                                   <div 
-                                    class="header-space border-bottom border-2 border-primary mb-3"
+                                    class="header-space border-bottom border-2 border-teal-500 mb-3"
                                     style="height: {headerSize}px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);"
                                   >
-                                    <div class="d-flex align-items-center justify-content-center h-100">
+                                    <div class="flex items-center justify-center h-full">
                                       <div class="text-center text-muted">
                                         <i class="fas fa-print fa-2x mb-2"></i>
                                         <div class="small">Printed Letterhead Area</div>
@@ -1594,7 +1589,7 @@
                                     <div class="medications mb-3">
                                       <strong>Medications:</strong>
                                       <div class="mt-2">
-                                        <div class="d-flex justify-content-between">
+                                        <div class="flex justify-between">
                                           <span>• Medication Name</span>
                                           <span><strong>Dosage</strong></span>
                                         </div>
@@ -1622,11 +1617,11 @@
                       {/if}
                       
                       <!-- Option 2: Upload Image -->
-                      <div class="card mb-3 border {templateType === 'upload' ? 'border-primary' : ''}">
-                        <div class="card-body p-3">
-                          <div class="form-check">
+                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4 {templateType === 'upload' ? 'border-teal-500' : ''}">
+                        <div class="p-4">
+                          <div class="flex items-center">
                             <input 
-                              class="form-check-input" 
+                              class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
                               type="radio" 
                               name="templateType" 
                               id="templateUpload" 
@@ -1634,14 +1629,14 @@
                               bind:group={templateType}
                               on:change={() => selectTemplateType('upload')}
                             />
-                            <label class="form-check-label w-100" for="templateUpload">
-                              <div class="d-flex align-items-center">
-                                <div class="flex-shrink-0 me-3">
-                                  <i class="fas fa-image fa-2x text-success"></i>
+                            <label class="w-full cursor-pointer" for="templateUpload">
+                              <div class="flex items-center">
+                                <div class="flex-shrink-0 mr-3">
+                                  <i class="fas fa-image text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow-1">
-                                  <h6 class="mb-1">I want to upload an image for header</h6>
-                                  <p class="text-muted small mb-0">Upload your custom header image to be used on all prescriptions.</p>
+                                <div class="flex-grow">
+                                  <h6 class="text-sm font-semibold text-gray-900 mb-1">I want to upload an image for header</h6>
+                                  <p class="text-gray-500 text-sm mb-0">Upload your custom header image to be used on all prescriptions.</p>
                                 </div>
                               </div>
                             </label>
@@ -1651,49 +1646,49 @@
                           <div class="mt-3">
                             <input 
                               type="file" 
-                              class="form-control form-control-sm" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                               accept="image/*"
                               on:change={handleHeaderUpload}
                             />
-                            <div class="form-text">
+                            <div class="text-sm text-gray-500">
                               <i class="fas fa-info-circle me-1"></i>
                               Supported formats: JPG, PNG, GIF. Recommended size: 800x200 pixels.
                             </div>
                             
                             {#if uploadedHeader}
-                            <div class="mt-3">
-                              <label class="form-label small">Header Size Adjustment:</label>
-                              <div class="row align-items-center">
-                                <div class="col-8">
+                            <div class="mt-4">
+                              <label class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
+                              <div class="flex items-center">
+                                <div class="flex-1 mr-4">
                                   <input 
                                     type="range" 
-                                    class="form-range" 
+                                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
                                     min="50" 
                                     max="300" 
                                     step="10"
                                     bind:value={headerSize}
                                   />
                                 </div>
-                                <div class="col-4">
-                                  <span class="badge bg-primary">{headerSize}px</span>
+                                <div class="flex-shrink-0">
+                                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{headerSize}px</span>
                                 </div>
                               </div>
-                              <div class="form-text">
-                                <i class="fas fa-info-circle me-1"></i>
+                              <div class="text-sm text-gray-500 mt-2">
+                                <i class="fas fa-info-circle mr-1"></i>
                                 Adjust the header space to match your uploaded image height.
                               </div>
                               
                               <!-- Template Preview with Uploaded Image -->
-                              <div class="mt-3">
-                                <label class="form-label small">Template Preview:</label>
-                                <div class="border rounded p-2 bg-light">
+                              <div class="mt-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</label>
+                                <div class="border rounded p-2 bg-gray-50">
                                   <div class="template-preview">
                                     <!-- Header Space with Uploaded Image -->
                                     <div 
-                                      class="header-space border-bottom border-2 border-primary mb-3"
+                                      class="header-space border-bottom border-2 border-teal-500 mb-3"
                                       style="height: {headerSize}px; background-image: url('{uploadedHeader}'); background-size: contain; background-repeat: no-repeat; background-position: center;"
                                     >
-                                      <div class="d-flex align-items-center justify-content-center h-100">
+                                      <div class="flex items-center justify-center h-full">
                                         <div class="text-center text-muted" style="background: rgba(255,255,255,0.8); padding: 0.5rem; border-radius: 0.25rem;">
                                           <div class="small">Custom Header Image</div>
                                           <div class="small fw-bold">{headerSize}px height</div>
@@ -1723,7 +1718,7 @@
                                       <div class="medications mb-3">
                                         <strong>Medications:</strong>
                                         <div class="mt-2">
-                                          <div class="d-flex justify-content-between">
+                                          <div class="flex justify-between">
                                             <span>• Medication Name</span>
                                             <span><strong>Dosage</strong></span>
                                           </div>
@@ -1753,11 +1748,11 @@
                       
                       <!-- Option 3: System Header -->
                       {#if templateType !== 'printed' && templateType !== 'upload'}
-                      <div class="card mb-3 border {templateType === 'system' ? 'border-primary' : ''}">
-                        <div class="card-body p-3">
-                          <div class="form-check">
+                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4 {templateType === 'system' ? 'border-teal-500' : ''}">
+                        <div class="p-4">
+                          <div class="flex items-center">
                             <input 
-                              class="form-check-input" 
+                              class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
                               type="radio" 
                               name="templateType" 
                               id="templateSystem" 
@@ -1765,14 +1760,14 @@
                               bind:group={templateType}
                               on:change={() => selectTemplateType('system')}
                             />
-                            <label class="form-check-label w-100" for="templateSystem">
-                              <div class="d-flex align-items-center">
-                                <div class="flex-shrink-0 me-3">
-                                  <i class="fas fa-cog fa-2x text-info"></i>
+                            <label class="w-full cursor-pointer" for="templateSystem">
+                              <div class="flex items-center">
+                                <div class="flex-shrink-0 mr-3">
+                                  <i class="fas fa-cog text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow-1">
-                                  <h6 class="mb-1">I want system to add header for template</h6>
-                                  <p class="text-muted small mb-0">Use a system-generated header with your practice information.</p>
+                                <div class="flex-grow">
+                                  <h6 class="text-sm font-semibold text-gray-900 mb-1">I want system to add header for template</h6>
+                                  <p class="text-gray-500 text-sm mb-0">Use a system-generated header with your practice information.</p>
                                 </div>
                               </div>
                             </label>
@@ -1782,17 +1777,17 @@
                           <div class="mt-3">
                             <button 
                               type="button" 
-                              class="btn btn-outline-info btn-sm"
+                              class="inline-flex items-center px-3 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
                               on:click={generateSystemHeader}
                             >
-                              <i class="fas fa-eye me-2"></i>
+                              <i class="fas fa-eye mr-2"></i>
                               Preview System Header
                             </button>
                             
                             {#if templatePreview && templatePreview.type === 'system'}
-                            <div class="mt-3">
-                              <label class="form-label small">System Header Preview:</label>
-                              <div class="border rounded p-3 bg-light">
+                            <div class="mt-4">
+                              <label class="block text-sm font-medium text-gray-700 mb-2">System Header Preview:</label>
+                              <div class="border rounded p-3 bg-gray-50">
                                 <div class="text-center">
                                   <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>
                                   <p class="mb-1 fw-semibold">{templatePreview.practiceName}</p>
@@ -1813,22 +1808,22 @@
                   </div>
                   
                   <!-- Save Button -->
-                  <div class="d-flex justify-content-end gap-2">
+                  <div class="flex justify-end gap-2">
                     <button 
                       type="button" 
-                      class="btn btn-outline-secondary btn-sm" 
+                      class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200" 
                       on:click={handleProfileCancel}
                     >
-                      <i class="fas fa-times me-1 fa-sm"></i>
+                      <i class="fas fa-times mr-1 fa-sm"></i>
                       Cancel
                     </button>
                     <button 
                       type="button" 
-                      class="btn btn-primary btn-sm"
+                      class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                       on:click={saveTemplateSettings}
                       disabled={!templateType}
                     >
-                      <i class="fas fa-save me-1 fa-sm"></i>
+                      <i class="fas fa-save mr-1 fa-sm"></i>
                       Save Template Settings
                     </button>
                   </div>
@@ -1873,22 +1868,5 @@
     font-size: 0.75rem;
   }
 
-  .form-range {
-    height: 0.5rem;
-  }
-
-  .form-range::-webkit-slider-thumb {
-    width: 1.2rem;
-    height: 1.2rem;
-    background: var(--bs-primary);
-    border-radius: 50%;
-  }
-
-  .form-range::-moz-range-thumb {
-    width: 1.2rem;
-    height: 1.2rem;
-    background: var(--bs-primary);
-    border-radius: 50%;
-    border: none;
-  }
+  /* Custom styles for enhanced UI */
 </style>
