@@ -399,7 +399,9 @@
           {:else}
             <div class="text-center text-gray-500 py-8">
               <i class="fas fa-pills text-4xl mb-3"></i>
-              <p>No current prescriptions for today</p>
+              <p class="mb-2">No current prescriptions for today</p>
+              <p class="text-sm text-gray-400 mb-1">Click the <span class="font-medium text-teal-600">"+ Add Drug"</span> button to start adding medications to this prescription.</p>
+              <p class="text-sm text-gray-400">Or you can use <span class="font-medium text-teal-600">AI suggestions</span> to get AI recommendations based on symptoms.</p>
             </div>
           {/if}
           

@@ -3,7 +3,6 @@
   import firebaseStorage from '../services/firebaseStorage.js'
   import openaiService from '../services/openaiService.js'
   import authService from '../services/authService.js'
-  import { notifyError, notifySuccess } from '../stores/notifications.js'
   import PatientTabs from './PatientTabs.svelte'
   import PatientForms from './PatientForms.svelte'
   import PrescriptionList from './PrescriptionList.svelte'
@@ -11,6 +10,7 @@
   import LoadingSpinner from './LoadingSpinner.svelte'
   import AIRecommendations from './AIRecommendations.svelte'
   import PrescriptionsTab from './PrescriptionsTab.svelte'
+  import ConfirmationModal from './ConfirmationModal.svelte'
   
   export let selectedPatient
   export const addToPrescription = null
@@ -49,6 +49,37 @@
   let showSymptomsForm = false
   let showPrescriptionPDF = false
   let expandedSymptoms = {}
+  
+  // Confirmation modal state
+  let showConfirmationModal = false
+  let confirmationConfig = {
+    title: 'Confirm Action',
+    message: 'Are you sure you want to proceed?',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning'
+  }
+  let pendingAction = null
+  
+  // Confirmation modal helper functions
+  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+    confirmationConfig = { title, message, confirmText, cancelText, type }
+    showConfirmationModal = true
+  }
+  
+  function handleConfirmationConfirm() {
+    if (pendingAction) {
+      pendingAction()
+      pendingAction = null
+    }
+    showConfirmationModal = false
+  }
+  
+  function handleConfirmationCancel() {
+    pendingAction = null
+    showConfirmationModal = false
+  }
+  
   let expandedIllnesses = {}
   let loading = true
   let editingMedication = null
@@ -147,6 +178,8 @@
     }
     
     // Find the most recent prescription for this patient
+    // Only consider prescriptions that have medications as existing prescriptions
+    // If no drugs in prescription, always consider as a new prescription
     const mostRecentPrescription = prescriptions.find(p => 
       p.patientId === selectedPatient.id && 
       p.medications && 
@@ -292,12 +325,10 @@
       showFullAnalysis = true
       
       console.log('✅ Full AI analysis completed successfully')
-      notifySuccess('Full AI analysis completed!')
       
     } catch (error) {
       console.error('❌ Error performing full AI analysis:', error)
       fullAnalysisError = error.message
-      notifyError('Failed to perform AI analysis: ' + error.message)
     } finally {
       loadingFullAnalysis = false
     }
@@ -331,7 +362,6 @@
       if (!enabledTabs.includes(nextTab)) {
         enabledTabs = [...enabledTabs, nextTab]
         console.log(`🔓 Unlocked tab: ${nextTab}`)
-        notifySuccess(`Great! ${nextTab.charAt(0).toUpperCase() + nextTab.slice(1)} tab is now available.`)
       }
     }
   }
@@ -351,7 +381,6 @@
         enabledTabs = newEnabledTabs
         console.log(`🔓 Unlocked tab: ${nextTab}`)
         console.log(`🔓 Updated enabledTabs:`, enabledTabs)
-        notifySuccess(`Great! ${nextTab.charAt(0).toUpperCase() + nextTab.slice(1)} tab is now available.`)
         
         // Wait for DOM to update
         await tick()
@@ -464,7 +493,7 @@
     try {
       console.log('🗑️ Delete symptom clicked for ID:', symptomId, 'at index:', index)
       
-      if (confirm('Are you sure you want to delete this symptom?')) {
+      pendingAction = async () => {
         console.log('🗑️ User confirmed deletion, proceeding...')
         
         // Delete from Firebase
@@ -492,20 +521,24 @@
         expandedSymptoms = reindexedExpanded
         
         console.log('✅ Successfully deleted symptom:', symptomId)
-        notifySuccess('Symptom deleted successfully!')
         
         // Notify parent component to refresh medical summary
         dispatch('dataUpdated', { 
           type: 'symptoms', 
           data: null // Indicates deletion
         })
-      } else {
-        console.log('❌ User cancelled deletion')
       }
     } catch (error) {
       console.error('❌ Error deleting symptom:', error)
-      notifyError('Failed to delete symptom: ' + error.message)
     }
+    
+    showConfirmation(
+      'Delete Symptom',
+      'Are you sure you want to delete this symptom?',
+      'Delete',
+      'Cancel',
+      'danger'
+    )
   }
 
   
@@ -720,12 +753,10 @@
   // Generate AI-assisted drug suggestions
   const generateAIDrugSuggestions = async () => {
     if (!symptoms || symptoms.length === 0) {
-      notifyError('Please add symptoms first to generate AI drug suggestions.')
       return
     }
 
     if (!openaiService.isConfigured()) {
-      notifyError('AI service is not configured. Please check your OpenAI API key.')
       return
     }
 
@@ -757,6 +788,7 @@
           patientAllergies: selectedPatient?.allergies || 'None',
           patientGender: selectedPatient?.gender || 'Not specified',
           longTermMedications: selectedPatient?.longTermMedications || 'None',
+          currentActiveMedications: getCurrentMedications(),
           doctorCountry: currentUser?.country || 'Not specified'
         }
       )
@@ -768,11 +800,9 @@
       aiDrugSuggestions = suggestions
       showAIDrugSuggestions = true
       console.log('✅ AI drug suggestions generated:', suggestions.length)
-      notifySuccess(`Generated ${suggestions.length} AI drug suggestions!`)
 
     } catch (error) {
       console.error('❌ Error generating AI drug suggestions:', error)
-      notifyError('Failed to generate AI drug suggestions: ' + error.message)
     } finally {
       loadingAIDrugSuggestions = false
     }
@@ -781,7 +811,6 @@
   // Add AI suggested drug to prescription
   const addAISuggestedDrug = async (suggestion, suggestionIndex) => {
     if (!currentPrescription) {
-      notifyError('Please create a prescription first.')
       return
     }
 
@@ -843,11 +872,9 @@
         lastAnalyzedMedications = []
       }
       
-      notifySuccess(`Added "${savedMedication.name}" to prescription`)
       
     } catch (error) {
       console.error('❌ Error adding AI suggested drug:', error)
-      notifyError('Failed to add AI suggested drug: ' + error.message)
     }
   }
 
@@ -885,7 +912,7 @@
     try {
       console.log('🗑️ Delete medication by index:', index)
       
-      if (confirm('Are you sure you want to delete this medication?')) {
+      pendingAction = async () => {
         console.log('🗑️ User confirmed deletion by index')
         
         // Remove from current medications array
@@ -914,13 +941,19 @@
       console.log('✅ Successfully deleted medication by index')
         } else {
           console.error('❌ Medication not found at index:', index)
-          notifyError('Medication not found')
         }
       }
     } catch (error) {
       console.error('❌ Error deleting medication by index:', error)
-      notifyError('Failed to delete medication: ' + error.message)
     }
+    
+    showConfirmation(
+      'Delete Medication',
+      'Are you sure you want to delete this medication?',
+      'Delete',
+      'Cancel',
+      'danger'
+    )
   }
 
   // Print prescriptions to PDF
@@ -994,17 +1027,14 @@
   // Report functions
   const addReport = () => {
     if (!reportTitle.trim()) {
-      notifyError('Please enter a report title')
       return
     }
     
     if (reportType === 'text' && !reportText.trim()) {
-      notifyError('Please enter report content')
       return
     }
     
     if (reportType !== 'text' && reportFiles.length === 0) {
-      notifyError('Please select a file to upload')
       return
     }
     
@@ -1028,7 +1058,6 @@
     reportDate = new Date().toISOString().split('T')[0]
     showReportForm = false
     
-    notifySuccess('Report added successfully!')
   }
   
   const handleFileUpload = (event) => {
@@ -1038,18 +1067,15 @@
   
   const removeReport = (reportId) => {
     reports = reports.filter(r => r.id !== reportId)
-    notifySuccess('Report removed successfully!')
   }
 
   // Diagnostic functions
   const addDiagnosis = () => {
     if (!diagnosticTitle.trim()) {
-      notifyError('Please enter a diagnosis title')
       return
     }
     
     if (!diagnosticDescription.trim()) {
-      notifyError('Please enter a diagnosis description')
       return
     }
     
@@ -1073,12 +1099,10 @@
     diagnosticDate = new Date().toISOString().split('T')[0]
     showDiagnosticForm = false
     
-    notifySuccess('Diagnosis added successfully!')
   }
   
   const removeDiagnosis = (diagnosisId) => {
     diagnoses = diagnoses.filter(d => d.id !== diagnosisId)
-    notifySuccess('Diagnosis removed successfully!')
   }
 
   // Show pharmacy selection modal
@@ -1106,7 +1130,6 @@
       
       if (!firebaseUser) {
         console.log('❌ User not found')
-        alert('User not found. Please log in again.')
         return
       }
       
@@ -1116,14 +1139,12 @@
       
       if (!doctor) {
         console.log('❌ Doctor not found in Firebase')
-        alert('Doctor profile not found. Please contact support.')
         return
       }
       
       // Check if patient is selected
       if (!selectedPatient) {
         console.log('❌ No patient selected')
-        alert('Please select a patient first.')
         return
       }
       
@@ -1131,7 +1152,6 @@
       console.log('🔍 Current medications to send:', currentMedications)
       if (!currentMedications || currentMedications.length === 0) {
         console.log('❌ No medications to send')
-        alert('No medications to send. Please add medications first.')
         return
       }
       
@@ -1192,7 +1212,6 @@
       
       if (connectedPharmacists.length === 0) {
         console.log('❌ No connected pharmacists')
-        alert('No connected pharmacy found. Please connect a pharmacy first.')
         return
       }
       
@@ -1211,7 +1230,6 @@
       // Check if any pharmacies were found
       if (availablePharmacies.length === 0) {
         console.log('❌ No pharmacies found after loading')
-        alert('No connected pharmacies found. Please connect a pharmacy first.')
         return
       }
       
@@ -1226,7 +1244,6 @@
     } catch (error) {
       console.error('❌ Error opening pharmacy selection:', error)
       console.error('❌ Error stack:', error.stack)
-      alert('Error loading pharmacies. Please try again.')
     }
   }
 
@@ -1285,12 +1302,10 @@
       showPharmacyModal = false
       
       // Show success message
-      alert(`Prescriptions sent to ${sentCount} pharmacy(ies) successfully!`)
       console.log('🎉 Prescriptions sent to pharmacies successfully')
       
     } catch (error) {
       console.error('❌ Error sending prescriptions to pharmacies:', error)
-      alert('Error sending prescriptions to pharmacies. Please try again.')
     }
   }
 
@@ -1648,7 +1663,6 @@
       console.error('Error stack:', error.stack)
       
       // Show error message to user
-      alert(`Error generating PDF: ${error.message}`)
     }
   }
   
@@ -1822,11 +1836,9 @@
       editLongTermMedications = null
       
       console.log('✅ Long-term medications saved successfully')
-      notifySuccess('Long-term medications updated successfully!')
       
     } catch (error) {
       console.error('❌ Error saving long-term medications:', error)
-      notifyError('Failed to save long-term medications: ' + error.message)
     }
   }
 
@@ -1851,11 +1863,10 @@
       // Validate medicationId
       if (!medicationId) {
         console.error('❌ Cannot delete medication: medicationId is undefined or null')
-        notifyError('Cannot delete medication: Invalid medication ID')
         return
       }
       
-      if (confirm('Are you sure you want to delete this medication?')) {
+      pendingAction = async () => {
         console.log('🗑️ User confirmed deletion, proceeding...')
         
         // Delete from Firebase
@@ -1899,13 +1910,18 @@
         }
         
       console.log('✅ Successfully deleted medication:', medicationId)
-      } else {
-        console.log('❌ User cancelled deletion')
       }
     } catch (error) {
       console.error('❌ Error deleting prescription:', error)
-      notifyError('Failed to delete medication: ' + error.message)
     }
+    
+    showConfirmation(
+      'Delete Medication',
+      'Are you sure you want to delete this medication?',
+      'Delete',
+      'Cancel',
+      'danger'
+    )
   }
   
   // Toggle expanded state
@@ -1940,12 +1956,10 @@
       console.log('✅ Finalizing prescription...')
       
       if (!currentPrescription) {
-        notifyError('No prescription to finalize')
         return
       }
       
       if (currentMedications.length === 0) {
-        notifyError('Cannot finalize empty prescription')
         return
       }
       
@@ -1984,6 +1998,154 @@
     loadPatientData()
   }
   
+  // Get current medications based on duration
+  const getCurrentMedications = () => {
+    if (!prescriptions || prescriptions.length === 0) {
+      return []
+    }
+
+    const currentMedications = []
+    const today = new Date()
+
+    // Go through all prescriptions and their medications
+    prescriptions.forEach(prescription => {
+      if (prescription.medications && prescription.medications.length > 0) {
+        prescription.medications.forEach(medication => {
+          // Check if medication is still active based on duration
+          if (isMedicationStillActive(medication, today)) {
+            currentMedications.push({
+              ...medication,
+              prescriptionId: prescription.id,
+              prescriptionDate: prescription.createdAt
+            })
+          }
+        })
+      }
+    })
+
+    // Sort by start date (most recent first)
+    return currentMedications.sort((a, b) => {
+      const dateA = new Date(a.startDate || a.createdAt || a.prescriptionDate)
+      const dateB = new Date(b.startDate || b.createdAt || b.prescriptionDate)
+      return dateB - dateA
+    })
+  }
+
+  // Check if a medication is still active based on its duration
+  const isMedicationStillActive = (medication, today) => {
+    // If no start date, assume it's not active
+    if (!medication.startDate && !medication.createdAt && !medication.prescriptionDate) {
+      return false
+    }
+
+    const startDate = new Date(medication.startDate || medication.createdAt || medication.prescriptionDate)
+    
+    // If no duration specified, assume it's still active
+    if (!medication.duration) {
+      return true
+    }
+
+    // Parse duration (e.g., "7 days", "2 weeks", "1 month", "3 months")
+    const duration = medication.duration.toLowerCase().trim()
+    let endDate = new Date(startDate)
+
+    if (duration.includes('day')) {
+      const days = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setDate(startDate.getDate() + days)
+    } else if (duration.includes('week')) {
+      const weeks = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setDate(startDate.getDate() + (weeks * 7))
+    } else if (duration.includes('month')) {
+      const months = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setMonth(startDate.getMonth() + months)
+    } else if (duration.includes('year')) {
+      const years = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setFullYear(startDate.getFullYear() + years)
+    } else {
+      // If we can't parse the duration, assume it's still active
+      return true
+    }
+
+    // Check if today is before or on the end date
+    return today <= endDate
+  }
+
+  // Get remaining duration for a medication
+  const getRemainingDuration = (medication) => {
+    if (!medication.duration) {
+      return 'Ongoing'
+    }
+
+    const today = new Date()
+    const startDate = new Date(medication.startDate || medication.createdAt || medication.prescriptionDate)
+    
+    // Parse duration (e.g., "7 days", "2 weeks", "1 month", "3 months")
+    const duration = medication.duration.toLowerCase().trim()
+    let endDate = new Date(startDate)
+
+    if (duration.includes('day')) {
+      const days = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setDate(startDate.getDate() + days)
+    } else if (duration.includes('week')) {
+      const weeks = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setDate(startDate.getDate() + (weeks * 7))
+    } else if (duration.includes('month')) {
+      const months = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setMonth(startDate.getMonth() + months)
+    } else if (duration.includes('year')) {
+      const years = parseInt(duration.match(/\d+/)?.[0] || '0')
+      endDate.setFullYear(startDate.getFullYear() + years)
+    } else {
+      return 'Ongoing'
+    }
+
+    // Calculate remaining time
+    const timeDiff = endDate.getTime() - today.getTime()
+    
+    if (timeDiff <= 0) {
+      return 'Expired'
+    }
+
+    const daysRemaining = Math.ceil(timeDiff / (1000 * 3600 * 24))
+    
+    if (daysRemaining === 1) {
+      return '1 day left'
+    } else if (daysRemaining < 7) {
+      return `${daysRemaining} days left`
+    } else if (daysRemaining < 30) {
+      const weeksRemaining = Math.ceil(daysRemaining / 7)
+      return weeksRemaining === 1 ? '1 week left' : `${weeksRemaining} weeks left`
+    } else if (daysRemaining < 365) {
+      const monthsRemaining = Math.ceil(daysRemaining / 30)
+      return monthsRemaining === 1 ? '1 month left' : `${monthsRemaining} months left`
+    } else {
+      const yearsRemaining = Math.ceil(daysRemaining / 365)
+      return yearsRemaining === 1 ? '1 year left' : `${yearsRemaining} years left`
+    }
+  }
+
+  // Check if instruction is generic and should be hidden
+  const isGenericInstruction = (instruction) => {
+    if (!instruction) return false
+    
+    const genericInstructions = [
+      'take with or without food',
+      'take as directed',
+      'take as prescribed',
+      'take as needed',
+      'take with water',
+      'take orally',
+      'take by mouth',
+      'follow doctor\'s instructions',
+      'follow physician\'s instructions',
+      'as directed by doctor',
+      'as prescribed by doctor'
+    ]
+    
+    const lowerInstruction = instruction.toLowerCase().trim()
+    return genericInstructions.some(generic => lowerInstruction.includes(generic))
+  }
+  
   onMount(() => {
     if (selectedPatient) {
       loadPatientData()
@@ -2010,9 +2172,11 @@
           </div>
         </div>
         <div class="flex-1 min-w-0">
-          <h5 class="text-lg font-bold text-white mb-1 truncate">
-            {selectedPatient.firstName} {selectedPatient.lastName}
-          </h5>
+          {#if selectedPatient.firstName || selectedPatient.lastName}
+            <h5 class="text-lg font-bold text-white mb-1 truncate">
+              {selectedPatient.firstName} {selectedPatient.lastName}
+            </h5>
+          {/if}
           <div class="flex items-center text-teal-100 text-xs">
             <i class="fas fa-calendar-alt mr-1"></i>
             <span class="truncate">Age: {(() => {
@@ -2051,7 +2215,7 @@
           <span class="xs:hidden">Hist</span>
         </button>
         <button 
-          class="flex-1 inline-flex items-center justify-center px-3 py-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 transition-all duration-200" 
+          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -2073,9 +2237,11 @@
             </div>
           </div>
       <div>
-            <h5 class="text-xl font-bold text-white mb-1">
+            {#if selectedPatient.firstName || selectedPatient.lastName}
+              <h5 class="text-xl font-bold text-white mb-1">
         {selectedPatient.firstName} {selectedPatient.lastName}
       </h5>
+            {/if}
             <div class="flex items-center text-teal-100 text-sm">
               <i class="fas fa-calendar-alt mr-2"></i>
               <span>Age: {(() => {
@@ -2112,7 +2278,7 @@
             <i class="fas fa-history mr-2"></i>History
         </button>
         <button 
-            class="inline-flex items-center px-4 py-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 transition-all duration-200" 
+            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -2127,12 +2293,6 @@
   <div class="p-4">
     <!-- Responsive Progress Bar -->
     <div class="mb-4 sm:mb-6">
-      <!-- Cache Busting Element - Remove after confirmation -->
-      <div class="text-center mb-2">
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-          📱 MAKING CARDS SAME SIZE - {new Date().toLocaleTimeString()}
-        </span>
-      </div>
       <!-- Mobile: Horizontal scrollable tabs -->
       <div class="block sm:hidden">
         <div class="flex overflow-x-auto pb-2 space-x-2">
@@ -2206,7 +2366,7 @@
             <div class="flex flex-col items-center">
               <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'overview' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('overview') ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-gray-300'}">
                 <i class="fas fa-user text-base"></i>
-              </div>
+          </div>
               <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'overview' ? 'text-teal-600' : enabledTabs.includes('overview') ? 'text-gray-700' : 'text-gray-400'}">Overview</div>
             </div>
         </div>
@@ -2218,7 +2378,7 @@
             <div class="flex flex-col items-center">
               <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'symptoms' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('symptoms') ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-300'}">
                 <i class="fas fa-thermometer-half text-base"></i>
-              </div>
+          </div>
               <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'symptoms' ? 'text-teal-600' : enabledTabs.includes('symptoms') ? 'text-gray-700' : 'text-gray-400'}">Symptoms</div>
             </div>
         </div>
@@ -2230,7 +2390,7 @@
             <div class="flex flex-col items-center">
               <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'reports' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('reports') ? 'bg-purple-500 hover:bg-purple-600' : 'bg-gray-300'}">
                 <i class="fas fa-file-medical text-base"></i>
-              </div>
+          </div>
               <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'reports' ? 'text-teal-600' : enabledTabs.includes('reports') ? 'text-gray-700' : 'text-gray-400'}">Reports</div>
             </div>
         </div>
@@ -2242,7 +2402,7 @@
             <div class="flex flex-col items-center">
               <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'diagnoses' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-gray-300'}">
                 <i class="fas fa-stethoscope text-base"></i>
-              </div>
+          </div>
               <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'diagnoses' ? 'text-teal-600' : enabledTabs.includes('diagnoses') ? 'text-gray-700' : 'text-gray-400'}">Diagnoses</div>
             </div>
         </div>
@@ -2254,7 +2414,7 @@
             <div class="flex flex-col items-center">
               <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'prescriptions' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 hover:bg-rose-600' : 'bg-gray-300'}">
                 <i class="fas fa-pills text-base"></i>
-              </div>
+          </div>
               <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'prescriptions' ? 'text-teal-600' : enabledTabs.includes('prescriptions') ? 'text-gray-700' : 'text-gray-400'}">Prescriptions</div>
             </div>
           </div>
@@ -2554,8 +2714,12 @@
                 <!-- Display Patient Information -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <p class="mb-2"><span class="font-semibold text-gray-900">Name:</span> <span class="text-gray-700">{selectedPatient.firstName} {selectedPatient.lastName}</span></p>
-                  <p class="mb-2"><span class="font-semibold text-gray-900">Email:</span> <span class="text-gray-700">{selectedPatient.email}</span></p>
+                  {#if selectedPatient.firstName || selectedPatient.lastName}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Name:</span> <span class="text-gray-700">{selectedPatient.firstName} {selectedPatient.lastName}</span></p>
+                  {/if}
+                  {#if selectedPatient.email}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Email:</span> <span class="text-gray-700">{selectedPatient.email}</span></p>
+                  {/if}
                   {#if selectedPatient.phone}
                     <p class="mb-2"><span class="font-semibold text-gray-900">Phone:</span> <span class="text-gray-700">{selectedPatient.phone}</span></p>
                   {/if}
@@ -2598,6 +2762,36 @@
                         <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
                         </h6>
                       <p class="text-sm text-yellow-700 mb-0">{selectedPatient.allergies}</p>
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Current Medications Card -->
+                {#if getCurrentMedications().length > 0}
+                  <div class="mt-4">
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <h6 class="text-sm font-semibold text-green-800 mb-2">
+                        <i class="fas fa-pills mr-2"></i>Current Medications
+                      </h6>
+                      <div class="space-y-2">
+                        {#each getCurrentMedications() as medication}
+                          <div class="flex justify-between items-center bg-white rounded p-2 border border-green-100">
+                            <div class="flex-1">
+                              <div class="font-medium text-green-900 text-sm">{medication.name}</div>
+                              <div class="text-xs text-green-700">
+                                {medication.dosage}
+                              </div>
+                            </div>
+                            <div class="text-xs text-green-600 ml-2 text-right">
+                              {#if medication.duration}
+                                <div class="font-medium text-green-800">
+                                  {getRemainingDuration(medication)}
+                                </div>
+                              {/if}
+                            </div>
+                          </div>
+                        {/each}
+                      </div>
                     </div>
                   </div>
                 {/if}
@@ -2699,6 +2893,25 @@
               {/if}
             </div>
           </div>
+          
+          <!-- Helpful Instructions -->
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div class="flex items-start">
+              <div class="flex-shrink-0">
+                <i class="fas fa-info-circle text-blue-600 mt-1"></i>
+              </div>
+              <div class="ml-3">
+                <h4 class="text-sm font-medium text-blue-800 mb-2">Prescription Process Guide</h4>
+                <div class="text-sm text-blue-700 space-y-1">
+                  <p>• <strong>Symptoms:</strong> Document patient symptoms and complaints</p>
+                  <p>• <strong>Reports:</strong> Add lab results, imaging, and medical documents</p>
+                  <p>• <strong>Diagnoses:</strong> Record medical diagnoses and conditions</p>
+                  <p>• <strong>Prescriptions:</strong> Create and manage medication prescriptions</p>
+                </div>
+                <p class="text-xs text-blue-600 mt-2">Use the progress bar above to navigate through each step. Complete each section to unlock the next one.</p>
+              </div>
+            </div>
+          </div>
         </div>
       {/if}
       
@@ -2770,7 +2983,8 @@
           {:else}
             <div class="text-center py-8 mb-4">
               <i class="fas fa-thermometer-half text-4xl text-gray-400 mb-3"></i>
-              <p class="text-gray-500">No symptoms recorded for this patient.</p>
+              <p class="text-gray-500 mb-2">No symptoms recorded for this patient.</p>
+              <p class="text-sm text-gray-400">Click the <span class="font-medium text-teal-600">"+ Add Symptoms"</span> button at the right side to add a symptom.</p>
             </div>
           {/if}
 
@@ -3080,8 +3294,8 @@
           {:else}
             <div class="text-center py-8">
               <i class="fas fa-file-medical text-4xl text-gray-400 mb-3"></i>
-              <p class="text-gray-500">No medical reports available for this patient.</p>
-              <p class="text-gray-400 text-sm">Add lab results, imaging reports, and other medical documents here.</p>
+              <p class="text-gray-500 mb-2">No medical reports available for this patient.</p>
+              <p class="text-sm text-gray-400">Click the <span class="font-medium text-teal-600">"+ Add Report"</span> button to add lab results, imaging reports, and other medical documents.</p>
             </div>
           {/if}
           
@@ -3256,8 +3470,8 @@
           {:else if !isShowingAIDiagnostics}
             <div class="text-center py-6 sm:py-8">
               <i class="fas fa-stethoscope text-3xl sm:text-4xl text-gray-400 mb-2 sm:mb-3"></i>
-              <p class="text-gray-500 text-sm sm:text-base">No diagnoses recorded for this patient.</p>
-              <p class="text-gray-400 text-xs sm:text-sm">Record medical diagnoses, conditions, and assessments here.</p>
+              <p class="text-gray-500 text-sm sm:text-base mb-2">No diagnoses recorded for this patient.</p>
+              <p class="text-sm text-gray-400">Click the <span class="font-medium text-teal-600">"+ Add Diagnosis"</span> button to record medical diagnoses, conditions, and assessments.</p>
             </div>
           {/if}
           
@@ -3286,7 +3500,11 @@
             })() : null}
             patientAllergies={selectedPatient?.allergies || null}
             {doctorId}
-            patientData={selectedPatient}
+        patientData={{
+          ...selectedPatient,
+          currentActiveMedications: getCurrentMedications(),
+          doctorCountry: currentUser?.country || 'Not specified'
+        }}
             bind:isShowingAIDiagnostics
             on:ai-usage-updated={(event) => {
               if (addToPrescription) {
@@ -3296,7 +3514,7 @@
           />
           
           <!-- Navigation Buttons -->
-          <div class="mt-4 text-center">
+          <div class="mt-8 text-center">
               <button 
               class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
                 on:click={goToPreviousTab}
@@ -3389,6 +3607,17 @@
                 }
               }
               
+              // Clear any existing medications from Firebase for this patient
+              if (currentPrescription) {
+                console.log('🗑️ Clearing existing medications from Firebase for new prescription');
+                try {
+                  await firebaseStorage.clearPrescriptionMedications(currentPrescription.id);
+                  console.log('✅ Cleared existing medications from Firebase');
+                } catch (error) {
+                  console.log('⚠️ Could not clear medications from Firebase:', error.message);
+                }
+              }
+              
               // Create new prescription
               const newPrescription = await firebaseStorage.createPrescription(
                 selectedPatient.id,
@@ -3412,14 +3641,12 @@
               console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
             } catch (error) {
               console.error('❌ Error creating new prescription:', error);
-              notifyError('Failed to create new prescription: ' + error.message);
             }
           }}
           onAddDrug={() => { 
             console.log('💊 Add Drug clicked');
             
             if (!currentPrescription) {
-              notifyError('Please click "New Prescription" first to create a prescription.');
               return;
             }
             
@@ -3448,19 +3675,42 @@
     </div>
   </div>
 </div>
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  visible={showConfirmationModal}
+  title={confirmationConfig.title}
+  message={confirmationConfig.message}
+  confirmText={confirmationConfig.confirmText}
+  cancelText={confirmationConfig.cancelText}
+  type={confirmationConfig.type}
+  on:confirm={handleConfirmationConfirm}
+  on:cancel={handleConfirmationCancel}
+  on:close={handleConfirmationCancel}
+/>
 {/if}
 
 <!-- Pharmacy Selection Modal -->
 {#if showPharmacyModal}
-  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" tabindex="-1">
-    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-2xl shadow-lg rounded-md bg-white">
-      <div class="bg-white rounded-lg shadow-xl">
-        <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
-          <h5 class="text-lg font-semibold mb-0">
+  <div id="pharmacyModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-2xl max-h-full mx-auto">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+        <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
+          <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-paper-plane mr-2"></i>
             Send to Pharmacy
-          </h5>
-          <button type="button" class="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 rounded-md p-1" on:click={() => showPharmacyModal = false}></button>
+          </h3>
+          <button 
+            type="button" 
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
+            data-modal-hide="pharmacyModal"
+            on:click={() => showPharmacyModal = false}
+          >
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+            </svg>
+            <span class="sr-only">Close modal</span>
+          </button>
         </div>
         <div class="p-6">
           <p class="text-muted mb-3">
@@ -3515,14 +3765,18 @@
             </div>
           {/if}
         </div>
-        <div class="bg-gray-50 px-6 py-3 rounded-b-lg">
-          <button type="button" class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" on:click={() => showPharmacyModal = false}>
+        <div class="flex items-center p-6 space-x-2 border-t border-gray-200 rounded-b dark:border-gray-600">
+          <button 
+            type="button" 
+            class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
+            on:click={() => showPharmacyModal = false}
+          >
             <i class="fas fa-times mr-2"></i>
             Cancel
           </button>
           <button 
             type="button" 
-            class="inline-flex items-center px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200" 
+            class="text-white bg-yellow-700 hover:bg-yellow-800 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-yellow-600 dark:hover:bg-yellow-700 dark:focus:ring-yellow-800" 
             on:click={sendToSelectedPharmacies}
             disabled={selectedPharmacies.length === 0}
           >
@@ -3537,18 +3791,24 @@
 
 <!-- Prescription PDF Modal -->
 {#if showPrescriptionPDF}
-  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" tabindex="-1">
-    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
-      <div class="bg-white rounded-lg shadow-xl">
-        <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
-          <h5 class="text-lg font-semibold mb-0">
+  <div id="prescriptionPDFModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-4xl max-h-full mx-auto">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+        <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
+          <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-file-pdf mr-2"></i>Prescription PDF
-          </h5>
+          </h3>
           <button 
             type="button" 
-            class="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 rounded-md p-1" 
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
+            data-modal-hide="prescriptionPDFModal"
             on:click={() => showPrescriptionPDF = false}
-          ></button>
+          >
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+            </svg>
+            <span class="sr-only">Close modal</span>
+          </button>
         </div>
         <div class="p-6">
           <PrescriptionPDF 

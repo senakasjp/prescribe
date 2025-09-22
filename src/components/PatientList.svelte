@@ -87,17 +87,23 @@
             >
               <div class="flex w-full justify-between items-center">
                 <div>
-                  <h6 class="mb-1">
-                    {patient.firstName} {patient.lastName}
-                  </h6>
-                  <p class="mb-1 text-muted small">
-                    <i class="fas fa-calendar mr-1"></i>
-                    DOB: {patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : 'Not specified'}
-                  </p>
-                  <p class="mb-0 text-muted small">
-                    <i class="fas fa-phone mr-1"></i>
-                    {patient.phone || 'No phone number'}
-                  </p>
+                  {#if patient.firstName || patient.lastName}
+                    <h6 class="mb-1">
+                      {patient.firstName} {patient.lastName}
+                    </h6>
+                  {/if}
+                  {#if patient.dateOfBirth}
+                    <p class="mb-1 text-muted small">
+                      <i class="fas fa-calendar mr-1"></i>
+                      DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}
+                    </p>
+                  {/if}
+                  {#if patient.phone}
+                    <p class="mb-0 text-muted small">
+                      <i class="fas fa-phone mr-1"></i>
+                      {patient.phone}
+                    </p>
+                  {/if}
                 </div>
                 <div class="text-end">
                   <small class="text-muted">

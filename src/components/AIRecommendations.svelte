@@ -52,7 +52,11 @@
       console.log('🤖 OpenAI configured:', openaiService.isConfigured())
       
       // Use single API call for both recommendations and medication suggestions
-      const combinedResult = await openaiService.generateCombinedAnalysis(symptoms, currentMedications, patientAge, doctorId, patientAllergies, patientData?.gender, patientData?.longTermMedications)
+      const combinedResult = await openaiService.generateCombinedAnalysis(symptoms, currentMedications, patientAge, doctorId, patientAllergies, patientData?.gender, patientData?.longTermMedications, {
+        patientCountry: patientData?.country || 'Not specified',
+        currentActiveMedications: patientData?.currentActiveMedications || [],
+        doctorCountry: patientData?.doctorCountry || 'Not specified'
+      })
       
       // Parse the combined result
       const combinedAnalysis = combinedResult.combinedAnalysis || combinedResult
@@ -290,7 +294,7 @@ model: 'gpt-4o-mini',
     </div>
   {:else if !isShowingAIDiagnostics}
     <div class="mb-4">
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3" role="alert">
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center" role="alert">
         <i class="fas fa-info-circle mr-2 text-blue-600"></i>
         <span class="font-medium text-blue-800">No Symptoms Available:</span> <span class="text-blue-700">Please add symptoms in the Symptoms tab first to enable AI analysis.</span>
       </div>

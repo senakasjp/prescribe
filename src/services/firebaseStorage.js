@@ -782,6 +782,33 @@ class FirebaseStorageService {
     }
   }
 
+  // Clear all medications from a prescription
+  async clearPrescriptionMedications(prescriptionId) {
+    try {
+      console.log('🗑️ Firebase: Clearing medications from prescription:', prescriptionId)
+      
+      const prescriptionRef = doc(db, this.collections.medications, prescriptionId)
+      const prescriptionDoc = await getDoc(prescriptionRef)
+      
+      if (!prescriptionDoc.exists()) {
+        console.log('⚠️ Firebase: Prescription not found:', prescriptionId)
+        return false
+      }
+      
+      // Update the prescription to clear the medications array
+      await updateDoc(prescriptionRef, { 
+        medications: [],
+        updatedAt: new Date().toISOString()
+      })
+      
+      console.log('✅ Firebase: Successfully cleared medications from prescription:', prescriptionId)
+      return true
+    } catch (error) {
+      console.error('❌ Firebase: Error clearing prescription medications:', error)
+      throw error
+    }
+  }
+
   // Symptoms operations
   async createSymptoms(symptomsData) {
     try {

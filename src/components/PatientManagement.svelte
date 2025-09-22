@@ -12,6 +12,7 @@
   import { cities, getCitiesByCountry } from '../data/cities.js'
   import LoadingSpinner from './LoadingSpinner.svelte'
   import ThreeDots from './ThreeDots.svelte'
+  import ConfirmationModal from './ConfirmationModal.svelte'
   
   const dispatch = createEventDispatcher()
   export let user
@@ -106,6 +107,37 @@
   let totalPrescriptions = 0
   let totalDrugs = 0
   let connectedPharmacies = 0
+  let statisticsLoading = false
+  
+  // Confirmation modal state
+  let showConfirmationModal = false
+  let confirmationConfig = {
+    title: 'Confirm Action',
+    message: 'Are you sure you want to proceed?',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning'
+  }
+  let pendingAction = null
+  
+  // Confirmation modal helper functions
+  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+    confirmationConfig = { title, message, confirmText, cancelText, type }
+    showConfirmationModal = true
+  }
+  
+  function handleConfirmationConfirm() {
+    if (pendingAction) {
+      pendingAction()
+      pendingAction = null
+    }
+    showConfirmationModal = false
+  }
+  
+  function handleConfirmationCancel() {
+    pendingAction = null
+    showConfirmationModal = false
+  }
   
   // Profile editing state removed - now using tabbed modal
   
@@ -116,8 +148,8 @@
     loadMedicalData(selectedPatient.id)
   }
   
-  // Reload statistics when patients change
-  $: if (patients.length >= 0) {
+  // Reload statistics when patients change (but not if already loading)
+  $: if (patients.length > 0 && !statisticsLoading) {
     loadStatistics()
   }
   
@@ -175,8 +207,7 @@
       console.log('✅ PatientManagement: Loaded patients:', patients.length)
       console.log('🔍 PatientManagement: Patients data:', patients)
       
-      // Load statistics after loading patients
-      await loadStatistics()
+      // Statistics will be loaded automatically by the reactive statement
     } catch (error) {
       console.error('❌ PatientManagement: Error loading patients:', error)
       console.error('❌ PatientManagement: Error stack:', error.stack)
@@ -189,15 +220,26 @@
   
   // Load all statistics
   const loadStatistics = async () => {
+    // Prevent multiple simultaneous calls
+    if (statisticsLoading) {
+      console.log('🔍 loadStatistics: Already loading, skipping...')
+      return
+    }
+    
+    statisticsLoading = true
     try {
+      console.log('🔍 loadStatistics: Starting statistics calculation...')
       totalPrescriptions = await getTotalPrescriptions()
       totalDrugs = await getTotalDrugs()
       connectedPharmacies = await getConnectedPharmacies()
+      console.log('🔍 loadStatistics: Statistics loaded successfully')
     } catch (error) {
       console.error('Error loading statistics:', error)
       totalPrescriptions = 0
       totalDrugs = 0
       connectedPharmacies = 0
+    } finally {
+      statisticsLoading = false
     }
   }
   
@@ -906,14 +948,26 @@
       // Check if user is authenticated - try different ID properties
       const userId = user?.id || user?.uid || user?.email
       if (!userId) {
-        alert('User not authenticated')
+        showConfirmation(
+          'Authentication Error',
+          'User not authenticated',
+          'OK',
+          '',
+          'danger'
+        )
         return
       }
 
       // Get the doctor ID from Firebase using email
       const doctor = await firebaseStorage.getDoctorByEmail(user.email)
       if (!doctor) {
-        alert('Doctor profile not found. Please try logging in again.')
+        showConfirmation(
+          'Profile Error',
+          'Doctor profile not found. Please try logging in again.',
+          'OK',
+          '',
+          'danger'
+        )
         return
       }
 
@@ -937,11 +991,23 @@
         doctorId: doctor.id
       })
       
-      alert('Template settings saved successfully!')
+      showConfirmation(
+        'Success',
+        'Template settings saved successfully!',
+        'OK',
+        '',
+        'success'
+      )
       
     } catch (error) {
       console.error('❌ Error saving template settings:', error)
-      alert('Error saving template settings. Please try again.')
+      showConfirmation(
+        'Error',
+        'Error saving template settings. Please try again.',
+        'OK',
+        '',
+        'danger'
+      )
     }
   }
   
@@ -1237,13 +1303,28 @@
                            <i class="fas fa-user-md fa-2x text-teal-600"></i>
                          </div>
                          <div class="flex-1 ml-4">
-                           <div class="flex justify-between items-center">
+                           <!-- Desktop Layout -->
+                           <div class="hidden sm:flex justify-between items-center">
                              <div class="flex items-center">
                                <h4 class="text-xl font-bold text-gray-900 mb-1 mr-3 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
-                                  Welcome, Dr. {doctorName}! 🚀 UPDATED
+                                  Welcome, Dr. {doctorName}!
                                </h4>
-                               <button class="p-1 text-gray-400 hover:text-red-500 transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
-                                 <i class="fas fa-cog text-sm"></i>
+                             </div>
+                             <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                               <i class="fas fa-cog text-sm text-red-600"></i>
+                               <span class="text-sm font-medium">Settings</span>
+                             </button>
+                           </div>
+                           
+                           <!-- Mobile Layout -->
+                           <div class="sm:hidden">
+                             <div class="flex items-center justify-between mb-2">
+                               <h4 class="text-lg font-bold text-gray-900 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
+                                  Welcome, Dr. {doctorName}!
+                               </h4>
+                               <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                                 <i class="fas fa-cog text-xs text-red-600"></i>
+                                 <span class="text-xs font-medium">Settings</span>
                                </button>
                              </div>
                            </div>
@@ -1905,6 +1986,19 @@
 <!-- Pharmacist Management View -->
 <PharmacistManagement {user} />
 {/if}
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  visible={showConfirmationModal}
+  title={confirmationConfig.title}
+  message={confirmationConfig.message}
+  confirmText={confirmationConfig.confirmText}
+  cancelText={confirmationConfig.cancelText}
+  type={confirmationConfig.type}
+  on:confirm={handleConfirmationConfirm}
+  on:cancel={handleConfirmationCancel}
+  on:close={handleConfirmationCancel}
+/>
 
 <style>
   /* Template Preview Styles */

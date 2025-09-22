@@ -5,6 +5,7 @@
   import LoadingSpinner from './LoadingSpinner.svelte'
   import aiTokenTracker from '../services/aiTokenTracker.js'
   import AIPromptLogs from './AIPromptLogs.svelte'
+  import ConfirmationModal from './ConfirmationModal.svelte'
   
   const dispatch = createEventDispatcher()
   
@@ -29,6 +30,36 @@
   let selectedDoctorId = ''
   let quotaInput = 0
   
+  // Confirmation modal state
+  let showConfirmationModal = false
+  let confirmationConfig = {
+    title: 'Confirm Action',
+    message: 'Are you sure you want to proceed?',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning'
+  }
+  let pendingAction = null
+  
+  // Confirmation modal helper functions
+  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+    confirmationConfig = { title, message, confirmText, cancelText, type }
+    showConfirmationModal = true
+  }
+  
+  function handleConfirmationConfirm() {
+    if (pendingAction) {
+      pendingAction()
+      pendingAction = null
+    }
+    showConfirmationModal = false
+  }
+  
+  function handleConfirmationCancel() {
+    pendingAction = null
+    showConfirmationModal = false
+  }
+  
   // Configuration variables
   let defaultQuotaInput = 0
   let tokenPriceInput = 0
@@ -38,7 +69,7 @@
     console.log('🔄 AdminDashboard: currentAdmin changed, reloading...')
     loadAdminData()
   }
-
+  
   // Load admin data and initialize Flowbite components on mount
   onMount(async () => {
     console.log('🚀 AdminDashboard component mounted')
@@ -356,57 +387,68 @@
 
   // Delete doctor
   const deleteDoctor = async (doctor) => {
-    try {
-      // Show confirmation dialog
-      const confirmed = confirm(
-        `Are you sure you want to delete doctor "${doctor.name || doctor.email}"?\n\n` +
-        `This will permanently delete:\n` +
-        `• The doctor account\n` +
-        `• All patients belonging to this doctor\n` +
-        `• All prescriptions, symptoms, and illnesses\n` +
-        `• All drug database entries\n\n` +
-        `This action cannot be undone!`
-      )
-      
-      if (!confirmed) {
-        return
-      }
-      
-      // Show loading state
-      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
-      if (deleteButton) {
-        deleteButton.disabled = true
-        deleteButton.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Deleting...'
-      }
-      
-      console.log('🗑️ Admin: Deleting doctor:', doctor.email)
-      
-      // Call the delete function
-      await firebaseStorage.deleteDoctor(doctor.id)
-      
-      // Remove doctor from local array
-      doctors = doctors.filter(d => d.id !== doctor.id)
-      
-      // Update statistics
-      statistics.totalDoctors = doctors.length
-      
-      // Recalculate patient counts
-      await loadDoctorsAndPatients()
-      
-      console.log('✅ Admin: Doctor deleted successfully')
-      alert(`Doctor "${doctor.name || doctor.email}" has been deleted successfully.`)
-      
-    } catch (error) {
-      console.error('❌ Admin: Error deleting doctor:', error)
-      alert('Error deleting doctor. Please try again.')
-      
-      // Reset button state
-      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
-      if (deleteButton) {
-        deleteButton.disabled = false
-        deleteButton.innerHTML = '<i class="fas fa-trash mr-2"></i>Delete'
+    pendingAction = async () => {
+      try {
+        // Show loading state
+        const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+        if (deleteButton) {
+          deleteButton.disabled = true
+          deleteButton.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Deleting...'
+        }
+        
+        console.log('🗑️ Admin: Deleting doctor:', doctor.email)
+        
+        // Call the delete function
+        await firebaseStorage.deleteDoctor(doctor.id)
+        
+        // Remove doctor from local array
+        doctors = doctors.filter(d => d.id !== doctor.id)
+        
+        // Update statistics
+        statistics.totalDoctors = doctors.length
+        
+        // Recalculate patient counts
+        await loadDoctorsAndPatients()
+        
+        console.log('✅ Admin: Doctor deleted successfully')
+        
+        // Show success message
+        showConfirmation(
+          'Success',
+          `Doctor "${doctor.name || doctor.email}" has been deleted successfully.`,
+          'OK',
+          '',
+          'success'
+        )
+        
+      } catch (error) {
+        console.error('❌ Admin: Error deleting doctor:', error)
+        
+        // Show error message
+        showConfirmation(
+          'Error',
+          'Error deleting doctor. Please try again.',
+          'OK',
+          '',
+          'danger'
+        )
+        
+        // Reset button state
+        const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+        if (deleteButton) {
+          deleteButton.disabled = false
+          deleteButton.innerHTML = '<i class="fas fa-trash mr-2"></i>Delete'
+        }
       }
     }
+    
+    showConfirmation(
+      'Delete Doctor',
+      `Are you sure you want to delete doctor "${doctor.name || doctor.email}"?\n\nThis will permanently delete:\n• The doctor account\n• All patients belonging to this doctor\n• All prescriptions, symptoms, and illnesses\n• All drug database entries\n\nThis action cannot be undone!`,
+      'Delete',
+      'Cancel',
+      'danger'
+    )
   }
 </script>
 
@@ -458,9 +500,9 @@
                     on:click={handleSignOut}
                   >
                     <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
-                  </button>
-                </li>
-              </ul>
+                </button>
+              </li>
+            </ul>
             </div>
           </div>
         </div>
@@ -475,37 +517,37 @@
           <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <div class="p-4">
               <nav class="space-y-2">
-                <button
+            <button
                   class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'overview' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-                  on:click={() => handleTabChange('overview')}
-                >
+              on:click={() => handleTabChange('overview')}
+            >
                   <i class="fas fa-chart-bar mr-3"></i>Overview
-                </button>
-                <button
+            </button>
+            <button
                   class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'doctors' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-                  on:click={() => handleTabChange('doctors')}
-                >
+              on:click={() => handleTabChange('doctors')}
+            >
                   <i class="fas fa-user-md mr-3"></i>Doctors
-                </button>
-                <!-- Patients tab removed for HIPAA compliance - admins should not access patient PHI data -->
-                <button
+            </button>
+            <!-- Patients tab removed for HIPAA compliance - admins should not access patient PHI data -->
+            <button
                   class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'ai-usage' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-                  on:click={() => handleTabChange('ai-usage')}
-                >
+              on:click={() => handleTabChange('ai-usage')}
+            >
                   <i class="fas fa-brain mr-3 text-red-500"></i>AI Usage
-                </button>
-                <button
+            </button>
+            <button
                   class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'ai-logs' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-                  on:click={() => handleTabChange('ai-logs')}
-                >
+              on:click={() => handleTabChange('ai-logs')}
+            >
                   <i class="fas fa-brain mr-3 text-red-500"></i>AI Logs
-                </button>
-                <button
+            </button>
+            <button
                   class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'system' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-                  on:click={() => handleTabChange('system')}
-                >
+              on:click={() => handleTabChange('system')}
+            >
                   <i class="fas fa-cog mr-3"></i>System
-                </button>
+            </button>
               </nav>
             </div>
           </div>
@@ -526,8 +568,8 @@
             <div class="bg-blue-50 border border-teal-200 rounded-lg p-4 mb-6" role="alert">
               <i class="fas fa-shield-alt text-blue-500 mr-2"></i>
               <span class="text-sm text-blue-700">
-                <strong>HIPAA Compliance:</strong> This admin panel displays only aggregated system statistics. 
-                Individual patient data is not accessible to administrators to maintain HIPAA compliance and patient privacy.
+              <strong>HIPAA Compliance:</strong> This admin panel displays only aggregated system statistics. 
+              Individual patient data is not accessible to administrators to maintain HIPAA compliance and patient privacy.
               </span>
             </div>
             
@@ -560,11 +602,11 @@
               <div class="bg-white border-2 border-red-200 rounded-lg shadow-sm p-4 text-center">
                 <i class="fas fa-brain text-2xl text-red-600 mb-2"></i>
                 <h3 class="text-xl font-bold text-gray-900">
-                  {#if aiUsageStats}
-                    ${aiUsageStats.total.cost.toFixed(3)}
-                  {:else}
-                    $0.000
-                  {/if}
+                      {#if aiUsageStats}
+                        ${aiUsageStats.total.cost.toFixed(3)}
+                      {:else}
+                        $0.000
+                      {/if}
                 </h3>
                 <p class="text-sm text-gray-500">AI Cost <small>(Est.)</small></p>
               </div>
@@ -674,14 +716,14 @@
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.cost.toFixed(4)}</h5>
                   <small class="text-gray-500">All Time</small>
-                </div>
+                    </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-hashtag mr-1"></i>Total Tokens
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">{aiUsageStats.total.tokens.toLocaleString()}</h5>
                   <small class="text-gray-500">All Time</small>
-                </div>
+                  </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-bolt mr-1"></i>Total Requests
@@ -695,14 +737,14 @@
                   </h6>
                   <h5 class="text-yellow-600 text-xl font-bold mb-1">${aiUsageStats.today.cost.toFixed(4)}</h5>
                   <small class="text-gray-500">{aiUsageStats.today.requests} requests</small>
-                </div>
+                    </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-calendar-alt mr-1"></i>This Month
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.thisMonth.cost.toFixed(4)}</h5>
                   <small class="text-gray-500">{aiUsageStats.thisMonth.requests} requests</small>
-                </div>
+                  </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-percentage mr-1"></i>Avg Cost/Request
@@ -720,7 +762,7 @@
                   </h6>
                   <h6 class="text-teal-600 text-lg font-bold mb-1">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
                   <small class="text-gray-500">Usage Data</small>
-                </div>
+              </div>
               
               <!-- Daily Usage Chart -->
               <div class="mb-6">
@@ -728,8 +770,8 @@
                   <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
                     <h5 class="text-lg font-semibold text-gray-900 mb-0">
                       <i class="fas fa-chart-line mr-2"></i>Daily Usage (Last 7 Days)
-                    </h5>
-                  </div>
+                      </h5>
+                    </div>
                   <div class="p-4">
                       <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -764,8 +806,8 @@
                   <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
                     <h5 class="text-lg font-semibold text-gray-900 mb-0">
                       <i class="fas fa-chart-bar mr-2"></i>Monthly Usage (Last 6 Months)
-                    </h5>
-                  </div>
+                      </h5>
+                    </div>
                   <div class="p-4">
                     <div class="overflow-x-auto">
                       <table class="min-w-full divide-y divide-gray-200">
@@ -775,19 +817,19 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-                          </tr>
-                        </thead>
+                            </tr>
+                          </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
-                          {#each aiTokenTracker.getMonthlyUsage() as month}
+                            {#each aiTokenTracker.getMonthlyUsage() as month}
                             <tr class="hover:bg-gray-50">
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{month.requests || 0}</td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(month.tokens || 0).toLocaleString()}</td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(month.cost || 0).toFixed(4)}</td>
-                            </tr>
-                          {/each}
-                        </tbody>
-                      </table>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
                     </div>
                   </div>
                 </div>
@@ -799,8 +841,8 @@
                   <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
                     <h5 class="text-lg font-semibold text-gray-900 mb-0">
                       <i class="fas fa-history mr-2 text-red-600"></i>Recent AI Requests
-                    </h5>
-                  </div>
+                      </h5>
+                    </div>
                   <div class="p-4">
                     <div class="overflow-x-auto">
                       <table class="min-w-full divide-y divide-gray-200">
@@ -810,34 +852,34 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
-                          </tr>
-                        </thead>
+                            </tr>
+                          </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
-                          {#each aiTokenTracker.getRecentRequests(10) as request}
+                            {#each aiTokenTracker.getRecentRequests(10) as request}
                             <tr class="hover:bg-gray-50">
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(request.timestamp).toLocaleString()}</td>
                               <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
-                                  {request.type.replace('generate', '').replace('check', '')}
-                                </span>
-                              </td>
+                                    {request.type.replace('generate', '').replace('check', '')}
+                                  </span>
+                                </td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{request.totalTokens.toLocaleString()}</td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${request.cost.toFixed(4)}</td>
-                            </tr>
-                          {:else}
-                            <tr>
+                              </tr>
+                            {:else}
+                              <tr>
                               <td colspan="4" class="px-6 py-4 text-center text-gray-500">
                                 <i class="fas fa-info-circle mr-2"></i>
-                                No recent AI requests found
-                              </td>
-                            </tr>
-                          {/each}
-                        </tbody>
-                      </table>
+                                  No recent AI requests found
+                                </td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
               
               <!-- AI Configuration Section -->
               <div class="mb-6">
@@ -846,7 +888,7 @@
                     <h5 class="text-lg font-semibold text-gray-900 mb-0">
                       <i class="fas fa-cog mr-2 text-red-600"></i>AI Configuration
                     </h5>
-                  </div>
+              </div>
                   <div class="p-4">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <!-- Default Quota Configuration -->
@@ -873,7 +915,7 @@
                             <p class="text-xs text-gray-500 mt-1">
                               Current: {aiTokenTracker.getDefaultQuota().toLocaleString()} tokens
                             </p>
-                          </div>
+            </div>
                           <div class="flex space-x-2">
                             <button
                               class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
@@ -970,7 +1012,7 @@
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                 {#if doctor.quota}
                                   {doctor.quota.monthlyTokens.toLocaleString()} tokens
-                                {:else}
+            {:else}
                                   <span class="text-gray-400">No quota set</span>
                                 {/if}
                               </td>
@@ -1069,7 +1111,7 @@
               <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
                   <h5 class="text-lg font-semibold text-gray-900 mb-0">System Information</h5>
-                </div>
+                  </div>
                 <div class="p-4">
                     <dl class="grid grid-cols-1 gap-4">
                       <div class="flex justify-between">
@@ -1094,73 +1136,86 @@
               <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
                   <h5 class="text-lg font-semibold text-gray-900 mb-0">Quick Actions</h5>
-                </div>
+                  </div>
                 <div class="p-4">
                   <div class="space-y-3">
                     <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg">
                       <i class="fas fa-download mr-2"></i>Export Data
-                    </button>
+                      </button>
                     <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-yellow-300 text-yellow-700 bg-white hover:bg-yellow-50 text-sm font-medium rounded-lg">
                       <i class="fas fa-backup mr-2"></i>Backup System
-                    </button>
+                      </button>
                     <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg" on:click={refreshData}>
                       <i class="fas fa-sync-alt mr-2"></i>Refresh Data
-                    </button>
+                      </button>
+                    </div>
                   </div>
-                </div>
               </div>
           {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
         </div>
-      </div>
-    </div>
-  {/if}
-</div>
 
 <!-- Quota Management Modal -->
 {#if showQuotaModal}
-  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" on:click={closeQuotaModal}>
-    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white" on:click|stopPropagation>
-      <div class="mt-3">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-medium text-gray-900">
+  <div id="quotaModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-md max-h-full mx-auto">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+        <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
+          <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-user-md mr-2 text-red-600"></i>Set Token Quota
           </h3>
-          <button class="text-gray-400 hover:text-gray-600" on:click={closeQuotaModal}>
-            <i class="fas fa-times"></i>
+          <button 
+            type="button" 
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
+            data-modal-hide="quotaModal"
+            on:click={closeQuotaModal}
+          >
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+            </svg>
+            <span class="sr-only">Close modal</span>
           </button>
-        </div>
+      </div>
         
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-2">
-            Doctor: <span class="font-semibold text-red-600">{getDoctorName(selectedDoctorId)}</span>
-            <br>
-            <span class="text-xs text-gray-500">ID: {selectedDoctorId}</span>
-          </label>
-          <label class="block text-sm font-medium text-gray-700 mb-2">
-            Monthly Token Quota:
-          </label>
-          <input
-            type="number"
-            bind:value={quotaInput}
-            placeholder="Enter monthly token quota"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-            min="0"
-            step="1000"
-          />
-          <p class="text-xs text-gray-500 mt-1">
-            Set the maximum number of tokens this doctor can use per month
-          </p>
-        </div>
-        
-        <div class="flex justify-end space-x-3">
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              Doctor: <span class="font-semibold text-red-600">{getDoctorName(selectedDoctorId)}</span>
+              <br>
+              <span class="text-xs text-gray-500">ID: {selectedDoctorId}</span>
+            </label>
+            <label for="quotaInput" class="block text-sm font-medium text-gray-700 mb-2">
+              Monthly Token Quota:
+            </label>
+            <input
+              type="number"
+              id="quotaInput"
+              bind:value={quotaInput}
+              placeholder="Enter monthly token quota"
+              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white"
+              min="0"
+              step="1000"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              Set the maximum number of tokens this doctor can use per month
+            </p>
+    </div>
+</div>
+
+        <div class="flex items-center p-6 space-x-2 border-t border-gray-200 rounded-b dark:border-gray-600">
           <button
-            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+            type="button"
+            class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
             on:click={closeQuotaModal}
           >
             Cancel
           </button>
           <button
-            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+            type="button"
+            class="text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-800"
             on:click={saveQuota}
             disabled={!quotaInput || quotaInput < 0}
           >
@@ -1171,5 +1226,18 @@
     </div>
   </div>
 {/if}
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  visible={showConfirmationModal}
+  title={confirmationConfig.title}
+  message={confirmationConfig.message}
+  confirmText={confirmationConfig.confirmText}
+  cancelText={confirmationConfig.cancelText}
+  type={confirmationConfig.type}
+  on:confirm={handleConfirmationConfirm}
+  on:cancel={handleConfirmationCancel}
+  on:close={handleConfirmationCancel}
+/>
 
 <!-- Flowbite styling -->

@@ -1,188 +1,131 @@
-# Changelog
+# Changelog - Prescribe Medical System
 
-All notable changes to M-Prescribe are documented in this file.
+## Version 2.0.0 - Major UI/UX Overhaul
 
-## [1.5.0] - 2025-01-16
-
-### ✨ Added
-- **Updated Prescription History Rules**: New logic for prescription visibility and history management
-- **Immediate Prescription Removal**: Clicking "+ New Prescription" immediately removes current prescription from prescriptions tab
-- **Enhanced Send to Pharmacy**: Prescriptions sent to pharmacy automatically move to history and medical summary
-- **Enhanced Print PDF**: Prescriptions printed to PDF automatically move to history and medical summary
-
-### 🔧 Fixed
-- **Prescription Visibility**: Clear separation between active prescriptions and historical records
-- **History Management**: Only sent/printed prescriptions appear in history and medical summary
-- **Data Cleanup**: Unsent/unprinted prescriptions are automatically deleted from system
-- **User Experience**: Intuitive workflow that matches user expectations
-
-### 🎨 Improved
-- **Prescription Workflow**: Immediate feedback when starting new prescriptions
-- **History Accuracy**: Clean prescription history containing only meaningful, completed prescriptions
-- **System Performance**: Reduced data volume in prescription queries
-- **Documentation**: Updated PRESCRIPTION_HISTORY_LOGIC.md with new rules and implementation details
-
-### 📋 Technical Changes
-- **PatientDetails.svelte**: Updated `onNewPrescription` handler to remove current prescription from prescriptions array
-- **PatientDetails.svelte**: Updated `sendToPharmacy` function to mark prescription as sent and add `endDate`
-- **PatientDetails.svelte**: Updated `printPrescriptions` function to mark prescription as printed and add `endDate`
-- **Firebase Integration**: Enhanced prescription status tracking with `endDate` for historical records
-
-## [1.4.0] - 2025-01-16
-
-### ✨ Added
-- **Smart Prescription History Logic**: Prescriptions only move to history and summary when saved or printed
-- **Conditional History Management**: Unsaved/unprinted prescriptions are discarded when new prescription starts
-- **Enhanced Status Tracking**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions
-- **Intelligent Prescription Workflow**: New prescription creation automatically handles previous prescription status
-
-### 🔧 Fixed
-- **Prescription History Accuracy**: Only completed work appears in prescription history
-- **Data Cleanup**: Unsaved draft prescriptions are properly removed from system
-- **Status Consistency**: Prescription status properly tracked throughout lifecycle
-
-### 🎨 Improved
-- **Prescription Workflow**: Clear separation between saved and unsaved prescriptions
-- **History Management**: Clean prescription history containing only finalized/sent prescriptions
-- **Status Definitions**: Clear status definitions for saved vs printed vs draft prescriptions
-
-## [1.3.0] - 2025-01-16
-
-### ✨ Added
-- **Dynamic Stock Availability System**: Real-time stock monitoring with color-coded badges
-- **Pharmacy Stock Integration**: Doctors can see medication availability from connected pharmacies
-- **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
-- **Smart Stock Badges**: Orange badges for normal stock, red badges for low stock (≤10% of initial)
-- **Drug Stock Management**: Comprehensive inventory management for pharmacists
-- **Stock Availability Display**: Visual indicators showing medication availability in prescriptions
-
-### 🎨 Improved
-- **Visual Stock Alerts**: Immediate visual feedback for critical stock levels
-- **Pharmacy-Doctor Integration**: Seamless connection between pharmacist inventory and doctor prescriptions
-- **Stock Monitoring**: Real-time updates of stock levels across the system
-- **User Experience**: Enhanced prescription interface with stock availability information
-
-### 🔄 Changed
-- **Badge Color Logic**: Dynamic color changes based on stock percentage calculations
-- **Pharmacist Dashboard**: Enhanced with comprehensive drug stock management features
-- **Prescription Display**: Added stock availability badges to medication lists
-
-## [1.2.0] - 2025-01-15
-
-### 🔧 Fixed
-- **Prescription Data Persistence**: Fixed critical issue where medications disappeared when refreshing the page or navigating away and back
-- **Data Loading Logic**: Enhanced `setupCurrentPrescription()` function to properly initialize current prescription from loaded data
-- **Prescription Structure**: Implemented proper prescription-medication hierarchy where medications are stored within prescription containers
-
-### ✨ Added
-- **Prescription Card UI**: Wrapped prescription functionality in a professional Bootstrap card design
-- **Optional Start Date**: Made medication start date optional with smart defaults (defaults to today if not provided)
-- **Enhanced Patient Editing**: Comprehensive patient data editing with validation and error handling
-- **Responsive Header**: Fixed mobile responsiveness with proper Bootstrap 5 layout
-
-### 🎨 Improved
-- **Data Model**: Proper prescription-medication relationships following the requirement "A prescription has one or more drugs (medicines)"
-- **User Experience**: Better visual organization with card-based design
-- **Form Validation**: Enhanced validation for patient data editing
-- **Mobile Experience**: Improved responsive design for all screen sizes
-
-### 🔄 Changed
-- **Prescription Structure**: Changed from flat medication list to hierarchical prescription-medication structure
-- **Data Loading**: Updated data loading logic to properly handle prescription containers
-- **UI Components**: Enhanced prescription management interface with card design
-
-## [1.1.0] - 2025-01-14
-
-### ✨ Added
-- **Pharmacist System**: Complete pharmacist authentication and management system
-- **Doctor-Pharmacist Connection**: Ability for doctors to connect with pharmacists using unique 6-digit numbers
-- **Prescription Sharing**: Connected pharmacists can view prescriptions from doctors
-- **Pharmacist Dashboard**: Dedicated interface for pharmacists to manage prescriptions
-- **Google Authentication**: Integration with Firebase Google authentication
-- **Admin Panel**: System administration dashboard with user management
-- **AI Token Tracking**: Cost monitoring for AI services with usage statistics
-
-### 🎨 Improved
+### 🎨 UI/UX Enhancements
+- **Flowbite Migration**: Converted all Bootstrap components to Flowbite for modern, consistent UI
+- **Theme Update**: Applied teal color scheme throughout the application
 - **Responsive Design**: Enhanced mobile responsiveness across all components
-- **Bootstrap 5 Compliance**: Updated all components to use Bootstrap 5 classes and utilities
-- **User Interface**: Professional styling with consistent design patterns
-- **Data Migration**: Automatic migration for existing data structures
+- **Button Styling**: Fixed outline button styles for History/Edit buttons
+- **Loading States**: Improved loading indicators with ThreeDots component
 
-## [1.0.0] - 2025-01-13
+### 🤖 AI Token Management System
+- **Quota Management**: Added monthly token quotas for individual doctors
+- **Usage Tracking**: Real-time token usage monitoring with progress bars
+- **Cost Estimation**: Token pricing configuration (price per 1M tokens)
+- **Default Quotas**: Set default quotas for all doctors
+- **Admin Controls**: Admin panel for managing doctor quotas and pricing
 
-### ✨ Initial Release
-- **Patient Management System**: Complete patient registration, editing, and management
-- **Doctor Authentication**: Secure login and registration for medical professionals
-- **Prescription Management**: Create, edit, and manage prescriptions with multiple medications
-- **Medical Data Tracking**: Symptoms, illnesses, and prescription history
-- **AI-Powered Features**: Drug interaction analysis and medical recommendations
-- **PDF Generation**: Professional prescription printing
-- **Drug Database**: Personal drug database with autocomplete
-- **Responsive Design**: Mobile-friendly interface
+### 👥 Patient Data Management
+- **Conditional Rendering**: Hide empty patient information fields for cleaner UI
+- **Current Medications Card**: Display active medications with remaining duration
+- **Data Privacy**: Enhanced doctor isolation - each doctor only sees their own patients
+- **HIPAA Compliance**: Proper data access controls and patient data protection
 
----
+### 💊 Prescription Workflow Improvements
+- **Clean Slate Prescriptions**: New prescriptions clear previous medications completely
+- **Enhanced AI Context**: AI prompts now include patient country, allergies, current medications
+- **Medication Tracking**: Better management of current and long-term medications
+- **PDF Generation**: Professional prescription PDFs with proper formatting
 
-## Technical Details
+### 🔕 Notification System Overhaul
+- **Removed Alerts**: Eliminated all notification popups for cleaner user experience
+- **Console Logging**: Replaced with console logging for debugging purposes
+- **Silent Error Handling**: Errors handled gracefully without interrupting user flow
 
-### Prescription Status Definitions (v1.4.0)
-```javascript
-// Prescription Status Types
-const PRESCRIPTION_STATUS = {
-  DRAFT: 'draft',           // New/unsaved prescription
-  PENDING: 'pending',       // Unsaved pending prescription
-  FINALIZED: 'finalized',   // Saved prescription (moves to history)
-  COMPLETED: 'completed',   // Saved prescription (moves to history)
-  SENT: 'sent',            // Printed prescription (moves to history)
-  SENT_TO_PHARMACY: true   // Printed prescription flag (moves to history)
-}
+### 🏥 Pharmacist Portal Enhancements
+- **Flowbite Components**: Converted all modals and forms to Flowbite
+- **Prescription Management**: Improved prescription viewing and management
+- **Stock Management**: Enhanced inventory tracking interface
+- **Connection System**: Streamlined pharmacist-doctor connection process
 
-// History Logic
-const shouldMoveToHistory = (prescription) => {
-  const isSaved = prescription.status === 'finalized' || prescription.status === 'completed';
-  const isPrinted = prescription.status === 'sent' || 
-                    prescription.sentToPharmacy || 
-                    prescription.printedAt;
-  return isSaved || isPrinted;
-}
-```
+### 🔧 Technical Improvements
+- **Code Modularity**: Improved code organization with proper comments
+- **Error Handling**: Enhanced error handling throughout the application
+- **Performance**: Optimized component rendering and data loading
+- **Accessibility**: Improved A11y compliance with proper ARIA labels
 
-### Data Structure Changes
-```javascript
-// Before (v1.1.0)
-medications: [
-  { id: "med-1", name: "Lisinopril", ... },
-  { id: "med-2", name: "Paracetamol", ... }
-]
+## Version 1.0.0 - Initial Release
 
-// After (v1.2.0)
-prescriptions: [
-  {
-    id: "prescription-1",
-    patientId: "patient-123",
-    medications: [
-      { id: "med-1", name: "Lisinopril", ... },
-      { id: "med-2", name: "Paracetamol", ... }
-    ]
-  }
-]
-```
+### Core Features
+- Doctor portal with patient management
+- Prescription creation and management
+- AI-powered drug suggestions
+- Pharmacist portal for prescription handling
+- Admin dashboard for system management
+- Firebase integration for data storage
+- User authentication and authorization
 
-### Key Functions Added/Modified (v1.4.0)
-- `onNewPrescription()` - Enhanced with status checking logic for history management
-- `finalizePrescription()` - Sets status to 'finalized' (saved)
-- `sendToPharmacy()` - Sets status to 'sent' and sentToPharmacy flag (printed)
-- `shouldMoveToHistory()` - Determines if prescription should move to history
-- `setupCurrentPrescription()` - Properly initializes current prescription from loaded data
-- `loadPatientData()` - Enhanced to call setup function
-- `filterCurrentPrescriptions()` - Updated to work with new structure
-- `saveCurrentPrescriptions()` - Modified to handle prescription containers
+### Initial Components
+- PatientDetails.svelte - Patient management interface
+- PatientManagement.svelte - Patient list and overview
+- AdminDashboard.svelte - Administrative controls
+- PharmacistDashboard.svelte - Pharmacist interface
+- AIRecommendations.svelte - AI drug suggestion system
 
-### UI Components Updated
-- `PatientDetails.svelte` - Enhanced prescription management
-- `MedicationForm.svelte` - Made start date optional
-- `App.svelte` - Fixed responsive header
-- All components - Bootstrap 5 compliance
+## Recent Bug Fixes
 
----
+### Dashboard Values Fluctuation
+- **Issue**: Dashboard statistics were fluctuating due to multiple reactive calls
+- **Fix**: Added `statisticsLoading` flag to prevent multiple `loadStatistics()` calls
+- **Result**: Stable dashboard values that don't fluctuate
 
-*For more detailed information about specific changes, see the individual commit messages and pull requests.*
+### AI Prompts Country Context
+- **Issue**: AI prompts weren't sending doctor's country information
+- **Fix**: Updated AI service to include doctor country in prompts
+- **Enhancement**: Added fallback logic to use patient country if specified, otherwise doctor country
+
+### Prescription Drug Persistence
+- **Issue**: Previously added drugs were showing after clicking "New Prescription"
+- **Fix**: Added `clearPrescriptionMedications()` method to clear Firebase data
+- **Result**: Clean slate for each new prescription
+
+### Button Outline Styling
+- **Issue**: History and Edit buttons had inconsistent outline styling
+- **Fix**: Applied consistent Flowbite outline button styles
+- **Result**: Uniform button appearance across mobile and desktop
+
+## Performance Improvements
+
+### Bundle Optimization
+- Reduced bundle size through code splitting
+- Optimized Firebase queries
+- Improved component lazy loading
+- Enhanced caching strategies
+
+### UI Responsiveness
+- Faster component rendering
+- Improved mobile performance
+- Better touch interactions
+- Optimized image loading
+
+## Security Enhancements
+
+### Data Protection
+- Enhanced doctor data isolation
+- Improved authentication checks
+- Better input validation
+- Secure API key management
+
+### HIPAA Compliance
+- Patient data access controls
+- Audit logging capabilities
+- Data encryption in transit
+- Secure data storage practices
+
+## Future Roadmap
+
+### Planned Features
+- Advanced analytics dashboard
+- Mobile app development
+- Integration with pharmacy systems
+- Enhanced AI capabilities
+- Multi-language support
+- Offline functionality
+
+### Technical Debt
+- Remove unused CSS classes
+- Improve accessibility compliance
+- Optimize bundle size further
+- Enhance error boundaries
+- Add comprehensive testing suite

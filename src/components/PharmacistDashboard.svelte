@@ -3,6 +3,7 @@
   import authService from '../services/authService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import ConfirmationModal from './ConfirmationModal.svelte'
   
   export let pharmacist
   
@@ -31,6 +32,36 @@
   let stockLoading = false
   let activeTab = 'prescriptions' // 'prescriptions' or 'stock'
   let formData = {} // For modal form binding
+  
+  // Confirmation modal state
+  let showConfirmationModal = false
+  let confirmationConfig = {
+    title: 'Confirm Action',
+    message: 'Are you sure you want to proceed?',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning'
+  }
+  let pendingAction = null
+  
+  // Confirmation modal helper functions
+  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+    confirmationConfig = { title, message, confirmText, cancelText, type }
+    showConfirmationModal = true
+  }
+  
+  function handleConfirmationConfirm() {
+    if (pendingAction) {
+      pendingAction()
+      pendingAction = null
+    }
+    showConfirmationModal = false
+  }
+  
+  function handleConfirmationCancel() {
+    pendingAction = null
+    showConfirmationModal = false
+  }
   
   // Load pharmacist data
   const loadPharmacistData = async () => {
@@ -109,7 +140,7 @@
 
   // Clear all prescriptions (for testing/cleanup)
   const clearAllPrescriptions = async () => {
-    if (confirm('Are you sure you want to clear all prescriptions? This action cannot be undone.')) {
+    pendingAction = async () => {
       try {
         await firebaseStorage.clearPharmacistPrescriptions(pharmacist.id)
         notifySuccess('All prescriptions cleared successfully')
@@ -120,6 +151,14 @@
         notifyError('Failed to clear prescriptions')
       }
     }
+    
+    showConfirmation(
+      'Clear All Prescriptions',
+      'Are you sure you want to clear all prescriptions? This action cannot be undone.',
+      'Clear All',
+      'Cancel',
+      'danger'
+    )
   }
   
   // Format date
@@ -225,7 +264,7 @@
   }
   
   const deleteStockItem = async (stockItemId) => {
-    if (confirm('Are you sure you want to delete this stock item?')) {
+    pendingAction = async () => {
       try {
         await firebaseStorage.deletePharmacistStockItem(pharmacist.id, stockItemId)
         await loadDrugStock()
@@ -236,6 +275,14 @@
         notifyError('Failed to delete stock item: ' + error.message)
       }
     }
+    
+    showConfirmation(
+      'Delete Stock Item',
+      'Are you sure you want to delete this stock item?',
+      'Delete',
+      'Cancel',
+      'danger'
+    )
   }
   
   const openEditStockModal = (stockItem) => {
@@ -302,7 +349,12 @@
         <span class="font-bold text-blue-600">M-Prescribe - Pharmacist Portal</span>
       </div>
       <div class="relative">
-        <button class="text-gray-700 hover:text-gray-900 flex items-center p-0" type="button" data-dropdown-toggle="pharmacistDropdown">
+        <button 
+          id="pharmacistDropdownButton" 
+          data-dropdown-toggle="pharmacistDropdown" 
+          class="text-gray-700 hover:text-gray-900 flex items-center p-0" 
+          type="button"
+        >
           <i class="fas fa-user-circle mr-2"></i>
           <span class="hidden md:inline">{pharmacist.businessName}</span>
           <svg class="w-2.5 h-2.5 ml-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
@@ -603,17 +655,40 @@
   </div>
 </div>
 
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  visible={showConfirmationModal}
+  title={confirmationConfig.title}
+  message={confirmationConfig.message}
+  confirmText={confirmationConfig.confirmText}
+  cancelText={confirmationConfig.cancelText}
+  type={confirmationConfig.type}
+  on:confirm={handleConfirmationConfirm}
+  on:cancel={handleConfirmationCancel}
+  on:close={handleConfirmationCancel}
+/>
+
 <!-- Prescription Details Modal -->
 {#if showPrescriptionDetails && selectedPrescription}
-  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" tabindex="-1">
-    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
-      <div class="bg-white rounded-lg shadow-xl">
-        <div class="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
-          <h5 class="text-lg font-semibold mb-0">
+  <div id="prescriptionModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-4xl max-h-full mx-auto">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+        <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
+          <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-prescription mr-2"></i>
             Prescription Details
-          </h5>
-          <button type="button" class="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-600 rounded-md p-1" on:click={closePrescriptionDetails}></button>
+          </h3>
+          <button 
+            type="button" 
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
+            data-modal-hide="prescriptionModal"
+            on:click={closePrescriptionDetails}
+          >
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+            </svg>
+            <span class="sr-only">Close modal</span>
+          </button>
         </div>
         <div class="p-6">
           <!-- Patient Information -->
@@ -697,17 +772,22 @@
             </div>
           {/if}
         </div>
-        <div class="bg-gray-50 px-6 py-3 rounded-b-lg">
-          <div class="flex justify-end space-x-3">
-            <button type="button" class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200" on:click={closePrescriptionDetails}>
-              <i class="fas fa-times mr-1"></i>
-              Close
-            </button>
-            <button type="button" class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200">
-              <i class="fas fa-check mr-1"></i>
-              Mark as Dispensed
-            </button>
-          </div>
+        <div class="flex items-center p-6 space-x-2 border-t border-gray-200 rounded-b dark:border-gray-600">
+          <button 
+            type="button" 
+            class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
+            on:click={closePrescriptionDetails}
+          >
+            <i class="fas fa-times mr-1"></i>
+            Close
+          </button>
+          <button 
+            type="button" 
+            class="text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800"
+          >
+            <i class="fas fa-check mr-1"></i>
+            Mark as Dispensed
+          </button>
         </div>
       </div>
     </div>
@@ -716,17 +796,26 @@
 
 <!-- Add/Edit Stock Item Modal -->
 {#if showAddStockModal}
-  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
-      <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
-        <h5 class="text-lg font-semibold mb-0">
-          <i class="fas fa-plus mr-2"></i>
-          {editingStockItem ? 'Edit Stock Item' : 'Add New Stock Item'}
-        </h5>
-        <button type="button" class="text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 rounded-md p-1" on:click={closeStockModal}>
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
+  <div id="stockModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-4xl max-h-full mx-auto">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+        <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
+          <h3 class="text-xl font-medium text-gray-900 dark:text-white">
+            <i class="fas fa-plus mr-2"></i>
+            {editingStockItem ? 'Edit Stock Item' : 'Add New Stock Item'}
+          </h3>
+          <button 
+            type="button" 
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
+            data-modal-hide="stockModal"
+            on:click={closeStockModal}
+          >
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+            </svg>
+            <span class="sr-only">Close modal</span>
+          </button>
+        </div>
       <div class="p-6">
           <form on:submit|preventDefault={editingStockItem ? updateStockItem : addStockItem}>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -854,12 +943,19 @@
               </div>
             </div>
             
-            <div class="bg-gray-50 px-6 py-3 rounded-b-lg">
-              <button type="button" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" on:click={closeStockModal}>
+            <div class="flex items-center p-6 space-x-2 border-t border-gray-200 rounded-b dark:border-gray-600">
+              <button 
+                type="button" 
+                class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
+                on:click={closeStockModal}
+              >
                 <i class="fas fa-times mr-1"></i>
                 Cancel
               </button>
-              <button type="submit" class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 ml-3">
+              <button 
+                type="submit" 
+                class="text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800"
+              >
                 <i class="fas fa-save mr-1"></i>
                 {editingStockItem ? 'Update Stock Item' : 'Add Stock Item'}
               </button>
@@ -868,6 +964,7 @@
         </div>
       </div>
     </div>
+  </div>
 {/if}
 
 <style>

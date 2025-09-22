@@ -26,15 +26,17 @@
     
     try {
       // Validate required fields
-      if (!description || !onsetDate) {
-        throw new Error('Please fill in all required fields')
+      if (!description) {
+        throw new Error('Please fill in the symptom description')
       }
       
-      // Validate onset date
-      const onsetDateObj = new Date(onsetDate)
-      const today = new Date()
-      if (onsetDateObj > today) {
-        throw new Error('Onset date cannot be in the future')
+      // Validate onset date only if provided
+      if (onsetDate) {
+        const onsetDateObj = new Date(onsetDate)
+        const today = new Date()
+        if (onsetDateObj > today) {
+          throw new Error('Onset date cannot be in the future')
+        }
       }
       
       const symptomsData = {
@@ -121,13 +123,12 @@
       </div>
       
       <div class="mb-4">
-        <label for="symptomsOnsetDate" class="block text-sm font-medium text-gray-700 mb-1">Onset Date <span class="text-red-500">*</span></label>
+        <label for="symptomsOnsetDate" class="block text-sm font-medium text-gray-700 mb-1">Onset Date</label>
         <input 
           type="date" 
           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="symptomsOnsetDate" 
           bind:value={onsetDate}
-          required
           disabled={loading}
         />
       </div>
