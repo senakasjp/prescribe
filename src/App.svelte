@@ -13,6 +13,7 @@
   import EditProfile from './components/EditProfile.svelte'
   import NotificationContainer from './components/NotificationContainer.svelte'
   import LoadingSpinner from './components/LoadingSpinner.svelte'
+  import PrivacyPolicyModal from './components/PrivacyPolicyModal.svelte'
   
   let user = null
   let loading = true
@@ -51,10 +52,20 @@
       const existingUser = authService.getCurrentUser()
       if (existingUser) {
         console.log('✅ Found existing user in localStorage:', existingUser.email)
+        console.log('🔍 User auth provider:', existingUser.authProvider)
+        
+        // For email/password users, prioritize local storage and skip Firebase auth listener
+        if (existingUser.authProvider === 'email-password') {
+          console.log('✅ Email/password user found, using local storage only')
+          user = existingUser
+          loading = false
+          return // Skip Firebase auth listener for email/password users
+        }
+        
+        // For Google users, still use Firebase auth listener for better sync
         user = existingUser
-        loading = false // Set loading to false immediately
-        console.log('✅ User loaded from localStorage, skipping Firebase auth listener')
-        return // Skip Firebase auth listener if we have a valid user
+        loading = false
+        console.log('✅ User loaded from localStorage, continuing with Firebase auth listener for sync')
       }
       
       // Set up Firebase auth state listener only if no localStorage user
@@ -200,7 +211,18 @@
   
   // Handle user authentication events
   const handleUserAuthenticated = (event) => {
-    user = event.detail
+    console.log('🔐 handleUserAuthenticated called with:', event.detail)
+    const authenticatedUser = event.detail
+    
+    // Ensure the user has the correct auth provider
+    if (!authenticatedUser.authProvider) {
+      authenticatedUser.authProvider = 'email-password' // Default for email/password auth
+    }
+    
+    user = authenticatedUser
+    loading = false
+    
+    console.log('✅ User authenticated and set:', user.email, 'Auth provider:', user.authProvider)
   }
   
   // Handle doctor logout
@@ -371,6 +393,15 @@
   
   const handleSwitchToPharmacist = () => {
     authMode = 'pharmacist'
+  }
+  
+  // Privacy Policy Modal
+  let privacyPolicyModal
+  
+  const openPrivacyPolicy = () => {
+    if (privacyPolicyModal) {
+      privacyPolicyModal.openModal()
+    }
   }
   
   // Refresh doctor's AI usage stats (immediate refresh)
@@ -623,12 +654,22 @@
           
           <!-- Card Footer -->
           <div class="bg-gray-50 px-6 py-3">
-            <div class="text-center">
+            <div class="text-center space-y-2">
               <small class="text-gray-500">
                 <i class="fas fa-shield-alt mr-1"></i>
                 <span class="hidden sm:inline">Secure • HIPAA Compliant • AI-Enhanced</span>
                 <span class="sm:hidden">Secure • HIPAA • AI</span>
               </small>
+              <div class="text-center">
+                <button 
+                  type="button"
+                  class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded"
+                  on:click={openPrivacyPolicy}
+                >
+                  <i class="fas fa-file-shield mr-1"></i>
+                  Privacy Policy
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -647,6 +688,9 @@
   
   <!-- Notification Container -->
   <NotificationContainer />
+  
+  <!-- Privacy Policy Modal -->
+  <PrivacyPolicyModal bind:this={privacyPolicyModal} />
 </main>
 
 <style>

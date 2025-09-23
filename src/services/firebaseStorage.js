@@ -573,7 +573,7 @@ class FirebaseStorageService {
         phone: cleanPatientData.phone?.trim() || '',
         dateOfBirth: cleanPatientData.dateOfBirth || '',
         age: cleanPatientData.age?.toString().trim() || '',
-        weight: cleanPatientData.weight?.trim() || '',
+        weight: cleanPatientData.weight?.toString().trim() || '',
         bloodGroup: cleanPatientData.bloodGroup?.trim() || '',
         idNumber: cleanPatientData.idNumber?.trim() || '',
         address: cleanPatientData.address?.trim() || '',

@@ -248,7 +248,12 @@ class AITokenTracker {
   getDoctorUsageStats(doctorId) {
     if (!doctorId) return null
     
+    console.log(`🔍 TokenTracker: Looking for doctorId: ${doctorId}`)
+    console.log(`🔍 TokenTracker: Available doctorIds in requests:`, this.usageData.requests.map(req => req.doctorId))
+    
     const doctorRequests = this.usageData.requests.filter(req => req.doctorId === doctorId)
+    console.log(`🔍 TokenTracker: Found ${doctorRequests.length} requests for doctorId: ${doctorId}`)
+    
     const today = new Date().toISOString().split('T')[0]
     
     const totalTokens = doctorRequests.reduce((sum, req) => sum + req.totalTokens, 0)

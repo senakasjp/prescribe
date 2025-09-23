@@ -89,7 +89,7 @@
         gender: gender || '',
         dateOfBirth: dateOfBirth || '',
         age: calculatedAge,
-        weight: weight.trim() || '',
+        weight: weight?.toString().trim() || '',
         bloodGroup: bloodGroup.trim() || '',
         idNumber: idNumber.trim() || '',
         address: address.trim() || '',

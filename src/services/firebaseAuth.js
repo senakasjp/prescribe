@@ -212,18 +212,19 @@ class FirebaseAuthService {
         console.log('🆕 Creating new user in Firebase')
         // Create new user
         if (userType === 'doctor') {
-          const doctorData = {
-            email: user.email,
-            firstName: user.displayName?.split(' ')[0] || '',
-            lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
-            name: user.displayName || '',
-            role: 'doctor',
-            uid: user.uid,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-            provider: 'google',
-            createdAt: new Date().toISOString()
-          }
+        const doctorData = {
+          email: user.email,
+          firstName: user.displayName?.split(' ')[0] || '',
+          lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
+          name: user.displayName || '',
+          role: 'doctor',
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          provider: 'google',
+          authProvider: 'google', // Mark as Google auth
+          createdAt: new Date().toISOString()
+        }
           
           console.log('🏥 Creating doctor with data:', doctorData)
           try {

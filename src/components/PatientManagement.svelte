@@ -49,6 +49,9 @@
     loadDoctorData()
   }
   
+  // Reactive doctorId that updates when doctorData changes
+  $: doctorId = doctorData?.id || user?.uid || user?.id
+  
   const loadDoctorData = async () => {
     try {
       doctorData = await firebaseStorage.getDoctorByEmail(user.email)
@@ -148,10 +151,7 @@
     loadMedicalData(selectedPatient.id)
   }
   
-  // Reload statistics when patients change (but not if already loading)
-  $: if (patients.length > 0 && !statisticsLoading) {
-    loadStatistics()
-  }
+  // Load statistics only when explicitly needed (removed reactive loop)
   
   $: if (symptoms) {
     symptoms = symptoms || []
@@ -207,7 +207,8 @@
       console.log('✅ PatientManagement: Loaded patients:', patients.length)
       console.log('🔍 PatientManagement: Patients data:', patients)
       
-      // Statistics will be loaded automatically by the reactive statement
+      // Load statistics after patients are loaded
+      await loadStatistics()
     } catch (error) {
       console.error('❌ PatientManagement: Error loading patients:', error)
       console.error('❌ PatientManagement: Error stack:', error.stack)
@@ -294,14 +295,19 @@
         return
       }
       
-      // Always get the doctor from Firebase to ensure we have the correct ID
+      // Get the doctor from Firebase to ensure we have the correct ID
       console.log('🔍 PatientManagement: Getting doctor from Firebase for email:', user.email)
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
       console.log('🔍 PatientManagement: Doctor from Firebase:', doctor)
       
+      // If doctor not found in Firebase, try to use the user object directly
       if (!doctor) {
-        console.error('❌ PatientManagement: Doctor not found in Firebase for email:', user.email)
-        throw new Error('Doctor not found in database')
+        console.warn('⚠️ PatientManagement: Doctor not found in Firebase, using user object directly')
+        if (!user || !user.id) {
+          console.error('❌ PatientManagement: No user or user ID available')
+          throw new Error('User not authenticated properly')
+        }
+        doctor = user
       }
       
       const doctorId = doctor.id
@@ -959,16 +965,20 @@
       }
 
       // Get the doctor ID from Firebase using email
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
       if (!doctor) {
-        showConfirmation(
-          'Profile Error',
-          'Doctor profile not found. Please try logging in again.',
-          'OK',
-          '',
-          'danger'
-        )
-        return
+        console.warn('⚠️ Template settings: Doctor not found in Firebase, using user object directly')
+        if (!user || !user.id) {
+          showConfirmation(
+            'Profile Error',
+            'Doctor profile not found. Please try logging in again.',
+            'OK',
+            '',
+            'danger'
+          )
+          return
+        }
+        doctor = user
       }
 
       const templateData = {
@@ -1287,7 +1297,7 @@
           {selectedPatient} 
           {addToPrescription} 
           {refreshTrigger} 
-          doctorId={user?.uid || user?.id} 
+          {doctorId}
           currentUser={user}
           on:dataUpdated={handleDataUpdated}
         />

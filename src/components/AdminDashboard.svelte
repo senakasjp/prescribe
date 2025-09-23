@@ -218,7 +218,7 @@
       
       console.log(`🔍 Found ${doctors.length} doctors`)
       
-      // Get patient counts for each doctor (aggregated data only)
+      // Get patient counts and token usage for each doctor (aggregated data only)
       for (const doctor of doctors) {
         try {
           console.log(`🔍 Getting patient count for doctor: ${doctor.email}`)
@@ -227,9 +227,40 @@
           
           // Add patient count to doctor object for display (aggregated data only)
           doctor.patientCount = doctorPatients.length
+          
+          // Get token usage stats for this doctor
+          // Try multiple ID formats to match token usage data
+          console.log(`🔍 Getting token stats for doctor: ${doctor.email}`)
+          console.log(`🔍 Doctor ID: ${doctor.id}`)
+          console.log(`🔍 Doctor UID: ${doctor.uid}`)
+          
+          let tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.id)
+          console.log(`🔍 Token stats with Firebase ID:`, tokenStats)
+          
+          // If no stats found with Firebase ID, try with UID
+          if (!tokenStats && doctor.uid) {
+            tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.uid)
+            console.log(`🔍 Token stats with UID:`, tokenStats)
+          }
+          
+          // If still no stats found, try with email as fallback
+          if (!tokenStats) {
+            tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.email)
+            console.log(`🔍 Token stats with email:`, tokenStats)
+          }
+          
+          doctor.tokenUsage = tokenStats || {
+            total: { tokens: 0, cost: 0, requests: 0 },
+            today: { tokens: 0, cost: 0, requests: 0 }
+          }
+          
         } catch (error) {
-          console.error(`❌ Error loading patient count for doctor ${doctor.id}:`, error)
+          console.error(`❌ Error loading data for doctor ${doctor.id}:`, error)
           doctor.patientCount = 0
+          doctor.tokenUsage = {
+            total: { tokens: 0, cost: 0, requests: 0 },
+            today: { tokens: 0, cost: 0, requests: 0 }
+          }
         }
       }
       
@@ -389,28 +420,28 @@
   const deleteDoctor = async (doctor) => {
     pendingAction = async () => {
       try {
-        // Show loading state
-        const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
-        if (deleteButton) {
-          deleteButton.disabled = true
+      // Show loading state
+      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      if (deleteButton) {
+        deleteButton.disabled = true
           deleteButton.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Deleting...'
-        }
-        
-        console.log('🗑️ Admin: Deleting doctor:', doctor.email)
-        
-        // Call the delete function
-        await firebaseStorage.deleteDoctor(doctor.id)
-        
-        // Remove doctor from local array
-        doctors = doctors.filter(d => d.id !== doctor.id)
-        
-        // Update statistics
-        statistics.totalDoctors = doctors.length
-        
-        // Recalculate patient counts
-        await loadDoctorsAndPatients()
-        
-        console.log('✅ Admin: Doctor deleted successfully')
+      }
+      
+      console.log('🗑️ Admin: Deleting doctor:', doctor.email)
+      
+      // Call the delete function
+      await firebaseStorage.deleteDoctor(doctor.id)
+      
+      // Remove doctor from local array
+      doctors = doctors.filter(d => d.id !== doctor.id)
+      
+      // Update statistics
+      statistics.totalDoctors = doctors.length
+      
+      // Recalculate patient counts
+      await loadDoctorsAndPatients()
+      
+      console.log('✅ Admin: Doctor deleted successfully')
         
         // Show success message
         showConfirmation(
@@ -420,9 +451,9 @@
           '',
           'success'
         )
-        
-      } catch (error) {
-        console.error('❌ Admin: Error deleting doctor:', error)
+      
+    } catch (error) {
+      console.error('❌ Admin: Error deleting doctor:', error)
         
         // Show error message
         showConfirmation(
@@ -432,11 +463,11 @@
           '',
           'danger'
         )
-        
-        // Reset button state
-        const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
-        if (deleteButton) {
-          deleteButton.disabled = false
+      
+      // Reset button state
+      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      if (deleteButton) {
+        deleteButton.disabled = false
           deleteButton.innerHTML = '<i class="fas fa-trash mr-2"></i>Delete'
         }
       }
@@ -635,43 +666,69 @@
               </div>
               <div class="p-4">
                 {#if doctors.length > 0}
-                  <div class="overflow-x-auto">
+                  <!-- Desktop Table View -->
+                  <div class="hidden lg:block overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                       <thead class="bg-gray-50">
                         <tr>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patients</th>
-                          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patients</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token Usage</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
                       <tbody class="bg-white divide-y divide-gray-200">
                         {#each doctors as doctor}
                           <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{doctor.email}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{doctor.name || 'N/A'}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctor.role}</span>
-                              {#if doctor.isAdmin}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 ml-1">Admin</span>
-                              {/if}
+                            <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
+                              <div class="truncate" title={doctor.email}>{doctor.email}</div>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDate(doctor.createdAt)}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{doctor.patientCount || 0}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
+                              <div class="truncate" title={doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}>
+                                {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}
+                              </div>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900">
+                              <div class="flex flex-wrap gap-1">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctor.role}</span>
+                              {#if doctor.isAdmin}
+                                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Admin</span>
+                              {/if}
+                              </div>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900">{formatDate(doctor.createdAt)}</td>
+                            <td class="px-4 py-4 text-sm text-gray-900 text-center">{doctor.patientCount || 0}</td>
+                            <td class="px-4 py-4 text-sm text-gray-900 min-w-0">
+                              <div class="space-y-1">
+                                <div class="flex items-center">
+                                  <i class="fas fa-coins text-yellow-600 mr-1 flex-shrink-0"></i>
+                                  <span class="font-medium truncate">${(doctor.tokenUsage?.total?.cost || 0).toFixed(4)}</span>
+                                </div>
+                                <div class="flex items-center text-xs text-gray-500">
+                                  <i class="fas fa-hashtag text-blue-600 mr-1 flex-shrink-0"></i>
+                                  <span class="truncate">{(doctor.tokenUsage?.total?.tokens || 0).toLocaleString()} tokens</span>
+                                </div>
+                                <div class="flex items-center text-xs text-gray-500">
+                                  <i class="fas fa-bolt text-green-600 mr-1 flex-shrink-0"></i>
+                                  <span class="truncate">{doctor.tokenUsage?.total?.requests || 0} requests</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900">
                               {#if doctor.email !== 'senakahks@gmail.com'}
                                 <button 
-                                  class="inline-flex items-center px-3 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
+                                  class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-lg"
                                   data-doctor-id={doctor.id}
                                   on:click={() => deleteDoctor(doctor)}
                                   title="Delete doctor and all related data"
                                 >
-                                  <i class="fas fa-trash mr-2"></i>Delete
+                                  <i class="fas fa-trash mr-1"></i>Delete
                                 </button>
                               {:else}
-                                <span class="text-gray-500 text-sm">
+                                <span class="text-gray-500 text-xs">
                                   <i class="fas fa-shield-alt mr-1"></i>Super Admin
                                 </span>
                               {/if}
@@ -681,12 +738,95 @@
                       </tbody>
                     </table>
                   </div>
-                {:else}
-                  <p class="text-gray-500 text-center py-8">No doctors registered yet.</p>
+                  
+                  <!-- Mobile Card View -->
+                  <div class="lg:hidden space-y-4">
+                    {#each doctors as doctor}
+                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                        <div class="flex flex-col space-y-3">
+                          <!-- Header Row -->
+                          <div class="flex justify-between items-start">
+                            <div class="flex-1 min-w-0">
+                              <h3 class="text-sm font-medium text-gray-900 truncate" title={doctor.email}>{doctor.email}</h3>
+                              <p class="text-xs text-gray-500 truncate" title={doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}>
+                                {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}
+                              </p>
+                            </div>
+                            <div class="flex flex-wrap gap-1 ml-2">
+                              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctor.role}</span>
+                              {#if doctor.isAdmin}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Admin</span>
                 {/if}
               </div>
             </div>
             
+                          <!-- Details Grid -->
+                          <div class="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <span class="text-gray-500">Created:</span>
+                              <div class="font-medium text-gray-900">{formatDate(doctor.createdAt)}</div>
+            </div>
+                            <div>
+                              <span class="text-gray-500">Patients:</span>
+                              <div class="font-medium text-gray-900">{doctor.patientCount || 0}</div>
+                            </div>
+              </div>
+              
+                          <!-- Token Usage -->
+                          <div class="border-t pt-3">
+                            <div class="text-xs text-gray-500 mb-2">Token Usage:</div>
+                            <div class="space-y-1">
+                              <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                  <i class="fas fa-coins text-yellow-600 mr-1"></i>
+                                  <span class="text-gray-500">Cost:</span>
+                    </div>
+                                <span class="font-medium text-gray-900">${(doctor.tokenUsage?.total?.cost || 0).toFixed(4)}</span>
+                  </div>
+                              <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                  <i class="fas fa-hashtag text-blue-600 mr-1"></i>
+                                  <span class="text-gray-500">Tokens:</span>
+                </div>
+                                <span class="font-medium text-gray-900">{(doctor.tokenUsage?.total?.tokens || 0).toLocaleString()}</span>
+                    </div>
+                              <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                  <i class="fas fa-bolt text-green-600 mr-1"></i>
+                                  <span class="text-gray-500">Requests:</span>
+                  </div>
+                                <span class="font-medium text-gray-900">{doctor.tokenUsage?.total?.requests || 0}</span>
+                </div>
+                    </div>
+                  </div>
+                          
+                          <!-- Actions -->
+                          <div class="border-t pt-3">
+                            {#if doctor.email !== 'senakahks@gmail.com'}
+                              <button 
+                                class="w-full inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
+                                data-doctor-id={doctor.id}
+                                on:click={() => deleteDoctor(doctor)}
+                                title="Delete doctor and all related data"
+                              >
+                                <i class="fas fa-trash mr-2"></i>Delete Doctor
+                              </button>
+                            {:else}
+                              <div class="text-center text-gray-500 text-sm">
+                                <i class="fas fa-shield-alt mr-1"></i>Super Admin - Protected
+                </div>
+                            {/if}
+                    </div>
+                  </div>
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="text-gray-500 text-center py-8">No doctors registered yet.</p>
+                {/if}
+                </div>
+              </div>
+              
           <!-- Patients tab removed for HIPAA compliance -->
           <!-- Admins should not have access to patient PHI data -->
           <!-- Patient data access is restricted to individual doctors only -->
@@ -697,7 +837,7 @@
               <button class="inline-flex items-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg" on:click={loadAIUsageStats}>
                 <i class="fas fa-sync-alt mr-2"></i>Refresh
               </button>
-            </div>
+                    </div>
             
             {#if aiUsageStats}
               <!-- Cost Disclaimer -->
@@ -706,7 +846,7 @@
                 <strong class="text-yellow-800">Cost Disclaimer:</strong> <span class="text-yellow-700">These cost estimates are approximate and may not reflect actual OpenAI billing. 
                 Actual costs may be higher due to taxes, fees, or pricing changes. 
                 Check your <a href="https://platform.openai.com/usage" target="_blank" class="text-yellow-600 hover:text-yellow-800 underline">OpenAI dashboard</a> for exact billing amounts.</span>
-              </div>
+                  </div>
               
               <!-- Usage Overview Cards -->
               <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
@@ -716,42 +856,42 @@
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.cost.toFixed(4)}</h5>
                   <small class="text-gray-500">All Time</small>
-                    </div>
+                </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-hashtag mr-1"></i>Total Tokens
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">{aiUsageStats.total.tokens.toLocaleString()}</h5>
                   <small class="text-gray-500">All Time</small>
-                  </div>
+                    </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-bolt mr-1"></i>Total Requests
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">{aiUsageStats.total.requests}</h5>
                   <small class="text-gray-500">All Time</small>
-                </div>
+                  </div>
                 <div class="bg-white border-2 border-yellow-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-yellow-600 font-semibold mb-2">
                     <i class="fas fa-calendar-day mr-1"></i>Today
                   </h6>
                   <h5 class="text-yellow-600 text-xl font-bold mb-1">${aiUsageStats.today.cost.toFixed(4)}</h5>
                   <small class="text-gray-500">{aiUsageStats.today.requests} requests</small>
-                    </div>
+                </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-calendar-alt mr-1"></i>This Month
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.thisMonth.cost.toFixed(4)}</h5>
                   <small class="text-gray-500">{aiUsageStats.thisMonth.requests} requests</small>
-                  </div>
+                    </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-percentage mr-1"></i>Avg Cost/Request
                   </h6>
                   <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h5>
                   <small class="text-gray-500">All Time Average</small>
-                </div>
+                  </div>
               </div>
               
               <!-- Last Updated Card -->
@@ -990,70 +1130,71 @@
                     </h5>
                   </div>
                   <div class="p-4">
-                    <div class="overflow-x-auto">
+                    <!-- Desktop Table View -->
+                    <div class="hidden lg:block overflow-x-auto">
                       <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                           <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor Name</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monthly Quota</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Used This Month</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor Name</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monthly Quota</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Used This Month</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                           </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
                           {#each aiTokenTracker.getAllDoctorsWithQuotas() as doctor}
                             <tr class="hover:bg-gray-50">
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                <div class="font-medium text-gray-900">{getDoctorName(doctor.doctorId)}</div>
-                                <div class="text-xs text-gray-500">ID: {doctor.doctorId}</div>
+                              <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
+                                <div class="font-medium text-gray-900 truncate" title={getDoctorName(doctor.doctorId)}>{getDoctorName(doctor.doctorId)}</div>
+                                <div class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {doctor.doctorId}</div>
                               </td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <td class="px-4 py-4 text-sm text-gray-900">
                                 {#if doctor.quota}
-                                  {doctor.quota.monthlyTokens.toLocaleString()} tokens
-            {:else}
+                                  <div class="truncate">{doctor.quota.monthlyTokens.toLocaleString()} tokens</div>
+                                {:else}
                                   <span class="text-gray-400">No quota set</span>
                                 {/if}
                               </td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                {doctor.monthlyUsage.tokens.toLocaleString()} tokens
-                                <br>
-                                <small class="text-gray-500">${doctor.monthlyUsage.cost.toFixed(4)}</small>
+                              <td class="px-4 py-4 text-sm text-gray-900">
+                                <div class="truncate">{doctor.monthlyUsage.tokens.toLocaleString()} tokens</div>
+                                <div class="text-xs text-gray-500 truncate">${doctor.monthlyUsage.cost.toFixed(4)}</div>
                               </td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <td class="px-4 py-4 text-sm text-gray-900">
                                 {#if doctor.quotaStatus.hasQuota}
-                                  {doctor.quotaStatus.remainingTokens.toLocaleString()} tokens
+                                  <div class="truncate">{doctor.quotaStatus.remainingTokens.toLocaleString()} tokens</div>
                                 {:else}
                                   <span class="text-gray-400">-</span>
                                 {/if}
                               </td>
-                              <td class="px-6 py-4 whitespace-nowrap">
-                                {#if doctor.quotaStatus.hasQuota}
-                                  {#if doctor.quotaStatus.isExceeded}
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                      <i class="fas fa-exclamation-triangle mr-1"></i>Exceeded
-                                    </span>
-                                  {:else if doctor.quotaStatus.percentageUsed > 80}
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                      <i class="fas fa-exclamation-circle mr-1"></i>Warning
-                                    </span>
+                              <td class="px-4 py-4 text-sm text-gray-900">
+                                <div class="flex flex-col space-y-1">
+                                  {#if doctor.quotaStatus.hasQuota}
+                                    {#if doctor.quotaStatus.isExceeded}
+                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>Exceeded
+                                      </span>
+                                    {:else if doctor.quotaStatus.percentageUsed > 80}
+                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        <i class="fas fa-exclamation-circle mr-1"></i>Warning
+                                      </span>
+                                    {:else}
+                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        <i class="fas fa-check-circle mr-1"></i>Good
+                                      </span>
+                                    {/if}
+                                    <div class="text-xs text-gray-500">{doctor.quotaStatus.percentageUsed.toFixed(1)}% used</div>
                                   {:else}
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                      <i class="fas fa-check-circle mr-1"></i>Good
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                      No Quota
                                     </span>
                                   {/if}
-                                  <br>
-                                  <small class="text-gray-500">{doctor.quotaStatus.percentageUsed.toFixed(1)}% used</small>
-                                {:else}
-                                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                    No Quota
-                                  </span>
-                                {/if}
+                                </div>
                               </td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <td class="px-4 py-4 text-sm text-gray-900">
                                 <button 
-                                  class="text-red-600 hover:text-red-900 font-medium"
+                                  class="text-red-600 hover:text-red-900 font-medium text-xs"
                                   on:click={() => openQuotaModal(doctor.doctorId, doctor.quota?.monthlyTokens || 0)}
                                 >
                                   <i class="fas fa-edit mr-1"></i>Set Quota
@@ -1070,6 +1211,102 @@
                           {/each}
                         </tbody>
                       </table>
+                    </div>
+                    
+                    <!-- Mobile Card View -->
+                    <div class="lg:hidden space-y-4">
+                      {#each aiTokenTracker.getAllDoctorsWithQuotas() as doctor}
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                          <div class="flex flex-col space-y-3">
+                            <!-- Header Row -->
+                            <div class="flex justify-between items-start">
+                              <div class="flex-1 min-w-0">
+                                <h3 class="text-sm font-medium text-gray-900 truncate" title={getDoctorName(doctor.doctorId)}>{getDoctorName(doctor.doctorId)}</h3>
+                                <p class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {doctor.doctorId}</p>
+                              </div>
+                              <div class="ml-2">
+                                {#if doctor.quotaStatus.hasQuota}
+                                  {#if doctor.quotaStatus.isExceeded}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                      <i class="fas fa-exclamation-triangle mr-1"></i>Exceeded
+                                    </span>
+                                  {:else if doctor.quotaStatus.percentageUsed > 80}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                      <i class="fas fa-exclamation-circle mr-1"></i>Warning
+                                    </span>
+                                  {:else}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      <i class="fas fa-check-circle mr-1"></i>Good
+                                    </span>
+                                  {/if}
+                                {:else}
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    No Quota
+                                  </span>
+                                {/if}
+                              </div>
+                            </div>
+                            
+                            <!-- Quota Details -->
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <span class="text-gray-500">Monthly Quota:</span>
+                                <div class="font-medium text-gray-900">
+                                  {#if doctor.quota}
+                                    {doctor.quota.monthlyTokens.toLocaleString()} tokens
+                                  {:else}
+                                    <span class="text-gray-400">No quota set</span>
+                                  {/if}
+                                </div>
+                              </div>
+                              <div>
+                                <span class="text-gray-500">Used This Month:</span>
+                                <div class="font-medium text-gray-900">{doctor.monthlyUsage.tokens.toLocaleString()} tokens</div>
+                                <div class="text-gray-500">${doctor.monthlyUsage.cost.toFixed(4)}</div>
+                              </div>
+                            </div>
+                            
+                            <!-- Remaining and Percentage -->
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <span class="text-gray-500">Remaining:</span>
+                                <div class="font-medium text-gray-900">
+                                  {#if doctor.quotaStatus.hasQuota}
+                                    {doctor.quotaStatus.remainingTokens.toLocaleString()} tokens
+                                  {:else}
+                                    <span class="text-gray-400">-</span>
+                                  {/if}
+                                </div>
+                              </div>
+                              <div>
+                                <span class="text-gray-500">Usage:</span>
+                                <div class="font-medium text-gray-900">
+                                  {#if doctor.quotaStatus.hasQuota}
+                                    {doctor.quotaStatus.percentageUsed.toFixed(1)}% used
+                                  {:else}
+                                    <span class="text-gray-400">-</span>
+                                  {/if}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- Actions -->
+                            <div class="border-t pt-3">
+                              <button 
+                                class="w-full inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
+                                on:click={() => openQuotaModal(doctor.doctorId, doctor.quota?.monthlyTokens || 0)}
+                              >
+                                <i class="fas fa-edit mr-2"></i>Set Quota
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="text-center py-8 text-gray-500">
+                          <i class="fas fa-info-circle mr-2"></i>
+                          No doctors with AI usage found
+                        </div>
+                      {/each}
                     </div>
                   </div>
                 </div>

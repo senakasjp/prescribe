@@ -2894,24 +2894,6 @@
             </div>
           </div>
           
-          <!-- Helpful Instructions -->
-          <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <div class="flex items-start">
-              <div class="flex-shrink-0">
-                <i class="fas fa-info-circle text-blue-600 mt-1"></i>
-              </div>
-              <div class="ml-3">
-                <h4 class="text-sm font-medium text-blue-800 mb-2">Prescription Process Guide</h4>
-                <div class="text-sm text-blue-700 space-y-1">
-                  <p>• <strong>Symptoms:</strong> Document patient symptoms and complaints</p>
-                  <p>• <strong>Reports:</strong> Add lab results, imaging, and medical documents</p>
-                  <p>• <strong>Diagnoses:</strong> Record medical diagnoses and conditions</p>
-                  <p>• <strong>Prescriptions:</strong> Create and manage medication prescriptions</p>
-                </div>
-                <p class="text-xs text-blue-600 mt-2">Use the progress bar above to navigate through each step. Complete each section to unlock the next one.</p>
-              </div>
-            </div>
-          </div>
         </div>
       {/if}
       
