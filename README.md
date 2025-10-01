@@ -40,11 +40,19 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 
 ## 📚 Documentation
 
+### User Guides
 - **[BEGINNER_GUIDE.md](./BEGINNER_GUIDE.md)** - Complete step-by-step guide for new users
 - **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)** - Quick reference card for common tasks
 - **[USER_GUIDE.md](./USER_GUIDE.md)** - Detailed user manual for all features
+
+### Developer Documentation
 - **[TECHNICAL_IMPLEMENTATION.md](./TECHNICAL_IMPLEMENTATION.md)** - Technical documentation
 - **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)** - API reference guide
+
+### Testing Documentation
+- **[TESTING_QUICK_START.md](./TESTING_QUICK_START.md)** - Get started with testing in 2 minutes
+- **[TESTING_BEST_PRACTICES.md](./TESTING_BEST_PRACTICES.md)** - Comprehensive testing guide
+- **[TEST_IMPLEMENTATION_SUMMARY.md](./TEST_IMPLEMENTATION_SUMMARY.md)** - Testing implementation summary
 
 ## 📋 Prerequisites
 
@@ -99,6 +107,36 @@ npm run build
 firebase deploy
 ```
 
+## 🧪 Testing
+
+### Run Tests
+```bash
+# Watch mode (recommended for development)
+npm test
+
+# Run once (CI/CD mode)
+npm run test:run
+
+# Generate coverage report
+npm run test:coverage
+
+# Run with UI dashboard
+npm run test:ui
+```
+
+### Test Coverage
+- **115 tests** implemented
+- **93 tests passing** (81% success rate)
+- **Unit tests**: Service and utility testing
+- **Integration tests**: Complete workflow testing
+- **Component tests**: Svelte component testing
+- **HIPAA compliance**: Data isolation and privacy testing
+
+### Testing Documentation
+- **[TESTING_QUICK_START.md](./TESTING_QUICK_START.md)** - Quick start guide
+- **[TESTING_BEST_PRACTICES.md](./TESTING_BEST_PRACTICES.md)** - Best practices
+- **[TEST_IMPLEMENTATION_SUMMARY.md](./TEST_IMPLEMENTATION_SUMMARY.md)** - Implementation details
+
 ## 📁 Project Structure
 
 ```
@@ -111,6 +149,7 @@ src/
 │   ├── PharmacistManagement.svelte # Pharmacist management
 │   ├── AIRecommendations.svelte   # AI drug suggestions
 │   ├── PrescriptionsTab.svelte    # Prescription management
+│   ├── ConfirmationModal.svelte   # Flowbite confirmation dialogs
 │   ├── LoadingSpinner.svelte      # Loading indicator
 │   └── ThreeDots.svelte          # Inline loading indicator
 ├── services/
@@ -120,6 +159,18 @@ src/
 │   └── authService.js            # Authentication
 ├── stores/
 │   └── notifications.js          # Notification system
+├── tests/
+│   ├── setup.js                  # Global test configuration
+│   ├── mocks/
+│   │   └── firebase.mock.js      # Firebase mocks
+│   ├── unit/                     # Unit tests
+│   │   ├── firebaseStorage.test.js
+│   │   └── authService.test.js
+│   ├── integration/              # Integration tests
+│   │   └── patientManagement.test.js
+│   └── components/               # Component tests
+│       ├── PatientForm.test.js
+│       └── ConfirmationModal.test.js
 └── firebase-config.js            # Firebase configuration
 ```
 

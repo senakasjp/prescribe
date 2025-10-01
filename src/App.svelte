@@ -24,6 +24,23 @@
   let refreshInterval = null
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
+  let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'drugs', 'pharmacies', 'settings'
+  let triggerOpenSettings = false // Trigger to open settings modal
+  
+  // Handle menu navigation
+  const handleMenuNavigation = (view) => {
+    currentView = view
+  }
+  
+  // Handle settings click from menubar
+  const handleSettingsClick = () => {
+    triggerOpenSettings = true
+  }
+  
+  // Reset settings trigger when modal is opened
+  const handleSettingsOpened = () => {
+    triggerOpenSettings = false
+  }
   
   onMount(() => {
     try {
@@ -83,7 +100,7 @@
             console.log('No Firebase user and no localStorage user, clearing user')
             user = null
             loading = false
-            return
+          return
           }
         }
         
@@ -196,7 +213,7 @@
     setTimeout(() => {
       if (loading) {
         console.log('Fallback: Setting loading to false')
-        loading = false
+    loading = false
       }
     }, 1000)
   })
@@ -431,7 +448,7 @@
         doctorUsageStats = aiTokenTracker.getDoctorUsageStats(currentUserId)
         doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(currentUserId)
       }
-    }, 5000)
+    }, 30000)
   }
 
 
@@ -467,8 +484,8 @@
           <i class="fas fa-user-md text-white text-xl"></i>
           <span class="self-center text-xl font-semibold whitespace-nowrap text-white">M-Prescribe</span>
         </a>
-        
-        <!-- Mobile Toggle Button -->
+          
+          <!-- Mobile Toggle Button -->
         <button 
           data-collapse-toggle="navbar-default" 
           type="button" 
@@ -480,13 +497,13 @@
           <svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 17 14">
             <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 1h15M1 7h15M1 13h15"/>
           </svg>
-        </button>
-        
-        <!-- Navbar Content -->
+          </button>
+          
+          <!-- Navbar Content -->
         <div class="hidden w-full md:block md:w-auto" id="navbar-default">
-          <!-- Desktop Layout -->
+            <!-- Desktop Layout -->
           <div class="hidden lg:flex items-center space-x-4">
-            <!-- User Info -->
+              <!-- User Info -->
             <div class="flex items-center space-x-3 text-white">
               <i class="fas fa-user"></i>
               <span class="text-sm font-medium">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
@@ -502,10 +519,10 @@
                 <span class="text-xs text-white font-medium">
                   {doctorQuotaStatus?.hasQuota ? Math.round(doctorQuotaStatus.percentageUsed) : Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
                 </span>
+                </div>
               </div>
-            </div>
-            
-            <!-- Action Buttons -->
+              
+              <!-- Action Buttons -->
             <div class="flex items-center space-x-2">
               {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
                 <button 
@@ -526,17 +543,17 @@
                 Logout
               </button>
             </div>
-          </div>
-          
-          <!-- Mobile Layout -->
+            </div>
+            
+            <!-- Mobile Layout -->
           <div class="lg:hidden mt-4 space-y-3">
-            <!-- User Info Row -->
+              <!-- User Info Row -->
             <div class="flex items-center space-x-2 text-white">
               <i class="fas fa-user"></i>
               <span class="text-sm">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
-            </div>
-            
-            <!-- AI Health Bar Row -->
+              </div>
+              
+              <!-- AI Health Bar Row -->
             <div class="flex items-center space-x-2">
               <i class="fas fa-brain text-white"></i>
               <div class="flex-1 bg-gray-200 rounded-full h-2 dark:bg-gray-700" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / {doctorQuotaStatus?.quotaTokens?.toLocaleString() || 'No quota'} tokens">
@@ -547,47 +564,131 @@
               <span class="text-xs text-white font-medium">
                 {doctorQuotaStatus?.hasQuota ? Math.round(doctorQuotaStatus.percentageUsed) : Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
               </span>
-            </div>
-            
-            <!-- Action Buttons Row -->
+              </div>
+              
+              <!-- Action Buttons Row -->
             <div class="flex space-x-2">
-              {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
+                {#if user.isAdmin || user.email === 'senakahks@gmail.com'}
                 <button 
                   type="button" 
                   class="flex-1 text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-colors duration-200" 
                   on:click={handleAdminAccess}
                 >
                   <i class="fas fa-shield-alt mr-1"></i>
-                  Admin
-                </button>
-              {/if}
+                    Admin
+                  </button>
+                {/if}
               <button 
                 type="button" 
                 class="flex-1 text-white bg-gray-700 hover:bg-gray-800 focus:ring-4 focus:outline-none focus:ring-gray-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800 transition-colors duration-200" 
                 on:click={handleLogout}
               >
                 <i class="fas fa-sign-out-alt mr-1"></i>
-                Exit
-              </button>
+                  Exit
+                </button>
+              </div>
             </div>
+          </div>
+      </div>
+    </nav>
+    
+    <!-- Menubar under header -->
+    <nav class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+      <div class="max-w-screen-xl mx-auto px-2 sm:px-4">
+        <div class="flex items-center h-12">
+          <!-- Menu Items - Responsive -->
+          <div class="flex-1 overflow-x-auto">
+            <ul class="flex space-x-1 text-sm font-medium whitespace-nowrap">
+              <li>
+                <button 
+                  type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'home' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                  on:click={() => handleMenuNavigation('home')}
+                >
+                  <i class="fas fa-home mr-1 sm:mr-2"></i>
+                  <span class="hidden xs:inline">Home</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'patients' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                  on:click={() => handleMenuNavigation('patients')}
+                >
+                  <i class="fas fa-users mr-1 sm:mr-2"></i>
+                  <span class="hidden xs:inline">Patients</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'prescriptions' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                  on:click={() => handleMenuNavigation('prescriptions')}
+                >
+                  <i class="fas fa-prescription-bottle-alt mr-1 sm:mr-2"></i>
+                  <span class="hidden sm:inline">Prescriptions</span>
+                  <span class="sm:hidden hidden xs:inline">Rx</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'drugs' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                  on:click={() => handleMenuNavigation('drugs')}
+                >
+                  <i class="fas fa-pills mr-1 sm:mr-2"></i>
+                  <span class="hidden xs:inline">Drugs</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'pharmacies' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                  on:click={() => handleMenuNavigation('pharmacies')}
+                >
+                  <i class="fas fa-store mr-1 sm:mr-2"></i>
+                  <span class="hidden sm:inline">Pharmacies</span>
+                  <span class="sm:hidden hidden xs:inline">Pharm</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
+                  on:click={handleSettingsClick}
+                >
+                  <i class="fas fa-user-cog mr-1 sm:mr-2"></i>
+                  <span class="hidden xs:inline">Settings</span>
+                </button>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
     </nav>
     
     <div class="p-4">
-        <PatientManagement {user} key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} on:ai-usage-updated={refreshDoctorUsageStats} on:profile-updated={handleProfileUpdate} />
+        <PatientManagement 
+          {user} 
+          {currentView}
+          openSettings={triggerOpenSettings}
+          key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} 
+          on:ai-usage-updated={refreshDoctorUsageStats} 
+          on:profile-updated={handleProfileUpdate}
+          on:view-change={(e) => handleMenuNavigation(e.detail)}
+          on:settings-opened={handleSettingsOpened}
+        />
     </div>
     {/if}
   {:else}
     <!-- User is not logged in - Show Flowbite authentication -->
     <div class="min-h-screen flex items-start justify-center bg-teal-600 px-4 pt-8">
       <div class="w-full max-w-md">
-        <!-- Main Auth Card -->
+            <!-- Main Auth Card -->
         <div class="bg-white rounded-lg shadow-xl overflow-hidden">
-          <!-- Card Header -->
+              <!-- Card Header -->
           <div class="bg-white px-6 py-8">
-            <div class="text-center">
+                <div class="text-center">
               <div class="mb-4">
                 <div class="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full">
                   <i class="fas fa-stethoscope text-teal-600 text-xl"></i>
@@ -596,63 +697,63 @@
               <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe</h1>
               <p class="text-gray-600 text-sm hidden sm:block">AI-Powered Medical Prescription System</p>
               <p class="text-gray-600 text-xs sm:hidden">AI-Powered Medical System</p>
-            </div>
-          </div>
-          
-          <!-- Card Body -->
+                </div>
+              </div>
+              
+              <!-- Card Body -->
           <div class="px-6 pb-6">
-            <!-- Auth Mode Toggle -->
+                <!-- Auth Mode Toggle -->
             <div class="mb-6">
               <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1 w-full" role="group" aria-label="Authentication mode">
-                <button 
-                  type="button" 
+                    <button 
+                      type="button" 
                   class="flex-1 flex items-center justify-center px-6 py-3 text-sm font-medium rounded-md transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
-                  on:click={handleSwitchToDoctor}
-                >
+                      on:click={handleSwitchToDoctor}
+                    >
                   <i class="fas fa-user-md mr-2"></i>
                   <span class="hidden sm:inline">Doctor</span>
                   <span class="sm:hidden">Dr.</span>
-                </button>
-                <button 
-                  type="button" 
+                    </button>
+                    <button 
+                      type="button" 
                   class="flex-1 flex items-center justify-center px-6 py-3 text-sm font-medium rounded-md transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
-                  on:click={handleSwitchToPharmacist}
-                >
+                      on:click={handleSwitchToPharmacist}
+                    >
                   <i class="fas fa-pills mr-2"></i>
                   <span class="hidden sm:inline">Pharmacist</span>
                   <span class="sm:hidden">Pharm.</span>
-                </button>
-              </div>
-            </div>
-            
-            <!-- Auth Forms -->
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Auth Forms -->
             <div class="bg-gray-50 rounded-lg p-4">
-              {#if authMode === 'doctor'}
+                  {#if authMode === 'doctor'}
                 <div class="text-center mb-4">
                   <h4 class="text-lg font-semibold text-gray-900 mb-0">
                     <i class="fas fa-user-md text-teal-600 mr-2"></i>
                     <span class="hidden sm:inline">Doctor Portal</span>
                     <span class="sm:hidden">Doctor</span>
-                  </h4>
-                </div>
-                <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
-              {:else}
+                      </h4>
+                    </div>
+            <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+                  {:else}
                 <div class="text-center mb-4">
                   <h4 class="text-lg font-semibold text-gray-900 mb-0">
                     <i class="fas fa-pills text-teal-600 mr-2"></i>
                     <span class="hidden sm:inline">Pharmacist Portal</span>
                     <span class="sm:hidden">Pharmacist</span>
-                  </h4>
+                      </h4>
+                    </div>
+                    <PharmacistAuth 
+                      on:pharmacist-login={handlePharmacistLogin}
+                      on:switch-to-doctor={handleSwitchToDoctor}
+                    />
+                  {/if}
                 </div>
-                <PharmacistAuth 
-                  on:pharmacist-login={handlePharmacistLogin}
-                  on:switch-to-doctor={handleSwitchToDoctor}
-                />
-              {/if}
-            </div>
-          </div>
-          
-          <!-- Card Footer -->
+              </div>
+              
+              <!-- Card Footer -->
           <div class="bg-gray-50 px-6 py-3">
             <div class="text-center space-y-2">
               <small class="text-gray-500">
@@ -660,7 +761,7 @@
                 <span class="hidden sm:inline">Secure • HIPAA Compliant • AI-Enhanced</span>
                 <span class="sm:hidden">Secure • HIPAA • AI</span>
               </small>
-              <div class="text-center">
+                <div class="text-center">
                 <button 
                   type="button"
                   class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded"
@@ -670,11 +771,11 @@
                   Privacy Policy
                 </button>
               </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
   {/if}
   
   <!-- Edit Profile Modal -->

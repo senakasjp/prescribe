@@ -16,6 +16,19 @@
   
   const dispatch = createEventDispatcher()
   export let user
+  export let currentView = 'patients' // Navigation from menubar: 'home', 'patients', 'prescriptions', 'drugs', 'pharmacies'
+  export let openSettings = false // Trigger to open settings modal
+  
+  // Watch for openSettings trigger from menubar
+  $: if (openSettings) {
+    editingProfile = true
+    editFirstName = user?.firstName || ''
+    editLastName = user?.lastName || ''
+    editCountry = user?.country || ''
+    editCity = user?.city || ''
+    profileError = ''
+    setTimeout(() => dispatch('settings-opened'), 100)
+  }
   
   // Reactive statement to ensure component updates when user changes
   $: userKey = user?.id || user?.email || 'default'
@@ -85,7 +98,7 @@
   let chartLoading = false
   let searchQuery = ''
   let filteredPatients = []
-  let currentView = 'patients' // 'patients' or 'pharmacists'
+  let showAllLastPrescriptionMeds = false // Track if last prescription medications are expanded
   
   // Medical data for selected patient
   let illnesses = []
@@ -334,6 +347,24 @@
     }
   }
   
+  // Handle view patient request from PatientDetails
+  const handleViewPatient = (event) => {
+    const { patient } = event.detail
+    console.log('👁️ View patient requested:', patient)
+    console.log('👁️ Current view before:', currentView)
+    console.log('👁️ Selected patient before:', selectedPatient)
+    
+    // Ensure patient is selected (refresh/reload the patient view)
+    selectPatient(patient)
+    
+    // Navigate to prescriptions view (which shows sidebar with patient details and medical summary)
+    // This ensures the sidebar layout is shown
+    currentView = 'prescriptions'
+    
+    console.log('👁️ Current view after:', currentView)
+    console.log('👁️ Selected patient after:', selectedPatient)
+  }
+  
   // Handle data updates from PatientDetails
   const handleDataUpdated = async (event) => {
     const { type, data } = event.detail
@@ -514,7 +545,7 @@
         
         const options = {
           chart: {
-            type: 'bar',
+          type: 'bar',
             height: 250,
             toolbar: {
               show: false
@@ -562,7 +593,7 @@
               }
             }
           },
-          grid: {
+                grid: {
             borderColor: 'rgba(31, 41, 55, 0.1)', // gray-800 with low opacity
             strokeDashArray: 3,
             xaxis: {
@@ -684,6 +715,7 @@
   // Select a patient
   const selectPatient = (patient) => {
     selectedPatient = patient
+    showAllLastPrescriptionMeds = false // Reset expanded state when selecting new patient
     if (patient) {
       loadMedicalData(patient.id)
     } else {
@@ -976,7 +1008,7 @@
             '',
             'danger'
           )
-          return
+        return
         }
         doctor = user
       }
@@ -1040,31 +1072,195 @@
   })
 </script>
 
-<!-- Navigation Tabs -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
-  <div class="p-3">
-    <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1" role="group" aria-label="View selection">
-      <button 
-        class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 {currentView === 'patients' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
-        on:click={() => currentView = 'patients'}
-      >
-        <i class="fas fa-users mr-2"></i>
-        <span class="hidden sm:inline">Patients</span>
-        <span class="sm:hidden">Patients</span>
-      </button>
-      <button 
-        class="flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 {currentView === 'pharmacists' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
-        on:click={() => currentView = 'pharmacists'}
-      >
-        <i class="fas fa-pills mr-2"></i>
-        <span class="hidden sm:inline">Pharmacists</span>
-        <span class="sm:hidden">Pharmacists</span>
-      </button>
+{#if currentView === 'home'}
+<!-- Home Dashboard - Quick Stats and Chart -->
+<div class="space-y-4">
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div class="text-center">
+      <i class="fas fa-user-md text-5xl text-teal-600 mb-3"></i>
+      <h2 class="text-2xl font-bold text-gray-900 mb-2">Welcome, Dr. {doctorName}!</h2>
+      <p class="text-gray-600">{doctorCountry}{doctorCity !== 'Not specified' ? `, ${doctorCity}` : ''}</p>
+    </div>
+  </div>
+  
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium text-gray-600 mb-1">Total Patients</p>
+          <p class="text-3xl font-bold text-teal-600">{patients.length}</p>
+        </div>
+        <div class="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
+          <i class="fas fa-users text-teal-600 text-xl"></i>
+        </div>
+      </div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium text-gray-600 mb-1">Total Prescriptions</p>
+          <p class="text-3xl font-bold text-rose-600">{totalPrescriptions}</p>
+        </div>
+        <div class="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center">
+          <i class="fas fa-prescription-bottle-alt text-rose-600 text-xl"></i>
+        </div>
+      </div>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-medium text-gray-600 mb-1">Connected Pharmacies</p>
+          <p class="text-3xl font-bold text-purple-600">{connectedPharmacies}</p>
+        </div>
+        <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+          <i class="fas fa-store text-purple-600 text-xl"></i>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-{#if currentView === 'patients'}
+{:else if currentView === 'patients'}
+<!-- Patients List View -->
+<div class="space-y-4">
+  <!-- Search Patient Card -->
+  <div class="bg-white rounded-lg shadow-sm border-2 border-teal-200">
+    <div class="bg-teal-50 px-4 py-3 border-b border-teal-200 rounded-t-lg">
+      <h3 class="text-xl font-semibold text-gray-900 mb-0">
+        <i class="fas fa-search text-teal-600 mr-2"></i>
+        Search Patient
+      </h3>
+    </div>
+    <div class="p-4">
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <i class="fas fa-search text-gray-400"></i>
+        </div>
+        <input 
+          type="text" 
+          class="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+          placeholder="Search patients by name, ID, phone, or email..."
+          bind:value={searchQuery}
+        >
+        {#if searchQuery}
+        <button 
+            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600" 
+            type="button" 
+            on:click={clearSearch}
+            title="Clear search"
+          >
+            <i class="fas fa-times"></i>
+        </button>
+        {/if}
+      </div>
+      {#if searchQuery}
+        <div class="mt-2 text-xs text-gray-600">
+          {#if filteredPatients.length > 0}
+            Showing {Math.min(filteredPatients.length, 20)} of {filteredPatients.length} result{filteredPatients.length !== 1 ? 's' : ''}
+            {#if filteredPatients.length > 20}
+              <span class="text-orange-600 font-medium">(First 20 shown)</span>
+            {/if}
+          {:else}
+            No patients found
+          {/if}
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <!-- All Patients Table Card -->
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+    <div class="p-6 border-b border-gray-200">
+      <div class="flex justify-between items-center">
+        <h3 class="text-xl font-semibold text-gray-900">
+          <i class="fas fa-users text-teal-600 mr-2"></i>
+          All Patients ({patients.length})
+        </h3>
+        <button 
+          class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200" 
+          on:click={showAddPatientForm}
+        >
+          <i class="fas fa-plus mr-2"></i>
+          Add New Patient
+        </button>
+  </div>
+</div>
+
+    <div class="overflow-x-auto">
+    <table class="w-full">
+      <thead class="bg-gray-50 border-b border-gray-200">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Age</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Number</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="bg-white divide-y divide-gray-200">
+        {#if (searchQuery ? filteredPatients : patients).length > 0}
+          {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient (patient.id)}
+            <tr class="hover:bg-gray-50 transition-colors duration-150">
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="flex items-center">
+                  <div class="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm font-semibold mr-3">
+                    {patient.firstName?.[0] || 'P'}
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">{patient.firstName} {patient.lastName || ''}</p>
+                    <p class="text-xs text-gray-500">{patient.gender || 'N/A'}</p>
+                  </div>
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                {patient.age || 'N/A'} {patient.age ? 'years' : ''}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                {patient.idNumber || 'N/A'}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {#if patient.phone || patient.email}
+                  {#if patient.phone}<p><i class="fas fa-phone mr-1"></i>{patient.phone}</p>{/if}
+                  {#if patient.email}<p><i class="fas fa-envelope mr-1"></i>{patient.email}</p>{/if}
+                {:else}
+                  <p>No contact info</p>
+                {/if}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm">
+                <button 
+                  class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-medium transition-colors duration-200"
+                  on:click={() => {
+                    selectPatient(patient)
+                    currentView = 'prescriptions' // Change view to show sidebar layout
+                  }}
+                >
+                  <i class="fas fa-eye mr-1"></i>
+                  View
+                </button>
+              </td>
+            </tr>
+          {/each}
+        {:else}
+          <tr>
+            <td colspan="5" class="px-6 py-12 text-center">
+              <i class="fas fa-users text-5xl text-gray-300 mb-3"></i>
+              <p class="text-gray-500">
+                {#if searchQuery}
+                  No patients found matching "{searchQuery}"
+                {:else}
+                  No patients yet. Click "Add New Patient" to get started.
+                {/if}
+              </p>
+            </td>
+          </tr>
+        {/if}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+{:else if currentView === 'prescriptions' || currentView === 'drugs' || selectedPatient}
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
   <!-- Patient List Sidebar -->
   <div class="lg:col-span-4">
@@ -1266,6 +1462,75 @@
       </div>
     </div>
     
+    <!-- Last Prescription Card -->
+    {#if selectedPatient && prescriptions.length > 0}
+      <div class="bg-white border-2 border-rose-200 rounded-lg shadow-sm mt-3">
+        <div class="bg-rose-50 px-3 py-2 border-b border-rose-200 rounded-t-lg">
+          <h6 class="text-lg font-semibold text-gray-900 mb-0">
+            <i class="fas fa-prescription-bottle-alt text-rose-600 mr-2"></i>
+            Last Prescription
+          </h6>
+        </div>
+        <div class="p-3">
+          {#if prescriptions[0]?.medications?.length > 0}
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
+                <span><i class="fas fa-calendar mr-1"></i>{new Date(prescriptions[0].createdAt).toLocaleDateString()}</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{prescriptions[0].medications.length} drug{prescriptions[0].medications.length !== 1 ? 's' : ''}</span>
+              </div>
+              {#each (showAllLastPrescriptionMeds ? prescriptions[0].medications : prescriptions[0].medications.slice(0, 3)) as medication}
+                <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1">
+                      <p class="text-base font-semibold text-blue-600 mb-1">{medication.name}</p>
+                      <div class="flex items-center flex-wrap gap-2">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          <i class="fas fa-pills mr-1"></i>{medication.dosage || medication.dose || 'N/A'}
+                        </span>
+                        {#if medication.frequency || medication.duration}
+                          <small class="text-gray-500 text-xs">
+                            <i class="fas fa-clock mr-1"></i>{medication.frequency || ''}{#if medication.frequency && medication.duration} · {/if}{medication.duration || ''}
+                          </small>
+                        {/if}
+                      </div>
+                      {#if medication.instructions}
+                        <p class="text-xs text-gray-500 mt-1 italic">
+                          <i class="fas fa-info-circle mr-1"></i>{medication.instructions}
+                        </p>
+                      {/if}
+                    </div>
+                    <button 
+                      class="inline-flex items-center px-3 py-1 border border-teal-300 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 rounded-lg transition-colors duration-200 flex-shrink-0"
+                      on:click={() => addToPrescription(medication)}
+                      title="Add to current prescription"
+                    >
+                      <i class="fas fa-plus mr-1"></i>
+                      Add
+                    </button>
+                  </div>
+                </div>
+              {/each}
+              {#if prescriptions[0].medications.length > 3}
+                <button
+                  type="button"
+                  class="w-full text-gray-500 hover:text-teal-600 text-xs block text-center mt-2 py-1 transition-colors duration-200"
+                  on:click={() => showAllLastPrescriptionMeds = !showAllLastPrescriptionMeds}
+                >
+                  {#if showAllLastPrescriptionMeds}
+                    <i class="fas fa-chevron-up mr-1"></i>Show less
+                  {:else}
+                    <i class="fas fa-chevron-down mr-1"></i>+{prescriptions[0].medications.length - 3} more medication{prescriptions[0].medications.length - 3 !== 1 ? 's' : ''}
+                  {/if}
+                </button>
+              {/if}
+            </div>
+          {:else}
+            <small class="text-gray-500 text-xs block text-center py-2">No medications in last prescription</small>
+          {/if}
+        </div>
+      </div>
+    {/if}
+    
     <!-- Medical Summary (No Card Wrapper) -->
     {#if selectedPatient}
       <MedicalSummary 
@@ -1300,6 +1565,7 @@
           {doctorId}
           currentUser={user}
           on:dataUpdated={handleDataUpdated}
+          on:view-patient={handleViewPatient}
         />
       {:else}
       <!-- Welcome Dashboard -->
@@ -1317,14 +1583,14 @@
                            <div class="hidden sm:flex justify-between items-center">
                              <div class="flex items-center">
                                <h4 class="text-xl font-bold text-gray-900 mb-1 mr-3 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
-                                  Welcome, Dr. {doctorName}!
+                                 Welcome, Dr. {doctorName}!
                                </h4>
                              </div>
                              <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                <i class="fas fa-cog text-sm text-red-600"></i>
                                <span class="text-sm font-medium">Settings</span>
-                             </button>
-                           </div>
+                               </button>
+                             </div>
                            
                            <!-- Mobile Layout -->
                            <div class="sm:hidden">
@@ -1336,7 +1602,7 @@
                                  <i class="fas fa-cog text-xs text-red-600"></i>
                                  <span class="text-xs font-medium">Settings</span>
                                </button>
-                             </div>
+                           </div>
                            </div>
                            <p class="text-gray-600 mb-0">
                              Ready to provide excellent patient care with AI-powered assistance
@@ -1359,11 +1625,11 @@
         <div class="bg-white border-2 border-blue-500 text-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-blue-50">
           <div class="p-4">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
+                <div class="flex-shrink-0">
                 <div class="bg-blue-100 border-2 border-blue-500 rounded-full p-3">
                   <i class="fas fa-users text-lg text-blue-600"></i>
+                  </div>
                 </div>
-              </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-blue-600" id="totalPatients">{patients.length}</h4>
                 <small class="text-blue-500 hidden sm:block">Patients Registered</small>
@@ -1377,11 +1643,11 @@
         <div class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-orange-50">
           <div class="p-4">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
+                <div class="flex-shrink-0">
                 <div class="bg-orange-100 border-2 border-orange-500 rounded-full p-3">
                   <i class="fas fa-prescription text-lg text-orange-600"></i>
+                  </div>
                 </div>
-              </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-orange-600" id="totalPrescriptions">{totalPrescriptions}</h4>
                 <small class="text-orange-500 hidden sm:block">Total Prescriptions</small>
@@ -1395,11 +1661,11 @@
         <div class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-green-50">
           <div class="p-4">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
+                <div class="flex-shrink-0">
                 <div class="bg-green-100 border-2 border-green-500 rounded-full p-3">
                   <i class="fas fa-pills text-lg text-green-600"></i>
+                  </div>
                 </div>
-              </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-green-600" id="totalDrugs">{totalDrugs}</h4>
                 <small class="text-green-500 hidden sm:block">Total Drugs</small>
@@ -1413,19 +1679,19 @@
         <div class="bg-white border-2 border-purple-500 text-purple-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-purple-50">
           <div class="p-4">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
+                <div class="flex-shrink-0">
                 <div class="bg-purple-100 border-2 border-purple-500 rounded-full p-3">
                   <i class="fas fa-store text-lg text-purple-600"></i>
+                  </div>
                 </div>
-              </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-purple-600" id="connectedPharmacies">{connectedPharmacies}</h4>
                 <small class="text-purple-500 hidden sm:block">Connected Pharmacies</small>
                 <small class="text-purple-500 sm:hidden">Pharmacies</small>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         </div>
         
         <!-- Prescriptions Per Day Chart -->
@@ -1447,7 +1713,7 @@
                     text="Generating chart..." 
                     fullScreen={false}
                   />
-                </div>
+              </div>
               {:else}
                 <div class="relative w-full">
                   <div id="prescriptionsChart" class="rounded"></div>
@@ -1510,10 +1776,10 @@
               </ul>
             </div>
               
-            <!-- Tab Content -->
+              <!-- Tab Content -->
             <div id="default-tab-content">
-              <!-- Edit Profile Tab -->
-              {#if activeTab === 'edit-profile'}
+                <!-- Edit Profile Tab -->
+                {#if activeTab === 'edit-profile'}
               <div class="p-4 rounded-lg bg-white" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
                   <form on:submit={handleProfileSubmit}>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
@@ -1637,8 +1903,8 @@
                 </div>
                 {/if}
                 
-              <!-- Prescription Template Tab -->
-              {#if activeTab === 'prescription-template'}
+                <!-- Prescription Template Tab -->
+                {#if activeTab === 'prescription-template'}
               <div class="p-4 rounded-lg bg-white" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
                   <div class="mb-4">
                     <h6 class="fw-bold mb-3">
@@ -1982,8 +2248,8 @@
                       Save Template Settings
                     </button>
                   </div>
-              </div>
-              {/if}
+                </div>
+                {/if}
             </div>
           </div>
         </div>
@@ -1992,9 +2258,23 @@
     {/if}
   </div>
 </div>
-{:else}
+{/if}
+
+{#if currentView === 'pharmacies'}
 <!-- Pharmacist Management View -->
 <PharmacistManagement {user} />
+{/if}
+
+{#if currentView === 'drugs'}
+<!-- My Drugs Database View -->
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+  <div class="text-center py-12">
+    <i class="fas fa-pills text-6xl text-teal-600 mb-4"></i>
+    <h3 class="text-xl font-semibold text-gray-900 mb-2">My Drug Database</h3>
+    <p class="text-gray-600 mb-4">Manage your personal drug database for quick prescription creation</p>
+    <p class="text-sm text-gray-500">This feature is coming soon...</p>
+  </div>
+</div>
 {/if}
 
 <!-- Confirmation Modal -->

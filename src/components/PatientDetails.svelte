@@ -17,6 +17,7 @@
   export let refreshTrigger = 0
   export let doctorId = null
   export let currentUser = null
+  export let initialTab = 'overview' // Allow parent to set initial tab
   
   // Event dispatcher to notify parent of data changes
   import { createEventDispatcher } from 'svelte'
@@ -27,19 +28,19 @@
   let symptoms = []
   let currentPrescription = null // Current prescription being worked on
   let currentMedications = [] // Current medications in the working prescription (for display)
-  let activeTab = 'overview'
-  let enabledTabs = ['overview'] // Progressive workflow: start with only overview enabled
+  let activeTab = initialTab
+  let enabledTabs = [initialTab] // Progressive workflow: start with initialTab enabled
   let isNewPrescriptionSession = false
   
   // Reactive statement to ensure PatientTabs gets updated enabledTabs
   $: console.log('🔄 enabledTabs changed:', enabledTabs)
   $: enabledTabsKey = enabledTabs.join(',') // Force reactivity by creating a key
   
-  // Auto-navigate to overview tab when a new patient is selected
+  // Auto-navigate to initial tab when a new patient is selected
   $: if (selectedPatient) {
-    console.log('🔄 New patient selected, navigating to overview tab')
-    activeTab = 'overview'
-    enabledTabs = ['overview'] // Reset to only overview enabled for new patient
+    console.log('🔄 New patient selected, navigating to initial tab:', initialTab)
+    activeTab = initialTab
+    enabledTabs = [initialTab] // Reset to only initialTab enabled for new patient
   }
   
   // Track AI diagnostics state

@@ -230,23 +230,16 @@
           
           // Get token usage stats for this doctor
           // Try multiple ID formats to match token usage data
-          console.log(`🔍 Getting token stats for doctor: ${doctor.email}`)
-          console.log(`🔍 Doctor ID: ${doctor.id}`)
-          console.log(`🔍 Doctor UID: ${doctor.uid}`)
-          
           let tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.id)
-          console.log(`🔍 Token stats with Firebase ID:`, tokenStats)
           
           // If no stats found with Firebase ID, try with UID
           if (!tokenStats && doctor.uid) {
             tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.uid)
-            console.log(`🔍 Token stats with UID:`, tokenStats)
           }
           
           // If still no stats found, try with email as fallback
           if (!tokenStats) {
             tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.email)
-            console.log(`🔍 Token stats with email:`, tokenStats)
           }
           
           doctor.tokenUsage = tokenStats || {

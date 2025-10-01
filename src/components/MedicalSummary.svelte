@@ -23,6 +23,14 @@
   $: illnessesCount = illnesses?.length || 0
   $: prescriptionsCount = prescriptions?.length || 0
   
+  // Track if prescription medications are expanded
+  let showAllMedications = false
+  
+  // Reset expanded state when selected patient changes
+  $: if (selectedPatient) {
+    showAllMedications = false
+  }
+  
   // Extract all medications from prescriptions and group by drug name
   $: groupedMedications = prescriptions?.flatMap(prescription => 
     prescription.medications?.map(medication => ({
@@ -266,10 +274,10 @@
               <div class="mb-3">
                 <small class="text-gray-500 text-sm">Medications by drug name (latest first):</small>
                 <div class="mt-2">
-                  {#each allMedications.slice(0, 10) as drugGroup}
+                  {#each (showAllMedications ? allMedications : allMedications.slice(0, 3)) as drugGroup}
                     <div class="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
                       <div class="flex items-center mb-3">
-                        <h6 class="text-lg font-semibold text-blue-600 mr-2 mb-0">
+                        <h6 class="text-base font-semibold text-blue-600 mr-2 mb-0">
                           {drugGroup.drugName}
                         </h6>
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{drugGroup.doses.length} dose{drugGroup.doses.length !== 1 ? 's' : ''}</span>
@@ -306,8 +314,18 @@
                      </div>
                     </div>
                   {/each}
-                  {#if allMedications.length > 10}
-                    <small class="text-gray-500 text-sm">+{allMedications.length - 10} more drug groups</small>
+                  {#if allMedications.length > 3}
+                    <button
+                      type="button"
+                      class="w-full text-gray-500 hover:text-teal-600 text-sm block text-center mt-2 py-1 transition-colors duration-200"
+                      on:click={() => showAllMedications = !showAllMedications}
+                    >
+                      {#if showAllMedications}
+                        <i class="fas fa-chevron-up mr-1"></i>Show less
+                      {:else}
+                        <i class="fas fa-chevron-down mr-1"></i>+{allMedications.length - 3} more drug group{allMedications.length - 3 !== 1 ? 's' : ''}
+                      {/if}
+                    </button>
                   {/if}
                 </div>
               </div>
