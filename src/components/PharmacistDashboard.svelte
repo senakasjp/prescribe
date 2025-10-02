@@ -4,6 +4,7 @@
   import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import ConfirmationModal from './ConfirmationModal.svelte'
+  import InventoryDashboard from './pharmacist/InventoryDashboard.svelte'
   
   export let pharmacist
   
@@ -17,25 +18,7 @@
   let currentPrescriptionPage = 1
   let prescriptionsPerPage = 10
   
-  // Drug stock management
-  let drugStock = []
-  let showStockModal = false
-  let showAddStockModal = false
-  let newStockItem = {
-    drugName: '',
-    genericName: '',
-    manufacturer: '',
-    quantity: '',
-    unit: 'tablets',
-    expiryDate: '',
-    batchNumber: '',
-    price: '',
-    category: 'prescription'
-  }
-  let editingStockItem = null
-  let stockLoading = false
-  let activeTab = 'prescriptions' // 'prescriptions' or 'stock'
-  let formData = {} // For modal form binding
+  let activeTab = 'prescriptions' // 'prescriptions' or 'inventory'
   
   // Confirmation modal state
   let showConfirmationModal = false
@@ -224,145 +207,10 @@
     }
   }
   
-  // Drug stock management functions
-  const loadDrugStock = async () => {
-    try {
-      stockLoading = true
-      console.log('📦 Loading drug stock for pharmacist:', pharmacist.id)
-      
-      // Get drug stock from Firebase
-      const stockData = await firebaseStorage.getPharmacistDrugStock(pharmacist.id)
-      drugStock = stockData || []
-      
-      console.log('📦 Loaded drug stock:', drugStock.length, 'items')
-      
-    } catch (error) {
-      console.error('❌ Error loading drug stock:', error)
-      notifyError('Failed to load drug stock: ' + error.message)
-    } finally {
-      stockLoading = false
-    }
-  }
   
-  const addStockItem = async () => {
-    try {
-      if (!formData.drugName || !formData.quantity) {
-        notifyError('Please fill in required fields (Drug Name and Quantity)')
-        return
-      }
-      
-      const stockItem = {
-        ...formData,
-        id: Date.now().toString(),
-        pharmacistId: pharmacist.id,
-        addedAt: new Date().toISOString(),
-        quantity: parseInt(formData.quantity),
-        initialQuantity: parseInt(formData.quantity), // Store initial quantity for low stock calculation
-        price: parseFloat(formData.price) || 0
-      }
-      
-      await firebaseStorage.addPharmacistStockItem(pharmacist.id, stockItem)
-      
-      // Refresh stock list
-      await loadDrugStock()
-      
-      closeStockModal()
-      notifySuccess('Drug stock item added successfully')
-      
-    } catch (error) {
-      console.error('❌ Error adding stock item:', error)
-      notifyError('Failed to add stock item: ' + error.message)
-    }
-  }
   
-  const updateStockItem = async () => {
-    try {
-      const stockItem = {
-        ...formData,
-        id: editingStockItem.id,
-        pharmacistId: pharmacist.id,
-        quantity: parseInt(formData.quantity),
-        initialQuantity: editingStockItem.initialQuantity || parseInt(formData.quantity), // Preserve initial quantity
-        price: parseFloat(formData.price) || 0
-      }
-      
-      await firebaseStorage.updatePharmacistStockItem(pharmacist.id, stockItem.id, stockItem)
-      await loadDrugStock()
-      closeStockModal()
-      notifySuccess('Stock item updated successfully')
-      
-    } catch (error) {
-      console.error('❌ Error updating stock item:', error)
-      notifyError('Failed to update stock item: ' + error.message)
-    }
-  }
   
-  const deleteStockItem = async (stockItemId) => {
-    pendingAction = async () => {
-      try {
-        await firebaseStorage.deletePharmacistStockItem(pharmacist.id, stockItemId)
-        await loadDrugStock()
-        notifySuccess('Stock item deleted successfully')
-        
-      } catch (error) {
-        console.error('❌ Error deleting stock item:', error)
-        notifyError('Failed to delete stock item: ' + error.message)
-      }
-    }
-    
-    showConfirmation(
-      'Delete Stock Item',
-      'Are you sure you want to delete this stock item?',
-      'Delete',
-      'Cancel',
-      'danger'
-    )
-  }
   
-  const openEditStockModal = (stockItem) => {
-    editingStockItem = { ...stockItem }
-    formData = { ...stockItem }
-    showAddStockModal = true
-  }
-  
-  const openAddStockModal = () => {
-    editingStockItem = null
-    formData = {
-      drugName: '',
-      genericName: '',
-      manufacturer: '',
-      quantity: '',
-      strength: '',
-      strengthUnit: 'mg',
-      expiryDate: '',
-      batchNumber: '',
-      price: '',
-      category: 'prescription'
-    }
-    showAddStockModal = true
-  }
-  
-  const closeStockModal = () => {
-    showAddStockModal = false
-    editingStockItem = null
-    formData = {}
-  }
-  
-  const getStockStatus = (quantity, expiryDate) => {
-    if (quantity <= 0) return { status: 'out-of-stock', text: 'Out of Stock', class: 'danger' }
-    if (quantity <= 10) return { status: 'low-stock', text: 'Low Stock', class: 'warning' }
-    
-    if (expiryDate) {
-      const expiry = new Date(expiryDate)
-      const today = new Date()
-      const daysUntilExpiry = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24))
-      
-      if (daysUntilExpiry <= 0) return { status: 'expired', text: 'Expired', class: 'danger' }
-      if (daysUntilExpiry <= 30) return { status: 'expiring-soon', text: 'Expiring Soon', class: 'warning' }
-    }
-    
-    return { status: 'in-stock', text: 'In Stock', class: 'success' }
-  }
 
   onMount(() => {
     console.log('🔍 PharmacistDashboard: Received pharmacist data:', pharmacist)
@@ -370,7 +218,6 @@
     console.log('🔍 PharmacistDashboard: pharmacistNumber:', pharmacist?.pharmacistNumber)
     console.log('🔍 PharmacistDashboard: All pharmacist fields:', Object.keys(pharmacist || {}))
     loadPharmacistData()
-    loadDrugStock()
   })
 </script>
 
@@ -483,13 +330,13 @@
                 Prescriptions
               </button>
               <button 
-                class="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'stock' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
-                on:click={() => activeTab = 'stock'}
+                class="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
+                on:click={() => activeTab = 'inventory'}
                 type="button"
                 role="tab"
               >
-                <i class="fas fa-boxes mr-2"></i>
-                Drug Stock
+                <i class="fas fa-warehouse mr-2"></i>
+                Advanced Inventory
               </button>
             </div>
             <div class="flex space-x-2" role="group">
@@ -502,14 +349,10 @@
                   <i class="fas fa-trash mr-1"></i>
                   Clear All
                 </button>
-              {:else if activeTab === 'stock'}
-                <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={loadDrugStock}>
+              {:else if activeTab === 'inventory'}
+                <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={loadPharmacistData}>
                   <i class="fas fa-sync-alt mr-1"></i>
                   Refresh
-                </button>
-                <button class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={openAddStockModal}>
-                  <i class="fas fa-plus mr-1"></i>
-                  Add Stock
                 </button>
               {/if}
             </div>
@@ -632,104 +475,9 @@
                 {/if}
               </div>
             {/if}
-          {:else if activeTab === 'stock'}
-            {#if stockLoading}
-              <div class="text-center py-4">
-                <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <p class="mt-2 text-gray-500">Loading drug stock...</p>
-              </div>
-            {:else if drugStock.length === 0}
-              <div class="text-center py-8">
-                <i class="fas fa-boxes text-4xl text-gray-400 mb-3"></i>
-                <h5 class="text-gray-500">No Drug Stock Available</h5>
-                <p class="text-gray-500">Add your drug inventory to manage stock levels.</p>
-                <button class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors duration-200" on:click={openAddStockModal}>
-                  <i class="fas fa-plus mr-1"></i>
-                  Add First Stock Item
-                </button>
-              </div>
-            {:else}
-              <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                  <thead class="bg-gray-50">
-                    <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drug Name</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Generic Name</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Manufacturer</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Strength</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody class="bg-white divide-y divide-gray-200">
-                    {#each drugStock as stockItem}
-                      {@const status = getStockStatus(stockItem.quantity, stockItem.expiryDate)}
-                      <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          <div class="font-semibold text-gray-900">{stockItem.drugName}</div>
-                          <div class="text-sm text-gray-500">Batch: {stockItem.batchNumber || 'N/A'}</div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stockItem.genericName || 'N/A'}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stockItem.manufacturer || 'N/A'}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          <span class="font-semibold text-gray-900">{stockItem.quantity}</span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          {#if stockItem.strength && stockItem.strengthUnit}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{stockItem.strength}{stockItem.strengthUnit}</span>
-                          {:else if stockItem.strength}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{stockItem.strength}</span>
-                          {:else}
-                            <span class="text-sm text-gray-500">N/A</span>
-                          {/if}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {#if stockItem.expiryDate}
-                            {new Date(stockItem.expiryDate).toLocaleDateString()}
-                          {:else}
-                            <span class="text-gray-500">N/A</span>
-                          {/if}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {#if stockItem.price > 0}
-                            <span class="font-semibold">${stockItem.price.toFixed(2)}</span>
-                          {:else}
-                            <span class="text-gray-500">N/A</span>
-                          {/if}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {status.class === 'success' ? 'bg-teal-100 text-teal-800' : status.class === 'warning' ? 'bg-yellow-100 text-yellow-800' : status.class === 'danger' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}">{status.text}</span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div class="flex space-x-2" role="group">
-                            <button 
-                              class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-sm font-medium transition-colors duration-200"
-                              on:click={() => openEditStockModal(stockItem)}
-                              title="Edit"
-                            >
-                              <i class="fas fa-edit"></i>
-                            </button>
-                            <button 
-                              class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-2 py-1 rounded text-sm font-medium transition-colors duration-200"
-                              on:click={() => deleteStockItem(stockItem.id)}
-                              title="Delete"
-                            >
-                              <i class="fas fa-trash"></i>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-            {/if}
+          {:else if activeTab === 'inventory'}
+            <!-- Advanced Inventory System -->
+            <InventoryDashboard {pharmacist} />
           {/if}
         </div>
       </div>
@@ -876,178 +624,6 @@
   </div>
 {/if}
 
-<!-- Add/Edit Stock Item Modal -->
-{#if showAddStockModal}
-  <div id="stockModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
-    <div class="relative w-full max-w-4xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-        <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
-          <h3 class="text-xl font-medium text-gray-900 dark:text-white">
-            <i class="fas fa-plus mr-2"></i>
-            {editingStockItem ? 'Edit Stock Item' : 'Add New Stock Item'}
-          </h3>
-          <button 
-            type="button" 
-            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
-            data-modal-hide="stockModal"
-            on:click={closeStockModal}
-          >
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-            </svg>
-            <span class="sr-only">Close modal</span>
-          </button>
-        </div>
-      <div class="p-6">
-          <form on:submit|preventDefault={editingStockItem ? updateStockItem : addStockItem}>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div class="mb-4">
-                <label for="drugName" class="block text-sm font-medium text-gray-700 mb-1">Drug Name *</label>
-                <input 
-                  type="text" 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="drugName"
-                  bind:value={formData.drugName}
-                  required
-                >
-              </div>
-              <div class="mb-4">
-                <label for="genericName" class="block text-sm font-medium text-gray-700 mb-1">Generic Name</label>
-                <input 
-                  type="text" 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="genericName"
-                  bind:value={formData.genericName}
-                >
-              </div>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div class="mb-4">
-                <label for="manufacturer" class="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
-                <input 
-                  type="text" 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="manufacturer"
-                  bind:value={formData.manufacturer}
-                >
-              </div>
-              <div class="mb-4">
-                <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <select 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="category"
-                  bind:value={formData.category}
-                >
-                  <option value="prescription">Prescription</option>
-                  <option value="over-the-counter">Over the Counter</option>
-                  <option value="controlled">Controlled Substance</option>
-                  <option value="vitamin">Vitamin/Supplement</option>
-                </select>
-              </div>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div class="mb-4">
-                <label for="quantity" class="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                <input 
-                  type="number" 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="quantity"
-                  bind:value={formData.quantity}
-                  min="0"
-                  placeholder="1000"
-                  required
-                >
-              </div>
-              <div class="mb-4">
-                <label for="strength" class="block text-sm font-medium text-gray-700 mb-1">Strength/Type</label>
-                <div class="flex">
-                  <input 
-                    type="text" 
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                    id="strength"
-                    bind:value={formData.strength}
-                    placeholder="50"
-                  >
-                  <select 
-                    class="px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                    id="strengthUnit"
-                    bind:value={formData.strengthUnit}
-                  >
-                    <option value="mg">mg</option>
-                    <option value="g">g</option>
-                    <option value="ml">ml</option>
-                    <option value="l">l</option>
-                    <option value="units">units</option>
-                    <option value="mcg">mcg</option>
-                    <option value="tablets">tablets</option>
-                    <option value="pills">pills</option>
-                    <option value="capsules">capsules</option>
-                    <option value="drops">drops</option>
-                    <option value="patches">patches</option>
-                    <option value="injections">injections</option>
-                    <option value="sachets">sachets</option>
-                  </select>
-                </div>
-              </div>
-              <div class="mb-4">
-                <label for="price" class="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
-                <input 
-                  type="number" 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="price"
-                  bind:value={formData.price}
-                  min="0"
-                  step="0.01"
-                >
-              </div>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div class="mb-4">
-                <label for="expiryDate" class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
-                <input 
-                  type="date" 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="expiryDate"
-                  bind:value={formData.expiryDate}
-                >
-              </div>
-              <div class="mb-4">
-                <label for="batchNumber" class="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
-                <input 
-                  type="text" 
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                  id="batchNumber"
-                  bind:value={formData.batchNumber}
-                >
-              </div>
-            </div>
-            
-            <div class="flex items-center p-6 space-x-2 border-t border-gray-200 rounded-b dark:border-gray-600">
-              <button 
-                type="button" 
-                class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
-                on:click={closeStockModal}
-              >
-                <i class="fas fa-times mr-1"></i>
-                Cancel
-              </button>
-              <button 
-                type="submit" 
-                class="text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800"
-              >
-                <i class="fas fa-save mr-1"></i>
-                {editingStockItem ? 'Update Stock Item' : 'Add Stock Item'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-{/if}
 
 <style>
   /* Custom styles for enhanced UI */
