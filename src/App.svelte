@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte'
-  import authService from './services/authService.js'
+  import doctorAuthService from './services/doctor/doctorAuthService.js'
+  import pharmacistAuthService from './services/pharmacist/pharmacistAuthService.js'
   import firebaseAuthService from './services/firebaseAuth.js'
   import adminAuthService from './services/adminAuthService.js'
   import aiTokenTracker from './services/aiTokenTracker.js'
@@ -236,6 +237,13 @@
       authenticatedUser.authProvider = 'email-password' // Default for email/password auth
     }
     
+    // Save to appropriate decoupled service based on role
+    if (authenticatedUser.role === 'doctor') {
+      doctorAuthService.saveCurrentDoctor(authenticatedUser)
+    } else if (authenticatedUser.role === 'pharmacist') {
+      pharmacistAuthService.saveCurrentPharmacist(authenticatedUser)
+    }
+    
     user = authenticatedUser
     loading = false
     
@@ -251,10 +259,18 @@
         refreshInterval = null
       }
       
-      // Sign out from all services
-      await authService.signOut()
-      await firebaseAuthService.signOut()
-      await adminAuthService.signOut()
+      // Sign out from appropriate decoupled service based on user role
+      if (user?.role === 'doctor') {
+        await doctorAuthService.signOutDoctor()
+      } else if (user?.role === 'pharmacist') {
+        await pharmacistAuthService.signOutPharmacist()
+      } else {
+        // Fallback to original services
+        await authService.signOut()
+        await firebaseAuthService.signOut()
+        await adminAuthService.signOut()
+      }
+      
       user = null
       doctorUsageStats = null
       showAdminPanel = false
@@ -357,8 +373,8 @@
         createdAt: new Date().toISOString()
       }
       
-      // Save to auth service
-      authService.saveCurrentUser(superAdminUser)
+      // Save to appropriate decoupled service
+      doctorAuthService.saveCurrentDoctor(superAdminUser)
       
       // Set user
       user = superAdminUser
@@ -400,6 +416,10 @@
       ...pharmacist,
       role: 'pharmacist'
     }
+    
+    // Save to decoupled pharmacist service
+    pharmacistAuthService.saveCurrentPharmacist(user)
+    
     console.log('Final user object:', user)
     loading = false
   }
