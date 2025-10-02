@@ -125,110 +125,166 @@
   }
 </script>
 
-<div class="modal show d-block" tabindex="-1" role="dialog">
-  <div class="max-w-4xl mx-auto" role="document">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">
-          <i class="fas fa-file-pdf me-2"></i>Generate Prescription PDF
-        </h5>
-        <button 
-          type="button" 
-          class="btn-close" 
+<!-- Flowbite Modal Backdrop -->
+<div 
+  id="prescriptionPDFModal" 
+  tabindex="-1" 
+  aria-hidden="true" 
+  class="fixed top-0 left-0 right-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50"
+  on:click={handleClose}
+  on:keydown={(e) => { if (e.key === 'Escape') handleClose() }}
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="prescription-modal-title"
+>
+  <!-- Flowbite Modal Container -->
+  <div class="relative w-full max-w-4xl max-h-full mx-auto flex items-center justify-center min-h-screen">
+    <!-- Flowbite Modal Content -->
+    <div 
+      class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
+      on:click|stopPropagation
+    >
+      <!-- Flowbite Modal Header -->
+      <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
+        <h3 id="prescription-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+          <i class="fas fa-file-pdf text-red-600 mr-2"></i>
+          Generate Prescription PDF
+        </h3>
+        <button
+          type="button"
+          class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200"
+          data-modal-hide="prescriptionPDFModal"
           on:click={handleClose}
           disabled={loading}
-        ></button>
+        >
+          <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+          </svg>
+          <span class="sr-only">Close modal</span>
+        </button>
       </div>
       
-      <div class="modal-body">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="md:col-span-1">
-            <h6>Patient Information</h6>
-            <p><strong>Name:</strong> {selectedPatient.firstName} {selectedPatient.lastName}</p>
-            <p><strong>ID:</strong> {selectedPatient.idNumber}</p>
-            <p><strong>DOB:</strong> {selectedPatient.dateOfBirth}</p>
+      <!-- Flowbite Modal Body -->
+      <div class="p-4 md:p-5 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-3">
+            <h6 class="text-lg font-semibold text-gray-900 dark:text-white">Patient Information</h6>
+            <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+              <p><span class="font-medium">Name:</span> {selectedPatient.firstName} {selectedPatient.lastName}</p>
+              <p><span class="font-medium">ID:</span> {selectedPatient.idNumber}</p>
+              <p><span class="font-medium">DOB:</span> {selectedPatient.dateOfBirth}</p>
+            </div>
           </div>
-          <div class="md:col-span-1">
-            <h6>Summary</h6>
-            <p><strong>Illnesses:</strong> {illnesses.length}</p>
-            <p><strong>Prescriptions:</strong> {prescriptions.length}</p>
-            <p><strong>Symptoms:</strong> {symptoms.length}</p>
+          <div class="space-y-3">
+            <h6 class="text-lg font-semibold text-gray-900 dark:text-white">Summary</h6>
+            <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+              <p><span class="font-medium">Illnesses:</span> {illnesses.length}</p>
+              <p><span class="font-medium">Prescriptions:</span> {prescriptions.length}</p>
+              <p><span class="font-medium">Symptoms:</span> {symptoms.length}</p>
+            </div>
           </div>
         </div>
         
         {#if illnesses.length > 0}
-          <div class="mt-3">
-            <h6>Current Illnesses</h6>
-            <ul class="list-group list-group-flush">
+          <div class="space-y-3">
+            <h6 class="text-lg font-semibold text-gray-900 dark:text-white">Current Illnesses</h6>
+            <div class="space-y-2">
               {#each illnesses as illness}
-                <li class="list-group-item">
-                  <strong>{illness.name}</strong> ({illness.status})
-                  {#if illness.description}
-                    <br><small class="text-muted">{illness.description}</small>
-                  {/if}
-                </li>
+                <div class="bg-gray-50 dark:bg-gray-600 p-3 rounded-lg">
+                  <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                      <div class="font-medium text-gray-900 dark:text-white">{illness.name}</div>
+                      {#if illness.description}
+                        <div class="text-sm text-gray-600 dark:text-gray-300">{illness.description}</div>
+                      {/if}
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100">
+                      {illness.status}
+                    </span>
+                  </div>
+                </div>
               {/each}
-            </ul>
+            </div>
           </div>
         {/if}
         
         {#if prescriptions.length > 0}
-          <div class="mt-3">
-            <h6>Prescribed Prescriptions</h6>
-            <ul class="list-group list-group-flush">
+          <div class="space-y-3">
+            <h6 class="text-lg font-semibold text-gray-900 dark:text-white">Prescribed Prescriptions</h6>
+            <div class="space-y-2">
               {#each prescriptions as medication}
-                <li class="list-group-item">
-                  <strong>{medication.name}</strong> - {medication.dosage}
-                  <br><small class="text-muted">{medication.frequency}</small>
-                  {#if medication.instructions}
-                    <br><small class="text-muted">Instructions: {medication.instructions}</small>
-                  {/if}
-                </li>
+                <div class="bg-gray-50 dark:bg-gray-600 p-3 rounded-lg">
+                  <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                      <div class="font-medium text-gray-900 dark:text-white">{medication.name}</div>
+                      <div class="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+                        <p><span class="font-medium">Frequency:</span> {medication.frequency}</p>
+                        {#if medication.instructions}
+                          <p><span class="font-medium">Instructions:</span> {medication.instructions}</p>
+                        {/if}
+                      </div>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">
+                      {medication.dosage}
+                    </span>
+                  </div>
+                </div>
               {/each}
-            </ul>
+            </div>
           </div>
         {/if}
         
         {#if symptoms.length > 0}
-          <div class="mt-3">
-            <h6>Current Symptoms</h6>
-            <ul class="list-group list-group-flush">
+          <div class="space-y-3">
+            <h6 class="text-lg font-semibold text-gray-900 dark:text-white">Current Symptoms</h6>
+            <div class="space-y-2">
               {#each symptoms as symptom}
-                <li class="list-group-item">
-                  <strong>{symptom.description}</strong> ({symptom.severity})
-                  {#if symptom.duration}
-                    <br><small class="text-muted">Duration: {symptom.duration}</small>
-                  {/if}
-                </li>
+                <div class="bg-gray-50 dark:bg-gray-600 p-3 rounded-lg">
+                  <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                      <div class="font-medium text-gray-900 dark:text-white">{symptom.description}</div>
+                      {#if symptom.duration}
+                        <div class="text-sm text-gray-600 dark:text-gray-300">Duration: {symptom.duration}</div>
+                      {/if}
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100">
+                      {symptom.severity}
+                    </span>
+                  </div>
+                </div>
               {/each}
-            </ul>
+            </div>
           </div>
         {/if}
       </div>
       
-      <div class="modal-footer">
+      <!-- Flowbite Modal Footer -->
+      <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b-lg dark:border-gray-600 space-x-3">
         <button 
           type="button" 
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200" 
+          class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 transition-colors duration-200"
+          on:click={handleClose}
+          disabled={loading}
+        >
+          <i class="fas fa-times mr-1"></i>
+          Cancel
+        </button>
+        <button 
+          type="button" 
+          class="text-white bg-red-600 hover:bg-red-700 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
           on:click={generatePDF}
           disabled={loading}
         >
           {#if loading}
-            <span class="animate-spin h-3 w-3 border-2 border-gray-600 border-t-transparent rounded-full mr-2" role="status"></span>
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
           {/if}
-          <i class="fas fa-download me-1"></i>Generate & Download PDF
-        </button>
-        <button 
-          type="button" 
-          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200" 
-          on:click={handleClose}
-          disabled={loading}
-        >
-          <i class="fas fa-times me-1"></i>Cancel
+          <i class="fas fa-file-pdf mr-1"></i>
+          Generate PDF
         </button>
       </div>
     </div>
   </div>
 </div>
-
-<div class="modal-backdrop show"></div>

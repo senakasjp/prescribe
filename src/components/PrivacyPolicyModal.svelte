@@ -98,57 +98,70 @@ By using Prescribe, you acknowledge that you have read and understood this Priva
 </script>
 
 {#if isVisible}
-  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900 bg-opacity-50" 
-       on:click={closeModal}
-       on:keydown={(e) => { if (e.key === 'Escape') closeModal() }}
-       role="dialog"
-       aria-modal="true"
-       aria-labelledby="privacy-modal-title">
-    
-    <div class="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-lg shadow-lg dark:bg-gray-800"
-         on:click|stopPropagation>
-      
-      <!-- Header -->
-      <div class="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-        <h3 id="privacy-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white">
-          <i class="fas fa-shield-alt text-blue-600 mr-2"></i>
-          Privacy Policy
-        </h3>
-        <button
-          type="button"
-          class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white"
-          on:click={closeModal}
-        >
-          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
-          </svg>
-        </button>
-      </div>
-      
-      <!-- Content -->
-      <div class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-        <div class="prose prose-sm max-w-none dark:prose-invert">
-          {#if privacyContent}
-            {@html privacyContent.replace(/\n/g, '<br>').replace(/#{1,6}\s/g, '<br><br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')}
-          {:else}
-            <div class="flex items-center justify-center py-8">
-              <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span class="ml-2 text-gray-600">Loading privacy policy...</span>
-            </div>
-          {/if}
+  <!-- Flowbite Modal Backdrop -->
+  <div 
+    id="privacyModal" 
+    tabindex="-1" 
+    aria-hidden="true" 
+    class="fixed top-0 left-0 right-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50"
+    on:click={closeModal}
+    on:keydown={(e) => { if (e.key === 'Escape') closeModal() }}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="privacy-modal-title"
+  >
+    <!-- Flowbite Modal Container -->
+    <div class="relative w-full max-w-4xl max-h-full mx-auto flex items-center justify-center min-h-screen">
+      <!-- Flowbite Modal Content -->
+      <div 
+        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100 max-h-[90vh]"
+        on:click|stopPropagation
+      >
+        <!-- Flowbite Modal Header -->
+        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
+          <h3 id="privacy-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+            <i class="fas fa-shield-alt text-blue-600 mr-2"></i>
+            Privacy Policy
+          </h3>
+          <button
+            type="button"
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200"
+            data-modal-hide="privacyModal"
+            on:click={closeModal}
+          >
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+            </svg>
+            <span class="sr-only">Close modal</span>
+          </button>
         </div>
-      </div>
       
-      <!-- Footer -->
-      <div class="flex items-center justify-end p-6 border-t border-gray-200 dark:border-gray-700">
-        <button
-          type="button"
-          class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800"
-          on:click={closeModal}
-        >
-          <i class="fas fa-check mr-2"></i>
-          I Understand
-        </button>
+        <!-- Flowbite Modal Body -->
+        <div class="p-4 md:p-5 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
+          <div class="prose prose-sm max-w-none dark:prose-invert text-gray-500 dark:text-gray-400">
+            {#if privacyContent}
+              {@html privacyContent.replace(/\n/g, '<br>').replace(/#{1,6}\s/g, '<br><br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')}
+            {:else}
+              <div class="flex items-center justify-center py-8">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span class="ml-2 text-gray-600">Loading privacy policy...</span>
+              </div>
+            {/if}
+          </div>
+        </div>
+        
+        <!-- Flowbite Modal Footer -->
+        <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b-lg dark:border-gray-600">
+          <button
+            type="button"
+            class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-blue-800 transition-colors duration-200"
+            data-modal-hide="privacyModal"
+            on:click={closeModal}
+          >
+            <i class="fas fa-check mr-1"></i>
+            I Understand
+          </button>
+        </div>
       </div>
     </div>
   </div>

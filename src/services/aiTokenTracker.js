@@ -5,6 +5,9 @@ class AITokenTracker {
   constructor() {
     this.storageKey = 'prescribe-ai-token-usage'
     this.usageData = this.loadUsageData()
+    
+    // Run migration to fix any requests with missing doctorId
+    this.migrateRequestsWithMissingDoctorId()
   }
 
   // Load usage data from localStorage
@@ -56,6 +59,11 @@ class AITokenTracker {
     const date = new Date().toISOString().split('T')[0]
     const month = new Date().toISOString().substring(0, 7) // YYYY-MM
 
+    // Ensure we have a valid doctorId - use fallback if null/undefined
+    const validDoctorId = doctorId || 'unknown-doctor'
+    
+    console.log(`📊 Tracking AI usage for doctor: ${validDoctorId}`)
+
     // Add to requests history
     const request = {
       id: Date.now() + Math.random(),
@@ -66,7 +74,7 @@ class AITokenTracker {
       completionTokens,
       totalTokens,
       cost,
-      doctorId
+      doctorId: validDoctorId
     }
 
     this.usageData.requests.push(request)
@@ -378,6 +386,25 @@ class AITokenTracker {
       quotaStatus: this.getDoctorQuotaStatus(doctorId),
       monthlyUsage: this.getDoctorMonthlyUsage(doctorId)
     }))
+  }
+
+  // Migration function to fix requests with null/undefined doctorId
+  migrateRequestsWithMissingDoctorId() {
+    let migratedCount = 0
+    
+    this.usageData.requests.forEach(request => {
+      if (!request.doctorId || request.doctorId === null || request.doctorId === undefined) {
+        request.doctorId = 'unknown-doctor'
+        migratedCount++
+      }
+    })
+    
+    if (migratedCount > 0) {
+      console.log(`🔄 Migrated ${migratedCount} requests with missing doctorId`)
+      this.saveUsageData()
+    }
+    
+    return migratedCount
   }
 
   // Configuration Management Methods

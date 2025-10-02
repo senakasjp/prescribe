@@ -199,6 +199,14 @@
           lastUpdated: null
         }
       }
+      
+      // Run migration to fix any missing doctorId values
+      const migratedCount = aiTokenTracker.migrateRequestsWithMissingDoctorId()
+      if (migratedCount > 0) {
+        console.log(`🔄 Fixed ${migratedCount} AI usage records with missing doctorId`)
+        // Reload stats after migration
+        aiUsageStats = aiTokenTracker.getUsageStats()
+      }
     } catch (error) {
       console.error('❌ Error loading AI usage stats:', error)
       aiUsageStats = {
@@ -231,15 +239,24 @@
           // Get token usage stats for this doctor
           // Try multiple ID formats to match token usage data
           let tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.id)
+          console.log(`📊 Token stats for doctor.id (${doctor.id}):`, tokenStats)
           
           // If no stats found with Firebase ID, try with UID
           if (!tokenStats && doctor.uid) {
             tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.uid)
+            console.log(`📊 Token stats for doctor.uid (${doctor.uid}):`, tokenStats)
           }
           
           // If still no stats found, try with email as fallback
           if (!tokenStats) {
             tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.email)
+            console.log(`📊 Token stats for doctor.email (${doctor.email}):`, tokenStats)
+          }
+          
+          // Check for unknown-doctor entries that might belong to this doctor
+          const unknownDoctorStats = aiTokenTracker.getDoctorUsageStats('unknown-doctor')
+          if (unknownDoctorStats && unknownDoctorStats.total.requests > 0) {
+            console.log(`📊 Found unknown-doctor entries with ${unknownDoctorStats.total.requests} requests`)
           }
           
           doctor.tokenUsage = tokenStats || {
@@ -1390,66 +1407,87 @@
 
 <!-- Quota Management Modal -->
 {#if showQuotaModal}
-  <div id="quotaModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
-    <div class="relative w-full max-w-md max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-        <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
-          <h3 class="text-xl font-medium text-gray-900 dark:text-white">
-            <i class="fas fa-user-md mr-2 text-red-600"></i>Set Token Quota
+  <div 
+    id="quotaModal" 
+    tabindex="-1" 
+    aria-hidden="true" 
+    class="fixed top-0 left-0 right-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50"
+    on:click={closeQuotaModal}
+    on:keydown={(e) => { if (e.key === 'Escape') closeQuotaModal() }}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="quota-modal-title"
+  >
+    <div class="relative w-full max-w-md max-h-full mx-auto flex items-center justify-center min-h-screen">
+      <div 
+        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
+        on:click|stopPropagation
+      >
+        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
+          <h3 id="quota-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+            <i class="fas fa-user-md mr-2 text-red-600"></i>
+            Set Token Quota
           </h3>
           <button 
             type="button" 
-            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" 
             data-modal-hide="quotaModal"
             on:click={closeQuotaModal}
           >
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
             </svg>
             <span class="sr-only">Close modal</span>
           </button>
-      </div>
+        </div>
         
-        <div class="p-6 space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">
-              Doctor: <span class="font-semibold text-red-600">{getDoctorName(selectedDoctorId)}</span>
-              <br>
-              <span class="text-xs text-gray-500">ID: {selectedDoctorId}</span>
-            </label>
-            <label for="quotaInput" class="block text-sm font-medium text-gray-700 mb-2">
-              Monthly Token Quota:
-            </label>
-            <input
-              type="number"
-              id="quotaInput"
-              bind:value={quotaInput}
-              placeholder="Enter monthly token quota"
-              class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white"
-              min="0"
-              step="1000"
-            />
-            <p class="text-xs text-gray-500 mt-1">
-              Set the maximum number of tokens this doctor can use per month
-            </p>
-    </div>
-</div>
+        <!-- Flowbite Modal Body -->
+        <div class="p-4 md:p-5 space-y-4">
+          <div class="space-y-3">
+            <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+              <label class="block text-sm font-medium text-gray-900 dark:text-white mb-1">
+                Doctor: <span class="font-semibold text-red-600">{getDoctorName(selectedDoctorId)}</span>
+              </label>
+              <span class="text-xs text-gray-500 dark:text-gray-400">ID: {selectedDoctorId}</span>
+            </div>
+            
+            <div>
+              <label for="quotaInput" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                Monthly Token Quota:
+              </label>
+              <input
+                type="number"
+                id="quotaInput"
+                bind:value={quotaInput}
+                placeholder="Enter monthly token quota"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white transition-colors duration-200"
+                min="0"
+                step="1000"
+              />
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Set the maximum number of tokens this doctor can use per month
+              </p>
+            </div>
+          </div>
+        </div>
 
-        <div class="flex items-center p-6 space-x-2 border-t border-gray-200 rounded-b dark:border-gray-600">
+        <!-- Flowbite Modal Footer -->
+        <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b-lg dark:border-gray-600 space-x-3">
           <button
             type="button"
-            class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
+            class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 transition-colors duration-200"
             on:click={closeQuotaModal}
           >
             Cancel
           </button>
           <button
             type="button"
-            class="text-white bg-red-700 hover:bg-red-800 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-800"
+            class="text-white bg-red-600 hover:bg-red-700 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
             on:click={saveQuota}
             disabled={!quotaInput || quotaInput < 0}
           >
-            <i class="fas fa-save mr-1"></i>Save Quota
+            <i class="fas fa-save mr-1"></i>
+            Save Quota
           </button>
         </div>
       </div>
