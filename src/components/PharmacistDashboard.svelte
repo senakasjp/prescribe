@@ -321,7 +321,7 @@
           <div class="flex justify-between items-center">
             <div class="flex space-x-1" role="tablist">
               <button 
-                class="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'prescriptions' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
+                class="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2 {activeTab === 'prescriptions' ? 'text-white bg-blue-600 hover:bg-blue-700 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800' : 'text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-700 focus:ring-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white'}" 
                 on:click={() => activeTab = 'prescriptions'}
                 type="button"
                 role="tab"
@@ -330,7 +330,7 @@
                 Prescriptions
               </button>
               <button 
-                class="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}" 
+                class="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2 {activeTab === 'inventory' ? 'text-white bg-blue-600 hover:bg-blue-700 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800' : 'text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-700 focus:ring-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white'}" 
                 on:click={() => activeTab = 'inventory'}
                 type="button"
                 role="tab"
@@ -341,16 +341,16 @@
             </div>
             <div class="flex space-x-2" role="group">
               {#if activeTab === 'prescriptions'}
-                <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={loadPharmacistData}>
+                <button class="text-blue-700 bg-blue-100 hover:bg-blue-200 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-blue-800 dark:text-blue-200 dark:hover:bg-blue-700 dark:focus:ring-blue-800 transition-all duration-200" on:click={loadPharmacistData}>
                   <i class="fas fa-sync-alt mr-1"></i>
                   Refresh
                 </button>
-                <button class="bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={clearAllPrescriptions}>
+                <button class="text-red-700 bg-red-100 hover:bg-red-200 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-red-800 dark:text-red-200 dark:hover:bg-red-700 dark:focus:ring-red-800 transition-all duration-200" on:click={clearAllPrescriptions}>
                   <i class="fas fa-trash mr-1"></i>
                   Clear All
                 </button>
               {:else if activeTab === 'inventory'}
-                <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={loadPharmacistData}>
+                <button class="text-blue-700 bg-blue-100 hover:bg-blue-200 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-blue-800 dark:text-blue-200 dark:hover:bg-blue-700 dark:focus:ring-blue-800 transition-all duration-200" on:click={loadPharmacistData}>
                   <i class="fas fa-sync-alt mr-1"></i>
                   Refresh
                 </button>

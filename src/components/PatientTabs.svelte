@@ -16,7 +16,7 @@
     return result
   }
   
-  // Simple function to get button classes
+  // Flowbite button classes
   function getButtonClasses(tab) {
     const isEnabled = isTabEnabled(tab)
     const isActive = activeTab === tab
@@ -24,15 +24,18 @@
     console.log(`🎨 Button classes for ${tab}: enabled=${isEnabled}, active=${isActive}`)
     console.log(`🎨 Comparison: activeTab="${activeTab}" === tab="${tab}" = ${activeTab === tab}`)
     
+    // Base Flowbite button classes
+    const baseClasses = 'px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2'
+    
     if (!isEnabled) {
-      return 'btn btn-outline-secondary btn-sm disabled'
+      return `${baseClasses} text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed opacity-50`
     }
     if (isActive) {
-      console.log(`🎨 Returning ACTIVE classes for ${tab}: btn btn-danger btn-sm`)
-      return 'btn btn-danger btn-sm'
+      console.log(`🎨 Returning ACTIVE classes for ${tab}: Flowbite red primary`)
+      return `${baseClasses} text-white bg-red-600 hover:bg-red-700 focus:ring-red-300 dark:bg-red-600 dark:hover:bg-red-700 dark:focus:ring-red-800`
     }
-    console.log(`🎨 Returning ENABLED classes for ${tab}: btn btn-outline-danger btn-sm`)
-    return 'btn btn-outline-danger btn-sm'
+    console.log(`🎨 Returning ENABLED classes for ${tab}: Flowbite red outline`)
+    return `${baseClasses} text-red-600 bg-white border border-red-600 hover:bg-red-50 focus:ring-red-300 dark:bg-gray-800 dark:text-red-500 dark:border-red-500 dark:hover:bg-gray-700 dark:hover:bg-red-600/10`
   }
   
   // Declare button class variables
@@ -57,9 +60,8 @@
     role="tab"
     disabled={!isTabEnabled('overview')}
     title={isTabEnabled('overview') ? 'View patient overview' : 'Complete previous steps to unlock'}
-    style="background-color: {activeTab === 'overview' ? '#dc3545' : 'transparent'} !important; color: {activeTab === 'overview' ? 'white' : 'inherit'} !important;"
   >
-    <i class="fas fa-user me-2"></i>Overview
+    <i class="fas fa-user mr-2"></i>Overview
   </button>
   <button 
     class={symptomsClasses}
@@ -67,9 +69,8 @@
     role="tab"
     disabled={!isTabEnabled('symptoms')}
     title={isTabEnabled('symptoms') ? 'Document patient symptoms' : 'Complete previous steps to unlock'}
-    style="background-color: {activeTab === 'symptoms' ? '#dc3545' : 'transparent'} !important; color: {activeTab === 'symptoms' ? 'white' : 'inherit'} !important;"
   >
-    <i class="fas fa-thermometer-half me-2"></i>Symptoms
+    <i class="fas fa-thermometer-half mr-2"></i>Symptoms
   </button>
   <button 
     class={reportsClasses}

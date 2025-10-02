@@ -189,7 +189,7 @@
         <div class="flex flex-wrap gap-2">
           <!-- New Prescription Button -->
           <button 
-            class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200" 
+            class="text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-all duration-200" 
             on:click={onNewPrescription}
             title="Create a new prescription"
           >
@@ -198,7 +198,7 @@
           
           <!-- Add Drug Button -->
           <button 
-              class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed" 
+              class="text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
               on:click={onAddDrug}
               disabled={showMedicationForm || !currentPrescription}
               title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
@@ -208,7 +208,7 @@
           
           <!-- AI Drug Suggestions Button -->
           <button 
-              class="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1 rounded text-sm font-medium transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed" 
+              class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:outline-none focus:ring-purple-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-purple-600 dark:hover:bg-purple-700 dark:focus:ring-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
               on:click={onGenerateAIDrugSuggestions}
               disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured() || !currentPrescription}
               title={!currentPrescription ? "Create a prescription first" : (!symptoms || symptoms.length === 0) ? "Add symptoms first" : "Get AI-assisted drug suggestions based on symptoms"}

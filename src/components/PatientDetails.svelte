@@ -2206,7 +2206,7 @@
       </div>
       <div class="flex space-x-2" role="group">
         <button 
-          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 {activeTab === 'history' ? 'bg-teal-500 text-white shadow-lg' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200'}"
+          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
@@ -2216,7 +2216,7 @@
           <span class="xs:hidden">Hist</span>
         </button>
         <button 
-          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed" 
+          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -2271,7 +2271,7 @@
         </div>
         <div class="flex space-x-3" role="group">
         <button 
-            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 {activeTab === 'history' ? 'bg-teal-500 text-white shadow-lg' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200'}"
+            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
@@ -2279,7 +2279,7 @@
             <i class="fas fa-history mr-2"></i>History
         </button>
         <button 
-            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-300 focus:ring-offset-2 focus:ring-offset-teal-600 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed" 
+            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"

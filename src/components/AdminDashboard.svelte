@@ -600,7 +600,7 @@
             <!-- Overview Tab -->
             <div class="flex justify-between items-center mb-6">
               <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-chart-bar mr-2 text-red-500"></i>System Overview</h2>
-              <button class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center" on:click={refreshData}>
+              <button class="text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-all duration-200 flex items-center" on:click={refreshData}>
                 <i class="fas fa-sync-alt mr-2"></i>Refresh
               </button>
             </div>
