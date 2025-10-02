@@ -2206,7 +2206,7 @@
       </div>
       <div class="flex space-x-2" role="group">
         <button 
-          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10'}"
+          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
@@ -2216,7 +2216,7 @@
           <span class="xs:hidden">Hist</span>
         </button>
         <button 
-          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10 disabled:opacity-50 disabled:cursor-not-allowed" 
+          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -2271,7 +2271,7 @@
         </div>
         <div class="flex space-x-3" role="group">
         <button 
-            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10'}"
+            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
@@ -2279,7 +2279,7 @@
             <i class="fas fa-history mr-2"></i>History
         </button>
         <button 
-            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10 disabled:opacity-50 disabled:cursor-not-allowed" 
+            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -3702,11 +3702,11 @@
           
           <!-- Select All / Deselect All Buttons -->
           <div class="flex gap-2 mb-3">
-            <button class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" on:click={selectAllPharmacies}>
+            <button class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10 transition-all duration-200" on:click={selectAllPharmacies}>
               <i class="fas fa-check-square me-1"></i>
               Select All
             </button>
-            <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" on:click={deselectAllPharmacies}>
+            <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white transition-all duration-200" on:click={deselectAllPharmacies}>
               <i class="fas fa-square me-1"></i>
               Deselect All
             </button>

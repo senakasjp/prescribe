@@ -309,7 +309,7 @@ model: 'gpt-4o-mini',
           <i class="fas fa-exclamation-triangle mr-2 text-yellow-600 mt-0.5"></i>
           <span class="text-yellow-800">{error}</span>
         </div>
-        <button type="button" class="text-yellow-600 hover:text-yellow-800 focus:outline-none focus:ring-2 focus:ring-yellow-500 rounded" on:click={() => error = ''}>
+        <button type="button" class="text-yellow-600 hover:text-yellow-800 focus:outline-none focus:ring-4 focus:ring-yellow-300 rounded-lg transition-all duration-200" on:click={() => error = ''}>
           <i class="fas fa-times"></i>
         </button>
       </div>

@@ -72,7 +72,7 @@
                   <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
                   <span class="text-sm text-red-700">{error}</span>
                 </div>
-                <button type="button" class="text-red-500 hover:text-red-700" on:click={() => error = ''}>
+                <button type="button" class="text-red-500 hover:text-red-700 focus:outline-none focus:ring-4 focus:ring-red-300 rounded-lg transition-all duration-200" on:click={() => error = ''}>
                   <i class="fas fa-times"></i>
                 </button>
               </div>

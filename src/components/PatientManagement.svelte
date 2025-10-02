@@ -1407,7 +1407,7 @@
                                  Welcome, Dr. {doctorName}!
                                </h4>
                              </div>
-                             <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                             <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                <i class="fas fa-cog text-sm text-red-600"></i>
                                <span class="text-sm font-medium">Settings</span>
                                </button>
@@ -1419,7 +1419,7 @@
                                <h4 class="text-lg font-bold text-gray-900 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
                                   Welcome, Dr. {doctorName}!
                                </h4>
-                               <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                               <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                  <i class="fas fa-cog text-xs text-red-600"></i>
                                  <span class="text-xs font-medium">Settings</span>
                                </button>
@@ -1555,7 +1555,7 @@
                   <i class="fas fa-cog mr-2 fa-sm"></i>
                   Settings
                 </h6>
-                <button class="inline-flex items-center px-3 py-2 border border-white text-white bg-transparent hover:bg-white hover:text-teal-600 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 transition-colors duration-200" on:click={handleProfileCancel}>
+                <button class="inline-flex items-center px-3 py-2 border border-white text-white bg-transparent hover:bg-white hover:text-teal-600 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 transition-all duration-200" on:click={handleProfileCancel}>
                   <i class="fas fa-times fa-sm"></i>
                 </button>
               </div>
