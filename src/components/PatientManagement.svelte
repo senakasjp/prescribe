@@ -16,7 +16,7 @@
   
   const dispatch = createEventDispatcher()
   export let user
-  export let currentView = 'patients' // Navigation from menubar: 'home', 'patients', 'prescriptions', 'drugs', 'pharmacies'
+  export let currentView = 'patients' // Navigation from menubar: 'home', 'patients', 'prescriptions', 'pharmacies'
   export let openSettings = false // Trigger to open settings modal
   
   // Watch for openSettings trigger from menubar
@@ -1260,207 +1260,10 @@
   </div>
 </div>
 
-{:else if currentView === 'prescriptions' || currentView === 'drugs' || selectedPatient}
+{:else if currentView === 'prescriptions' || selectedPatient}
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
   <!-- Patient List Sidebar -->
   <div class="lg:col-span-4">
-    <!-- Patients Card -->
-    <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mb-3">
-      <!-- Fixed Header -->
-      <div class="px-3 py-4 border-b border-gray-200">
-        <div class="flex justify-between items-center mb-3">
-          <h5 class="text-lg font-semibold text-gray-900 mb-0">
-            <i class="fas fa-users text-teal-600 mr-2"></i>
-            Patients
-          </h5>
-          <button 
-            class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200" 
-            on:click={showAddPatientForm}
-          >
-            <i class="fas fa-plus mr-1"></i>
-            <span class="hidden sm:inline">Add Patient</span>
-            <span class="sm:hidden">Add</span>
-          </button>
-        </div>
-        
-        <!-- Search Bar -->
-        <div class="relative">
-          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <i class="fas fa-search text-gray-400"></i>
-          </div>
-          <input 
-            type="text" 
-            class="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-            placeholder="Search patients..."
-            bind:value={searchQuery}
-          >
-          {#if searchQuery}
-            <button 
-              class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600" 
-              type="button" 
-              on:click={clearSearch}
-              title="Clear search"
-            >
-              <i class="fas fa-times"></i>
-            </button>
-          {/if}
-        </div>
-        
-        {#if searchQuery}
-          <div class="mt-2">
-            <small class="text-gray-500">
-              <i class="fas fa-info-circle mr-1"></i>
-              Showing {filteredPatients.length} of {patients.filter(p => {
-                const query = searchQuery.toLowerCase().trim()
-                const fullName = `${p.firstName} ${p.lastName}`.toLowerCase()
-                return fullName.includes(query) || 
-                       p.firstName.toLowerCase().includes(query) || 
-                       p.lastName.toLowerCase().includes(query) || 
-                       p.idNumber.toLowerCase().includes(query) || 
-                       p.email.toLowerCase().includes(query) || 
-                       (p.phone && p.phone.toLowerCase().includes(query)) ||
-                       (p.dateOfBirth && p.dateOfBirth.includes(query))
-              }).length} patient{filteredPatients.length !== 1 ? 's' : ''} matching "{searchQuery}"
-              {#if patients.filter(p => {
-                const query = searchQuery.toLowerCase().trim()
-                const fullName = `${p.firstName} ${p.lastName}`.toLowerCase()
-                return fullName.includes(query) || 
-                       p.firstName.toLowerCase().includes(query) || 
-                       p.lastName.toLowerCase().includes(query) || 
-                       p.idNumber.toLowerCase().includes(query) || 
-                       p.email.toLowerCase().includes(query) || 
-                       (p.phone && p.phone.toLowerCase().includes(query)) ||
-                       (p.dateOfBirth && p.dateOfBirth.includes(query))
-              }).length > 20}
-                <br><small class="text-yellow-600">
-                  <i class="fas fa-exclamation-triangle mr-1"></i>
-                  Showing first 20 results. Refine your search for more specific results.
-                </small>
-              {/if}
-            </small>
-          </div>
-        {/if}
-      </div>
-      
-      <!-- Scrollable Content Area -->
-      <div class="overflow-auto max-h-80">
-        {#if searchQuery}
-          {#if loading}
-            <LoadingSpinner 
-              size="medium" 
-              color="teal" 
-              text="Searching patients..." 
-              fullScreen={false}
-            />
-          {:else if filteredPatients.length === 0}
-            <div class="text-center p-4 text-gray-500">
-              <i class="fas fa-search fa-2x mb-2"></i>
-              <p>No patients found matching "{searchQuery}"</p>
-              <button class="bg-teal-100 hover:bg-teal-200 text-teal-700 px-3 py-1 rounded text-sm font-medium transition-colors duration-200" on:click={clearSearch}>
-                <i class="fas fa-times mr-1"></i>Clear Search
-              </button>
-            </div>
-          {:else}
-            <div class="divide-y divide-gray-200">
-              {#each filteredPatients as patient}
-                <button 
-                  class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200 {selectedPatient?.id === patient.id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}"
-                  on:click={() => selectPatient(patient)}
-                >
-                  <div class="flex justify-between items-center">
-                    <div class="flex-1">
-                      <h6 class="text-sm font-medium text-gray-900 mb-1">
-                        <i class="fas fa-user text-gray-400 mr-2"></i>
-                        {patient.firstName} {patient.lastName}
-                      </h6>
-                    </div>
-                    <div class="text-right">
-                      <small class="text-gray-500">
-                        Age: {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
-                          {patient.age}
-                        {:else if patient.dateOfBirth}
-                          {(() => {
-                            const birthDate = new Date(patient.dateOfBirth)
-                            if (!isNaN(birthDate.getTime())) {
-                              const today = new Date()
-                              const age = today.getFullYear() - birthDate.getFullYear()
-                              const monthDiff = today.getMonth() - birthDate.getMonth()
-                              const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-                              return calculatedAge
-                            }
-                            return 'Unknown'
-                          })()}
-                        {:else}
-                          Unknown
-                        {/if}
-                      </small>
-                    </div>
-                  </div>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        {:else if !selectedPatient}
-          {#if loading}
-            <LoadingSpinner 
-              size="medium" 
-              color="teal" 
-              text="Loading patients..." 
-              fullScreen={false}
-            />
-          {:else if filteredPatients.length === 0}
-            <div class="text-center p-4 text-gray-500">
-              <i class="fas fa-user-plus fa-2x mb-2"></i>
-              <p>No patients yet. Add your first patient!</p>
-              <button class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200" on:click={showAddPatientForm}>
-                <i class="fas fa-plus mr-1"></i>Get Started
-              </button>
-            </div>
-          {:else}
-            <div class="divide-y divide-gray-200">
-              {#each filteredPatients as patient}
-                <button 
-                  class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors duration-200 {selectedPatient?.id === patient.id ? 'bg-teal-50 border-l-4 border-teal-500' : ''}"
-                  on:click={() => selectPatient(patient)}
-                >
-                  <div class="flex justify-between items-center">
-                    <div class="flex-1">
-                      <h6 class="text-sm font-medium text-gray-900 mb-1">
-                        <i class="fas fa-user text-gray-400 mr-2"></i>
-                        {patient.firstName} {patient.lastName}
-                      </h6>
-                    </div>
-                    <div class="text-right">
-                      <small class="text-gray-500">
-                        Age: {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
-                          {patient.age}
-                        {:else if patient.dateOfBirth}
-                          {(() => {
-                            const birthDate = new Date(patient.dateOfBirth)
-                            if (!isNaN(birthDate.getTime())) {
-                              const today = new Date()
-                              const age = today.getFullYear() - birthDate.getFullYear()
-                              const monthDiff = today.getMonth() - birthDate.getMonth()
-                              const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-                              return calculatedAge
-                            }
-                            return 'Unknown'
-                          })()}
-                        {:else}
-                          Unknown
-                        {/if}
-                      </small>
-                    </div>
-                  </div>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        {:else}
-          <!-- Empty space when patient is selected and no search -->
-        {/if}
-      </div>
-    </div>
     
     <!-- Last Prescription Card -->
     {#if selectedPatient && prescriptions.length > 0}
@@ -2265,17 +2068,6 @@
 <PharmacistManagement {user} />
 {/if}
 
-{#if currentView === 'drugs'}
-<!-- My Drugs Database View -->
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-  <div class="text-center py-12">
-    <i class="fas fa-pills text-6xl text-teal-600 mb-4"></i>
-    <h3 class="text-xl font-semibold text-gray-900 mb-2">My Drug Database</h3>
-    <p class="text-gray-600 mb-4">Manage your personal drug database for quick prescription creation</p>
-    <p class="text-sm text-gray-500">This feature is coming soon...</p>
-  </div>
-</div>
-{/if}
 
 <!-- Confirmation Modal -->
 <ConfirmationModal

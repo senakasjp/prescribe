@@ -24,7 +24,6 @@ export const VIEWS = {
   PATIENTS: 'patients',
   PRESCRIPTIONS: 'prescriptions',
   ALL_PRESCRIPTIONS: 'all-prescriptions',
-  DRUGS: 'drugs',
   PHARMACIES: 'pharmacies',
   ALL_PHARMACIES: 'all-pharmacies',
   SETTINGS: 'settings'

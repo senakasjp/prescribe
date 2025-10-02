@@ -25,7 +25,7 @@
   let refreshInterval = null
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
-  let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'drugs', 'pharmacies', 'settings'
+  let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'settings'
   let triggerOpenSettings = false // Trigger to open settings modal
   
   // Handle menu navigation
@@ -67,9 +67,25 @@
       
       // Check for existing authentication state immediately to prevent login flash
       console.log('🔍 Checking for existing authentication state...')
-      const existingUser = authService.getCurrentUser()
+      
+      // Check decoupled auth services first
+      const existingDoctor = doctorAuthService.getCurrentDoctor()
+      const existingPharmacist = pharmacistAuthService.getCurrentPharmacist()
+      const existingAdmin = adminAuthService.getCurrentAdmin()
+      
+      let existingUser = null
+      if (existingDoctor) {
+        existingUser = existingDoctor
+        console.log('✅ Found existing doctor in localStorage:', existingUser.email)
+      } else if (existingPharmacist) {
+        existingUser = existingPharmacist
+        console.log('✅ Found existing pharmacist in localStorage:', existingUser.email)
+      } else if (existingAdmin) {
+        existingUser = existingAdmin
+        console.log('✅ Found existing admin in localStorage:', existingUser.email)
+      }
+      
       if (existingUser) {
-        console.log('✅ Found existing user in localStorage:', existingUser.email)
         console.log('🔍 User auth provider:', existingUser.authProvider)
         
         // For email/password users, prioritize local storage and skip Firebase auth listener
@@ -91,7 +107,20 @@
         
         // If Firebase user is null, check localStorage as fallback
         if (!firebaseUser) {
-          const localStorageUser = authService.getCurrentUser()
+          // Check decoupled auth services as fallback
+          const fallbackDoctor = doctorAuthService.getCurrentDoctor()
+          const fallbackPharmacist = pharmacistAuthService.getCurrentPharmacist()
+          const fallbackAdmin = adminAuthService.getCurrentAdmin()
+          
+          let localStorageUser = null
+          if (fallbackDoctor) {
+            localStorageUser = fallbackDoctor
+          } else if (fallbackPharmacist) {
+            localStorageUser = fallbackPharmacist
+          } else if (fallbackAdmin) {
+            localStorageUser = fallbackAdmin
+          }
+          
           if (localStorageUser) {
             console.log('No Firebase user but localStorage user exists, keeping localStorage user')
             user = localStorageUser
@@ -101,7 +130,7 @@
             console.log('No Firebase user and no localStorage user, clearing user')
             user = null
             loading = false
-          return
+            return
           }
         }
         
@@ -142,8 +171,21 @@
             // Don't automatically show admin panel - let user click admin button
           } else {
             // Regular user - preserve any local updates
-            const localUser = authService.getCurrentUser()
-            if (localUser && localUser.email === firebaseUser.email) {
+            // Check decoupled auth services for local user data
+            const localDoctor = doctorAuthService.getCurrentDoctor()
+            const localPharmacist = pharmacistAuthService.getCurrentPharmacist()
+            const localAdmin = adminAuthService.getCurrentAdmin()
+            
+            let localUser = null
+            if (localDoctor && localDoctor.email === firebaseUser.email) {
+              localUser = localDoctor
+            } else if (localPharmacist && localPharmacist.email === firebaseUser.email) {
+              localUser = localPharmacist
+            } else if (localAdmin && localAdmin.email === firebaseUser.email) {
+              localUser = localAdmin
+            }
+            
+            if (localUser) {
               // Merge Firebase data with local user data to preserve updates
               // Prioritize local data for profile fields to prevent overwriting
               user = { 
@@ -180,15 +222,33 @@
           
           // Save the processed user to localStorage for persistence
           if (user) {
-            authService.saveCurrentUser(user)
+            // Save to appropriate decoupled service based on role
+            if (user.role === 'doctor') {
+              doctorAuthService.saveCurrentDoctor(user)
+            } else if (user.role === 'pharmacist') {
+              pharmacistAuthService.saveCurrentPharmacist(user)
+            } else if (user.role === 'admin') {
+              adminAuthService.saveCurrentAdmin(user)
+            }
           }
         } else if (!user) {
-          // No Firebase user, check local auth service
-    user = authService.getCurrentUser()
-    console.log('Current user in App:', user)
-    console.log('User ID:', user?.id)
-    console.log('User UID:', user?.uid)
-    console.log('User email:', user?.email)
+          // No Firebase user, check decoupled auth services
+          const fallbackDoctor = doctorAuthService.getCurrentDoctor()
+          const fallbackPharmacist = pharmacistAuthService.getCurrentPharmacist()
+          const fallbackAdmin = adminAuthService.getCurrentAdmin()
+          
+          if (fallbackDoctor) {
+            user = fallbackDoctor
+          } else if (fallbackPharmacist) {
+            user = fallbackPharmacist
+          } else if (fallbackAdmin) {
+            user = fallbackAdmin
+          }
+          
+          console.log('Current user in App:', user)
+          console.log('User ID:', user?.id)
+          console.log('User UID:', user?.uid)
+          console.log('User email:', user?.email)
           console.log('User role:', user?.role)
           console.log('User country:', user?.country)
         }
@@ -648,16 +708,6 @@
                   <i class="fas fa-prescription-bottle-alt mr-1 sm:mr-2"></i>
                   <span class="hidden sm:inline">Prescriptions</span>
                   <span class="sm:hidden hidden xs:inline">Rx</span>
-                </button>
-              </li>
-              <li>
-                <button 
-                  type="button"
-                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'drugs' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
-                  on:click={() => handleMenuNavigation('drugs')}
-                >
-                  <i class="fas fa-pills mr-1 sm:mr-2"></i>
-                  <span class="hidden xs:inline">Drugs</span>
                 </button>
               </li>
               <li>
