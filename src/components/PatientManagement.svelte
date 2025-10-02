@@ -1118,6 +1118,24 @@
       </div>
     </div>
   </div>
+  
+  <!-- Prescriptions Per Day Chart -->
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div class="flex items-center mb-4">
+      <i class="fas fa-chart-bar text-teal-600 text-lg mr-3"></i>
+      <h3 class="text-lg font-semibold text-gray-900">Prescriptions Per Day (Last 30 Days)</h3>
+    </div>
+    
+    <div class="relative">
+      {#if chartLoading}
+        <div class="flex items-center justify-center h-64">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+        </div>
+      {:else}
+        <div id="prescriptionsChart" class="rounded"></div>
+      {/if}
+    </div>
+  </div>
 </div>
 
 {:else if currentView === 'patients'}

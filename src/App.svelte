@@ -10,8 +10,9 @@
   import PharmacistAuth from './components/PharmacistAuth.svelte'
   import PharmacistDashboard from './components/PharmacistDashboard.svelte'
   import PatientManagement from './components/PatientManagement.svelte'
+  import PrescriptionList from './components/PrescriptionList.svelte'
   import AdminPanel from './components/AdminPanel.svelte'
-  import EditProfile from './components/EditProfile.svelte'
+  import SettingsPage from './components/SettingsPage.svelte'
   import NotificationContainer from './components/NotificationContainer.svelte'
   import LoadingSpinner from './components/LoadingSpinner.svelte'
   import PrivacyPolicyModal from './components/PrivacyPolicyModal.svelte'
@@ -19,14 +20,13 @@
   let user = null
   let loading = true
   let showAdminPanel = false
-  let showEditProfileModal = false
   let doctorUsageStats = null
   let doctorQuotaStatus = null
   let refreshInterval = null
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
   let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'settings'
-  let triggerOpenSettings = false // Trigger to open settings modal
+  let prescriptions = [] // All prescriptions for the doctor
   
   // Handle menu navigation
   const handleMenuNavigation = (view) => {
@@ -35,15 +35,25 @@
   
   // Handle settings click from menubar
   const handleSettingsClick = () => {
-    triggerOpenSettings = true
+    currentView = 'settings'
   }
   
-  // Reset settings trigger when modal is opened
-  const handleSettingsOpened = () => {
-    triggerOpenSettings = false
+  // Load prescriptions for doctor
+  const loadPrescriptions = async () => {
+    if (user && user.role === 'doctor') {
+      try {
+        console.log('Loading prescriptions for doctor:', user.id)
+        prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(user.id)
+        console.log('Loaded prescriptions:', prescriptions.length)
+      } catch (error) {
+        console.error('Error loading prescriptions:', error)
+        prescriptions = []
+      }
+    }
   }
   
-  onMount(() => {
+  
+  onMount(async () => {
     try {
       // Initialize Flowbite components
       if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initDropdowns === 'function') {
@@ -92,12 +102,20 @@
         if (existingUser.authProvider === 'email-password') {
           console.log('✅ Email/password user found, using local storage only')
           user = existingUser
+          // Load prescriptions for doctor
+          if (user.role === 'doctor') {
+            await loadPrescriptions()
+          }
           loading = false
           return // Skip Firebase auth listener for email/password users
         }
         
         // For Google users, still use Firebase auth listener for better sync
         user = existingUser
+        // Load prescriptions for doctor
+        if (user.role === 'doctor') {
+          await loadPrescriptions()
+        }
         loading = false
         console.log('✅ User loaded from localStorage, continuing with Firebase auth listener for sync')
       }
@@ -225,6 +243,8 @@
             // Save to appropriate decoupled service based on role
             if (user.role === 'doctor') {
               doctorAuthService.saveCurrentDoctor(user)
+              // Load prescriptions for doctor
+              await loadPrescriptions()
             } else if (user.role === 'pharmacist') {
               pharmacistAuthService.saveCurrentPharmacist(user)
             } else if (user.role === 'admin') {
@@ -239,6 +259,8 @@
           
           if (fallbackDoctor) {
             user = fallbackDoctor
+            // Load prescriptions for doctor
+            await loadPrescriptions()
           } else if (fallbackPharmacist) {
             user = fallbackPharmacist
           } else if (fallbackAdmin) {
@@ -339,46 +361,7 @@
     }
   }
   
-  // Handle edit profile
-  const handleEditProfile = async () => {
-    console.log('App: Opening edit profile modal for user:', user)
-    console.log('App: User firstName:', user?.firstName)
-    console.log('App: User lastName:', user?.lastName)
-    console.log('App: User country:', user?.country)
-    console.log('App: User name:', user?.name)
-    console.log('App: User displayName:', user?.displayName)
-    console.log('App: User email:', user?.email)
-    
-    // If user doesn't have profile data, fetch it from database
-    if (!user?.firstName || !user?.lastName || !user?.country) {
-      console.log('App: User missing profile data, fetching from database...')
-      try {
-        const doctorData = await firebaseStorage.getDoctorByEmail(user.email)
-        console.log('App: Retrieved doctor data from database:', doctorData)
-        
-        if (doctorData) {
-          // Merge database data with current user - create new object reference
-          user = {
-            ...user,
-            ...doctorData
-          }
-          console.log('App: Merged user data:', user)
-          console.log('App: User firstName after merge:', user.firstName)
-          console.log('App: User lastName after merge:', user.lastName)
-          console.log('App: User country after merge:', user.country)
-        }
-      } catch (error) {
-        console.error('App: Error fetching doctor data:', error)
-      }
-    }
-    
-    showEditProfileModal = true
-  }
   
-  // Handle close edit profile modal
-  const handleCloseEditProfile = () => {
-    showEditProfileModal = false
-  }
   
   // Handle profile update
   const handleProfileUpdate = (event) => {
@@ -398,17 +381,13 @@
     // Set flag to prevent Firebase from overriding this update
     userJustUpdated = true
     
-    // Close modal after a small delay to ensure UI updates
-    setTimeout(() => {
-      showEditProfileModal = false
-    }, 100)
-    
     console.log('App: Profile update complete, user firstName:', user.firstName)
     console.log('App: Profile update complete, user lastName:', user.lastName)
     console.log('App: Profile update complete, user name:', user.name)
     console.log('App: Profile update complete, user country:', user.country)
     console.log('App: Profile update complete, full user object:', user)
   }
+  
   
   // Auto-login super admin
   const autoLoginSuperAdmin = async (email) => {
@@ -738,16 +717,52 @@
     </nav>
     
     <div class="p-4">
+      {#if currentView === 'settings'}
+        <SettingsPage 
+          {user}
+          on:profile-updated={handleProfileUpdate}
+          on:back-to-app={() => currentView = 'home'}
+        />
+      {:else if currentView === 'prescriptions'}
+        <!-- Dedicated Prescriptions View -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-lg font-semibold text-gray-900">
+              <i class="fas fa-prescription-bottle-alt mr-2 text-teal-600"></i>
+              All Prescriptions
+            </h2>
+            <div class="text-sm text-gray-500">
+              Total: {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+          
+          {#if prescriptions.length === 0}
+            <div class="text-center py-12">
+              <i class="fas fa-prescription-bottle-alt text-6xl text-gray-300 mb-4"></i>
+              <h3 class="text-lg font-semibold text-gray-500 mb-2">No Prescriptions Yet</h3>
+              <p class="text-gray-400 mb-6">Start by creating prescriptions for your patients.</p>
+              <button 
+                class="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
+                on:click={() => currentView = 'patients'}
+              >
+                <i class="fas fa-users mr-2"></i>
+                Go to Patients
+              </button>
+            </div>
+          {:else}
+            <PrescriptionList {prescriptions} />
+          {/if}
+        </div>
+      {:else}
         <PatientManagement 
           {user} 
           {currentView}
-          openSettings={triggerOpenSettings}
           key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} 
           on:ai-usage-updated={refreshDoctorUsageStats} 
           on:profile-updated={handleProfileUpdate}
           on:view-change={(e) => handleMenuNavigation(e.detail)}
-          on:settings-opened={handleSettingsOpened}
         />
+      {/if}
     </div>
     {/if}
   {:else}
@@ -848,14 +863,6 @@
       </div>
   {/if}
   
-  <!-- Edit Profile Modal -->
-  {#if showEditProfileModal}
-    <EditProfile 
-      {user} 
-      on:profile-updated={handleProfileUpdate}
-      on:profile-cancelled={handleCloseEditProfile}
-    />
-  {/if}
   
   <!-- Notification Container -->
   <NotificationContainer />

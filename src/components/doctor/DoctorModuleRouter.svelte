@@ -7,6 +7,7 @@
   import doctorStorageService from '../../services/doctor/doctorStorageService.js'
   import PatientManagement from '../PatientManagement.svelte'
   import EditProfile from '../EditProfile.svelte'
+  import PrescriptionList from '../PrescriptionList.svelte'
   import NotificationContainer from '../NotificationContainer.svelte'
   import LoadingSpinner from '../LoadingSpinner.svelte'
   import PrivacyPolicyModal from '../PrivacyPolicyModal.svelte'
@@ -211,8 +212,32 @@
         />
       {:else if currentView === 'prescriptions'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 class="text-lg font-semibold text-gray-900 mb-4">Prescriptions</h2>
-          <p class="text-gray-600">Prescription management will be implemented here.</p>
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-lg font-semibold text-gray-900">
+              <i class="fas fa-prescription-bottle-alt mr-2 text-teal-600"></i>
+              All Prescriptions
+            </h2>
+            <div class="text-sm text-gray-500">
+              Total: {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+          
+          {#if prescriptions.length === 0}
+            <div class="text-center py-12">
+              <i class="fas fa-prescription-bottle-alt text-6xl text-gray-300 mb-4"></i>
+              <h3 class="text-lg font-semibold text-gray-500 mb-2">No Prescriptions Yet</h3>
+              <p class="text-gray-400 mb-6">Start by creating prescriptions for your patients.</p>
+              <button 
+                class="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
+                on:click={() => handleViewChange('patients')}
+              >
+                <i class="fas fa-users mr-2"></i>
+                Go to Patients
+              </button>
+            </div>
+          {:else}
+            <PrescriptionList {prescriptions} />
+          {/if}
         </div>
       {:else if currentView === 'profile'}
         <EditProfile 

@@ -26,6 +26,12 @@
   // Tab management
   let activeTab = 'edit-profile'
   
+  // Prescription template variables
+  let templateType = '' // 'printed', 'upload', 'system'
+  let uploadedHeader = null
+  let templatePreview = null
+  let headerSize = 300 // Default header size in pixels
+  
   // Reactive variable for cities based on selected country
   $: availableCities = country ? getCitiesByCountry(country) : []
   
@@ -110,6 +116,51 @@
   // Handle tab switching
   const switchTab = (tabName) => {
     activeTab = tabName
+  }
+  
+  // Handle template type selection
+  const selectTemplateType = (type) => {
+    templateType = type
+    uploadedHeader = null
+    templatePreview = null
+  }
+  
+  // Handle header image upload
+  const handleHeaderUpload = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        uploadedHeader = e.target.result
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+  
+  // Generate system header preview
+  const generateSystemHeader = () => {
+    templatePreview = {
+      type: 'system',
+      doctorName: user?.name || 'Dr. [Your Name]',
+      practiceName: `${user?.firstName || ''} ${user?.lastName || ''} Medical Practice`,
+      address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
+      phone: '+1 (555) 123-4567',
+      email: user?.email || 'doctor@example.com'
+    }
+  }
+  
+  // Save template settings
+  const saveTemplateSettings = async () => {
+    try {
+      console.log('🔍 Saving template settings...')
+      
+      // For now, just show success message
+      notifySuccess('Template settings saved successfully!')
+      
+    } catch (error) {
+      console.error('❌ Error saving template settings:', error)
+      notifyError('Failed to save template settings')
+    }
   }
 </script>
 
@@ -265,15 +316,179 @@
           <!-- Prescription Template Tab -->
           {#if activeTab === 'prescription-template'}
           <div class="p-6 bg-white" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
-            <div class="text-center py-8">
-              <i class="fas fa-file-medical text-6xl text-gray-400 mb-4"></i>
-              <h6 class="text-gray-600 mb-2">Prescription Template Settings</h6>
-              <p class="text-gray-500 text-sm mb-4">Configure default prescription templates and formatting options.</p>
-              <button type="button" class="px-3 py-1 text-sm border border-teal-500 text-teal-500 bg-white hover:bg-teal-50 rounded">
-                <i class="fas fa-plus mr-2"></i>
-                Add Template
-              </button>
+            <div class="mb-4">
+              <h6 class="fw-bold mb-3">
+                <i class="fas fa-file-medical mr-2"></i>
+                Prescription Template Settings
+              </h6>
+              <p class="text-muted small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
             </div>
+            
+            <!-- Template Type Selection -->
+            <div class="row mb-4">
+              <div class="col-span-full">
+                <label class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</label>
+                
+                <!-- Option 1: Printed Letterheads -->
+                {#if templateType !== 'upload'}
+                <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'printed' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'printed' ? '#36807a' : '#e5e7eb'};">
+                  <div class="p-4">
+                    <div class="flex items-center">
+                      <input 
+                        class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
+                        type="radio" 
+                        name="templateType" 
+                        id="templatePrinted" 
+                        value="printed"
+                        bind:group={templateType}
+                        on:change={() => selectTemplateType('printed')}
+                      />
+                      <label class="w-full cursor-pointer" for="templatePrinted">
+                        <div class="flex items-center">
+                          <div class="flex-shrink-0 mr-3">
+                            <i class="fas fa-print text-2xl text-teal-600"></i>
+                          </div>
+                          <div class="flex-1">
+                            <h6 class="text-sm font-semibold text-gray-900 mb-1">I have printed A3 letterheads</h6>
+                            <p class="text-gray-500 text-sm mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                    
+                    {#if templateType === 'printed'}
+                    <div class="mt-4">
+                      <label class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
+                      <div class="flex items-center">
+                        <div class="flex-1 mr-4">
+                          <input 
+                            type="range" 
+                            class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
+                            min="50" 
+                            max="300" 
+                            step="10"
+                            bind:value={headerSize}
+                          />
+                        </div>
+                        <div class="flex-shrink-0">
+                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{headerSize}px</span>
+                        </div>
+                      </div>
+                      <div class="text-sm text-gray-500 mt-2">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Adjust the header space to match your printed letterhead height.
+                      </div>
+                    </div>
+                    {/if}
+                  </div>
+                </div>
+                {/if}
+                
+                <!-- Option 2: Upload Image -->
+                <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'upload' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'upload' ? '#36807a' : '#e5e7eb'};">
+                  <div class="p-4">
+                    <div class="flex items-center">
+                      <input 
+                        class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
+                        type="radio" 
+                        name="templateType" 
+                        id="templateUpload" 
+                        value="upload"
+                        bind:group={templateType}
+                        on:change={() => selectTemplateType('upload')}
+                      />
+                      <label class="w-full cursor-pointer" for="templateUpload">
+                        <div class="flex items-center">
+                          <div class="flex-shrink-0 mr-3">
+                            <i class="fas fa-image text-2xl text-teal-600"></i>
+                          </div>
+                          <div class="flex-1">
+                            <h6 class="text-sm font-semibold text-gray-900 mb-1">I want to upload an image for header</h6>
+                            <p class="text-gray-500 text-sm mb-0">Upload your custom header image to be used on all prescriptions.</p>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                    
+                    {#if templateType === 'upload'}
+                    <div class="mt-3">
+                      <input 
+                        type="file" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                        accept="image/*"
+                        on:change={handleHeaderUpload}
+                      />
+                      <div class="text-sm text-gray-500">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Supported formats: JPG, PNG, GIF. Recommended size: 800x200 pixels.
+                      </div>
+                    </div>
+                    {/if}
+                  </div>
+                </div>
+                
+                <!-- Option 3: System Header -->
+                {#if templateType !== 'printed' && templateType !== 'upload'}
+                <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'system' ? '#36807a' : '#e5e7eb'};">
+                  <div class="p-4">
+                    <div class="flex items-center">
+                      <input 
+                        class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
+                        type="radio" 
+                        name="templateType" 
+                        id="templateSystem" 
+                        value="system"
+                        bind:group={templateType}
+                        on:change={() => selectTemplateType('system')}
+                      />
+                      <label class="w-full cursor-pointer" for="templateSystem">
+                        <div class="flex items-center">
+                          <div class="flex-shrink-0 mr-3">
+                            <i class="fas fa-cog text-2xl text-teal-600"></i>
+                          </div>
+                          <div class="flex-1">
+                            <h6 class="text-sm font-semibold text-gray-900 mb-1">I want system to add header for template</h6>
+                            <p class="text-gray-500 text-sm mb-0">Use a system-generated header with your practice information.</p>
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                    
+                    {#if templateType === 'system'}
+                    <div class="mt-3">
+                      <button 
+                        type="button" 
+                        class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
+                        on:click={generateSystemHeader}
+                      >
+                        <i class="fas fa-eye mr-2"></i>
+                        Preview System Header
+              </button>
+                      
+                      {#if templatePreview && templatePreview.type === 'system'}
+                      <div class="mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">System Header Preview:</label>
+                        <div class="border rounded p-3 bg-gray-50">
+                          <div class="text-center">
+                            <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>
+                            <p class="mb-1 fw-semibold">{templatePreview.practiceName}</p>
+                            <p class="mb-1 small">{templatePreview.address}</p>
+                            <p class="mb-1 small">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
+                            <hr class="my-2">
+                            <p class="mb-0 fw-bold">PRESCRIPTION</p>
+                          </div>
+                        </div>
+                      </div>
+                      {/if}
+                    </div>
+                    {/if}
+                  </div>
+                </div>
+                {/if}
+              </div>
+            </div>
+            
+            <!-- Template settings will be saved via modal footer -->
           </div>
           {/if}
       </div>
@@ -284,6 +499,7 @@
           <i class="fas fa-times mr-1 fa-sm"></i>
           Cancel
         </button>
+        {#if activeTab === 'edit-profile'}
           <button 
             type="submit" 
             form="edit-profile-form"
@@ -296,6 +512,17 @@
           <i class="fas fa-save mr-1 fa-sm"></i>
           Save Changes
         </button>
+        {:else if activeTab === 'prescription-template'}
+          <button 
+            type="button" 
+            class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center"
+            on:click={saveTemplateSettings}
+            disabled={!templateType}
+          >
+            <i class="fas fa-save mr-1 fa-sm"></i>
+            Save Template Settings
+          </button>
+        {/if}
       </div>
     </div>
   </div>
