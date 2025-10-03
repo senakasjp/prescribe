@@ -132,7 +132,7 @@ class PharmacyInventoryIntegrationService {
       if (existingMedication) {
         return {
           success: false,
-          message: `Medication already exists in pharmacy inventory`
+          message: `Drug "${medicationData.brandName || medicationData.genericName}" already exists in inventory as "${existingMedication.drugName}"`
         }
       }
 
@@ -157,14 +157,14 @@ class PharmacyInventoryIntegrationService {
         sideEffects: '',
         contraindications: '',
         interactions: '',
-        notes: 'Added from doctor portal with initial stock 1',
+        notes: 'Added from doctor portal with initial stock 0',
         // Stock information
-        initialStock: 1,
-        currentStock: 1,
+        initialStock: 0,
+        currentStock: 0,
         minimumStock: 0,
         maximumStock: 1000,
-        costPrice: 1,
-        sellingPrice: 1,
+        costPrice: 0,
+        sellingPrice: 0,
         // Storage information
         storageLocation: 'Main Storage',
         storageConditions: 'Room Temperature',

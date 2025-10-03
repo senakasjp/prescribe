@@ -549,7 +549,11 @@ class InventoryService {
    */
   validateInventoryItem(itemData) {
     const required = ['drugName', 'initialStock', 'costPrice', 'sellingPrice']
-    const missing = required.filter(field => !itemData[field])
+    const missing = required.filter(field => {
+      const value = itemData[field]
+      // Check if field is truly missing (undefined, null, empty string) but allow 0 as valid
+      return value === undefined || value === null || value === ''
+    })
     
     if (missing.length > 0) {
       throw new Error(`Missing required fields: ${missing.join(', ')}`)
