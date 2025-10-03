@@ -1,6 +1,5 @@
 <script>
   import { createEventDispatcher } from 'svelte'
-  import prescriptionStatusService from '../services/doctor/prescriptionStatusService.js'
   
   const dispatch = createEventDispatcher()
   
@@ -28,14 +27,9 @@
   // Track if prescription medications are expanded
   let showAllMedications = false
   
-  // Dispensed status tracking
-  let prescriptionDispensedStatus = {}
-  let checkingDispensedStatus = false
-  
   // Reset expanded state when selected patient changes
   $: if (selectedPatient) {
     showAllMedications = false
-    checkPrescriptionDispensedStatus()
   }
   
   // Extract all medications from prescriptions and group by drug name
@@ -62,41 +56,6 @@
   })).sort((a, b) => new Date(b.doses[0].createdAt || b.doses[0].prescriptionDate || 0) - new Date(a.doses[0].createdAt || a.doses[0].prescriptionDate || 0))
 
   // Check dispensed status for prescriptions
-  const checkPrescriptionDispensedStatus = async () => {
-    try {
-      if (!doctorId || !selectedPatient?.id) return
-      
-      checkingDispensedStatus = true
-      console.log('🔍 MedicalSummary: Checking dispensed status for patient:', selectedPatient.id)
-      
-      // Get dispensed status for all patient prescriptions
-      const status = await prescriptionStatusService.getPatientPrescriptionsStatus(selectedPatient.id, doctorId)
-      prescriptionDispensedStatus = status
-      
-      console.log('✅ MedicalSummary: Dispensed status loaded:', prescriptionDispensedStatus)
-      
-    } catch (error) {
-      console.error('❌ MedicalSummary: Error checking dispensed status:', error)
-      prescriptionDispensedStatus = {}
-    } finally {
-      checkingDispensedStatus = false
-    }
-  }
-
-  // Check if a prescription is dispensed
-  const isPrescriptionDispensed = (prescriptionId) => {
-    return prescriptionDispensedStatus[prescriptionId]?.isDispensed || false
-  }
-
-  // Get dispensed info for a prescription
-  const getPrescriptionDispensedInfo = (prescriptionId) => {
-    return prescriptionDispensedStatus[prescriptionId] || {
-      isDispensed: false,
-      dispensedAt: null,
-      dispensedBy: null,
-      dispensedMedications: []
-    }
-  }
   
   // Handle tab change
   const handleTabChange = (tab) => {
@@ -325,11 +284,6 @@
                           {drugGroup.drugName}
                         </h6>
                         <div class="flex items-center gap-1">
-                          {#if drugGroup.doses.some(dose => isPrescriptionDispensed(dose.prescriptionId))}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                              <i class="fas fa-check-circle mr-1"></i>Dispensed
-                            </span>
-                          {/if}
                           <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{drugGroup.doses.length}</span>
                         </div>
                       </div>
@@ -339,11 +293,6 @@
                            <div class="flex-1">
                              <div class="flex items-center flex-wrap gap-1">
                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">{dose.dosage || 'No dosage'}</span>
-                               {#if isPrescriptionDispensed(dose.prescriptionId)}
-                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                   <i class="fas fa-check-circle mr-1"></i>Dispensed
-                                 </span>
-                               {/if}
                                <small class="text-gray-500 text-xs">
                                  <i class="fas fa-clock mr-1"></i>{dose.duration || 'No duration'}
                                </small>

@@ -940,7 +940,22 @@
 
   // Get dispensed info for a prescription
   const getPrescriptionDispensedInfo = (prescriptionId) => {
-    return prescriptionDispensedStatus[prescriptionId] || {
+    // First try direct lookup
+    if (prescriptionDispensedStatus[prescriptionId]) {
+      return prescriptionDispensedStatus[prescriptionId]
+    }
+    
+    // If not found, try to find by checking all mapped IDs
+    for (const [mappedId, status] of Object.entries(prescriptionDispensedStatus)) {
+      // Check if this mapped ID corresponds to our prescription ID
+      if (mappedId.includes(prescriptionId) || prescriptionId.includes(mappedId)) {
+        console.log('🔍 Found dispensed status via mapped ID:', mappedId, 'for prescription:', prescriptionId)
+        return status
+      }
+    }
+    
+    // Fallback
+    return {
       isDispensed: false,
       dispensedAt: null,
       dispensedBy: null,
@@ -1661,11 +1676,6 @@
               <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
                 <span><i class="fas fa-calendar mr-1"></i>{new Date(selectedPrescriptionForCard.createdAt).toLocaleDateString()}</span>
                 <div class="flex items-center gap-2">
-                  {#if isPrescriptionDispensed(selectedPrescriptionForCard.id)}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      <i class="fas fa-check-circle mr-1"></i>Dispensed
-                    </span>
-                  {/if}
                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{selectedPrescriptionForCard.medications.length} drug{selectedPrescriptionForCard.medications.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
@@ -1677,7 +1687,7 @@
                         <p class="text-base font-semibold text-blue-600">{medication.name}</p>
                         {#if isMedicationDispensed(selectedPrescriptionForCard.id, medication.id || medication.name)}
                           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <i class="fas fa-check-circle mr-1"></i>Dispensed
+                            Dispensed
                           </span>
                         {:else}
                           <!-- Debug: Show why medication is not dispensed -->

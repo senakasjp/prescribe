@@ -147,15 +147,43 @@ class DoctorPrescriptionStatusService {
         const data = doc.data()
         const pharmacistPrescriptionId = data.prescriptionId || doc.id
         
-        console.log('🔍 Pharmacist prescription data:', {
-          docId: doc.id,
-          prescriptionId: data.prescriptionId,
-          data: data,
-          allFields: Object.keys(data),
-          dispensedMedications: data.dispensedMedications,
-          status: data.status,
-          dispensedAt: data.dispensedAt
+        console.log('🔍 Pharmacist prescription data:')
+        console.log('  docId:', doc.id)
+        console.log('  prescriptionId:', data.prescriptionId)
+        console.log('  allFields:', Object.keys(data))
+        console.log('  dispensedMedications:', data.dispensedMedications)
+        console.log('  dispensedMedications details:')
+        data.dispensedMedications.forEach((med, index) => {
+          console.log(`    Medication ${index}:`, {
+            medicationId: med.medicationId,
+            name: med.name,
+            prescriptionId: med.prescriptionId,
+            doctorPrescriptionId: med.doctorPrescriptionId,
+            fullMedication: med
+          })
         })
+        console.log('  status:', data.status)
+        console.log('  dispensedAt:', data.dispensedAt)
+        console.log('  doctorPrescriptionId:', data.doctorPrescriptionId)
+        console.log('  originalPrescriptionId:', data.originalPrescriptionId)
+        console.log('  doctorId:', data.doctorId)
+        console.log('  patientId:', data.patientId)
+        console.log('  pharmacistName:', data.pharmacistName)
+        console.log('  prescriptions field:', data.prescriptions)
+        console.log('  prescriptions field details:')
+        data.prescriptions.forEach((pres, index) => {
+          console.log(`    Prescription ${index}:`, {
+            id: pres.id,
+            prescriptionId: pres.prescriptionId,
+            doctorPrescriptionId: pres.doctorPrescriptionId,
+            fullPrescription: pres
+          })
+          // Check if this prescription ID matches our doctor's prescription ID
+          if (pres.id === 'Y7jq3ClVVPNeUtTXgvQ9') {
+            console.log('🎯 FOUND MATCHING PRESCRIPTION ID!', pres)
+          }
+        })
+        console.log('  full data object:', data)
         
         // Create status object
         const statusInfo = {
@@ -182,6 +210,16 @@ class DoctorPrescriptionStatusService {
             patientStatus[doctorPrescriptionId] = statusInfo
             console.log('🔍 Mapped pharmacist ID to doctor ID:', pharmacistPrescriptionId, '->', doctorPrescriptionId)
           }
+        }
+        
+        // Also map using the prescription ID from the prescriptions field
+        if (data.prescriptions && data.prescriptions.length > 0) {
+          data.prescriptions.forEach(pres => {
+            if (pres.id) {
+              patientStatus[pres.id] = statusInfo
+              console.log('🔍 Mapped using prescriptions field ID:', pres.id)
+            }
+          })
         }
         
         // Also check if there's a different doctor prescription ID format

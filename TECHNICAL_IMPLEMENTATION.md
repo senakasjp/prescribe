@@ -16,6 +16,204 @@
 - **Firebase Hosting**: Static site hosting
 - **OpenAI API**: AI-powered drug suggestions and medical analysis
 
+## Dispensed Status System
+
+### Architecture Overview
+The dispensed status system enables doctors to see which medications have been dispensed from connected pharmacies while maintaining strict decoupling between doctor and pharmacist portals.
+
+### Key Components
+
+#### 1. prescriptionStatusService.js
+**Purpose**: Service layer for secure cross-portal communication
+**Location**: `src/services/doctor/prescriptionStatusService.js`
+
+**Key Features**:
+- Fetches dispensed status from pharmacist portal
+- Maps prescription IDs between doctor and pharmacist systems
+- Handles multiple ID formats and mapping strategies
+- Provides secure, authenticated data access
+
+**Technical Implementation**:
+```javascript
+// Main function to get patient prescription status
+export async function getPatientPrescriptionsStatus(patientId, doctorId) {
+  try {
+    const prescriptionsRef = collection(db, 'pharmacistPrescriptions')
+    const q = query(
+      prescriptionsRef,
+      where('patientId', '==', patientId),
+      where('doctorId', '==', doctorId)
+    )
+    
+    const prescriptionsSnapshot = await getDocs(q)
+    const patientStatus = {}
+    
+    prescriptionsSnapshot.forEach((doc) => {
+      const data = doc.data()
+      const pharmacistPrescriptionId = data.prescriptionId || doc.id
+      
+      // Create status object
+      const statusInfo = {
+        isDispensed: data.status === 'dispensed' || !!data.dispensedAt,
+        dispensedAt: data.dispensedAt || data.updatedAt,
+        dispensedBy: data.pharmacistName || 'Pharmacy',
+        dispensedMedications: data.dispensedMedications || []
+      }
+      
+      // Multiple mapping strategies
+      patientStatus[pharmacistPrescriptionId] = statusInfo
+      
+      // Map using prescriptions field
+      if (data.prescriptions && data.prescriptions.length > 0) {
+        data.prescriptions.forEach(pres => {
+          if (pres.id) {
+            patientStatus[pres.id] = statusInfo
+          }
+        })
+      }
+      
+      // Extract doctor ID from pharmacist ID format
+      if (pharmacistPrescriptionId.includes('_')) {
+        const parts = pharmacistPrescriptionId.split('_')
+        if (parts.length >= 2) {
+          const doctorPrescriptionId = parts.slice(1).join('_')
+          patientStatus[doctorPrescriptionId] = statusInfo
+        }
+      }
+    })
+    
+    return patientStatus
+  } catch (error) {
+    console.error('Error fetching prescription status:', error)
+    return {}
+  }
+}
+```
+
+#### 2. PatientManagement.svelte - Dispensed Status Integration
+**Purpose**: Display dispensed status in Last Prescription card
+**Location**: `src/components/PatientManagement.svelte`
+
+**Key Features**:
+- Loads dispensed status for selected patient
+- Displays dispensed badges for individual medications
+- Handles prescription ID mapping and lookup
+- Maintains reactive updates when patient changes
+
+**Technical Implementation**:
+```javascript
+// Load dispensed status when patient changes
+$: if (selectedPatient?.id && doctorId) {
+  loadDispensedStatus()
+}
+
+// Function to load dispensed status
+const loadDispensedStatus = async () => {
+  try {
+    checkingDispensedStatus = true
+    const status = await prescriptionStatusService.getPatientPrescriptionsStatus(
+      selectedPatient.id, 
+      doctorId
+    )
+    prescriptionDispensedStatus = status
+  } catch (error) {
+    console.error('Error loading dispensed status:', error)
+    prescriptionDispensedStatus = {}
+  } finally {
+    checkingDispensedStatus = false
+  }
+}
+
+// Enhanced prescription info lookup with mapping
+const getPrescriptionDispensedInfo = (prescriptionId) => {
+  // First try direct lookup
+  if (prescriptionDispensedStatus[prescriptionId]) {
+    return prescriptionDispensedStatus[prescriptionId]
+  }
+  
+  // If not found, try to find by checking all mapped IDs
+  for (const [mappedId, status] of Object.entries(prescriptionDispensedStatus)) {
+    if (mappedId.includes(prescriptionId) || prescriptionId.includes(mappedId)) {
+      return status
+    }
+  }
+  
+  // Fallback
+  return {
+    isDispensed: false,
+    dispensedAt: null,
+    dispensedBy: null,
+    dispensedMedications: []
+  }
+}
+
+// Check if specific medication is dispensed
+const isMedicationDispensed = (prescriptionId, medicationId) => {
+  const dispensedInfo = getPrescriptionDispensedInfo(prescriptionId)
+  
+  if (!dispensedInfo.dispensedMedications || !Array.isArray(dispensedInfo.dispensedMedications)) {
+    return false
+  }
+  
+  return dispensedInfo.dispensedMedications.some(dispensedMed => 
+    dispensedMed.medicationId === medicationId || 
+    dispensedMed.medicationId === medicationId.toString() ||
+    dispensedMed.name === medicationId ||
+    dispensedMed.name === medicationId.toString()
+  )
+}
+```
+
+### Data Flow
+
+1. **Doctor selects patient** → `PatientManagement.svelte` loads patient data
+2. **Dispensed status request** → `prescriptionStatusService.js` queries pharmacist data
+3. **ID mapping** → Service maps pharmacist prescription IDs to doctor prescription IDs
+4. **Status display** → Last Prescription card shows dispensed badges for medications
+5. **Reactive updates** → Status updates automatically when patient changes
+
+### Security & Decoupling Rules
+
+#### Strict Decoupling Requirements
+- **No Direct Database Access**: Doctor portal cannot directly access pharmacist collections
+- **Service Layer Only**: All cross-portal communication must go through dedicated services
+- **Authentication Required**: All requests must include proper doctor ID authentication
+- **Read-Only Access**: Doctor portal can only read dispensed status, not modify it
+
+#### Implementation Guidelines
+- **Error Handling**: Graceful fallback when dispensed status cannot be loaded
+- **Performance**: Efficient queries with proper indexing
+- **Logging**: Comprehensive logging for debugging and monitoring
+- **Maintainability**: Clear separation of concerns for future development
+
+### Database Schema
+
+#### pharmacistPrescriptions Collection
+```javascript
+{
+  id: "1759489790864_QcQ2QKhwG96o3lL75nYx", // pharmacist-generated ID
+  prescriptionId: "Y7jq3ClVVPNeUtTXgvQ9", // doctor's prescription ID
+  patientId: "WHEfyan2d8EnMTsX4QXv",
+  doctorId: "e4ShvOGQGkQOiSAVEgRt",
+  status: "dispensed",
+  dispensedAt: "2025-10-03T11:10:29.205Z",
+  dispensedBy: "Pharmacy Name",
+  dispensedMedications: [
+    {
+      medicationId: "mgaqry69e1c4ra7ts7t",
+      name: "Medication Name",
+      prescriptionId: "Y7jq3ClVVPNeUtTXgvQ9"
+    }
+  ],
+  prescriptions: [
+    {
+      id: "Y7jq3ClVVPNeUtTXgvQ9", // doctor's prescription ID
+      // ... other prescription data
+    }
+  ]
+}
+```
+
 ## Key Components
 
 ### 1. PatientDetails.svelte
@@ -27,6 +225,7 @@
 - Prescription management with notes field
 - Current medications tracking
 - Prescription notes integration
+- Dispensed status integration (Last Prescription card only)
 
 **Technical Implementation**:
 ```javascript

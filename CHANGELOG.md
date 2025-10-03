@@ -1,5 +1,40 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.0 - Dispensed Status Integration & Enhanced Doctor-Pharmacy Communication
+
+### 🏥 Doctor Portal - Dispensed Status Integration
+- **Real-time Dispensed Status**: Doctors can now see which medications have been dispensed from connected pharmacies
+- **Last Prescription Card**: Enhanced with dispensed badges showing medication status
+- **Decoupled Architecture**: Maintains strict separation between doctor and pharmacist portals
+- **Service Layer Integration**: Uses dedicated `prescriptionStatusService` for secure data access
+- **Visual Indicators**: Clear "Dispensed" badges with green styling and checkmark icons
+
+### 🔄 Prescription ID Mapping System
+- **Multi-format Support**: Handles different prescription ID formats between doctor and pharmacist systems
+- **Automatic Mapping**: Maps pharmacist prescription IDs to doctor prescription IDs automatically
+- **Robust Lookup**: Uses multiple mapping strategies including prescriptions field and ID extraction
+- **Error Handling**: Graceful fallback when mapping fails
+- **Debug Logging**: Comprehensive logging for troubleshooting ID mapping issues
+
+### 🧹 Medical Summary Cleanup
+- **Removed Redundant Status**: Cleaned up Medical Summary to remove unnecessary dispensed status indicators
+- **Focused Display**: Medical Summary now focuses purely on medication history without dispensed status
+- **Performance Optimization**: Removed unused dispensed status tracking code
+- **Cleaner Interface**: Simplified medication display in Medical Summary component
+
+### 🔧 Technical Implementation
+- **Enhanced Service Layer**: Updated `prescriptionStatusService.js` with improved ID mapping logic
+- **Component Optimization**: Streamlined `MedicalSummary.svelte` by removing dispensed status code
+- **Data Flow**: Maintained proper data flow between doctor and pharmacist systems
+- **Error Recovery**: Added fallback mechanisms for prescription ID resolution
+
+### 📋 Rules & Implementation Guidelines
+- **Strict Decoupling**: Doctor and pharmacist portals remain completely independent
+- **Service Layer Only**: All cross-portal communication goes through dedicated service layers
+- **No Direct Access**: No direct database access between portals
+- **Secure Communication**: All data exchange is properly authenticated and authorized
+- **Maintainable Architecture**: Clear separation of concerns for future development
+
 ## Version 2.2.0 - Prescription Notes & Enhanced Doctor Portal
 
 ### 📝 Prescription Notes System

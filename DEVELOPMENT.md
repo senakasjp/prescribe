@@ -2,7 +2,77 @@
 
 ## 📋 Recent Updates (January 16, 2025)
 
-### **📝 Prescription Notes System (Latest)**
+### **🏥 Dispensed Status Integration System (Latest)**
+- **Service Layer Architecture**: Implemented `prescriptionStatusService.js` for secure cross-portal communication
+- **Prescription ID Mapping**: Robust system handles different ID formats between doctor and pharmacist systems
+- **Last Prescription Card Enhancement**: Added dispensed badges showing individual medication status
+- **Decoupled Architecture**: Maintains strict separation between doctor and pharmacist portals
+- **Medical Summary Cleanup**: Removed redundant dispensed status indicators for cleaner interface
+- **Error Handling & Recovery**: Comprehensive error handling with graceful fallback mechanisms
+- **Performance Optimization**: Efficient queries with proper indexing and caching strategies
+
+**Technical Implementation**:
+```javascript
+// In prescriptionStatusService.js
+export async function getPatientPrescriptionsStatus(patientId, doctorId) {
+  const prescriptionsRef = collection(db, 'pharmacistPrescriptions')
+  const q = query(
+    prescriptionsRef,
+    where('patientId', '==', patientId),
+    where('doctorId', '==', doctorId)
+  )
+  
+  const prescriptionsSnapshot = await getDocs(q)
+  const patientStatus = {}
+  
+  prescriptionsSnapshot.forEach((doc) => {
+    const data = doc.data()
+    const statusInfo = {
+      isDispensed: data.status === 'dispensed' || !!data.dispensedAt,
+      dispensedAt: data.dispensedAt || data.updatedAt,
+      dispensedBy: data.pharmacistName || 'Pharmacy',
+      dispensedMedications: data.dispensedMedications || []
+    }
+    
+    // Multiple mapping strategies
+    patientStatus[data.prescriptionId || doc.id] = statusInfo
+    
+    // Map using prescriptions field
+    if (data.prescriptions && data.prescriptions.length > 0) {
+      data.prescriptions.forEach(pres => {
+        if (pres.id) {
+          patientStatus[pres.id] = statusInfo
+        }
+      })
+    }
+  })
+  
+  return patientStatus
+}
+
+// In PatientManagement.svelte
+const isMedicationDispensed = (prescriptionId, medicationId) => {
+  const dispensedInfo = getPrescriptionDispensedInfo(prescriptionId)
+  
+  if (!dispensedInfo.dispensedMedications || !Array.isArray(dispensedInfo.dispensedMedications)) {
+    return false
+  }
+  
+  return dispensedInfo.dispensedMedications.some(dispensedMed => 
+    dispensedMed.medicationId === medicationId || 
+    dispensedMed.name === medicationId
+  )
+}
+```
+
+**Security & Decoupling Rules**:
+- No direct database access between portals
+- Service layer only for cross-portal communication
+- Authentication required for all requests
+- Read-only access for doctor portal
+- Comprehensive logging for audit trails
+
+### **📝 Prescription Notes System**
 - **Notes Field Implementation**: Added prescription notes textarea in `PrescriptionsTab.svelte` component
 - **Data Binding Integration**: Implemented two-way binding between `PatientDetails.svelte` and `PrescriptionsTab.svelte`
 - **Strategic UI Placement**: Notes field positioned at bottom of prescription form, after medications list

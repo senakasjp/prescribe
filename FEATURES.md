@@ -2,6 +2,18 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🏥 Dispensed Status Integration System (January 16, 2025)**
+- **Real-time Dispensed Status**: Doctors can now see which medications have been dispensed from connected pharmacies
+- **Last Prescription Card Enhancement**: Enhanced with dispensed badges showing individual medication status
+- **Decoupled Architecture**: Maintains strict separation between doctor and pharmacist portals while enabling secure communication
+- **Service Layer Integration**: Uses dedicated `prescriptionStatusService` for secure, authenticated data access
+- **Visual Indicators**: Clear "Dispensed" badges with green styling and checkmark icons for easy identification
+- **Prescription ID Mapping**: Robust system handles different prescription ID formats between doctor and pharmacist systems
+- **Automatic Mapping**: Maps pharmacist prescription IDs to doctor prescription IDs using multiple strategies
+- **Error Handling**: Graceful fallback when mapping fails with comprehensive logging for troubleshooting
+- **Medical Summary Cleanup**: Removed redundant dispensed status indicators to keep Medical Summary focused on medication history
+- **Performance Optimization**: Removed unused dispensed status tracking code from Medical Summary component
+
 ### **📝 Prescription Notes System (January 16, 2025)**
 - **Notes Field Integration**: Added prescription notes textarea in doctor portal for additional instructions
 - **Strategic Placement**: Notes field appears at bottom of prescription form, after medications list
