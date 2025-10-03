@@ -246,42 +246,26 @@
   
   // Load patients from storage
   const loadPatients = async () => {
-    alert('🚀 loadPatients: Function called! User: ' + (user?.email || 'null'))
-    console.log('🚀 loadPatients: Function called!')
-    console.log('🚀 loadPatients: User object:', user)
     try {
       loading = true
       
-      console.log('🔍 PatientManagement: Starting loadPatients')
-      console.log('🔍 PatientManagement: User object:', user)
-      console.log('🔍 PatientManagement: User.id:', user?.id)
-      console.log('🔍 PatientManagement: User.uid:', user?.uid)
-      console.log('🔍 PatientManagement: User.email:', user?.email)
-      
       // Always get the doctor from Firebase to ensure we have the correct ID
-      console.log('🔍 PatientManagement: Getting doctor from Firebase for email:', user.email)
       const doctor = await firebaseStorage.getDoctorByEmail(user.email)
-      console.log('🔍 PatientManagement: Doctor from Firebase:', doctor)
       
       if (!doctor) {
-        console.error('❌ PatientManagement: Doctor not found in Firebase for email:', user.email)
         throw new Error('Doctor not found in database')
       }
       
-      const doctorId = doctor.id
-      console.log('✅ PatientManagement: Using doctor ID:', doctorId)
+      // Update component-level doctorData to ensure reactive doctorId is correct
+      doctorData = doctor
       
-      console.log('🔍 PatientManagement: Loading patients for doctor ID:', doctorId)
-      patients = await firebaseStorage.getPatients(doctorId)
+      patients = await firebaseStorage.getPatients(doctor.id)
       filteredPatients = [...patients]
-      console.log('✅ PatientManagement: Loaded patients:', patients.length)
-      console.log('🔍 PatientManagement: Patients data:', patients)
       
       // Load statistics after patients are loaded
       await loadStatistics()
     } catch (error) {
-      console.error('❌ PatientManagement: Error loading patients:', error)
-      console.error('❌ PatientManagement: Error stack:', error.stack)
+      console.error('Error loading patients:', error)
       patients = []
       filteredPatients = []
     } finally {
@@ -291,38 +275,18 @@
   
   // Load all statistics
   const loadStatistics = async () => {
-    alert('🚀 loadStatistics: Function called! patients: ' + patients.length + ', doctorId: ' + doctorId)
-    console.log('🚀 loadStatistics: Function called!')
-    console.log('🚀 loadStatistics: statisticsLoading:', statisticsLoading)
-    console.log('🚀 loadStatistics: patients.length:', patients.length)
-    console.log('🚀 loadStatistics: doctorId:', doctorId)
-    
     // Prevent multiple simultaneous calls
     if (statisticsLoading) {
-      console.log('🔍 loadStatistics: Already loading, skipping...')
       return
     }
     
     statisticsLoading = true
     try {
-      console.log('🔍 loadStatistics: Starting statistics calculation...')
-      console.log('🔍 loadStatistics: About to call getTotalPrescriptions...')
       totalPrescriptions = await getTotalPrescriptions()
-      console.log('🔍 loadStatistics: getTotalPrescriptions returned:', totalPrescriptions)
-      
-      console.log('🔍 loadStatistics: About to call getTotalDrugs...')
       totalDrugs = await getTotalDrugs()
-      console.log('🔍 loadStatistics: getTotalDrugs returned:', totalDrugs)
-      
-      console.log('🔍 loadStatistics: About to call getConnectedPharmacies...')
       connectedPharmacies = await getConnectedPharmacies()
-      console.log('🔍 loadStatistics: getConnectedPharmacies returned:', connectedPharmacies)
-      
-      console.log('🔍 loadStatistics: Statistics loaded successfully')
-      console.log('🔍 loadStatistics: Final values - totalPrescriptions:', totalPrescriptions, 'totalDrugs:', totalDrugs, 'connectedPharmacies:', connectedPharmacies)
     } catch (error) {
-      console.error('❌ Error loading statistics:', error)
-      console.error('❌ Error stack:', error.stack)
+      console.error('Error loading statistics:', error)
       totalPrescriptions = 0
       totalDrugs = 0
       connectedPharmacies = 0
@@ -458,63 +422,63 @@
   // Statistics functions for dashboard
   const getTotalPrescriptions = async () => {
     let total = 0
-    alert('🔍 getTotalPrescriptions: Starting! Patients: ' + patients.length + ', Doctor ID: ' + doctorId)
-    console.log('🔍 getTotalPrescriptions: Patients count:', patients.length)
-    console.log('🔍 getTotalPrescriptions: Doctor ID:', doctorId)
     
     // Only count prescriptions for the current doctor's patients
     for (const patient of patients) {
       const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
-      console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
-      console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
       
       // Filter prescriptions to only include those created by the current doctor
       const doctorPrescriptions = patientPrescriptions.filter(prescription => 
         prescription.doctorId === doctorId || prescription.createdBy === doctorId
       )
-      console.log(`🔍 getTotalPrescriptions: Doctor-specific prescriptions for ${patient.firstName}:`, doctorPrescriptions.length)
       
-      if (patientPrescriptions.length > 0) {
-        alert(`🔍 Patient ${patient.firstName}: ${patientPrescriptions.length} total prescriptions, ${doctorPrescriptions.length} doctor-specific prescriptions`)
-      }
+      // Deduplicate prescriptions by ID, keeping the most recent one
+      const uniquePrescriptions = new Map()
+      doctorPrescriptions.forEach(prescription => {
+        const existing = uniquePrescriptions.get(prescription.id)
+        if (!existing || new Date(prescription.createdAt) > new Date(existing.createdAt)) {
+          uniquePrescriptions.set(prescription.id, prescription)
+        }
+      })
+      const deduplicatedPrescriptions = Array.from(uniquePrescriptions.values())
       
-      total += doctorPrescriptions.length
+      total += deduplicatedPrescriptions.length
     }
     
-    console.log('🔍 getTotalPrescriptions: Total prescriptions for current doctor:', total)
-    alert('🔍 getTotalPrescriptions: Returning total: ' + total)
     return total
   }
   
   const getTotalDrugs = async () => {
     let total = 0
-    console.log('🔍 getTotalDrugs: Patients count:', patients.length)
-    console.log('🔍 getTotalDrugs: Doctor ID:', doctorId)
     
     // Only count medications from prescriptions created by the current doctor
     for (const patient of patients) {
       const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
-      console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
       
       // Filter prescriptions to only include those created by the current doctor
       const doctorPrescriptions = patientPrescriptions.filter(prescription => 
         prescription.doctorId === doctorId || prescription.createdBy === doctorId
       )
-      console.log(`🔍 getTotalDrugs: Doctor-specific prescriptions for ${patient.firstName}:`, doctorPrescriptions.length)
       
+      // Deduplicate prescriptions by ID, keeping the most recent one
+      const uniquePrescriptions = new Map()
       doctorPrescriptions.forEach(prescription => {
-        console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
+        const existing = uniquePrescriptions.get(prescription.id)
+        if (!existing || new Date(prescription.createdAt) > new Date(existing.createdAt)) {
+          uniquePrescriptions.set(prescription.id, prescription)
+        }
+      })
+      const deduplicatedPrescriptions = Array.from(uniquePrescriptions.values())
+      
+      deduplicatedPrescriptions.forEach(prescription => {
         if (prescription.medications && Array.isArray(prescription.medications)) {
-          console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
           total += prescription.medications.length
         } else {
-          console.log(`🔍 getTotalDrugs: Prescription has no medications array, counting as 1`)
           total += 1 // Single medication prescription
         }
       })
     }
     
-    console.log('🔍 getTotalDrugs: Total medications for current doctor:', total)
     return total
   }
   
@@ -539,12 +503,6 @@
         return pharmacistHasDoctor || doctorHasPharmacist
       }).length
       
-      console.log('🔍 Connected pharmacies count:', connectedCount)
-      console.log('🔍 Doctor ID:', doctor.id)
-      console.log('🔍 All pharmacists:', allPharmacists.map(p => ({ 
-        name: p.businessName, 
-        connectedDoctors: p.connectedDoctors 
-      })))
       
       return connectedCount
     } catch (error) {
@@ -1272,10 +1230,6 @@
   }
   
   onMount(() => {
-    alert('🚀 PatientManagement: Component mounted! User: ' + (user?.email || 'null'))
-    console.log('🚀 PatientManagement: Component mounted!')
-    console.log('🚀 PatientManagement: User in onMount:', user)
-    console.log('🚀 PatientManagement: About to call loadPatients...')
     loadPatients()
     loadTemplateSettings() // Load saved template settings
     // Create chart after a short delay to ensure DOM is ready
@@ -1285,7 +1239,6 @@
     
     // Listen for prescription save events to invalidate cache
     const handlePrescriptionSaved = (event) => {
-      console.log('Prescription saved event received, invalidating chart cache')
       invalidateChartCache()
       // Recreate chart with fresh data
       setTimeout(() => {
@@ -1313,8 +1266,7 @@
 
 {#if currentView === 'home'}
 <!-- Home Dashboard - Quick Stats and Chart -->
-<script>alert('🏠 PatientManagement: Home view rendered! totalPrescriptions = ' + totalPrescriptions + ', patients = ' + patients.length + ', doctorId = ' + doctorId);</script>
-<div class="space-y-3 sm:space-y-4" on:mount={() => console.log('🏠 PatientManagement: Home view rendered!', {totalPrescriptions, patients: patients.length, doctorId})}>
+<div class="space-y-3 sm:space-y-4">
   <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
     <div class="text-center">
       <i class="fas fa-user-md text-3xl sm:text-4xl md:text-5xl text-teal-600 mb-2 sm:mb-3"></i>
@@ -1341,8 +1293,6 @@
         <div>
           <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Prescriptions</p>
           <p class="text-2xl sm:text-3xl font-bold text-rose-600">{totalPrescriptions}</p>
-          <!-- DEBUG: totalPrescriptions = {totalPrescriptions}, patients.length = {patients.length}, doctorId = {doctorId} -->
-          <script>alert('DEBUG: totalPrescriptions = ' + {totalPrescriptions} + ', patients = ' + {patients.length} + ', doctorId = ' + {doctorId});</script>
         </div>
         <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-rose-100 flex items-center justify-center">
           <i class="fas fa-prescription-bottle-alt text-rose-600 text-lg sm:text-xl"></i>
@@ -1388,7 +1338,6 @@
           <div>
             <p class="text-xs font-medium text-gray-600">Total Prescriptions</p>
             <p class="text-xl font-bold text-rose-600">{totalPrescriptions}</p>
-            <!-- DEBUG: totalPrescriptions = {totalPrescriptions}, patients.length = {patients.length}, doctorId = {doctorId} -->
           </div>
         </div>
         <i class="fas fa-chevron-right text-gray-400"></i>
