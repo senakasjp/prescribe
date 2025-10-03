@@ -7,26 +7,26 @@
   let currentPage = 1
   let itemsPerPage = 5 // Show 5 prescriptions per page
   
-  // Helper function to group medications by prescription
-  const getPrescriptionsWithMedications = () => {
-    const prescriptionsWithMedications = prescriptions
-      .filter(prescription => prescription.medications && prescription.medications.length > 0)
+  // Helper function to get all prescriptions (including those without medications)
+  const getAllPrescriptions = () => {
+    const allPrescriptions = prescriptions
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     
     console.log('🔍 PrescriptionList: Total prescriptions:', prescriptions.length)
-    console.log('🔍 PrescriptionList: Prescriptions with medications:', prescriptionsWithMedications.length)
+    console.log('🔍 PrescriptionList: Prescriptions with medications:', prescriptions.filter(p => p.medications && p.medications.length > 0).length)
+    console.log('🔍 PrescriptionList: Prescriptions without medications:', prescriptions.filter(p => !p.medications || p.medications.length === 0).length)
     console.log('🔍 PrescriptionList: Prescription data:', prescriptions)
     
-    return prescriptionsWithMedications
+    return allPrescriptions
   }
   
-  const allPrescriptions = getPrescriptionsWithMedications()
+  const allPrescriptions = getAllPrescriptions()
   
   // Pagination calculations
   $: totalPages = Math.ceil(allPrescriptions.length / itemsPerPage)
   $: startIndex = (currentPage - 1) * itemsPerPage
   $: endIndex = startIndex + itemsPerPage
-  $: prescriptionsWithMedications = allPrescriptions.slice(startIndex, endIndex)
+  $: paginatedPrescriptions = allPrescriptions.slice(startIndex, endIndex)
   
   // Reset to first page when prescriptions change
   $: if (allPrescriptions.length > 0) {
@@ -59,9 +59,9 @@
   }
 </script>
 
-{#if prescriptionsWithMedications && prescriptionsWithMedications.length > 0}
+{#if paginatedPrescriptions && paginatedPrescriptions.length > 0}
   <div class="space-y-4">
-    {#each prescriptionsWithMedications as prescription, prescriptionIndex}
+    {#each paginatedPrescriptions as prescription, prescriptionIndex}
       <div class="bg-white rounded-lg shadow-sm border-2 {prescriptionIndex % 2 === 0 ? 'border-teal-200' : 'border-teal-200'}">
         <!-- Prescription Header -->
         <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
@@ -81,7 +81,8 @@
         
         <!-- Medications List -->
         <div class="divide-y divide-gray-200">
-          {#each prescription.medications as medication, medicationIndex}
+          {#if prescription.medications && prescription.medications.length > 0}
+            {#each prescription.medications as medication, medicationIndex}
             <div class="p-4 {medicationIndex === prescription.medications.length - 1 ? '' : 'border-b border-gray-200'}">
               <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="col-span-full">
@@ -121,7 +122,13 @@
                 {/if}
               </div>
             </div>
-          {/each}
+            {/each}
+          {:else}
+            <div class="p-4 text-center text-gray-500">
+              <i class="fas fa-exclamation-triangle mr-2"></i>
+              No medications in this prescription
+            </div>
+          {/if}
         </div>
       </div>
     {/each}

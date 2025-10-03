@@ -769,6 +769,52 @@ class FirebaseStorageService {
     }
   }
 
+  async getPrescriptionsByDoctorId(doctorId) {
+    try {
+      console.log('🔥 Firebase: Getting prescriptions for doctor ID:', doctorId)
+      console.log('🔥 Firebase: Using collection:', this.collections.medications)
+      
+      const q = query(
+        collection(db, this.collections.medications), 
+        where('doctorId', '==', doctorId)
+      )
+      const querySnapshot = await getDocs(q)
+      
+      console.log('🔥 Firebase: Query snapshot size:', querySnapshot.size)
+      console.log('🔥 Firebase: Query snapshot docs:', querySnapshot.docs.length)
+      
+      const prescriptions = querySnapshot.docs.map(doc => {
+        const data = doc.data()
+        console.log('🔥 Firebase: Prescription doc:', doc.id, data)
+        return {
+          id: doc.id,
+          ...data
+        }
+      })
+      
+      // Deduplicate prescriptions by ID, keeping the most recent one
+      const uniquePrescriptions = new Map()
+      prescriptions.forEach(prescription => {
+        const existing = uniquePrescriptions.get(prescription.id)
+        if (!existing || new Date(prescription.createdAt) > new Date(existing.createdAt)) {
+          uniquePrescriptions.set(prescription.id, prescription)
+        }
+      })
+      const deduplicatedPrescriptions = Array.from(uniquePrescriptions.values())
+      
+      // Sort by createdAt in JavaScript instead of Firestore
+      deduplicatedPrescriptions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      
+      console.log('🔥 Firebase: Found prescriptions (before deduplication):', prescriptions.length)
+      console.log('🔥 Firebase: Found prescriptions (after deduplication):', deduplicatedPrescriptions.length)
+      console.log('🔥 Firebase: Prescriptions data:', deduplicatedPrescriptions)
+      return deduplicatedPrescriptions
+    } catch (error) {
+      console.error('❌ Firebase: Error getting prescriptions by doctor ID:', error)
+      throw error
+    }
+  }
+
   async getMedicationsByPatientId(patientId) {
     return this.getPrescriptionsByPatientId(patientId)
   }

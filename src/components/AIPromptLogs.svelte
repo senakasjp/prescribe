@@ -11,6 +11,40 @@
   let selectedPrompt = null
   let showPromptDetails = false
   let unsubscribe = null
+  
+  // Pagination for AI prompts
+  let currentPage = 1
+  let itemsPerPage = 25
+  
+  // Pagination calculations
+  $: totalPages = Math.ceil(aiPrompts.length / itemsPerPage)
+  $: startIndex = (currentPage - 1) * itemsPerPage
+  $: endIndex = startIndex + itemsPerPage
+  $: paginatedPrompts = aiPrompts.slice(startIndex, endIndex)
+  
+  // Reset to first page when prompts change
+  $: if (aiPrompts.length > 0) {
+    currentPage = 1
+  }
+  
+  // Pagination functions
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      currentPage = page
+    }
+  }
+  
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      currentPage--
+    }
+  }
+  
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      currentPage++
+    }
+  }
 
   onMount(async () => {
     await loadAIPrompts()
@@ -338,7 +372,7 @@
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-gray-200">
-            {#each aiPrompts as prompt}
+            {#each paginatedPrompts as prompt}
               <tr class="hover:bg-gray-50">
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {formatTimestamp(prompt.timestamp)}
@@ -383,7 +417,7 @@
 
       <!-- Mobile Card View -->
       <div class="md:hidden space-y-3 p-4">
-        {#each aiPrompts as prompt}
+        {#each paginatedPrompts as prompt}
           <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <div class="flex justify-between items-start mb-3">
               <div class="flex-1">
@@ -429,6 +463,54 @@
           </div>
         {/each}
       </div>
+      
+      <!-- Pagination Controls -->
+      {#if totalPages > 1}
+        <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+          <div class="flex items-center text-sm text-gray-700">
+            <span>Showing {startIndex + 1} to {Math.min(endIndex, aiPrompts.length)} of {aiPrompts.length} prompts</span>
+          </div>
+          
+          <div class="flex items-center space-x-2">
+            <!-- Previous Button -->
+            <button 
+              class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              on:click={goToPreviousPage}
+              disabled={currentPage === 1}
+            >
+              <i class="fas fa-chevron-left mr-1"></i>
+              Previous
+            </button>
+            
+            <!-- Page Numbers -->
+            <div class="flex items-center space-x-1">
+              {#each Array.from({length: Math.min(5, totalPages)}, (_, i) => {
+                const startPage = Math.max(1, currentPage - 2)
+                const endPage = Math.min(totalPages, startPage + 4)
+                const page = startPage + i
+                return page <= endPage ? page : null
+              }).filter(Boolean) as page}
+                <button 
+                  class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg {currentPage === page ? 'text-white bg-teal-600 border-teal-600' : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700'}"
+                  on:click={() => goToPage(page)}
+                >
+                  {page}
+                </button>
+              {/each}
+            </div>
+            
+            <!-- Next Button -->
+            <button 
+              class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              on:click={goToNextPage}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <i class="fas fa-chevron-right ml-1"></i>
+            </button>
+          </div>
+        </div>
+      {/if}
     {/if}
   </div>
 </div>

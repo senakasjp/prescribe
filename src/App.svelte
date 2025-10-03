@@ -29,9 +29,15 @@
   let prescriptions = [] // All prescriptions for the doctor
   
   // Handle menu navigation
-  const handleMenuNavigation = (view) => {
+  const handleMenuNavigation = async (view) => {
     console.log('🔍 App.svelte: handleMenuNavigation called with view:', view)
     currentView = view
+    
+    // Load prescriptions when navigating to prescriptions page
+    if (view === 'prescriptions' && user && user.role === 'doctor') {
+      console.log('🔍 App.svelte: Loading prescriptions for prescriptions page')
+      await loadPrescriptions()
+    }
   }
   
   // Handle settings click from menubar
@@ -43,13 +49,17 @@
   const loadPrescriptions = async () => {
     if (user && user.role === 'doctor') {
       try {
-        console.log('Loading prescriptions for doctor:', user.id)
+        console.log('🔍 App.svelte: Loading prescriptions for doctor:', user.id)
+        console.log('🔍 App.svelte: User object:', user)
         prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(user.id)
-        console.log('Loaded prescriptions:', prescriptions.length)
+        console.log('🔍 App.svelte: Loaded prescriptions:', prescriptions.length)
+        console.log('🔍 App.svelte: Prescriptions data:', prescriptions)
       } catch (error) {
-        console.error('Error loading prescriptions:', error)
+        console.error('❌ App.svelte: Error loading prescriptions:', error)
         prescriptions = []
       }
+    } else {
+      console.log('🔍 App.svelte: Not loading prescriptions - user role:', user?.role)
     }
   }
   
@@ -484,9 +494,11 @@
   
   // Refresh doctor's AI usage stats (immediate refresh)
   const refreshDoctorUsageStats = () => {
-    if (user?.id) {
-      doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
-      doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(user.id)
+    if (user) {
+      const userId = user?.id || user?.uid || user?.email || 'default-user'
+      console.log('🔄 Manual refresh - using user ID:', userId)
+      doctorUsageStats = aiTokenTracker.getDoctorUsageStats(userId)
+      doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(userId)
       console.log('🔄 Doctor usage stats refreshed:', doctorUsageStats)
       console.log('🔄 Doctor quota status refreshed:', doctorQuotaStatus)
     }
@@ -494,9 +506,16 @@
 
   // Reactive statement to update stats when user changes
   $: if (user) {
+    // Use consistent ID determination logic that matches what's used in components
     const userId = user?.id || user?.uid || user?.email || 'default-user'
+    console.log('🔄 Updating doctor usage stats for user ID:', userId)
+    console.log('🔄 User object:', user)
+    
     doctorUsageStats = aiTokenTracker.getDoctorUsageStats(userId)
     doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(userId)
+    
+    console.log('🔄 Doctor usage stats:', doctorUsageStats)
+    console.log('🔄 Doctor quota status:', doctorQuotaStatus)
     
     // Clear existing interval and set up new one
     if (refreshInterval) {
@@ -506,12 +525,20 @@
     refreshInterval = setInterval(() => {
       if (user) {
         const currentUserId = user?.id || user?.uid || user?.email || 'default-user'
+        console.log('🔄 Interval refresh - updating stats for user ID:', currentUserId)
         doctorUsageStats = aiTokenTracker.getDoctorUsageStats(currentUserId)
         doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(currentUserId)
+        console.log('🔄 Interval refresh - updated stats:', doctorUsageStats)
       }
     }, 30000)
   }
 
+
+  // Listen for AI usage updates to refresh stats immediately
+  const handleAIUsageUpdate = (event) => {
+    console.log('🔄 AI usage updated, refreshing stats immediately')
+    refreshDoctorUsageStats()
+  }
 
   // Cleanup on destroy
   onDestroy(() => {
@@ -521,7 +548,7 @@
   })
 </script>
 
-<main class="min-h-screen bg-gray-50">
+<main class="min-h-screen bg-gray-50" on:ai-usage-updated={handleAIUsageUpdate}>
   
   {#if showAdminPanel}
     <!-- Admin Panel -->

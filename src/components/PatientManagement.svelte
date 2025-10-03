@@ -64,7 +64,8 @@
   }
   
   // Reactive doctorId that updates when doctorData changes
-  $: doctorId = doctorData?.id || user?.uid || user?.id
+  // Use consistent ID logic that matches App.svelte
+  $: doctorId = doctorData?.id || user?.id || user?.uid || user?.email || 'default-user'
   
   const loadDoctorData = async () => {
     try {

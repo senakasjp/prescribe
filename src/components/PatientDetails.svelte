@@ -27,6 +27,142 @@
   let prescriptions = [] // Array of prescription objects (each containing medications)
   let symptoms = []
   let currentPrescription = null // Current prescription being worked on
+  
+  // Pagination for symptoms
+  let currentSymptomsPage = 1
+  let symptomsPerPage = 25
+  
+  // Pagination calculations for symptoms
+  $: totalSymptomsPages = Math.ceil(symptoms.length / symptomsPerPage)
+  $: symptomsStartIndex = (currentSymptomsPage - 1) * symptomsPerPage
+  $: symptomsEndIndex = symptomsStartIndex + symptomsPerPage
+  $: paginatedSymptoms = symptoms.slice(symptomsStartIndex, symptomsEndIndex)
+  
+  // Reset to first page when symptoms change
+  $: if (symptoms.length > 0) {
+    currentSymptomsPage = 1
+  }
+  
+  // Pagination functions for symptoms
+  const goToSymptomsPage = (page) => {
+    if (page >= 1 && page <= totalSymptomsPages) {
+      currentSymptomsPage = page
+    }
+  }
+  
+  const goToPreviousSymptomsPage = () => {
+    if (currentSymptomsPage > 1) {
+      currentSymptomsPage--
+    }
+  }
+  
+  const goToNextSymptomsPage = () => {
+    if (currentSymptomsPage < totalSymptomsPages) {
+      currentSymptomsPage++
+    }
+  }
+  
+  // Pagination for illnesses
+  let currentIllnessesPage = 1
+  let illnessesPerPage = 25
+  
+  // Pagination calculations for illnesses
+  $: totalIllnessesPages = Math.ceil(illnesses.length / illnessesPerPage)
+  $: illnessesStartIndex = (currentIllnessesPage - 1) * illnessesPerPage
+  $: illnessesEndIndex = illnessesStartIndex + illnessesPerPage
+  $: paginatedIllnesses = illnesses.slice(illnessesStartIndex, illnessesEndIndex)
+  
+  // Reset to first page when illnesses change
+  $: if (illnesses.length > 0) {
+    currentIllnessesPage = 1
+  }
+  
+  // Pagination functions for illnesses
+  const goToIllnessesPage = (page) => {
+    if (page >= 1 && page <= totalIllnessesPages) {
+      currentIllnessesPage = page
+    }
+  }
+  
+  const goToPreviousIllnessesPage = () => {
+    if (currentIllnessesPage > 1) {
+      currentIllnessesPage--
+    }
+  }
+  
+  const goToNextIllnessesPage = () => {
+    if (currentIllnessesPage < totalIllnessesPages) {
+      currentIllnessesPage++
+    }
+  }
+  
+  // Pagination for reports
+  let currentReportsPage = 1
+  let reportsPerPage = 25
+  
+  // Pagination calculations for reports
+  $: totalReportsPages = Math.ceil(reports.length / reportsPerPage)
+  $: reportsStartIndex = (currentReportsPage - 1) * reportsPerPage
+  $: reportsEndIndex = reportsStartIndex + reportsPerPage
+  $: paginatedReports = reports.slice(reportsStartIndex, reportsEndIndex)
+  
+  // Reset to first page when reports change
+  $: if (reports.length > 0) {
+    currentReportsPage = 1
+  }
+  
+  // Pagination functions for reports
+  const goToReportsPage = (page) => {
+    if (page >= 1 && page <= totalReportsPages) {
+      currentReportsPage = page
+    }
+  }
+  
+  const goToPreviousReportsPage = () => {
+    if (currentReportsPage > 1) {
+      currentReportsPage--
+    }
+  }
+  
+  const goToNextReportsPage = () => {
+    if (currentReportsPage < totalReportsPages) {
+      currentReportsPage++
+    }
+  }
+  
+  // Pagination for diagnoses
+  let currentDiagnosesPage = 1
+  let diagnosesPerPage = 25
+  
+  // Pagination calculations for diagnoses
+  $: totalDiagnosesPages = Math.ceil(diagnoses.length / diagnosesPerPage)
+  $: diagnosesStartIndex = (currentDiagnosesPage - 1) * diagnosesPerPage
+  $: diagnosesEndIndex = diagnosesStartIndex + diagnosesPerPage
+  $: paginatedDiagnoses = diagnoses.slice(diagnosesStartIndex, diagnosesEndIndex)
+  
+  // Reset to first page when diagnoses change
+  $: if (diagnoses.length > 0) {
+    currentDiagnosesPage = 1
+  }
+  
+  // Pagination functions for diagnoses
+  const goToDiagnosesPage = (page) => {
+    if (page >= 1 && page <= totalDiagnosesPages) {
+      currentDiagnosesPage = page
+    }
+  }
+  
+  const goToPreviousDiagnosesPage = () => {
+    if (currentDiagnosesPage > 1) {
+      currentDiagnosesPage--
+    }
+  }
+  
+  const goToNextDiagnosesPage = () => {
+    if (currentDiagnosesPage < totalDiagnosesPages) {
+      currentDiagnosesPage++
+    }
+  }
   let currentMedications = [] // Current medications in the working prescription (for display)
   let activeTab = initialTab
   let enabledTabs = [initialTab] // Progressive workflow: start with initialTab enabled
@@ -2938,7 +3074,7 @@
           
           {#if symptoms && symptoms.length > 0}
             <div class="space-y-3 mb-4">
-              {#each symptoms as symptom, index}
+              {#each paginatedSymptoms as symptom, index}
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
                   <div class="flex justify-between items-start">
                     <div class="flex-1">
@@ -2978,6 +3114,54 @@
                 </div>
               {/each}
             </div>
+            
+            <!-- Pagination Controls for Symptoms -->
+            {#if totalSymptomsPages > 1}
+              <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+                <div class="flex items-center text-sm text-gray-700">
+                  <span>Showing {symptomsStartIndex + 1} to {Math.min(symptomsEndIndex, symptoms.length)} of {symptoms.length} symptoms</span>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                  <!-- Previous Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToPreviousSymptomsPage}
+                    disabled={currentSymptomsPage === 1}
+                  >
+                    <i class="fas fa-chevron-left mr-1"></i>
+                    Previous
+                  </button>
+                  
+                  <!-- Page Numbers -->
+                  <div class="flex items-center space-x-1">
+                    {#each Array.from({length: Math.min(5, totalSymptomsPages)}, (_, i) => {
+                      const startPage = Math.max(1, currentSymptomsPage - 2)
+                      const endPage = Math.min(totalSymptomsPages, startPage + 4)
+                      const page = startPage + i
+                      return page <= endPage ? page : null
+                    }).filter(Boolean) as page}
+                      <button 
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg {currentSymptomsPage === page ? 'text-white bg-teal-600 border-teal-600' : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700'}"
+                        on:click={() => goToSymptomsPage(page)}
+                      >
+                        {page}
+                      </button>
+                    {/each}
+                  </div>
+                  
+                  <!-- Next Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToNextSymptomsPage}
+                    disabled={currentSymptomsPage === totalSymptomsPages}
+                  >
+                    Next
+                    <i class="fas fa-chevron-right ml-1"></i>
+                  </button>
+                </div>
+              </div>
+            {/if}
           {:else}
             <div class="text-center py-8 mb-4">
               <i class="fas fa-thermometer-half text-4xl text-gray-400 mb-3"></i>
@@ -3031,7 +3215,7 @@
           
           {#if illnesses && illnesses.length > 0}
             <div class="list-group">
-              {#each illnesses as illness, index}
+              {#each paginatedIllnesses as illness, index}
                 <div class="list-group-item">
                   <div class="flex w-full justify-between items-start">
                     <div class="flex-1">
@@ -3068,6 +3252,54 @@
                 </div>
               {/each}
             </div>
+            
+            <!-- Pagination Controls for Illnesses -->
+            {#if totalIllnessesPages > 1}
+              <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+                <div class="flex items-center text-sm text-gray-700">
+                  <span>Showing {illnessesStartIndex + 1} to {Math.min(illnessesEndIndex, illnesses.length)} of {illnesses.length} illnesses</span>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                  <!-- Previous Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToPreviousIllnessesPage}
+                    disabled={currentIllnessesPage === 1}
+                  >
+                    <i class="fas fa-chevron-left mr-1"></i>
+                    Previous
+                  </button>
+                  
+                  <!-- Page Numbers -->
+                  <div class="flex items-center space-x-1">
+                    {#each Array.from({length: Math.min(5, totalIllnessesPages)}, (_, i) => {
+                      const startPage = Math.max(1, currentIllnessesPage - 2)
+                      const endPage = Math.min(totalIllnessesPages, startPage + 4)
+                      const page = startPage + i
+                      return page <= endPage ? page : null
+                    }).filter(Boolean) as page}
+                      <button 
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg {currentIllnessesPage === page ? 'text-white bg-teal-600 border-teal-600' : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700'}"
+                        on:click={() => goToIllnessesPage(page)}
+                      >
+                        {page}
+                      </button>
+                    {/each}
+                  </div>
+                  
+                  <!-- Next Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToNextIllnessesPage}
+                    disabled={currentIllnessesPage === totalIllnessesPages}
+                  >
+                    Next
+                    <i class="fas fa-chevron-right ml-1"></i>
+                  </button>
+                </div>
+              </div>
+            {/if}
           {:else}
             <div class="text-center p-4">
               <i class="fas fa-heartbeat fa-2x text-gray-400 mb-3"></i>
@@ -3232,7 +3464,7 @@
           <!-- Reports List -->
           {#if reports.length > 0}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {#each reports as report (report.id)}
+              {#each paginatedReports as report (report.id)}
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                   <div class="flex justify-between items-center px-4 py-3 border-b border-gray-200">
                     <h6 class="text-sm font-semibold text-gray-900 mb-0">
@@ -3289,6 +3521,54 @@
                 </div>
               {/each}
             </div>
+            
+            <!-- Pagination Controls for Reports -->
+            {#if totalReportsPages > 1}
+              <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+                <div class="flex items-center text-sm text-gray-700">
+                  <span>Showing {reportsStartIndex + 1} to {Math.min(reportsEndIndex, reports.length)} of {reports.length} reports</span>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                  <!-- Previous Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToPreviousReportsPage}
+                    disabled={currentReportsPage === 1}
+                  >
+                    <i class="fas fa-chevron-left mr-1"></i>
+                    Previous
+                  </button>
+                  
+                  <!-- Page Numbers -->
+                  <div class="flex items-center space-x-1">
+                    {#each Array.from({length: Math.min(5, totalReportsPages)}, (_, i) => {
+                      const startPage = Math.max(1, currentReportsPage - 2)
+                      const endPage = Math.min(totalReportsPages, startPage + 4)
+                      const page = startPage + i
+                      return page <= endPage ? page : null
+                    }).filter(Boolean) as page}
+                      <button 
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg {currentReportsPage === page ? 'text-white bg-teal-600 border-teal-600' : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700'}"
+                        on:click={() => goToReportsPage(page)}
+                      >
+                        {page}
+                      </button>
+                    {/each}
+                  </div>
+                  
+                  <!-- Next Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToNextReportsPage}
+                    disabled={currentReportsPage === totalReportsPages}
+                  >
+                    Next
+                    <i class="fas fa-chevron-right ml-1"></i>
+                  </button>
+                </div>
+              </div>
+            {/if}
           {:else}
             <div class="text-center py-8">
               <i class="fas fa-file-medical text-4xl text-gray-400 mb-3"></i>
@@ -3427,7 +3707,7 @@
           <!-- Diagnoses List -->
           {#if diagnoses.length > 0}
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
-              {#each diagnoses as diagnosis (diagnosis.id)}
+              {#each paginatedDiagnoses as diagnosis (diagnosis.id)}
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                   <div class="flex justify-between items-center px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
                     <h6 class="text-xs sm:text-sm font-semibold text-gray-900 mb-0 truncate">
@@ -3465,6 +3745,54 @@
                 </div>
               {/each}
             </div>
+            
+            <!-- Pagination Controls for Diagnoses -->
+            {#if totalDiagnosesPages > 1}
+              <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+                <div class="flex items-center text-sm text-gray-700">
+                  <span>Showing {diagnosesStartIndex + 1} to {Math.min(diagnosesEndIndex, diagnoses.length)} of {diagnoses.length} diagnoses</span>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                  <!-- Previous Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToPreviousDiagnosesPage}
+                    disabled={currentDiagnosesPage === 1}
+                  >
+                    <i class="fas fa-chevron-left mr-1"></i>
+                    Previous
+                  </button>
+                  
+                  <!-- Page Numbers -->
+                  <div class="flex items-center space-x-1">
+                    {#each Array.from({length: Math.min(5, totalDiagnosesPages)}, (_, i) => {
+                      const startPage = Math.max(1, currentDiagnosesPage - 2)
+                      const endPage = Math.min(totalDiagnosesPages, startPage + 4)
+                      const page = startPage + i
+                      return page <= endPage ? page : null
+                    }).filter(Boolean) as page}
+                      <button 
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg {currentDiagnosesPage === page ? 'text-white bg-teal-600 border-teal-600' : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700'}"
+                        on:click={() => goToDiagnosesPage(page)}
+                      >
+                        {page}
+                      </button>
+                    {/each}
+                  </div>
+                  
+                  <!-- Next Button -->
+                  <button 
+                    class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    on:click={goToNextDiagnosesPage}
+                    disabled={currentDiagnosesPage === totalDiagnosesPages}
+                  >
+                    Next
+                    <i class="fas fa-chevron-right ml-1"></i>
+                  </button>
+                </div>
+              </div>
+            {/if}
           {:else if !isShowingAIDiagnostics}
             <div class="text-center py-6 sm:py-8">
               <i class="fas fa-stethoscope text-3xl sm:text-4xl text-gray-400 mb-2 sm:mb-3"></i>

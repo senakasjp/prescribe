@@ -15,6 +15,40 @@
   // Sort symptoms by date (newest first)
   $: sortedSymptoms = sortByDate(symptoms, 'createdAt')
   
+  // Pagination for symptoms
+  let currentSymptomsPage = 1
+  let symptomsPerPage = 25
+  
+  // Pagination calculations for symptoms
+  $: totalSymptomsPages = Math.ceil(sortedSymptoms.length / symptomsPerPage)
+  $: symptomsStartIndex = (currentSymptomsPage - 1) * symptomsPerPage
+  $: symptomsEndIndex = symptomsStartIndex + symptomsPerPage
+  $: paginatedSymptoms = sortedSymptoms.slice(symptomsStartIndex, symptomsEndIndex)
+  
+  // Reset to first page when symptoms change
+  $: if (sortedSymptoms.length > 0) {
+    currentSymptomsPage = 1
+  }
+  
+  // Pagination functions for symptoms
+  const goToSymptomsPage = (page) => {
+    if (page >= 1 && page <= totalSymptomsPages) {
+      currentSymptomsPage = page
+    }
+  }
+  
+  const goToPreviousSymptomsPage = () => {
+    if (currentSymptomsPage > 1) {
+      currentSymptomsPage--
+    }
+  }
+  
+  const goToNextSymptomsPage = () => {
+    if (currentSymptomsPage < totalSymptomsPages) {
+      currentSymptomsPage++
+    }
+  }
+  
   // Handle add symptom
   function addSymptom() {
     showSymptomsForm = true
@@ -93,7 +127,7 @@
       </div>
     {:else}
       <div class="space-y-4">
-        {#each sortedSymptoms as symptom (symptom.id)}
+        {#each paginatedSymptoms as symptom (symptom.id)}
           <div class="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow duration-200">
             <div class="flex justify-between items-start">
               <div class="flex-1">
@@ -165,6 +199,54 @@
           </div>
         {/each}
       </div>
+      
+      <!-- Pagination Controls for Symptoms -->
+      {#if totalSymptomsPages > 1}
+        <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+          <div class="flex items-center text-sm text-gray-700">
+            <span>Showing {symptomsStartIndex + 1} to {Math.min(symptomsEndIndex, sortedSymptoms.length)} of {sortedSymptoms.length} symptoms</span>
+          </div>
+          
+          <div class="flex items-center space-x-2">
+            <!-- Previous Button -->
+            <button 
+              class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              on:click={goToPreviousSymptomsPage}
+              disabled={currentSymptomsPage === 1}
+            >
+              <i class="fas fa-chevron-left mr-1"></i>
+              Previous
+            </button>
+            
+            <!-- Page Numbers -->
+            <div class="flex items-center space-x-1">
+              {#each Array.from({length: Math.min(5, totalSymptomsPages)}, (_, i) => {
+                const startPage = Math.max(1, currentSymptomsPage - 2)
+                const endPage = Math.min(totalSymptomsPages, startPage + 4)
+                const page = startPage + i
+                return page <= endPage ? page : null
+              }).filter(Boolean) as page}
+                <button 
+                  class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg {currentSymptomsPage === page ? 'text-white bg-teal-600 border-teal-600' : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700'}"
+                  on:click={() => goToSymptomsPage(page)}
+                >
+                  {page}
+                </button>
+              {/each}
+            </div>
+            
+            <!-- Next Button -->
+            <button 
+              class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              on:click={goToNextSymptomsPage}
+              disabled={currentSymptomsPage === totalSymptomsPages}
+            >
+              Next
+              <i class="fas fa-chevron-right ml-1"></i>
+            </button>
+          </div>
+        </div>
+      {/if}
     {/if}
   </div>
 </div>

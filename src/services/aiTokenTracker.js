@@ -63,6 +63,9 @@ class AITokenTracker {
     const validDoctorId = doctorId || 'unknown-doctor'
     
     console.log(`📊 Tracking AI usage for doctor: ${validDoctorId}`)
+    console.log(`📊 Original doctorId parameter: ${doctorId}`)
+    console.log(`📊 Request type: ${requestType}`)
+    console.log(`📊 Tokens: ${promptTokens} + ${completionTokens} = ${totalTokens}`)
 
     // Add to requests history
     const request = {
@@ -254,9 +257,16 @@ class AITokenTracker {
 
   // Get doctor-specific usage statistics
   getDoctorUsageStats(doctorId) {
-    if (!doctorId) return null
+    if (!doctorId) {
+      console.log('❌ getDoctorUsageStats: No doctorId provided')
+      return null
+    }
+    
+    console.log(`📊 getDoctorUsageStats: Looking for doctorId: ${doctorId}`)
+    console.log(`📊 Total requests in storage: ${this.usageData.requests.length}`)
     
     const doctorRequests = this.usageData.requests.filter(req => req.doctorId === doctorId)
+    console.log(`📊 Found ${doctorRequests.length} requests for doctor ${doctorId}`)
     
     const today = new Date().toISOString().split('T')[0]
     
@@ -270,7 +280,7 @@ class AITokenTracker {
     const todayCost = todayRequests.reduce((sum, req) => sum + req.cost, 0)
     const todayRequestCount = todayRequests.length
     
-    return {
+    const stats = {
       total: {
         tokens: totalTokens,
         cost: totalCost,
@@ -282,6 +292,9 @@ class AITokenTracker {
         requests: todayRequestCount
       }
     }
+    
+    console.log(`📊 getDoctorUsageStats result for ${doctorId}:`, stats)
+    return stats
   }
 
   // Get all doctors with their usage stats
