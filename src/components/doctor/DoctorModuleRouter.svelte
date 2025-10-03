@@ -24,23 +24,29 @@
   let prescriptions = []
   
   onMount(async () => {
+    console.log('🚀 DoctorModuleRouter: Component mounted!')
     try {
       loading = true
       
       // Get current doctor
+      console.log('🔍 DoctorModuleRouter: Getting current doctor...')
       doctor = doctorAuthService.getCurrentDoctor()
+      console.log('🔍 DoctorModuleRouter: Current doctor:', doctor)
+      
       if (!doctor) {
-        console.error('DoctorModuleRouter: No authenticated doctor found')
+        console.error('❌ DoctorModuleRouter: No authenticated doctor found')
         return
       }
       
-      console.log('DoctorModuleRouter: Loaded doctor:', doctor)
+      console.log('✅ DoctorModuleRouter: Loaded doctor:', doctor)
       
       // Load doctor-specific data
+      console.log('🔍 DoctorModuleRouter: About to call loadDoctorData...')
       await loadDoctorData()
       
     } catch (error) {
-      console.error('DoctorModuleRouter: Error initializing:', error)
+      console.error('❌ DoctorModuleRouter: Error initializing:', error)
+      console.error('❌ DoctorModuleRouter: Error stack:', error.stack)
     } finally {
       loading = false
     }
@@ -48,21 +54,36 @@
   
   async function loadDoctorData() {
     try {
-      if (!doctor?.id) return
+      console.log('🚀 DoctorModuleRouter: loadDoctorData called!')
+      console.log('🚀 DoctorModuleRouter: doctor object:', doctor)
+      console.log('🚀 DoctorModuleRouter: doctor.id:', doctor?.id)
+      
+      if (!doctor?.id) {
+        console.log('❌ DoctorModuleRouter: No doctor ID found!')
+        return
+      }
       
       // Load patients for this doctor only
+      console.log('🔍 DoctorModuleRouter: Loading patients for doctor ID:', doctor.id)
       patients = await doctorStorageService.getPatientsByDoctorId(doctor.id)
+      console.log('🔍 DoctorModuleRouter: Loaded patients:', patients.length)
+      console.log('🔍 DoctorModuleRouter: Patients data:', patients)
       
       // Load prescriptions for this doctor only
+      console.log('🔍 DoctorModuleRouter: Loading prescriptions for doctor ID:', doctor.id)
       prescriptions = await doctorStorageService.getPrescriptionsByDoctorId(doctor.id)
+      console.log('🔍 DoctorModuleRouter: Loaded prescriptions:', prescriptions.length)
+      console.log('🔍 DoctorModuleRouter: Prescriptions data:', prescriptions)
       
-      console.log('DoctorModuleRouter: Loaded doctor data:', {
+      console.log('✅ DoctorModuleRouter: Loaded doctor data:', {
+        doctorId: doctor.id,
         patientsCount: patients.length,
         prescriptionsCount: prescriptions.length
       })
       
     } catch (error) {
-      console.error('DoctorModuleRouter: Error loading doctor data:', error)
+      console.error('❌ DoctorModuleRouter: Error loading doctor data:', error)
+      console.error('❌ DoctorModuleRouter: Error stack:', error.stack)
     }
   }
   

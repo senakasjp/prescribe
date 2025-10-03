@@ -30,6 +30,7 @@
   
   // Handle menu navigation
   const handleMenuNavigation = (view) => {
+    console.log('🔍 App.svelte: handleMenuNavigation called with view:', view)
     currentView = view
   }
   
@@ -54,6 +55,7 @@
   
   
   onMount(async () => {
+    console.log('🚀 App.svelte: onMount called!')
     try {
       // Initialize Flowbite components
       if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initDropdowns === 'function') {
@@ -717,6 +719,7 @@
     </nav>
     
     <div class="p-4">
+      <script>alert('🔍 App.svelte: currentView = ' + currentView + ', user = ' + (user?.email || 'null'));</script>
       {#if currentView === 'settings'}
         <SettingsPage 
           {user}
@@ -754,14 +757,16 @@
           {/if}
         </div>
       {:else}
-        <PatientManagement 
-          {user} 
-          {currentView}
-          key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} 
-          on:ai-usage-updated={refreshDoctorUsageStats} 
-          on:profile-updated={handleProfileUpdate}
-          on:view-change={(e) => handleMenuNavigation(e.detail)}
-        />
+        <div on:mount={() => alert('🏠 App.svelte: Rendering PatientManagement! User: ' + user?.email + ', View: ' + currentView)}>
+          <PatientManagement 
+            {user} 
+            {currentView}
+            key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} 
+            on:ai-usage-updated={refreshDoctorUsageStats} 
+            on:profile-updated={handleProfileUpdate}
+            on:view-change={(e) => handleMenuNavigation(e.detail)}
+          />
+        </div>
       {/if}
     </div>
     {/if}

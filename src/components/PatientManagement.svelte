@@ -110,6 +110,55 @@
   let prescriptionDispensedStatus = {}
   let checkingDispensedStatus = false
   
+  // Reactive prescription selection for Last Prescription card
+  $: selectedPrescriptionForCard = (() => {
+    console.log('🔄 Reactive statement triggered!')
+    console.log('🔄 Prescriptions length:', prescriptions.length)
+    console.log('🔄 Dispensed status keys:', Object.keys(prescriptionDispensedStatus).length)
+    console.log('🔄 CheckingDispensedStatus:', checkingDispensedStatus)
+    
+    if (!prescriptions.length) {
+      console.log('🔍 No prescriptions available yet')
+      return null
+    }
+    
+    if (!Object.keys(prescriptionDispensedStatus).length) {
+      console.log('🔍 No dispensed status available yet')
+      return null
+    }
+    
+    console.log('🔍 Selecting prescription for Last Prescription card...')
+    console.log('🔍 Prescriptions available:', prescriptions.length)
+    console.log('🔍 Dispensed status loaded:', Object.keys(prescriptionDispensedStatus).length > 0)
+    console.log('🔍 CheckingDispensedStatus:', checkingDispensedStatus)
+    
+    // First, try to find the most recent dispensed prescription
+    const dispensedPrescriptions = prescriptions.filter(p => 
+      p.medications && p.medications.length > 0 && 
+      prescriptionDispensedStatus[p.id]?.isDispensed
+    )
+    
+    console.log('🔍 Available prescriptions:', prescriptions.map(p => ({ 
+      id: p.id, 
+      hasMeds: p.medications?.length > 0, 
+      isDispensed: prescriptionDispensedStatus[p.id]?.isDispensed,
+      dispensedStatus: prescriptionDispensedStatus[p.id]
+    })))
+    console.log('🔍 Dispensed prescriptions found:', dispensedPrescriptions.length)
+    
+    if (dispensedPrescriptions.length > 0) {
+      // Sort by creation date and return the most recent dispensed prescription
+      const selected = dispensedPrescriptions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+      console.log('✅ Selected dispensed prescription:', selected.id)
+      return selected
+    }
+    
+    // Fall back to the most recent prescription with medications
+    const fallback = prescriptions.find(p => p.medications && p.medications.length > 0)
+    console.log('✅ Fallback to prescription with medications:', fallback?.id)
+    return fallback
+  })()
+  
   // Notes visibility state
   let showSymptomsNotes = false
   let showIllnessesNotes = false
@@ -197,6 +246,9 @@
   
   // Load patients from storage
   const loadPatients = async () => {
+    alert('🚀 loadPatients: Function called! User: ' + (user?.email || 'null'))
+    console.log('🚀 loadPatients: Function called!')
+    console.log('🚀 loadPatients: User object:', user)
     try {
       loading = true
       
@@ -239,6 +291,12 @@
   
   // Load all statistics
   const loadStatistics = async () => {
+    alert('🚀 loadStatistics: Function called! patients: ' + patients.length + ', doctorId: ' + doctorId)
+    console.log('🚀 loadStatistics: Function called!')
+    console.log('🚀 loadStatistics: statisticsLoading:', statisticsLoading)
+    console.log('🚀 loadStatistics: patients.length:', patients.length)
+    console.log('🚀 loadStatistics: doctorId:', doctorId)
+    
     // Prevent multiple simultaneous calls
     if (statisticsLoading) {
       console.log('🔍 loadStatistics: Already loading, skipping...')
@@ -248,12 +306,23 @@
     statisticsLoading = true
     try {
       console.log('🔍 loadStatistics: Starting statistics calculation...')
+      console.log('🔍 loadStatistics: About to call getTotalPrescriptions...')
       totalPrescriptions = await getTotalPrescriptions()
+      console.log('🔍 loadStatistics: getTotalPrescriptions returned:', totalPrescriptions)
+      
+      console.log('🔍 loadStatistics: About to call getTotalDrugs...')
       totalDrugs = await getTotalDrugs()
+      console.log('🔍 loadStatistics: getTotalDrugs returned:', totalDrugs)
+      
+      console.log('🔍 loadStatistics: About to call getConnectedPharmacies...')
       connectedPharmacies = await getConnectedPharmacies()
+      console.log('🔍 loadStatistics: getConnectedPharmacies returned:', connectedPharmacies)
+      
       console.log('🔍 loadStatistics: Statistics loaded successfully')
+      console.log('🔍 loadStatistics: Final values - totalPrescriptions:', totalPrescriptions, 'totalDrugs:', totalDrugs, 'connectedPharmacies:', connectedPharmacies)
     } catch (error) {
-      console.error('Error loading statistics:', error)
+      console.error('❌ Error loading statistics:', error)
+      console.error('❌ Error stack:', error.stack)
       totalPrescriptions = 0
       totalDrugs = 0
       connectedPharmacies = 0
@@ -389,40 +458,51 @@
   // Statistics functions for dashboard
   const getTotalPrescriptions = async () => {
     let total = 0
+    alert('🔍 getTotalPrescriptions: Starting! Patients: ' + patients.length + ', Doctor ID: ' + doctorId)
     console.log('🔍 getTotalPrescriptions: Patients count:', patients.length)
+    console.log('🔍 getTotalPrescriptions: Doctor ID:', doctorId)
     
-    // Check if we have any patients at all
-    if (patients.length === 0) {
-      console.log('🔍 getTotalPrescriptions: No patients found, checking all prescriptions in storage')
-      // If no patients, check all prescriptions in storage
-      const allPrescriptions = await firebaseStorage.getAllPrescriptions()
-      console.log('🔍 getTotalPrescriptions: All prescriptions in storage:', allPrescriptions)
-      total = allPrescriptions.length
-    } else {
-      for (const patient of patients) {
-        const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
-        console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
-        console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
-        total += patientPrescriptions.length
+    // Only count prescriptions for the current doctor's patients
+    for (const patient of patients) {
+      const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
+      console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
+      console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
+      
+      // Filter prescriptions to only include those created by the current doctor
+      const doctorPrescriptions = patientPrescriptions.filter(prescription => 
+        prescription.doctorId === doctorId || prescription.createdBy === doctorId
+      )
+      console.log(`🔍 getTotalPrescriptions: Doctor-specific prescriptions for ${patient.firstName}:`, doctorPrescriptions.length)
+      
+      if (patientPrescriptions.length > 0) {
+        alert(`🔍 Patient ${patient.firstName}: ${patientPrescriptions.length} total prescriptions, ${doctorPrescriptions.length} doctor-specific prescriptions`)
       }
+      
+      total += doctorPrescriptions.length
     }
     
-    console.log('🔍 getTotalPrescriptions: Total prescriptions:', total)
+    console.log('🔍 getTotalPrescriptions: Total prescriptions for current doctor:', total)
+    alert('🔍 getTotalPrescriptions: Returning total: ' + total)
     return total
   }
   
   const getTotalDrugs = async () => {
     let total = 0
     console.log('🔍 getTotalDrugs: Patients count:', patients.length)
+    console.log('🔍 getTotalDrugs: Doctor ID:', doctorId)
     
-    // Check if we have any patients at all
-    if (patients.length === 0) {
-      console.log('🔍 getTotalDrugs: No patients found, checking all prescriptions in storage')
-      // If no patients, check all prescriptions in storage
-      const allPrescriptions = await firebaseStorage.getAllPrescriptions()
-      console.log('🔍 getTotalDrugs: All prescriptions in storage:', allPrescriptions)
+    // Only count medications from prescriptions created by the current doctor
+    for (const patient of patients) {
+      const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
+      console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
       
-      allPrescriptions.forEach(prescription => {
+      // Filter prescriptions to only include those created by the current doctor
+      const doctorPrescriptions = patientPrescriptions.filter(prescription => 
+        prescription.doctorId === doctorId || prescription.createdBy === doctorId
+      )
+      console.log(`🔍 getTotalDrugs: Doctor-specific prescriptions for ${patient.firstName}:`, doctorPrescriptions.length)
+      
+      doctorPrescriptions.forEach(prescription => {
         console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
         if (prescription.medications && Array.isArray(prescription.medications)) {
           console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
@@ -432,24 +512,9 @@
           total += 1 // Single medication prescription
         }
       })
-    } else {
-      for (const patient of patients) {
-        const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
-        console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
-        patientPrescriptions.forEach(prescription => {
-          console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
-          if (prescription.medications && Array.isArray(prescription.medications)) {
-            console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
-            total += prescription.medications.length
-          } else {
-            console.log(`🔍 getTotalDrugs: Prescription has no medications array, counting as 1`)
-            total += 1 // Single medication prescription
-          }
-        })
-      }
     }
     
-    console.log('🔍 getTotalDrugs: Total drugs:', total)
+    console.log('🔍 getTotalDrugs: Total medications for current doctor:', total)
     return total
   }
   
@@ -798,6 +863,16 @@
       prescriptionDispensedStatus = status
       
       console.log('✅ Dispensed status loaded:', prescriptionDispensedStatus)
+      console.log('🔍 Available prescription IDs:', Object.keys(prescriptionDispensedStatus))
+      
+      // Debug each prescription status
+      Object.entries(prescriptionDispensedStatus).forEach(([prescriptionId, status]) => {
+        console.log(`🔍 Prescription ${prescriptionId}:`, {
+          isDispensed: status.isDispensed,
+          dispensedMedications: status.dispensedMedications,
+          dispensedMedicationsLength: status.dispensedMedications?.length || 0
+        })
+      })
       
     } catch (error) {
       console.error('❌ Error checking dispensed status:', error)
@@ -895,6 +970,39 @@
       dispensedBy: null,
       dispensedMedications: []
     }
+  }
+
+  // Check if a specific medication is dispensed
+  const isMedicationDispensed = (prescriptionId, medicationId) => {
+    const dispensedInfo = getPrescriptionDispensedInfo(prescriptionId)
+    console.log('🔍 Checking if medication is dispensed:', {
+      prescriptionId,
+      medicationId,
+      dispensedInfo,
+      dispensedMedications: dispensedInfo.dispensedMedications
+    })
+    
+    if (!dispensedInfo.dispensedMedications || !Array.isArray(dispensedInfo.dispensedMedications)) {
+      console.log('❌ No dispensed medications array found')
+      return false
+    }
+    
+    // Check if the medication ID is in the dispensed medications array
+    const isDispensed = dispensedInfo.dispensedMedications.some(dispensedMed => {
+      console.log('🔍 Comparing:', {
+        dispensedMed,
+        medicationId,
+        match: dispensedMed.medicationId === medicationId || 
+               dispensedMed.medicationId === medicationId.toString() ||
+               dispensedMed.name === medicationId
+      })
+      return dispensedMed.medicationId === medicationId || 
+             dispensedMed.medicationId === medicationId.toString() ||
+             dispensedMed.name === medicationId
+    })
+    
+    console.log('🔍 Medication dispensed result:', isDispensed)
+    return isDispensed
   }
   
   // Group items by date
@@ -1164,6 +1272,10 @@
   }
   
   onMount(() => {
+    alert('🚀 PatientManagement: Component mounted! User: ' + (user?.email || 'null'))
+    console.log('🚀 PatientManagement: Component mounted!')
+    console.log('🚀 PatientManagement: User in onMount:', user)
+    console.log('🚀 PatientManagement: About to call loadPatients...')
     loadPatients()
     loadTemplateSettings() // Load saved template settings
     // Create chart after a short delay to ensure DOM is ready
@@ -1201,7 +1313,8 @@
 
 {#if currentView === 'home'}
 <!-- Home Dashboard - Quick Stats and Chart -->
-<div class="space-y-3 sm:space-y-4">
+<script>alert('🏠 PatientManagement: Home view rendered! totalPrescriptions = ' + totalPrescriptions + ', patients = ' + patients.length + ', doctorId = ' + doctorId);</script>
+<div class="space-y-3 sm:space-y-4" on:mount={() => console.log('🏠 PatientManagement: Home view rendered!', {totalPrescriptions, patients: patients.length, doctorId})}>
   <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
     <div class="text-center">
       <i class="fas fa-user-md text-3xl sm:text-4xl md:text-5xl text-teal-600 mb-2 sm:mb-3"></i>
@@ -1228,6 +1341,8 @@
         <div>
           <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Prescriptions</p>
           <p class="text-2xl sm:text-3xl font-bold text-rose-600">{totalPrescriptions}</p>
+          <!-- DEBUG: totalPrescriptions = {totalPrescriptions}, patients.length = {patients.length}, doctorId = {doctorId} -->
+          <script>alert('DEBUG: totalPrescriptions = ' + {totalPrescriptions} + ', patients = ' + {patients.length} + ', doctorId = ' + {doctorId});</script>
         </div>
         <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-rose-100 flex items-center justify-center">
           <i class="fas fa-prescription-bottle-alt text-rose-600 text-lg sm:text-xl"></i>
@@ -1273,6 +1388,7 @@
           <div>
             <p class="text-xs font-medium text-gray-600">Total Prescriptions</p>
             <p class="text-xl font-bold text-rose-600">{totalPrescriptions}</p>
+            <!-- DEBUG: totalPrescriptions = {totalPrescriptions}, patients.length = {patients.length}, doctorId = {doctorId} -->
           </div>
         </div>
         <i class="fas fa-chevron-right text-gray-400"></i>
@@ -1551,25 +1667,31 @@
           </div>
           
           {#if prescriptions.length > 0}
-            {@const prescriptionWithMeds = prescriptions.find(p => p.medications && p.medications.length > 0)}
-            {#if prescriptionWithMeds}
+            {#if selectedPrescriptionForCard}
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
-                <span><i class="fas fa-calendar mr-1"></i>{new Date(prescriptionWithMeds.createdAt).toLocaleDateString()}</span>
+                <span><i class="fas fa-calendar mr-1"></i>{new Date(selectedPrescriptionForCard.createdAt).toLocaleDateString()}</span>
                 <div class="flex items-center gap-2">
-                  {#if isPrescriptionDispensed(prescriptionWithMeds.id)}
+                  {#if isPrescriptionDispensed(selectedPrescriptionForCard.id)}
                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                       <i class="fas fa-check-circle mr-1"></i>Dispensed
                     </span>
                   {/if}
-                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{prescriptionWithMeds.medications.length} drug{prescriptionWithMeds.medications.length !== 1 ? 's' : ''}</span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{selectedPrescriptionForCard.medications.length} drug{selectedPrescriptionForCard.medications.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
-              {#each (showAllLastPrescriptionMeds ? prescriptionWithMeds.medications : prescriptionWithMeds.medications.slice(0, 3)) as medication}
+              {#each (showAllLastPrescriptionMeds ? selectedPrescriptionForCard.medications : selectedPrescriptionForCard.medications.slice(0, 3)) as medication}
                 <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
                   <div class="flex items-start justify-between gap-2">
                     <div class="flex-1">
-                      <p class="text-base font-semibold text-blue-600 mb-1">{medication.name}</p>
+                      <div class="flex items-center gap-2 mb-1">
+                        <p class="text-base font-semibold text-blue-600">{medication.name}</p>
+                        {#if isMedicationDispensed(selectedPrescriptionForCard.id, medication.id || medication.name)}
+                          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <i class="fas fa-check-circle mr-1"></i>Dispensed
+                          </span>
+                        {/if}
+                      </div>
                       <div class="flex items-center flex-wrap gap-2">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                           <i class="fas fa-pills mr-1"></i>{medication.dosage || medication.dose || 'N/A'}
@@ -1597,19 +1719,19 @@
                   </div>
                 </div>
               {/each}
-              {#if prescriptionWithMeds.medications.length > 3}
-                <button
-                  type="button"
-                  class="w-full text-gray-500 hover:text-teal-600 text-xs block text-center mt-2 py-1 transition-colors duration-200"
-                  on:click={() => showAllLastPrescriptionMeds = !showAllLastPrescriptionMeds}
-                >
-                  {#if showAllLastPrescriptionMeds}
-                    <i class="fas fa-chevron-up mr-1"></i>Show less
-                  {:else}
-                    <i class="fas fa-chevron-down mr-1"></i>+{prescriptionWithMeds.medications.length - 3} more medication{prescriptionWithMeds.medications.length - 3 !== 1 ? 's' : ''}
-                  {/if}
-                </button>
-              {/if}
+                {#if selectedPrescriptionForCard.medications.length > 3}
+                  <button
+                    type="button"
+                    class="w-full text-gray-500 hover:text-teal-600 text-xs block text-center mt-2 py-1 transition-colors duration-200"
+                    on:click={() => showAllLastPrescriptionMeds = !showAllLastPrescriptionMeds}
+                  >
+                    {#if showAllLastPrescriptionMeds}
+                      <i class="fas fa-chevron-up mr-1"></i>Show less
+                    {:else}
+                      <i class="fas fa-chevron-down mr-1"></i>+{selectedPrescriptionForCard.medications.length - 3} more medication{selectedPrescriptionForCard.medications.length - 3 !== 1 ? 's' : ''}
+                    {/if}
+                  </button>
+                {/if}
             </div>
             {:else}
               <small class="text-gray-500 text-xs block text-center py-2">No medications in any prescription</small>
