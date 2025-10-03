@@ -456,17 +456,17 @@
         </div>
         <div class="p-6">
           <div class="mb-4">
-            <label for="modalPharmacistNumber" class="block text-sm font-medium text-gray-700 mb-1">
+            <label for="modalPharmacistNumber" class="block text-sm font-medium text-gray-900 dark:text-white mb-1">
               Pharmacist Number <span class="text-red-500">*</span>
             </label>
             <div class="flex">
-              <span class="inline-flex items-center px-3 text-sm text-gray-500 bg-gray-50 border border-r-0 border-gray-300 rounded-l-lg">
+              <span class="inline-flex items-center px-3 text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-600 border border-r-0 border-gray-300 dark:border-gray-500 rounded-l-lg">
                 <i class="fas fa-hashtag"></i>
               </span>
               <input
                 type="text"
                 id="modalPharmacistNumber"
-                class="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-500 rounded-r-lg text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 bind:value={pharmacistNumber}
                 placeholder="Enter 6-digit pharmacist number"
                 maxlength="6"
@@ -474,7 +474,7 @@
                 autofocus
               />
             </div>
-            <div class="text-sm text-gray-500 mt-1">
+            <div class="text-sm text-gray-600 dark:text-gray-300 mt-1">
               <i class="fas fa-info-circle mr-1"></i>
               Ask the pharmacist for their unique 6-digit number to connect.
             </div>
@@ -484,17 +484,17 @@
           <div class="mb-4">
             <div class="flex items-center">
               <input 
-                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 mr-3" 
+                class="w-4 h-4 text-blue-600 bg-gray-100 dark:bg-gray-600 border-gray-300 dark:border-gray-500 rounded focus:ring-blue-500 focus:ring-2 mr-3" 
                 type="checkbox" 
                 id="isOwnPharmacy"
                 bind:checked={isOwnPharmacy}
               />
-              <label class="text-sm font-medium text-gray-700" for="isOwnPharmacy">
+              <label class="text-sm font-medium text-gray-900 dark:text-white" for="isOwnPharmacy">
                 <i class="fas fa-home mr-2 text-blue-600"></i>
                 This is my own pharmacy
               </label>
             </div>
-            <div class="text-sm text-gray-500 mt-1">
+            <div class="text-sm text-gray-600 dark:text-gray-300 mt-1">
               <i class="fas fa-info-circle mr-1"></i>
               Check this if you are connecting to your own pharmacy/pharmacy business.
             </div>
@@ -503,7 +503,7 @@
         <div class="flex items-center p-6 space-x-2 border-t border-gray-200 rounded-b dark:border-gray-600">
           <button 
             type="button" 
-            class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 transition-colors duration-200"
+            class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-600 dark:text-white dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-500 transition-colors duration-200"
             on:click={closeConnectModal}
           >
             <i class="fas fa-times mr-1"></i>

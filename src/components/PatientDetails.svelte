@@ -1286,7 +1286,7 @@
             doctorName: `${doctor.firstName} ${doctor.lastName}`,
             patientId: selectedPatient.id,
             patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-            prescriptions: prescriptionsToSend,
+            prescriptions: prescriptions,
             sentAt: new Date().toISOString(),
             status: 'pending'
           }
@@ -1302,11 +1302,21 @@
       // Close modal
       showPharmacyModal = false
       
+      // Clear selections
+      selectedPharmacies = []
+      
       // Show success message
+      if (sentCount > 0) {
+        notifySuccess(`Prescription sent to ${sentCount} pharmac${sentCount === 1 ? 'y' : 'ies'} successfully!`)
+      } else {
+        notifyError('No prescriptions were sent. Please check your selections.')
+      }
+      
       console.log('🎉 Prescriptions sent to pharmacies successfully')
       
     } catch (error) {
       console.error('❌ Error sending prescriptions to pharmacies:', error)
+      notifyError('Failed to send prescription to pharmacies. Please try again.')
     }
   }
 
@@ -3038,7 +3048,7 @@
                           <strong>Notes:</strong> {illness.notes}
                         </p>
                       {/if}
-                      <small class="text-muted">
+                      <small class="text-gray-600 dark:text-gray-300">
                         <i class="fas fa-calendar me-1"></i>
                         Recorded: {illness.createdAt ? new Date(illness.createdAt).toLocaleDateString() : 'Unknown date'}
                       </small>
@@ -3055,8 +3065,8 @@
             </div>
           {:else}
             <div class="text-center p-4">
-              <i class="fas fa-heartbeat fa-2x text-muted mb-3"></i>
-              <p class="text-muted">No illnesses recorded for this patient.</p>
+              <i class="fas fa-heartbeat fa-2x text-gray-400 mb-3"></i>
+              <p class="text-gray-600 dark:text-gray-300">No illnesses recorded for this patient.</p>
         </div>
       {/if}
       
@@ -3696,17 +3706,17 @@
           </button>
         </div>
         <div class="p-6">
-          <p class="text-muted mb-3">
+          <p class="text-gray-600 dark:text-gray-300 mb-3">
             Select which pharmacies should receive this prescription:
           </p>
           
           <!-- Select All / Deselect All Buttons -->
           <div class="flex gap-2 mb-3">
-            <button class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-teal-400 dark:border-teal-500 dark:hover:bg-gray-700 dark:hover:bg-teal-600/10 transition-all duration-200" on:click={selectAllPharmacies}>
+            <button class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 transition-all duration-200" on:click={selectAllPharmacies}>
               <i class="fas fa-check-square me-1"></i>
               Select All
             </button>
-            <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white transition-all duration-200" on:click={deselectAllPharmacies}>
+            <button class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={deselectAllPharmacies}>
               <i class="fas fa-square me-1"></i>
               Deselect All
             </button>
@@ -3723,17 +3733,17 @@
                   on:change={() => togglePharmacySelection(pharmacy.id)}
                 >
                 <div class="flex-1">
-                  <div class="fw-bold">
-                    <i class="fas fa-store mr-2"></i>
+                  <div class="font-semibold text-gray-900 dark:text-white">
+                    <i class="fas fa-store mr-2 text-gray-700 dark:text-gray-300"></i>
                     {pharmacy.name}
                   </div>
-                  <small class="text-muted">
-                    <i class="fas fa-envelope me-1"></i>
+                  <small class="text-gray-600 dark:text-gray-300">
+                    <i class="fas fa-envelope me-1 text-gray-600 dark:text-gray-300"></i>
                     {pharmacy.email}
                   </small>
                   <br>
-                  <small class="text-muted">
-                    <i class="fas fa-map-marker-alt me-1"></i>
+                  <small class="text-gray-600 dark:text-gray-300">
+                    <i class="fas fa-map-marker-alt me-1 text-gray-600 dark:text-gray-300"></i>
                     {pharmacy.address}
                   </small>
                 </div>
@@ -3742,7 +3752,7 @@
           </div>
           
           {#if availablePharmacies.length === 0}
-            <div class="text-center text-muted py-4">
+            <div class="text-center text-gray-600 dark:text-gray-300 py-4">
               <i class="fas fa-store fa-2x mb-2"></i>
               <p>No pharmacies available</p>
             </div>

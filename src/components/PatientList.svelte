@@ -64,8 +64,8 @@
         />
       {:else if filteredPatients.length === 0}
         <div class="text-center p-4">
-          <i class="fas fa-user-slash fa-2x text-muted mb-3"></i>
-          <p class="text-muted">
+          <i class="fas fa-user-slash fa-2x text-gray-400 mb-3"></i>
+          <p class="text-gray-600 dark:text-gray-300">
             {searchQuery ? 'No patients found matching your search.' : 'No patients added yet.'}
           </p>
           {#if !searchQuery}
@@ -93,20 +93,20 @@
                     </h6>
                   {/if}
                   {#if patient.dateOfBirth}
-                    <p class="mb-1 text-muted small">
+                    <p class="mb-1 text-gray-600 dark:text-gray-300 small">
                       <i class="fas fa-calendar mr-1"></i>
                       DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}
                     </p>
                   {/if}
                   {#if patient.phone}
-                    <p class="mb-0 text-muted small">
+                    <p class="mb-0 text-gray-600 dark:text-gray-300 small">
                       <i class="fas fa-phone mr-1"></i>
                       {patient.phone}
                     </p>
                   {/if}
                 </div>
                 <div class="text-end">
-                  <small class="text-muted">
+                  <small class="text-gray-600 dark:text-gray-300">
                     <i class="fas fa-id-card mr-1"></i>
                     ID: {patient.id.slice(-8)}
                   </small>

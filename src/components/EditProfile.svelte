@@ -175,7 +175,7 @@
             Settings
           </h6>
           <div class="flex gap-2">
-          <button type="button" class="px-3 py-1 text-sm border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white transition-all duration-200" on:click={initializeForm} title="Reload current values">
+          <button type="button" class="px-3 py-1 text-sm border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={initializeForm} title="Reload current values">
             <i class="fas fa-sync-alt fa-sm"></i>
           </button>
           <button type="button" class="text-white hover:text-gray-200 focus:outline-none focus:ring-4 focus:ring-white focus:ring-offset-2 rounded-lg p-1 transition-all duration-200" on:click={handleCancel}>
@@ -321,7 +321,7 @@
                 <i class="fas fa-file-medical mr-2"></i>
                 Prescription Template Settings
               </h6>
-              <p class="text-muted small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
+              <p class="text-gray-600 dark:text-gray-300 small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
             </div>
             
             <!-- Template Type Selection -->

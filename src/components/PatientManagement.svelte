@@ -1407,7 +1407,7 @@
                                  Welcome, Dr. {doctorName}!
                                </h4>
                              </div>
-                             <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                             <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                <i class="fas fa-cog text-sm text-red-600"></i>
                                <span class="text-sm font-medium">Settings</span>
                                </button>
@@ -1419,7 +1419,7 @@
                                <h4 class="text-lg font-bold text-gray-900 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
                                   Welcome, Dr. {doctorName}!
                                </h4>
-                               <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                               <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                  <i class="fas fa-cog text-xs text-red-600"></i>
                                  <span class="text-xs font-medium">Settings</span>
                                </button>
@@ -1732,7 +1732,7 @@
                       <i class="fas fa-file-medical mr-2"></i>
                       Prescription Template Settings
                     </h6>
-                    <p class="text-muted small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
+                    <p class="text-gray-600 dark:text-gray-300 small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
                   </div>
                   
                   <!-- Template Type Selection -->
@@ -1801,7 +1801,7 @@
                                     style="height: {headerSize}px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);"
                                   >
                                     <div class="flex items-center justify-center h-full">
-                                      <div class="text-center text-muted">
+                                      <div class="text-center text-gray-600 dark:text-gray-300">
                                         <i class="fas fa-print fa-2x mb-2"></i>
                                         <div class="small">Printed Letterhead Area</div>
                                         <div class="small fw-bold">{headerSize}px height</div>
@@ -1835,7 +1835,7 @@
                                           <span>• Medication Name</span>
                                           <span><strong>Dosage</strong></span>
                                         </div>
-                                        <div class="small text-muted">Instructions and notes here</div>
+                                        <div class="small text-gray-600 dark:text-gray-300">Instructions and notes here</div>
                                       </div>
                                     </div>
                                     <div class="signature-area border-top pt-2 mt-3">
@@ -1931,7 +1931,7 @@
                                       style="height: {headerSize}px; background-image: url('{uploadedHeader}'); background-size: contain; background-repeat: no-repeat; background-position: center;"
                                     >
                                       <div class="flex items-center justify-center h-full">
-                                        <div class="text-center text-muted" style="background: rgba(255,255,255,0.8); padding: 0.5rem; border-radius: 0.25rem;">
+                                        <div class="text-center text-gray-600 dark:text-gray-300" style="background: rgba(255,255,255,0.8); padding: 0.5rem; border-radius: 0.25rem;">
                                           <div class="small">Custom Header Image</div>
                                           <div class="small fw-bold">{headerSize}px height</div>
                                         </div>
@@ -1964,7 +1964,7 @@
                                             <span>• Medication Name</span>
                                             <span><strong>Dosage</strong></span>
                                           </div>
-                                          <div class="small text-muted">Instructions and notes here</div>
+                                          <div class="small text-gray-600 dark:text-gray-300">Instructions and notes here</div>
                                         </div>
                                       </div>
                                       <div class="signature-area border-top pt-2 mt-3">
