@@ -484,7 +484,7 @@
   }
 
   
-  // Create responsive prescriptions per day chart using ApexCharts
+  // Create responsive prescriptions per day chart using ApexCharts with caching
   const createPrescriptionsChart = async () => {
     try {
       chartLoading = true
@@ -495,38 +495,70 @@
         chartInstance = null
       }
       
-      // Calculate prescriptions per day for last 30 days
-      const last30Days = []
-      const prescriptionsPerDay = []
+      // Check cache first
+      const cacheKey = `prescriptions-chart-${user?.id}-${patients.length}`
+      const cachedData = localStorage.getItem(cacheKey)
+      const cacheTimestamp = localStorage.getItem(`${cacheKey}-timestamp`)
+      const now = Date.now()
+      const cacheExpiry = 5 * 60 * 1000 // 5 minutes cache
       
-      for (let i = 29; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        const year = date.getFullYear()
-        const month = date.getMonth() + 1
-        const day = date.getDate()
-        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      let last30Days = []
+      let prescriptionsPerDay = []
+      
+      // Use cached data if available and not expired
+      if (cachedData && cacheTimestamp && (now - parseInt(cacheTimestamp)) < cacheExpiry) {
+        console.log('Using cached chart data')
+        const parsedData = JSON.parse(cachedData)
+        last30Days = parsedData.last30Days
+        prescriptionsPerDay = parsedData.prescriptionsPerDay
+      } else {
+        console.log('Loading fresh chart data')
         
-        last30Days.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
-        
-        // Count prescriptions created on this day
-        let dayPrescriptions = 0
+        // Batch load all prescription data once
+        const allPrescriptions = []
         for (const patient of patients) {
-          const patientPrescriptions = await firebaseStorage.getMedicationsByPatientId(patient.id) || []
-          patientPrescriptions.forEach(prescription => {
+          try {
+            const patientPrescriptions = await firebaseStorage.getMedicationsByPatientId(patient.id) || []
+            allPrescriptions.push(...patientPrescriptions)
+          } catch (error) {
+            console.warn(`Failed to load prescriptions for patient ${patient.id}:`, error)
+          }
+        }
+        
+        // Generate date range
+        const dateRange = []
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date()
+          date.setDate(date.getDate() - i)
+          const year = date.getFullYear()
+          const month = date.getMonth() + 1
+          const day = date.getDate()
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          
+          dateRange.push({
+            dateStr,
+            displayDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          })
+        }
+        
+        // Count prescriptions per day using pre-loaded data
+        last30Days = dateRange.map(d => d.displayDate)
+        prescriptionsPerDay = dateRange.map(({ dateStr }) => {
+          return allPrescriptions.filter(prescription => {
             const createdDate = new Date(prescription.createdAt || prescription.dateCreated)
             const prescriptionYear = createdDate.getFullYear()
             const prescriptionMonth = createdDate.getMonth() + 1
             const prescriptionDay = createdDate.getDate()
             const prescriptionDateStr = `${prescriptionYear}-${String(prescriptionMonth).padStart(2, '0')}-${String(prescriptionDay).padStart(2, '0')}`
             
-            if (prescriptionDateStr === dateStr) {
-              dayPrescriptions++
-            }
-          })
-        }
+            return prescriptionDateStr === dateStr
+          }).length
+        })
         
-        prescriptionsPerDay.push(dayPrescriptions)
+        // Cache the results
+        const cacheData = { last30Days, prescriptionsPerDay }
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+        localStorage.setItem(`${cacheKey}-timestamp`, now.toString())
       }
       
       // Create ApexCharts chart with Flowbite styling
@@ -684,6 +716,27 @@
     } finally {
       chartLoading = false
     }
+  }
+
+  // Function to invalidate chart cache when new prescriptions are added
+  const invalidateChartCache = () => {
+    const cacheKey = `prescriptions-chart-${user?.id}-${patients.length}`
+    localStorage.removeItem(cacheKey)
+    localStorage.removeItem(`${cacheKey}-timestamp`)
+    console.log('Chart cache invalidated')
+  }
+
+  // Navigation functions for dashboard cards
+  const navigateToPatients = () => {
+    dispatch('view-change', 'patients')
+  }
+
+  const navigateToPrescriptions = () => {
+    dispatch('view-change', 'prescriptions')
+  }
+
+  const navigateToPharmacies = () => {
+    dispatch('view-change', 'pharmacies')
   }
   
   // Load medical data for selected patient
@@ -1060,6 +1113,23 @@
     setTimeout(() => {
       createPrescriptionsChart()
     }, 500)
+    
+    // Listen for prescription save events to invalidate cache
+    const handlePrescriptionSaved = (event) => {
+      console.log('Prescription saved event received, invalidating chart cache')
+      invalidateChartCache()
+      // Recreate chart with fresh data
+      setTimeout(() => {
+        createPrescriptionsChart()
+      }, 100)
+    }
+    
+    window.addEventListener('prescriptionSaved', handlePrescriptionSaved)
+    
+    // Cleanup function
+    return () => {
+      window.removeEventListener('prescriptionSaved', handlePrescriptionSaved)
+    }
   })
   
   // Cleanup chart instance when component is destroyed
@@ -1084,7 +1154,7 @@
   </div>
   
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPatients}>
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm font-medium text-gray-600 mb-1">Total Patients</p>
@@ -1095,7 +1165,7 @@
         </div>
       </div>
     </div>
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPrescriptions}>
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm font-medium text-gray-600 mb-1">Total Prescriptions</p>
@@ -1106,7 +1176,7 @@
         </div>
       </div>
     </div>
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPharmacies}>
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm font-medium text-gray-600 mb-1">Connected Pharmacies</p>
@@ -1443,7 +1513,7 @@
         <!-- Statistics Cards -->
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
         <!-- Patients Card - Ocean Blue Outline -->
-        <div class="bg-white border-2 border-blue-500 text-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-blue-50">
+        <div class="bg-white border-2 border-blue-500 text-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-blue-50 cursor-pointer" on:click={navigateToPatients}>
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
@@ -1461,7 +1531,7 @@
         </div>
         
         <!-- Prescriptions Card - Sunset Orange Outline -->
-        <div class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-orange-50">
+        <div class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-orange-50 cursor-pointer" on:click={navigateToPrescriptions}>
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
@@ -1479,7 +1549,7 @@
         </div>
         
         <!-- Drugs Card - Forest Green Outline -->
-        <div class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-green-50">
+        <div class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-green-50 cursor-pointer" on:click={navigateToPrescriptions}>
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
@@ -1497,7 +1567,7 @@
         </div>
         
         <!-- Pharmacies Card - Royal Purple Outline -->
-        <div class="bg-white border-2 border-purple-500 text-purple-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-purple-50">
+        <div class="bg-white border-2 border-purple-500 text-purple-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-purple-50 cursor-pointer" on:click={navigateToPharmacies}>
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">

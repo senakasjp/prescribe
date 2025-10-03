@@ -2,6 +2,29 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **💊 Individual Drug Dispatch System (January 16, 2025)**
+- **Granular Medication Control**: Pharmacists can now select individual medications to mark as dispensed using checkboxes
+- **Smart Button Interface**: "Mark as Dispensed" button dynamically shows count of selected medications (e.g., "Mark 2 as Dispensed")
+- **Responsive Design**: Individual selection works seamlessly on both desktop (table checkboxes) and mobile (card checkboxes)
+- **Enhanced User Guidance**: Clear warning system prevents confusion when no medications are selected
+- **Professional Validation**: Button disabled until at least one medication is selected with helpful error messages
+- **Visual Feedback**: Teal-styled checkboxes consistent with Flowbite design system
+- **Confirmation Workflow**: Smart confirmation dialogs show exact count of medications being marked as dispensed
+
+### **⚠️ Enhanced Warning & Validation System (January 16, 2025)**
+- **User-Friendly Warnings**: Clear error messages with emoji indicators and step-by-step instructions
+- **Preventive UX**: System prevents user confusion by explaining exactly what needs to be done
+- **Professional Notifications**: Integrated with existing notification system using error styling (red background)
+- **Accessibility Focus**: Clear, actionable messages that guide users through proper workflow
+
+### **🎯 Previous Critical Fixes (January 16, 2025)**
+- **Send to Pharmacy Button Fix**: Resolved non-functional "Send to 1 Pharmacy" button due to undefined variable reference (`prescriptionsToSend` → `prescriptions`)
+- **Universal Font Contrast Resolution**: Fixed poor text readability in dark mode across all components by systematically replacing `text-muted` with `text-gray-600 dark:text-gray-300`
+- **Popup Modal Accessibility**: Enhanced contrast in all popup windows and modals for better accessibility and readability
+- **AI Token Data Persistence**: Fixed AI usage data not retaining for doctors due to null doctorId values with validation and migration
+- **AI Suggestions Enhancement**: Improved AI suggestions to work without requiring manual drug additions first, providing immediate recommendations
+- **Professional Notification System**: Implemented Flowbite-compatible notification system with proper animations and stacking
+
 ### **🔧 Module Decoupling Architecture (January 16, 2025)**
 - **Complete Module Isolation** - Doctor and Pharmacist modules are now completely decoupled
 - **Independent Services** - Separate authentication and storage services for each module
@@ -224,6 +247,30 @@
 - **Instructions** - How to take medication
 - **Duration** - Treatment length
 - **Start Date** - When medication started
+
+## 💊 Pharmacy Portal Features
+
+### Individual Drug Dispatch System
+- **Granular Selection** - Select individual medications for dispensing
+- **Smart Interface** - Dynamic button showing selected count
+- **Responsive Design** - Works on desktop and mobile devices
+- **Visual Feedback** - Clear checkboxes with consistent styling
+- **Validation System** - Prevents errors with helpful warnings
+- **Confirmation Workflow** - Clear confirmation dialogs
+
+### Advanced Inventory Management
+- **Sophisticated Tracking** - Batch management and expiry dates
+- **Analytics Dashboard** - Stock levels and usage trends
+- **Supplier Management** - Track suppliers and purchase orders
+- **Automated Alerts** - Low stock and expiry notifications
+- **Mobile Optimization** - Fully responsive design for mobile use
+
+### Prescription Management
+- **View Prescriptions** - Access all incoming prescriptions
+- **Patient Information** - Complete patient details and history
+- **Doctor Details** - Prescribing doctor information
+- **Medication Details** - Complete medication information with instructions
+- **Status Tracking** - Track prescription fulfillment status
 - **Notes** - Additional instructions
 - **Edit Functionality** - Modify existing prescriptions
 - **Delete Functionality** - Remove prescriptions

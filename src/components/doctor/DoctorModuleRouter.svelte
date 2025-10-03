@@ -2,7 +2,7 @@
 <!-- This component handles ONLY doctor module routing and should never interact with pharmacist components -->
 
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, createEventDispatcher } from 'svelte'
   import doctorAuthService from '../../services/doctor/doctorAuthService.js'
   import doctorStorageService from '../../services/doctor/doctorStorageService.js'
   import PatientManagement from '../PatientManagement.svelte'
@@ -11,6 +11,8 @@
   import NotificationContainer from '../NotificationContainer.svelte'
   import LoadingSpinner from '../LoadingSpinner.svelte'
   import PrivacyPolicyModal from '../PrivacyPolicyModal.svelte'
+  
+  const dispatch = createEventDispatcher()
   
   let currentView = 'home'
   let loading = false
@@ -73,6 +75,15 @@
     console.log('DoctorModuleRouter: Logging out doctor')
     doctorAuthService.signOutDoctor()
     // The parent App.svelte will handle the logout
+  }
+
+  // Navigation functions for dashboard cards
+  const navigateToPatients = () => {
+    dispatch('view-change', 'patients')
+  }
+
+  const navigateToPrescriptions = () => {
+    dispatch('view-change', 'prescriptions')
   }
   
   function handleProfileUpdate(updatedDoctor) {
@@ -168,15 +179,15 @@
           <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 class="text-lg font-semibold text-gray-900 mb-4">Welcome, Dr. {doctor.firstName}!</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="bg-teal-50 rounded-lg p-4">
+              <div class="bg-teal-50 rounded-lg p-4 cursor-pointer hover:bg-teal-100 transition-colors duration-200" on:click={navigateToPatients}>
                 <h3 class="text-sm font-medium text-teal-600 mb-2">Total Patients</h3>
                 <p class="text-2xl font-bold text-teal-700">{patients.length}</p>
               </div>
-              <div class="bg-blue-50 rounded-lg p-4">
+              <div class="bg-blue-50 rounded-lg p-4 cursor-pointer hover:bg-blue-100 transition-colors duration-200" on:click={navigateToPrescriptions}>
                 <h3 class="text-sm font-medium text-blue-600 mb-2">Total Prescriptions</h3>
                 <p class="text-2xl font-bold text-blue-700">{prescriptions.length}</p>
               </div>
-              <div class="bg-green-50 rounded-lg p-4">
+              <div class="bg-green-50 rounded-lg p-4 cursor-pointer hover:bg-green-100 transition-colors duration-200" on:click={navigateToPrescriptions}>
                 <h3 class="text-sm font-medium text-green-600 mb-2">Active Prescriptions</h3>
                 <p class="text-2xl font-bold text-green-700">{prescriptions.filter(p => p.status === 'active').length}</p>
               </div>

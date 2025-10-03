@@ -1,5 +1,34 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.1.0 - Individual Drug Dispatch & Enhanced UX
+
+### 💊 Individual Drug Dispatch System
+- **Granular Control**: Added individual checkboxes for each medication in prescriptions
+- **Selective Dispensing**: Pharmacists can now mark specific medications as dispensed
+- **Smart Button**: "Mark as Dispensed" button shows count of selected medications
+- **Responsive Design**: Works seamlessly on both desktop and mobile devices
+- **Visual Feedback**: Clear checkboxes with teal styling for consistency
+- **Validation**: Button disabled until at least one medication is selected
+
+### ⚠️ Enhanced Warning System
+- **User Guidance**: Clear warning message when no medications are selected
+- **Helpful Instructions**: Explains exactly what users need to do
+- **Professional Notifications**: Uses existing notification system with error styling
+- **Improved UX**: Prevents user confusion and guides proper workflow
+
+### 🎨 UI/UX Enhancements
+- **Mobile Optimization**: Pharmacy portal fully responsive for mobile use
+- **Professional Notifications**: Enhanced notification system with animations and stacking
+- **Contrast Improvements**: Fixed all accessibility contrast issues across the app
+- **Button Consistency**: Standardized all buttons to use Flowbite styling
+- **Modal Improvements**: Updated all popups to follow Flowbite design patterns
+
+### 🔧 Technical Improvements
+- **State Management**: Enhanced medication selection state tracking
+- **Error Handling**: Improved validation and user feedback
+- **Code Quality**: Better function organization and documentation
+- **Performance**: Optimized component rendering for mobile devices
+
 ## Version 2.0.0 - Major UI/UX Overhaul
 
 ### 🎨 UI/UX Enhancements
@@ -64,6 +93,36 @@
 - AIRecommendations.svelte - AI drug suggestion system
 
 ## Recent Bug Fixes
+
+### Send to Pharmacy Button Functionality
+- **Issue**: "Send to 1 Pharmacy" button was not working due to undefined variable
+- **Fix**: Fixed `prescriptionsToSend` variable reference to use correct `prescriptions` variable
+- **Enhancement**: Added success/error notifications and proper cleanup after sending
+- **Result**: Pharmacy sending functionality now works correctly with user feedback
+
+### Font Contrast Issues Across All Components
+- **Issue**: Multiple components had poor text contrast in dark mode using `text-muted` classes
+- **Components Fixed**: PatientDetails, PatientManagement, EditProfile, PatientList, ConfirmationModal, PrescriptionPDF, AdminDashboard, PharmacistManagement
+- **Fix**: Replaced all `text-muted` classes with `text-gray-600 dark:text-gray-300` for proper contrast
+- **Result**: All text is now clearly readable in both light and dark modes
+
+### Popup Modal Contrast Issues
+- **Issue**: Various popup windows had contrast problems with buttons and text
+- **Components Fixed**: Connect to Pharmacist modal, Confirmation modals, PDF preview modals
+- **Fix**: Updated button and text colors to ensure high contrast in dark mode
+- **Result**: All popups now have excellent readability and accessibility
+
+### AI Token Tracking Data Retention
+- **Issue**: AI usage data wasn't retaining for doctors due to null doctorId values
+- **Fix**: Added validation to ensure doctorId is never null/undefined, defaulting to 'unknown-doctor'
+- **Enhancement**: Added migration function to fix existing data with missing doctorId
+- **Result**: AI token usage is now properly tracked and retained for all doctors
+
+### AI Suggestions Availability
+- **Issue**: AI suggestions were only available when drugs were manually added first
+- **Fix**: Removed dependency on manual drugs for AI suggestions button
+- **Enhancement**: AI suggestions now display even when no manual drugs are added
+- **Result**: Doctors can get AI drug recommendations immediately after adding symptoms
 
 ### Dashboard Values Fluctuation
 - **Issue**: Dashboard statistics were fluctuating due to multiple reactive calls

@@ -42,7 +42,41 @@ function getCurrentMedications() {
 }
 ```
 
-### 2. AdminDashboard.svelte
+### 2. PharmacistDashboard.svelte
+**Purpose**: Pharmacist portal for prescription management and inventory
+**Key Features**:
+- Individual drug dispatch status tracking
+- Responsive mobile-first design
+- Advanced inventory management
+- Prescription viewing and management
+- Enhanced warning system
+
+**Technical Implementation**:
+```javascript
+// Individual medication dispatch tracking
+let dispensedMedications = new Set()
+
+function toggleMedicationDispatch(prescriptionId, medicationId) {
+  const key = `${prescriptionId}-${medicationId}`
+  if (dispensedMedications.has(key)) {
+    dispensedMedications.delete(key)
+  } else {
+    dispensedMedications.add(key)
+  }
+  dispensedMedications = new Set(dispensedMedications) // Trigger reactivity
+}
+
+// Enhanced warning system
+function markSelectedAsDispensed() {
+  if (dispensedMedications.size === 0) {
+    notifyError('⚠️ No medications selected! Please check the boxes next to the medications you want to mark as dispensed.')
+    return
+  }
+  // Continue with confirmation dialog...
+}
+```
+
+### 3. AdminDashboard.svelte
 **Purpose**: Administrative controls and analytics
 **Key Features**:
 - Doctor token quota management
@@ -295,6 +329,98 @@ firebase deploy
 # Deploys Cloud Functions (if any)
 ```
 
+## Recent Critical Fixes
+
+### 1. Send to Pharmacy Button Functionality
+**Issue**: Button was non-functional due to undefined variable reference
+**Location**: `src/components/PatientDetails.svelte` - `sendToSelectedPharmacies()` function
+**Root Cause**: Line 1289 used `prescriptionsToSend` instead of `prescriptions`
+**Fix Applied**:
+```javascript
+// Before (broken):
+prescriptions: prescriptionsToSend,
+
+// After (fixed):
+prescriptions: prescriptions,
+```
+**Additional Enhancements**:
+- Added success/error notifications
+- Added cleanup of selected pharmacies after sending
+- Enhanced error handling with user feedback
+
+### 2. Font Contrast Issues Resolution
+**Issue**: Poor text readability in dark mode across multiple components
+**Root Cause**: `text-muted` classes provided insufficient contrast
+**Components Affected**: PatientDetails, PatientManagement, EditProfile, PatientList, ConfirmationModal, PrescriptionPDF, AdminDashboard, PharmacistManagement
+**Fix Pattern**:
+```css
+/* Before (poor contrast): */
+text-muted
+
+/* After (excellent contrast): */
+text-gray-600 dark:text-gray-300
+```
+**Specific Elements Fixed**:
+- Modal instruction text
+- Pharmacy details (name, email, address)
+- Empty state messages
+- Form descriptions and helper text
+- Patient information in lists
+- Template preview text
+
+### 3. Popup Modal Contrast Issues
+**Issue**: Various popup windows had contrast problems with buttons and text
+**Components Fixed**: Connect to Pharmacist modal, Confirmation modals, PDF preview modals
+**Fix Applied**:
+```css
+/* Button contrast fix example: */
+/* Before: */
+dark:bg-gray-800 dark:text-gray-400
+
+/* After: */
+dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-teal-50
+```
+
+### 4. AI Token Tracking Data Retention
+**Issue**: AI usage data wasn't retaining for doctors due to null doctorId values
+**Location**: `src/services/aiTokenTracker.js`
+**Root Cause**: `doctorId` parameter could be null/undefined when tracking usage
+**Fix Applied**:
+```javascript
+// Added validation in trackUsage function:
+const validDoctorId = doctorId || 'unknown-doctor'
+
+// Added migration function:
+migrateRequestsWithMissingDoctorId() {
+  let changed = false
+  this.usageData.requests = this.usageData.requests.map(req => {
+    if (req.doctorId === null || req.doctorId === undefined) {
+      changed = true
+      return { ...req, doctorId: 'unknown-doctor' }
+    }
+    return req
+  })
+  if (changed) {
+    this.saveUsageData()
+    console.log('AI Token Tracker: Migrated requests with missing doctorId.')
+  }
+}
+```
+
+### 5. AI Suggestions Availability Enhancement
+**Issue**: AI suggestions were only available when drugs were manually added first
+**Location**: `src/components/PrescriptionsTab.svelte`
+**Fix Applied**:
+```javascript
+// Removed dependency on manual drugs for button:
+disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured() || !currentPrescription}
+
+// Moved AI suggestions display outside conditional:
+{#if showAIDrugSuggestions && aiDrugSuggestions.length > 0}
+  <!-- AI suggestions content -->
+{/if}
+```
+
 ## Monitoring and Analytics
 
 ### Performance Monitoring
@@ -311,5 +437,138 @@ firebase deploy
 - AI token usage tracking
 - Feature usage statistics
 - User engagement metrics
+
+## Troubleshooting Guide
+
+### Common Issues and Solutions
+
+#### 1. "Send to Pharmacy" Button Not Working
+**Symptoms**: Button click does nothing, no error messages
+**Solution**: Check for undefined variables in `sendToSelectedPharmacies` function
+**Debug Steps**:
+1. Open browser console
+2. Click the button
+3. Look for JavaScript errors
+4. Verify `prescriptions` variable is defined
+
+#### 2. Poor Text Contrast in Dark Mode
+**Symptoms**: Text is hard to read in dark mode
+**Solution**: Replace `text-muted` with `text-gray-600 dark:text-gray-300`
+**Debug Steps**:
+1. Inspect element in browser dev tools
+2. Check computed styles
+3. Verify contrast ratio meets WCAG standards
+
+#### 3. AI Token Data Not Persisting
+**Symptoms**: Token usage resets on page refresh
+**Solution**: Ensure `doctorId` is never null in tracking calls
+**Debug Steps**:
+1. Check browser localStorage for 'prescribe-ai-token-usage'
+2. Verify doctorId values in stored data
+3. Run migration function if needed
+
+#### 4. AI Suggestions Not Available
+**Symptoms**: AI suggestions button is disabled or suggestions don't show
+**Solution**: Check button disabled conditions and display logic
+**Debug Steps**:
+1. Verify symptoms are added
+2. Check if prescription exists
+3. Ensure OpenAI service is configured
+
+### Latest Implementation: Individual Drug Dispatch System
+
+#### Core Functionality
+**State Management**:
+```javascript
+// Track individual medication dispatch status
+let dispensedMedications = new Set()
+
+// Create unique key for each medication
+const key = `${prescriptionId}-${medicationId}`
+```
+
+**UI Components**:
+- Desktop: Checkbox column in prescription table
+- Mobile: Checkbox with label in medication cards
+- Button: Dynamic text showing selected count
+
+**Validation Logic**:
+```javascript
+// Check if medication is marked as dispensed
+function isMedicationDispensed(prescriptionId, medicationId) {
+  const key = `${prescriptionId}-${medicationId}`
+  return dispensedMedications.has(key)
+}
+
+// Enhanced warning system
+if (dispensedMedications.size === 0) {
+  notifyError('⚠️ No medications selected! Please check the boxes next to the medications you want to mark as dispensed.')
+  return
+}
+```
+
+#### Responsive Design Implementation
+**Mobile-First Approach**:
+- Header: Compact, sticky design
+- Stats: Quick overview cards on mobile
+- Navigation: Responsive tab system
+- Tables: Convert to cards on small screens
+- Modals: Full-screen on mobile devices
+
+**CSS Classes Used**:
+```css
+/* Mobile stats cards */
+.grid-cols-2.gap-3.mb-4.sm:hidden
+
+/* Responsive table/card toggle */
+.hidden.sm:block /* Desktop table */
+.sm:hidden.space-y-3 /* Mobile cards */
+
+/* Mobile-optimized modals */
+.h-full.max-h-full.p-2.sm:p-4
+```
+
+### Build and Deployment Issues
+
+#### Build Failures
+**Common Causes**:
+- Syntax errors in Svelte components
+- Missing imports
+- TypeScript errors
+- CSS class conflicts
+
+**Debug Steps**:
+1. Run `npm run build` locally
+2. Check for specific error messages
+3. Fix syntax issues
+4. Verify all imports are correct
+
+#### Deployment Issues
+**Common Causes**:
+- Firebase configuration errors
+- Build output issues
+- Permission problems
+
+**Debug Steps**:
+1. Check `firebase.json` configuration
+2. Verify Firebase project settings
+3. Ensure proper authentication
+4. Check deployment logs
+
+### Performance Issues
+
+#### Slow Loading
+**Solutions**:
+- Implement lazy loading for heavy components
+- Optimize Firebase queries
+- Use proper indexing
+- Minimize bundle size
+
+#### Memory Leaks
+**Solutions**:
+- Clean up event listeners
+- Remove unused reactive statements
+- Properly dispose of subscriptions
+- Use onDestroy lifecycle
 
 

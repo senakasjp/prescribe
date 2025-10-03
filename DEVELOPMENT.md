@@ -2,6 +2,27 @@
 
 ## 📋 Recent Updates (January 16, 2025)
 
+### **💊 Individual Drug Dispatch System (Latest)**
+- **Granular Medication Selection**: Implemented individual checkboxes for each medication in prescriptions
+- **Smart State Management**: Used `Set` data structure to track selected medications with unique keys
+- **Responsive UI Components**: Desktop table checkboxes and mobile card checkboxes for seamless experience
+- **Enhanced Validation**: Button disabled until selection with clear warning messages
+- **Dynamic Button Text**: Shows count of selected medications (e.g., "Mark 2 as Dispensed")
+- **Professional Notifications**: Integrated with existing notification system for user feedback
+
+### **⚠️ Enhanced Warning & UX System**
+- **User-Friendly Error Messages**: Clear warnings with emoji indicators and step-by-step instructions
+- **Preventive UX Design**: System prevents user confusion by explaining exactly what needs to be done
+- **Accessibility Focus**: Clear, actionable messages that guide users through proper workflow
+- **Professional Styling**: Consistent with existing notification system using error styling
+
+### **🎯 Previous Critical Bug Fixes**
+- **Send to Pharmacy Button**: Fixed non-functional button due to undefined variable reference (`prescriptionsToSend` → `prescriptions`)
+- **Font Contrast Issues**: Resolved poor text readability in dark mode across all components by replacing `text-muted` with `text-gray-600 dark:text-gray-300`
+- **Popup Modal Contrast**: Fixed contrast issues in all popup windows and modals for better accessibility
+- **AI Token Data Retention**: Fixed AI usage data not persisting due to null doctorId values with validation and migration
+- **AI Suggestions Availability**: Enhanced AI suggestions to work without requiring manual drug additions first
+
 ### **🟠 Dynamic Stock Availability System**
 - **Smart Badge Implementation**: Real-time stock monitoring with color-coded availability indicators
 - **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
@@ -112,7 +133,11 @@ M-Prescribe/
 │   │   ├── PatientTabs.svelte # Patient tab navigation
 │   │   ├── PatientForms.svelte # Patient form management
 │   │   ├── PrescriptionList.svelte # Prescription list component
-│   │   └── MedicalSummary.svelte # Medical summary sidebar
+│   │   ├── MedicalSummary.svelte # Medical summary sidebar
+│   │   ├── PharmacistDashboard.svelte # Pharmacist portal with individual dispatch
+│   │   ├── PharmacistManagement.svelte # Pharmacist connection management
+│   │   └── pharmacist/ # Pharmacist-specific components
+│   │       └── InventoryDashboard.svelte # Advanced inventory management
 │   ├── services/            # Business logic
 │   │   ├── jsonStorage.js   # Data persistence
 │   │   ├── authService.js   # Authentication
@@ -199,6 +224,132 @@ const initializeForm = () => {
 $: doctorName = user ? (user.firstName && user.lastName ? 
   `${user.firstName} ${user.lastName}` : user.firstName || user.displayName || user.email || 'Doctor') : 'Doctor'
 $: doctorCountry = user?.country || 'Not specified'
+```
+
+## 💊 Individual Drug Dispatch Implementation
+
+### Core State Management
+The individual drug dispatch system uses a `Set` data structure to track selected medications:
+
+```javascript
+// State variable for tracking selected medications
+let dispensedMedications = new Set()
+
+// Function to toggle medication selection
+function toggleMedicationDispatch(prescriptionId, medicationId) {
+  const key = `${prescriptionId}-${medicationId}`
+  if (dispensedMedications.has(key)) {
+    dispensedMedications.delete(key)
+  } else {
+    dispensedMedications.add(key)
+  }
+  // Trigger reactivity by creating new Set
+  dispensedMedications = new Set(dispensedMedications)
+}
+
+// Check if medication is selected
+function isMedicationDispensed(prescriptionId, medicationId) {
+  const key = `${prescriptionId}-${medicationId}`
+  return dispensedMedications.has(key)
+}
+```
+
+### UI Implementation
+
+#### Desktop Table View
+```html
+<thead class="bg-gray-50">
+  <tr>
+    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dispensed</th>
+    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medication</th>
+    <!-- other columns -->
+  </tr>
+</thead>
+<tbody class="bg-white divide-y divide-gray-200">
+  {#each prescription.medications as medication}
+    <tr class="hover:bg-gray-50">
+      <td class="px-3 py-4 whitespace-nowrap text-center">
+        <input 
+          type="checkbox" 
+          class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500"
+          checked={isMedicationDispensed(prescription.id, medication.id || medication.name)}
+          on:change={() => toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+        />
+      </td>
+      <!-- other columns -->
+    </tr>
+  {/each}
+</tbody>
+```
+
+#### Mobile Card View
+```html
+<div class="sm:hidden space-y-3">
+  {#each prescription.medications as medication}
+    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+      <div class="flex items-center justify-between mb-2">
+        <h4 class="font-semibold text-gray-900 text-sm">{medication.name}</h4>
+        <label class="flex items-center space-x-2 cursor-pointer">
+          <input 
+            type="checkbox" 
+            class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded"
+            checked={isMedicationDispensed(prescription.id, medication.id || medication.name)}
+            on:change={() => toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+          />
+          <span class="text-xs text-gray-600">Dispensed</span>
+        </label>
+      </div>
+      <!-- medication details -->
+    </div>
+  {/each}
+</div>
+```
+
+### Enhanced Validation System
+```javascript
+function markSelectedAsDispensed() {
+  const totalMedications = selectedPrescription.prescriptions.reduce((count, prescription) => {
+    return count + (prescription.medications ? prescription.medications.length : 0)
+  }, 0)
+  
+  // Enhanced warning with clear instructions
+  if (dispensedMedications.size === 0) {
+    notifyError('⚠️ No medications selected! Please check the boxes next to the medications you want to mark as dispensed.')
+    return
+  }
+  
+  // Smart confirmation dialog
+  if (dispensedMedications.size === totalMedications) {
+    showConfirmation(
+      'Mark All as Dispensed',
+      `Are you sure you want to mark all ${totalMedications} medications as dispensed?`,
+      'Mark as Dispensed',
+      'Cancel',
+      'success'
+    )
+  } else {
+    showConfirmation(
+      'Mark Selected as Dispensed',
+      `Are you sure you want to mark ${dispensedMedications.size} of ${totalMedications} medications as dispensed?`,
+      'Mark as Dispensed',
+      'Cancel',
+      'warning'
+    )
+  }
+}
+```
+
+### Dynamic Button Implementation
+```html
+<button 
+  type="button" 
+  class="w-full sm:w-auto text-white bg-teal-700 hover:bg-teal-800 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-4 py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+  on:click={markSelectedAsDispensed}
+  disabled={dispensedMedications.size === 0}
+>
+  <i class="fas fa-check mr-1"></i>
+  {dispensedMedications.size > 0 ? `Mark ${dispensedMedications.size} as Dispensed` : 'Mark as Dispensed'}
+</button>
 ```
 
 ## 🔥 Firebase Integration Implementation

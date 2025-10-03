@@ -29,16 +29,21 @@
       doc.text('Medical License: [License Number]', 20, 60)
       doc.text(`Date: ${currentDate}`, 20, 70)
       
+      // Prescription ID (if available)
+      if (prescriptions && prescriptions.length > 0 && prescriptions[0].id) {
+        doc.text(`Prescription ID: ${prescriptions[0].id}`, 20, 80)
+      }
+      
       // Patient info
-      doc.text('Patient Information:', 20, 90)
-      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, 20, 100)
-      doc.text(`ID: ${selectedPatient.idNumber}`, 20, 110)
-      doc.text(`DOB: ${selectedPatient.dateOfBirth}`, 20, 120)
+      doc.text('Patient Information:', 20, 100)
+      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, 20, 110)
+      doc.text(`ID: ${selectedPatient.idNumber}`, 20, 120)
+      doc.text(`DOB: ${selectedPatient.dateOfBirth}`, 20, 130)
       
       // Current Illnesses
       if (illnesses.length > 0) {
-        doc.text('Current Illnesses:', 20, 140)
-        let yPos = 150
+        doc.text('Current Illnesses:', 20, 150)
+        let yPos = 160
         illnesses.forEach((illness, index) => {
           if (yPos > 250) {
             doc.addPage()

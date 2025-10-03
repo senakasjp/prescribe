@@ -662,6 +662,11 @@
         
         // Add to prescriptions array
         prescriptions = [...prescriptions, savedPrescription]
+        
+        // Dispatch event to invalidate chart cache
+        window.dispatchEvent(new CustomEvent('prescriptionSaved', { 
+          detail: { prescriptionId: savedPrescription.id } 
+        }))
       } else {
         // Always update existing prescription to ensure latest data is saved
         const updatedPrescription = {
