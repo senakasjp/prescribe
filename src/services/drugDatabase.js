@@ -44,8 +44,14 @@ class DrugDatabase {
     
     const drug = {
       id: this.generateId(),
-      name: drugData.name.toLowerCase().trim(),
-      displayName: drugData.name.trim(),
+      // Support both single name and brand/generic pairs
+      name: drugData.name ? drugData.name.toLowerCase().trim() : '',
+      displayName: drugData.name ? drugData.name.trim() : '',
+      // New brand/generic structure
+      brandName: drugData.brandName ? drugData.brandName.trim() : '',
+      genericName: drugData.genericName ? drugData.genericName.trim() : '',
+      // Combined search name for backward compatibility
+      searchName: this.generateSearchName(drugData.brandName, drugData.genericName, drugData.name),
       dosage: drugData.dosage || '',
       instructions: drugData.instructions || '',
       frequency: drugData.frequency || '',
@@ -55,8 +61,13 @@ class DrugDatabase {
       addedBy: doctorId
     }
 
-    // Check if drug already exists
-    const existingDrug = this.data[doctorId].drugs.find(d => d.name === drug.name)
+    // Check if drug already exists (by search name or legacy name)
+    const existingDrug = this.data[doctorId].drugs.find(d => 
+      d.searchName === drug.searchName || 
+      d.name === drug.name ||
+      (drug.brandName && drug.genericName && d.brandName === drug.brandName && d.genericName === drug.genericName)
+    )
+    
     if (existingDrug) {
       // Update existing drug
       Object.assign(existingDrug, drug)
@@ -71,6 +82,14 @@ class DrugDatabase {
     return drug
   }
 
+  // Generate search name from brand/generic names
+  generateSearchName(brandName, genericName, legacyName) {
+    if (brandName && genericName) {
+      return `${brandName.toLowerCase().trim()} ${genericName.toLowerCase().trim()}`
+    }
+    return legacyName ? legacyName.toLowerCase().trim() : ''
+  }
+
   // Search drugs by name (autocomplete)
   searchDrugs(doctorId, query, limit = 10) {
     this.initializeDoctorDatabase(doctorId)
@@ -83,18 +102,55 @@ class DrugDatabase {
     const doctorDrugs = this.data[doctorId]?.drugs || []
 
     return doctorDrugs
-      .filter(drug => drug.name.includes(searchTerm) || drug.displayName.toLowerCase().includes(searchTerm))
+      .filter(drug => {
+        // Search in brand name, generic name, legacy name, and search name
+        return (drug.brandName && drug.brandName.toLowerCase().includes(searchTerm)) ||
+               (drug.genericName && drug.genericName.toLowerCase().includes(searchTerm)) ||
+               (drug.name && drug.name.includes(searchTerm)) ||
+               (drug.displayName && drug.displayName.toLowerCase().includes(searchTerm)) ||
+               (drug.searchName && drug.searchName.includes(searchTerm))
+      })
+      .map(drug => ({
+        ...drug,
+        // Create display name for results
+        displayName: this.createDisplayName(drug)
+      }))
       .sort((a, b) => {
         // Prioritize exact matches and matches at the beginning
-        const aStartsWith = a.name.startsWith(searchTerm)
-        const bStartsWith = b.name.startsWith(searchTerm)
+        const aBrandMatch = a.brandName && a.brandName.toLowerCase().startsWith(searchTerm)
+        const bBrandMatch = b.brandName && b.brandName.toLowerCase().startsWith(searchTerm)
+        const aGenericMatch = a.genericName && a.genericName.toLowerCase().startsWith(searchTerm)
+        const bGenericMatch = b.genericName && b.genericName.toLowerCase().startsWith(searchTerm)
+        const aLegacyMatch = a.name && a.name.startsWith(searchTerm)
+        const bLegacyMatch = b.name && b.name.startsWith(searchTerm)
         
-        if (aStartsWith && !bStartsWith) return -1
-        if (!aStartsWith && bStartsWith) return 1
+        // Brand name matches first, then generic, then legacy
+        if (aBrandMatch && !bBrandMatch) return -1
+        if (!aBrandMatch && bBrandMatch) return 1
+        if (aGenericMatch && !bGenericMatch) return -1
+        if (!aGenericMatch && bGenericMatch) return 1
+        if (aLegacyMatch && !bLegacyMatch) return -1
+        if (!aLegacyMatch && bLegacyMatch) return 1
         
-        return a.name.localeCompare(b.name)
+        return a.displayName.localeCompare(b.displayName)
       })
       .slice(0, limit)
+  }
+
+  // Create display name for drug results
+  createDisplayName(drug) {
+    if (drug.brandName && drug.genericName) {
+      return `${drug.brandName} (${drug.genericName})`
+    } else if (drug.brandName) {
+      return drug.brandName
+    } else if (drug.genericName) {
+      return drug.genericName
+    } else if (drug.displayName) {
+      return drug.displayName
+    } else if (drug.name) {
+      return drug.name
+    }
+    return 'Unknown Drug'
   }
 
   // Get all drugs for a doctor
