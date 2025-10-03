@@ -55,6 +55,8 @@
     maximumStock: '1000',
     costPrice: '',
     sellingPrice: '',
+    expiryDate: '',
+    batchNumber: '',
     storageLocation: '',
     storageConditions: 'room temperature',
     description: '',
@@ -897,6 +899,28 @@
               </div>
             </div>
             
+            <!-- Expiry Date -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date</label>
+                <input 
+                  type="date" 
+                  bind:value={newItemForm.expiryDate}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
+                <input 
+                  type="text" 
+                  bind:value={newItemForm.batchNumber}
+                  placeholder="e.g., BATCH001"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            
             <!-- Additional Information -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -1161,6 +1185,25 @@
                   <option value="frozen">Frozen (-20°C)</option>
                   <option value="controlled">Controlled Temperature</option>
                 </select>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                <input 
+                  type="date"
+                  bind:value={selectedItem.expiryDate}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
+                <input 
+                  type="text"
+                  bind:value={selectedItem.batchNumber}
+                  placeholder="e.g., BATCH001"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
               
               <div>

@@ -189,6 +189,8 @@ class InventoryService {
   async getInventoryItems(pharmacistId, filters = {}) {
     try {
       console.log('📦 InventoryService: Getting inventory items with filters:', filters)
+      console.log('📦 InventoryService: Filter status value:', filters.status)
+      console.log('📦 InventoryService: Filter status type:', typeof filters.status)
       
       let q = query(
         collection(db, this.collections.inventory),
@@ -214,13 +216,43 @@ class InventoryService {
           return
         }
         
+        // Calculate additional metrics FIRST (before filtering)
+        item.stockValue = item.currentStock * item.costPrice
+        item.salesValue = item.currentStock * item.sellingPrice
+        item.stockTurnover = this.calculateStockTurnover(item)
+        item.daysToExpiry = this.calculateDaysToExpiry(item)
+        
+        // Calculate dynamic status based on current stock levels
+        item.status = this.getStockStatus(
+          item.currentStock, 
+          item.minimumStock, 
+          item.daysToExpiry
+        )
+        
+        console.log(`📦 Item: ${item.drugName}, Stock: ${item.currentStock}, Status: ${item.status}, Filter: ${filters.status}`)
+        
         // Apply client-side filtering (to avoid composite index requirements)
         if (filters.category && item.category !== filters.category) {
           return
         }
         
-        if (filters.status && item.status !== filters.status) {
-          return
+        if (filters.status && filters.status !== 'all') {
+          console.log(`🔍 Filtering item: ${item.drugName}, Item status: ${item.status}, Filter status: ${filters.status}`)
+          
+          // Special handling for low_stock filter to include out_of_stock items
+          if (filters.status === 'low_stock') {
+            if (item.status !== 'low_stock' && item.status !== 'out_of_stock') {
+              console.log(`❌ Filtered out (low_stock): ${item.drugName}`)
+              return
+            }
+          } else {
+            if (item.status !== filters.status) {
+              console.log(`❌ Filtered out (status mismatch): ${item.drugName} (${item.status} != ${filters.status})`)
+              return
+            }
+          }
+          
+          console.log(`✅ Item passed filter: ${item.drugName}`)
         }
         
         if (filters.lowStock && item.currentStock > filters.lowStock) {
@@ -234,12 +266,6 @@ class InventoryService {
             return
           }
         }
-        
-        // Calculate additional metrics
-        item.stockValue = item.currentStock * item.costPrice
-        item.salesValue = item.currentStock * item.sellingPrice
-        item.stockTurnover = this.calculateStockTurnover(item)
-        item.daysToExpiry = this.calculateDaysToExpiry(item)
         
         items.push(item)
       })
