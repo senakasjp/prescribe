@@ -29,6 +29,7 @@
   export let onNewPrescription
   export let onAddDrug
   export let onPrintPrescriptions
+  export let prescriptionNotes = ''
   
   // Debug AI suggestions
   $: console.log('🔍 PrescriptionsTab - showAIDrugSuggestions:', showAIDrugSuggestions)
@@ -364,6 +365,19 @@
               {/each}
             </div>
             
+            <!-- Prescription Notes -->
+            <div class="mt-4">
+              <label for="prescriptionNotes" class="block text-sm font-medium text-gray-700 mb-2">
+                <i class="fas fa-sticky-note mr-1"></i>Prescription Notes
+              </label>
+              <textarea
+                id="prescriptionNotes"
+                bind:value={prescriptionNotes}
+                rows="3"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                placeholder="Additional instructions or notes for the prescription..."
+              ></textarea>
+            </div>
             
             <!-- Prescription Actions -->
             <div class="mt-4 flex gap-3 justify-center">

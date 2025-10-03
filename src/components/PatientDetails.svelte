@@ -3547,6 +3547,7 @@
           {loadingAIDrugSuggestions}
           {symptoms}
           {openaiService}
+          bind:prescriptionNotes
           onMedicationAdded={handleMedicationAdded}
           onCancelMedication={handleCancelMedication}
           onEditPrescription={handleEditPrescription}
