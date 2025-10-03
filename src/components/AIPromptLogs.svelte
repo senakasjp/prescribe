@@ -325,7 +325,8 @@
         <p class="text-gray-500">No AI prompts found</p>
       </div>
     {:else}
-      <div class="overflow-x-auto">
+      <!-- Desktop Table View -->
+      <div class="hidden md:block overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
@@ -378,6 +379,55 @@
             {/each}
           </tbody>
         </table>
+      </div>
+
+      <!-- Mobile Card View -->
+      <div class="md:hidden space-y-3 p-4">
+        {#each aiPrompts as prompt}
+          <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div class="flex justify-between items-start mb-3">
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900 text-sm">{formatTimestamp(prompt.timestamp)}</h3>
+                <p class="text-xs text-gray-500">{prompt.promptType || 'Unknown'}</p>
+              </div>
+              <div class="flex flex-col items-end space-y-1">
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-teal-100 text-blue-800">
+                  {prompt.promptType || 'Unknown'}
+                </span>
+                <div class="flex items-center text-xs">
+                  <i class="{getSuccessIcon(prompt.success)}"></i>
+                  <span class="ml-1">{prompt.success ? 'Success' : 'Error'}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="space-y-2 mb-3">
+              <div class="flex items-center text-xs">
+                <i class="fas fa-coins text-yellow-600 mr-2 w-3"></i>
+                <span class="text-gray-600 font-medium">{prompt.tokensUsed || 0} tokens</span>
+              </div>
+            </div>
+            
+            <div class="flex space-x-2">
+              <button 
+                class="flex-1 text-teal-600 hover:text-blue-900 bg-blue-50 hover:bg-teal-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                on:click={() => viewPromptDetails(prompt)}
+                title="View details"
+              >
+                <i class="fas fa-eye mr-1"></i>
+                View
+              </button>
+              <button 
+                class="flex-1 text-teal-600 hover:text-blue-900 bg-blue-50 hover:bg-teal-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                on:click={() => viewPromptDetails(prompt)}
+                title="View full prompt"
+              >
+                <i class="fas fa-file-text mr-1"></i>
+                Full
+              </button>
+            </div>
+          </div>
+        {/each}
       </div>
     {/if}
   </div>

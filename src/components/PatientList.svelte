@@ -13,13 +13,13 @@
 </script>
 
 <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm">
-  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-    <div class="flex justify-between items-center">
-      <h6 class="mb-0">
+  <div class="bg-gray-50 px-3 sm:px-4 py-3 border-b border-gray-200">
+    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+      <h6 class="mb-0 text-sm sm:text-base">
         <i class="fas fa-users mr-2"></i>Patients
       </h6>
       <button 
-        class="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded" 
+        class="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white rounded w-full sm:w-auto" 
         on:click={onShowAddPatientForm}
         disabled={loading}
       >
@@ -29,25 +29,25 @@
   </div>
   <div class="p-0">
     <!-- Search Box -->
-    <div class="p-3 border-b border-gray-200">
+    <div class="p-2 sm:p-3 border-b border-gray-200">
       <div class="flex">
-        <span class="px-3 py-2 bg-gray-50 border border-gray-300 border-r-0 rounded-l-lg">
-          <i class="fas fa-search"></i>
+        <span class="px-2 sm:px-3 py-2 bg-gray-50 border border-gray-300 border-r-0 rounded-l-lg">
+          <i class="fas fa-search text-xs sm:text-sm"></i>
         </span>
         <input 
           type="text" 
-          class="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+          class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-r-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           placeholder="Search patients..." 
           bind:value={searchQuery}
           on:input={onSearch}
         />
         {#if searchQuery}
           <button 
-            class="px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 rounded" 
+            class="px-2 sm:px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 rounded" 
             type="button" 
             on:click={onClearSearch}
           >
-            <i class="fas fa-times"></i>
+            <i class="fas fa-times text-xs sm:text-sm"></i>
           </button>
         {/if}
       </div>
@@ -78,7 +78,8 @@
           {/if}
         </div>
       {:else}
-        <div class="list-group list-group-flush">
+        <!-- Desktop List View -->
+        <div class="hidden md:block list-group list-group-flush">
           {#each filteredPatients as patient}
             <button 
               class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
@@ -113,6 +114,54 @@
                 </div>
               </div>
             </button>
+          {/each}
+        </div>
+
+        <!-- Mobile Card View -->
+        <div class="md:hidden space-y-3 p-3">
+          {#each filteredPatients as patient}
+            <div 
+              class="bg-gray-50 border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors duration-200 {selectedPatient?.id === patient.id ? 'ring-2 ring-blue-500 bg-blue-50' : ''}"
+              on:click={() => onSelectPatient(patient)}
+              role="button"
+              tabindex="0"
+              on:keydown={(e) => e.key === 'Enter' && onSelectPatient(patient)}
+            >
+              <div class="flex justify-between items-start mb-3">
+                <div class="flex-1">
+                  {#if patient.firstName || patient.lastName}
+                    <h3 class="font-semibold text-gray-900 text-sm sm:text-base">
+                      {patient.firstName} {patient.lastName}
+                    </h3>
+                  {/if}
+                  <p class="text-xs sm:text-sm text-gray-500">{patient.gender || 'N/A'}</p>
+                </div>
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs sm:text-sm font-medium bg-blue-100 text-blue-800">
+                  ID: {patient.id.slice(-8)}
+                </span>
+              </div>
+              
+              <div class="space-y-2">
+                {#if patient.dateOfBirth}
+                  <div class="flex items-center text-xs sm:text-sm">
+                    <i class="fas fa-calendar text-blue-600 mr-2 w-3"></i>
+                    <span class="text-gray-600">DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}</span>
+                  </div>
+                {/if}
+                {#if patient.phone}
+                  <div class="flex items-center text-xs sm:text-sm">
+                    <i class="fas fa-phone text-green-600 mr-2 w-3"></i>
+                    <span class="text-gray-600">{patient.phone}</span>
+                  </div>
+                {/if}
+                {#if patient.email}
+                  <div class="flex items-center text-xs sm:text-sm">
+                    <i class="fas fa-envelope text-purple-600 mr-2 w-3"></i>
+                    <span class="text-gray-600">{patient.email}</span>
+                  </div>
+                {/if}
+              </div>
+            </div>
           {/each}
         </div>
       {/if}

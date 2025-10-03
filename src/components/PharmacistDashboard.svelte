@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte'
+  import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore'
+  import { db } from '../firebase-config.js'
   import authService from '../services/authService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
@@ -17,6 +19,20 @@
   
   // Individual medication dispatch tracking
   let dispensedMedications = new Set()
+  let permanentlyDispensedMedications = new Set() // Track medications that have been permanently dispensed
+  
+  // Load permanently dispensed medications from localStorage on component mount
+  onMount(() => {
+    try {
+      const stored = localStorage.getItem('permanentlyDispensedMedications')
+      if (stored) {
+        permanentlyDispensedMedications = new Set(JSON.parse(stored))
+        console.log('📦 Loaded permanently dispensed medications from localStorage:', permanentlyDispensedMedications.size)
+      }
+    } catch (error) {
+      console.error('❌ Error loading permanently dispensed medications:', error)
+    }
+  })
   
   // Pagination for prescriptions
   let currentPrescriptionPage = 1
@@ -42,7 +58,10 @@
   }
   
   function handleConfirmationConfirm() {
+    console.log('🔍 handleConfirmationConfirm called')
+    console.log('🔍 pendingAction:', pendingAction)
     if (pendingAction) {
+      console.log('🔍 Executing pending action')
       pendingAction()
       pendingAction = null
     }
@@ -56,6 +75,11 @@
   
   // Individual medication dispatch functions
   function toggleMedicationDispatch(prescriptionId, medicationId) {
+    // Don't allow toggling if medication is already dispensed
+    if (isMedicationAlreadyDispensed(prescriptionId, medicationId)) {
+      return
+    }
+    
     const key = `${prescriptionId}-${medicationId}`
     if (dispensedMedications.has(key)) {
       dispensedMedications.delete(key)
@@ -70,21 +94,45 @@
     return dispensedMedications.has(key)
   }
   
+  function isMedicationAlreadyDispensed(prescriptionId, medicationId) {
+    const key = `${prescriptionId}-${medicationId}`
+    
+    // Check if it's in the current session's dispensed medications
+    if (dispensedMedications.has(key)) {
+      return true
+    }
+    
+    // Check if it's in the permanently dispensed medications
+    if (permanentlyDispensedMedications.has(key)) {
+      return true
+    }
+    
+    return false
+  }
+  
   function getDispensedCount() {
     return dispensedMedications.size
   }
   
   function markSelectedAsDispensed() {
+    console.log('🔍 markSelectedAsDispensed called')
+    console.log('🔍 dispensedMedications.size:', dispensedMedications.size)
+    console.log('🔍 selectedPrescription:', selectedPrescription)
+    
     const totalMedications = selectedPrescription.prescriptions.reduce((count, prescription) => {
       return count + (prescription.medications ? prescription.medications.length : 0)
     }, 0)
     
+    console.log('🔍 totalMedications:', totalMedications)
+    
     if (dispensedMedications.size === 0) {
+      console.log('⚠️ No medications selected')
       notifyError('⚠️ No medications selected! Please check the boxes next to the medications you want to mark as dispensed.')
       return
     }
     
     if (dispensedMedications.size === totalMedications) {
+      console.log('🔍 Showing confirmation for all medications')
       showConfirmation(
         'Mark All as Dispensed',
         `Are you sure you want to mark all ${totalMedications} medications as dispensed? This will reduce inventory stock.`,
@@ -93,9 +141,11 @@
         'success'
       )
       pendingAction = () => {
+        console.log('🔍 Pending action set to handleDispensedMedications')
         handleDispensedMedications()
       }
     } else {
+      console.log('🔍 Showing confirmation for selected medications')
       showConfirmation(
         'Mark Selected as Dispensed',
         `Are you sure you want to mark ${dispensedMedications.size} of ${totalMedications} medications as dispensed? This will reduce inventory stock.`,
@@ -104,6 +154,7 @@
         'warning'
       )
       pendingAction = () => {
+        console.log('🔍 Pending action set to handleDispensedMedications')
         handleDispensedMedications()
       }
     }
@@ -111,11 +162,18 @@
   
   // Handle the actual dispensing and inventory reduction
   async function handleDispensedMedications() {
+    console.log('🔍 handleDispensedMedications called')
+    console.log('🔍 pharmacist:', pharmacist)
+    console.log('🔍 dispensedMedications:', dispensedMedications)
+    
     try {
       if (!pharmacist?.id) {
+        console.log('❌ No pharmacist ID available')
         notifyError('Pharmacist information not available')
         return
       }
+      
+      console.log('✅ Pharmacist ID available:', pharmacist.id)
       
       let inventoryReductions = []
       let inventoryErrors = []
@@ -143,42 +201,168 @@
         try {
           // Find the inventory item by drug name
           const inventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
-          const inventoryItem = inventoryItems.find(item => 
+          console.log('🔍 Available inventory items:', inventoryItems.map(item => ({
+            id: item.id,
+            drugName: item.drugName,
+            genericName: item.genericName,
+            brandName: item.brandName
+          })))
+          
+          let inventoryItem = inventoryItems.find(item => 
             item.drugName.toLowerCase() === medication.name.toLowerCase() ||
             item.genericName?.toLowerCase() === medication.name.toLowerCase() ||
             item.brandName?.toLowerCase() === medication.name.toLowerCase()
           )
           
+          // Verify the inventory item exists and has a valid ID
+          if (inventoryItem && inventoryItem.id) {
+            try {
+              // Test if the document actually exists by trying to get it
+              const itemRef = doc(db, 'pharmacistInventory', inventoryItem.id)
+              const itemDoc = await getDoc(itemRef)
+              if (!itemDoc.exists()) {
+                console.warn(`⚠️ Inventory item ${inventoryItem.id} not found in database, will create new one`)
+                inventoryItem = null // Force creation of new item
+              } else {
+                console.log(`✅ Inventory item ${inventoryItem.id} verified and exists`)
+              }
+            } catch (error) {
+              console.warn(`⚠️ Error verifying inventory item ${inventoryItem.id}:`, error)
+              inventoryItem = null // Force creation of new item
+            }
+          } else {
+            console.log(`⚠️ No inventory item found for ${medication.name}`)
+          }
+          
           if (inventoryItem) {
             // Calculate quantity to reduce (default to 1 if not specified)
-            const quantity = medication.quantity || medication.dosage || 1
+            let quantity = medication.quantity || medication.dosage || 1
+            // Ensure quantity is a valid number
+            quantity = parseInt(quantity) || 1
+            console.log(`🔍 Using quantity: ${quantity} for ${medication.name}`)
             
-            // Create stock movement for dispatch
-            await inventoryService.createStockMovement(pharmacist.id, {
-              itemId: inventoryItem.id,
-              type: 'dispatch', // Using 'dispatch' for dispensed medications
-              quantity: -Math.abs(quantity), // Negative quantity for reduction
-              unitCost: inventoryItem.costPrice || 0,
-              reference: 'prescription_dispatch',
-              referenceId: prescriptionId,
-              notes: `Dispensed for prescription ${prescriptionId} - ${medication.name}`,
-              batchNumber: '',
-              expiryDate: ''
+            console.log('🔍 Inventory item found:', {
+              id: inventoryItem.id,
+              drugName: inventoryItem.drugName,
+              currentStock: inventoryItem.currentStock
             })
             
-            inventoryReductions.push({
-              drugName: medication.name,
-              quantity: quantity,
-              inventoryItem: inventoryItem.drugName
-            })
-            
-            console.log(`✅ Reduced inventory for ${medication.name}: -${quantity}`)
+            // Verify the document exists before trying to update
+            try {
+              // Create stock movement for dispatch
+              await inventoryService.createStockMovement(pharmacist.id, {
+                itemId: inventoryItem.id, // This should be the Firestore document ID
+                type: 'dispatch', // Using 'dispatch' for dispensed medications
+                quantity: -Math.abs(quantity), // Negative quantity for reduction
+                unitCost: inventoryItem.costPrice || 0,
+                reference: 'prescription_dispatch',
+                referenceId: prescriptionId,
+                notes: `Dispensed for prescription ${prescriptionId} - ${medication.name}`,
+                batchNumber: '',
+                expiryDate: ''
+              })
+              
+              inventoryReductions.push({
+                drugName: medication.name,
+                quantity: quantity,
+                inventoryItem: inventoryItem.drugName
+              })
+              
+              console.log(`✅ Reduced inventory for ${medication.name}: -${quantity}`)
+            } catch (inventoryError) {
+              console.error(`❌ Failed to update inventory for ${medication.name}:`, inventoryError)
+              inventoryErrors.push({
+                drugName: medication.name,
+                error: `Inventory update failed: ${inventoryError.message}`
+              })
+            }
           } else {
-            inventoryErrors.push({
-              drugName: medication.name,
-              error: 'Not found in inventory'
-            })
-            console.warn(`⚠️ Inventory item not found for: ${medication.name}`)
+            // Try to create a basic inventory item for this medication
+            console.log(`⚠️ Inventory item not found for: ${medication.name}, attempting to create basic record`)
+            try {
+              const newInventoryItem = await inventoryService.createInventoryItem(pharmacist.id, {
+                drugName: medication.name,
+                genericName: medication.name,
+                brandName: medication.name,
+                manufacturer: 'Unknown',
+                category: 'prescription',
+                strength: medication.dosage || 'Unknown',
+                strengthUnit: 'mg',
+                dosageForm: 'tablet',
+                packSize: '1',
+                packUnit: 'box',
+                initialStock: 0, // Start with 0 stock
+                minimumStock: 10,
+                maximumStock: 1000,
+                costPrice: 0,
+                sellingPrice: 0,
+                storageLocation: 'Main Storage',
+                storageConditions: 'room_temperature',
+                description: `Auto-created for dispensed medication: ${medication.name}`
+              })
+              
+              console.log(`✅ Created basic inventory item for ${medication.name}:`, newInventoryItem.id)
+              
+              // Calculate quantity for tracking
+              let quantity = medication.quantity || medication.dosage || 1
+              quantity = parseInt(quantity) || 1
+              
+              // Try to create stock movement, but don't fail if inventory item doesn't exist
+              try {
+                await inventoryService.createStockMovement(pharmacist.id, {
+                  itemId: newInventoryItem.id,
+                  type: 'dispatch',
+                  quantity: -Math.abs(quantity),
+                  unitCost: 0,
+                  reference: 'prescription_dispatch',
+                  referenceId: prescriptionId,
+                  notes: `Dispensed for prescription ${prescriptionId} - ${medication.name} (auto-created inventory)`,
+                  batchNumber: '',
+                  expiryDate: ''
+                })
+                
+                inventoryReductions.push({
+                  drugName: medication.name,
+                  quantity: quantity,
+                  inventoryItem: 'Auto-created'
+                })
+                
+                console.log(`✅ Created inventory item and reduced stock for ${medication.name}: -${quantity}`)
+                
+              } catch (stockMovementError) {
+                console.warn(`⚠️ Could not create stock movement for ${medication.name}, but continuing with dispensing:`, stockMovementError.message)
+                
+                // Still track the dispensing even if inventory update fails
+                inventoryReductions.push({
+                  drugName: medication.name,
+                  quantity: quantity,
+                  inventoryItem: 'Auto-created (inventory tracking failed)'
+                })
+                
+                inventoryErrors.push({
+                  drugName: medication.name,
+                  error: `Inventory item created but stock movement failed: ${stockMovementError.message}`
+                })
+              }
+              
+            } catch (createError) {
+              console.error(`❌ Failed to create inventory item for ${medication.name}:`, createError)
+              
+              // Still track the dispensing even if inventory creation fails
+              let quantity = medication.quantity || medication.dosage || 1
+              quantity = parseInt(quantity) || 1
+              
+              inventoryReductions.push({
+                drugName: medication.name,
+                quantity: quantity,
+                inventoryItem: 'Inventory creation failed'
+              })
+              
+              inventoryErrors.push({
+                drugName: medication.name,
+                error: `Could not create inventory item: ${createError.message}`
+              })
+            }
           }
         } catch (error) {
           inventoryErrors.push({
@@ -186,6 +370,19 @@
             error: error.message
           })
           console.error(`❌ Error reducing inventory for ${medication.name}:`, error)
+          
+          // Continue with dispensing even if inventory update fails
+          // This ensures the prescription can still be marked as dispensed
+          console.log(`⚠️ Continuing with dispensing ${medication.name} despite inventory error`)
+          
+          // Add to dispensed medications even if inventory failed
+          let fallbackQuantity = medication.quantity || medication.dosage || 1
+          fallbackQuantity = parseInt(fallbackQuantity) || 1
+          inventoryReductions.push({
+            drugName: medication.name,
+            quantity: fallbackQuantity,
+            inventoryItem: 'Inventory tracking failed'
+          })
         }
       }
       
@@ -211,6 +408,29 @@
         )
       }
       
+      // Mark prescription as dispensed in pharmacist records
+      try {
+        await markPrescriptionAsDispensed()
+        console.log('✅ Prescription marked as dispensed in pharmacist records')
+      } catch (error) {
+        console.error('❌ Error marking prescription as dispensed:', error)
+        notifyError('Prescription dispensed but failed to update records: ' + error.message)
+      }
+      
+      // Add dispensed medications to permanently dispensed set
+      for (const dispensedKey of dispensedMedications) {
+        permanentlyDispensedMedications.add(dispensedKey)
+      }
+      permanentlyDispensedMedications = new Set(permanentlyDispensedMedications) // Trigger reactivity
+      
+      // Save to localStorage for persistence across page refreshes
+      try {
+        localStorage.setItem('permanentlyDispensedMedications', JSON.stringify(Array.from(permanentlyDispensedMedications)))
+        console.log('💾 Saved permanently dispensed medications to localStorage:', permanentlyDispensedMedications.size)
+      } catch (error) {
+        console.error('❌ Error saving permanently dispensed medications to localStorage:', error)
+      }
+      
       // Clear dispensed medications and close modal
       dispensedMedications.clear()
       dispensedMedications = new Set(dispensedMedications)
@@ -219,6 +439,71 @@
     } catch (error) {
       console.error('❌ Error handling dispensed medications:', error)
       notifyError('Error processing dispensed medications: ' + error.message)
+    }
+  }
+  
+  // Mark prescription as dispensed in pharmacist records
+  async function markPrescriptionAsDispensed() {
+    try {
+      if (!selectedPrescription || !pharmacist?.id) {
+        throw new Error('Missing prescription or pharmacist data')
+      }
+      
+      console.log('🔍 Attempting to mark prescription as dispensed:', {
+        prescriptionId: selectedPrescription.id,
+        pharmacistId: pharmacist.id,
+        dispensedMedications: Array.from(dispensedMedications)
+      })
+      
+      // First, check if the prescription document exists
+      const prescriptionRef = doc(db, 'pharmacistPrescriptions', selectedPrescription.id)
+      const prescriptionDoc = await getDoc(prescriptionRef)
+      
+      if (!prescriptionDoc.exists()) {
+        console.warn('⚠️ Prescription document does not exist, creating new record')
+        
+        // Create a new prescription record with all fields properly defined
+        const newPrescriptionData = {
+          id: selectedPrescription.id || '',
+          pharmacistId: pharmacist.id || '',
+          doctorId: selectedPrescription.doctorId || '',
+          patientId: selectedPrescription.patientId || '',
+          patientName: selectedPrescription.patientName || 'Unknown Patient',
+          patientEmail: selectedPrescription.patientEmail || '',
+          doctorName: selectedPrescription.doctorName || 'Unknown Doctor',
+          prescriptions: selectedPrescription.prescriptions || [],
+          status: 'dispensed',
+          dispensedAt: new Date().toISOString(),
+          dispensedBy: pharmacist.id || '',
+          dispensedMedications: Array.from(dispensedMedications).map(key => {
+            const [prescriptionId, medicationId] = key.split('-')
+            return { prescriptionId: prescriptionId || '', medicationId: medicationId || '', isDispensed: true }
+          }),
+          receivedAt: selectedPrescription.receivedAt || new Date().toISOString(),
+          notes: selectedPrescription.notes || '',
+          sentAt: selectedPrescription.sentAt || new Date().toISOString(),
+          createdAt: new Date().toISOString()
+        }
+        
+        await setDoc(prescriptionRef, newPrescriptionData)
+        console.log('✅ Created new prescription record and marked as dispensed')
+      } else {
+        // Update existing prescription
+        await updateDoc(prescriptionRef, {
+          status: 'dispensed',
+          dispensedAt: new Date().toISOString(),
+          dispensedBy: pharmacist.id,
+          dispensedMedications: Array.from(dispensedMedications).map(key => {
+            const [prescriptionId, medicationId] = key.split('-')
+            return { prescriptionId, medicationId, isDispensed: true }
+          })
+        })
+        console.log('✅ Updated existing prescription record as dispensed')
+      }
+      
+    } catch (error) {
+      console.error('❌ Error marking prescription as dispensed:', error)
+      throw error
     }
   }
   
@@ -405,32 +690,32 @@
           <div class="min-w-0 flex-1">
             <h1 class="text-sm sm:text-base font-bold text-blue-600 truncate">M-Prescribe</h1>
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
-          </div>
+      </div>
         </div>
         <div class="relative ml-2">
-          <button 
-            id="pharmacistDropdownButton" 
-            data-dropdown-toggle="pharmacistDropdown" 
+        <button 
+          id="pharmacistDropdownButton" 
+          data-dropdown-toggle="pharmacistDropdown" 
             class="text-gray-700 hover:text-gray-900 flex items-center p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200" 
-            type="button"
-          >
+          type="button"
+        >
             <i class="fas fa-user-circle text-lg"></i>
             <svg class="w-3 h-3 ml-1" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
-            </svg>
-          </button>
+            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
+          </svg>
+        </button>
           <div id="pharmacistDropdown" class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow-lg w-48 dark:bg-gray-700 absolute right-0 mt-2">
-            <div class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+          <div class="px-4 py-3 text-sm text-gray-900 dark:text-white">
               <div class="font-medium truncate">{pharmacist.businessName}</div>
               <div class="text-xs text-gray-500">ID: {pharmacist.pharmacistNumber}</div>
-            </div>
-            <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
-              <li>
+          </div>
+          <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
+            <li>
                 <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" on:click={handleSignOut}>
-                  <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
-                </button>
-              </li>
-            </ul>
+                <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
+              </button>
+            </li>
+          </ul>
           </div>
         </div>
       </div>
@@ -468,107 +753,107 @@
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
       <!-- Sidebar - Hidden on mobile, visible on desktop -->
       <div class="hidden lg:block lg:col-span-3">
-        <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm">
-          <div class="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
+      <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm">
+        <div class="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
+          <h6 class="text-lg font-semibold mb-0">
+            <i class="fas fa-info-circle mr-2"></i>
+            Pharmacy Information
+          </h6>
+        </div>
+        <div class="p-4">
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Business Name:</label>
+            <p class="text-gray-900">{pharmacist.businessName || pharmacist.name || 'Not specified'}</p>
+          </div>
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Pharmacist ID:</label>
+            <p class="text-blue-600 font-semibold">{pharmacist.pharmacistNumber || pharmacist.id || 'Not specified'}</p>
+          </div>
+          <div class="mb-3">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Connected Doctors:</label>
+            <p class="text-gray-900">{connectedDoctors.length}</p>
+          </div>
+          <div class="mb-0">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Total Prescriptions:</label>
+            <p class="mb-0">{prescriptions.length}</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Connected Doctors -->
+      {#if connectedDoctors.length > 0}
+        <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-4">
+          <div class="bg-blue-500 text-white px-4 py-3 rounded-t-lg">
             <h6 class="text-lg font-semibold mb-0">
-              <i class="fas fa-info-circle mr-2"></i>
-              Pharmacy Information
+              <i class="fas fa-user-md mr-2"></i>
+              Connected Doctors
             </h6>
           </div>
           <div class="p-4">
-            <div class="mb-3">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Business Name:</label>
-              <p class="text-gray-900">{pharmacist.businessName || pharmacist.name || 'Not specified'}</p>
-            </div>
-            <div class="mb-3">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Pharmacist ID:</label>
-              <p class="text-blue-600 font-semibold">{pharmacist.pharmacistNumber || pharmacist.id || 'Not specified'}</p>
-            </div>
-            <div class="mb-3">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Connected Doctors:</label>
-              <p class="text-gray-900">{connectedDoctors.length}</p>
-            </div>
-            <div class="mb-0">
-              <label class="block text-sm font-medium text-gray-700 mb-1">Total Prescriptions:</label>
-              <p class="mb-0">{prescriptions.length}</p>
-            </div>
+            {#each connectedDoctors as doctor}
+              <div class="flex items-center mb-3">
+                <i class="fas fa-user-md text-blue-600 mr-2"></i>
+                <div>
+                  <div class="font-semibold text-gray-900">{doctor.name || `${doctor.firstName} ${doctor.lastName}` || doctor.email}</div>
+                  <small class="text-gray-500">{doctor.email}</small>
+                </div>
+              </div>
+            {/each}
           </div>
         </div>
-        
-        <!-- Connected Doctors -->
-        {#if connectedDoctors.length > 0}
-          <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-4">
-            <div class="bg-blue-500 text-white px-4 py-3 rounded-t-lg">
-              <h6 class="text-lg font-semibold mb-0">
-                <i class="fas fa-user-md mr-2"></i>
-                Connected Doctors
-              </h6>
-            </div>
-            <div class="p-4">
-              {#each connectedDoctors as doctor}
-                <div class="flex items-center mb-3">
-                  <i class="fas fa-user-md text-blue-600 mr-2"></i>
-                  <div>
-                    <div class="font-semibold text-gray-900">{doctor.name || `${doctor.firstName} ${doctor.lastName}` || doctor.email}</div>
-                    <small class="text-gray-500">{doctor.email}</small>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      </div>
+      {/if}
+    </div>
     
-      <!-- Main Content with Tabs -->
-      <div class="lg:col-span-9">
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+    <!-- Main Content with Tabs -->
+    <div class="lg:col-span-9">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200">
           <!-- Mobile Tab Navigation -->
           <div class="bg-white border-b border-gray-200 px-3 py-3 sm:px-4">
             <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:justify-between sm:items-center">
               <!-- Tab Buttons -->
-              <div class="flex space-x-1" role="tablist">
-                <button 
+            <div class="flex space-x-1" role="tablist">
+              <button 
                   class="flex-1 sm:flex-none px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2 {activeTab === 'prescriptions' ? 'text-white bg-blue-600 hover:bg-blue-700 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800' : 'text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-700 focus:ring-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white'}" 
-                  on:click={() => activeTab = 'prescriptions'}
-                  type="button"
-                  role="tab"
-                >
+                on:click={() => activeTab = 'prescriptions'}
+                type="button"
+                role="tab"
+              >
                   <i class="fas fa-prescription mr-1 sm:mr-2"></i>
                   <span class="hidden xs:inline">Prescriptions</span>
                   <span class="xs:hidden">Rx</span>
-                </button>
-                <button 
+              </button>
+              <button 
                   class="flex-1 sm:flex-none px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2 {activeTab === 'inventory' ? 'text-white bg-blue-600 hover:bg-blue-700 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800' : 'text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-700 focus:ring-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white'}" 
                   on:click={() => activeTab = 'inventory'}
-                  type="button"
-                  role="tab"
-                >
+                type="button"
+                role="tab"
+              >
                   <i class="fas fa-warehouse mr-1 sm:mr-2"></i>
                   <span class="hidden xs:inline">Inventory</span>
                   <span class="xs:hidden">Stock</span>
-                </button>
-              </div>
+              </button>
+            </div>
               
               <!-- Action Buttons -->
-              <div class="flex space-x-2" role="group">
-                {#if activeTab === 'prescriptions'}
+            <div class="flex space-x-2" role="group">
+              {#if activeTab === 'prescriptions'}
                   <button class="text-blue-700 bg-blue-100 hover:bg-blue-200 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-1 text-center dark:bg-blue-800 dark:text-blue-200 dark:hover:bg-blue-700 dark:focus:ring-blue-800 transition-all duration-200" on:click={loadPharmacistData}>
-                    <i class="fas fa-sync-alt mr-1"></i>
+                  <i class="fas fa-sync-alt mr-1"></i>
                     <span class="hidden sm:inline">Refresh</span>
-                  </button>
+                </button>
                   <button class="text-red-700 bg-red-100 hover:bg-red-200 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-1 text-center dark:bg-red-800 dark:text-red-200 dark:hover:bg-red-700 dark:focus:ring-red-800 transition-all duration-200" on:click={clearAllPrescriptions}>
-                    <i class="fas fa-trash mr-1"></i>
+                  <i class="fas fa-trash mr-1"></i>
                     <span class="hidden sm:inline">Clear All</span>
-                  </button>
+                </button>
                 {:else if activeTab === 'inventory'}
                   <button class="text-blue-700 bg-blue-100 hover:bg-blue-200 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-xs sm:text-sm px-2 sm:px-3 py-1 text-center dark:bg-blue-800 dark:text-blue-200 dark:hover:bg-blue-700 dark:focus:ring-blue-800 transition-all duration-200" on:click={loadPharmacistData}>
-                    <i class="fas fa-sync-alt mr-1"></i>
+                  <i class="fas fa-sync-alt mr-1"></i>
                     <span class="hidden sm:inline">Refresh</span>
-                  </button>
-                {/if}
-              </div>
+                </button>
+              {/if}
             </div>
           </div>
+        </div>
         
         <div class="p-4">
           {#if activeTab === 'prescriptions'}
@@ -647,7 +932,7 @@
                       <div class="flex-1">
                         <h3 class="font-semibold text-gray-900 text-sm">{prescription.patientName || 'Unknown Patient'}</h3>
                         <p class="text-xs text-gray-500">{prescription.patientEmail || 'No email'}</p>
-                      </div>
+              </div>
                       <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                         {prescription.status || 'Pending'}
                       </span>
@@ -676,8 +961,8 @@
                     >
                       <i class="fas fa-eye mr-1"></i>
                       View Details
-                    </button>
-                  </div>
+                </button>
+              </div>
                 {/each}
               </div>
                 
@@ -690,14 +975,14 @@
                         Page {currentPrescriptionPage} of {totalPrescriptionPages}
                       </div>
                       <div class="flex justify-between items-center">
-                        <button 
+                            <button 
                           class="inline-flex items-center px-3 py-2 text-xs font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                           on:click={goToPreviousPrescriptionPage}
                           disabled={currentPrescriptionPage === 1}
                         >
                           <i class="fas fa-chevron-left mr-1"></i>
                           Prev
-                        </button>
+                            </button>
                         
                         <div class="flex items-center space-x-1">
                           {#each Array.from({length: Math.min(3, totalPrescriptionPages)}, (_, i) => {
@@ -713,7 +998,7 @@
                               {page}
                             </button>
                           {/each}
-                        </div>
+                          </div>
                         
                         <button 
                           class="inline-flex items-center px-3 py-2 text-xs font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -757,7 +1042,7 @@
                             >
                               {page}
                             </button>
-                          {/each}
+                    {/each}
                         </div>
                         
                         <!-- Next Button -->
@@ -771,8 +1056,8 @@
                         </button>
                       </div>
                     </div>
-                  </div>
-                {/if}
+              </div>
+            {/if}
             {/if}
           {:else if activeTab === 'inventory'}
             <!-- Advanced Inventory System -->
@@ -827,18 +1112,18 @@
             <div class="bg-gray-50 rounded-lg p-3 sm:p-4">
               <h6 class="font-semibold text-blue-600 text-sm sm:text-base mb-2">Patient Information</h6>
               <div class="space-y-1 text-xs sm:text-sm">
-                <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
-                <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
-                {#if selectedPrescription.patientAge}
-                  <p><strong>Age:</strong> {selectedPrescription.patientAge}</p>
-                {/if}
-              </div>
+              <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
+              <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
+              {#if selectedPrescription.patientAge}
+                <p><strong>Age:</strong> {selectedPrescription.patientAge}</p>
+              {/if}
+            </div>
             </div>
             <div class="bg-gray-50 rounded-lg p-3 sm:p-4">
               <h6 class="font-semibold text-blue-600 text-sm sm:text-base mb-2">Prescription Information</h6>
               <div class="space-y-1 text-xs sm:text-sm">
-                <p><strong>Doctor:</strong> {selectedPrescription.doctorName || getDoctorName(selectedPrescription.doctorId)}</p>
-                <p><strong>Date:</strong> {formatDate(selectedPrescription.receivedAt || selectedPrescription.sentAt || selectedPrescription.createdAt)}</p>
+              <p><strong>Doctor:</strong> {selectedPrescription.doctorName || getDoctorName(selectedPrescription.doctorId)}</p>
+              <p><strong>Date:</strong> {formatDate(selectedPrescription.receivedAt || selectedPrescription.sentAt || selectedPrescription.createdAt)}</p>
                 <p><strong>Status:</strong> <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{selectedPrescription.status || 'Pending'}</span></p>
               </div>
             </div>
@@ -875,12 +1160,15 @@
                                 <td class="px-3 py-4 whitespace-nowrap text-center">
                                   <input 
                                     type="checkbox" 
-                                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                                    checked={isMedicationDispensed(prescription.id, medication.id || medication.name)}
-                                    on:change={() => toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+                                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    checked={isMedicationDispensed(prescription.id, medication.id || medication.name) || isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
+                                    disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
+                                    on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
                                   />
                                 </td>
-                                <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{medication.name}</td>
+                                <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                                  <span>{medication.name}</span>
+                                </td>
                                 <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{medication.dosage}</td>
                                 <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{medication.frequency}</td>
                                 <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{medication.duration}</td>
@@ -896,15 +1184,18 @@
                         {#each prescription.medications as medication}
                           <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
                             <div class="flex items-center justify-between mb-2">
-                              <h4 class="font-semibold text-gray-900 text-sm">{medication.name}</h4>
-                              <label class="flex items-center space-x-2 cursor-pointer">
+                              <div class="flex items-center gap-2">
+                                <h4 class="font-semibold text-gray-900 text-sm">{medication.name}</h4>
+                              </div>
+                              <label class="flex items-center space-x-2 {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'cursor-not-allowed' : 'cursor-pointer'}">
                                 <input 
                                   type="checkbox" 
-                                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                                  checked={isMedicationDispensed(prescription.id, medication.id || medication.name)}
-                                  on:change={() => toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+                                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  checked={isMedicationDispensed(prescription.id, medication.id || medication.name) || isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
+                                  disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
+                                  on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
                                 />
-                                <span class="text-xs text-gray-600">Dispensed</span>
+                                <span class="text-xs {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'text-gray-400' : 'text-gray-600'}">Dispensed</span>
                               </label>
                             </div>
                             <div class="space-y-1 text-xs">
@@ -981,7 +1272,7 @@
   </div>
 {/if}
 
-</div>
+            </div>
 
 <style>
   /* Custom styles for enhanced UI */

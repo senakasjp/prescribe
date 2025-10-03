@@ -553,7 +553,8 @@
         
         <!-- Inventory Items Table -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div class="overflow-x-auto">
+          <!-- Desktop Table View -->
+          <div class="hidden md:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
@@ -620,6 +621,61 @@
                 {/each}
               </tbody>
             </table>
+          </div>
+
+          <!-- Mobile Card View -->
+          <div class="md:hidden space-y-3 p-4">
+            {#each filteredItems as item}
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div class="flex justify-between items-start mb-3">
+                  <div class="flex-1">
+                    <h3 class="font-semibold text-gray-900 text-sm">{item.drugName}</h3>
+                    <p class="text-xs text-gray-500">{item.genericName || 'N/A'}</p>
+                    <p class="text-xs text-gray-400">{item.manufacturer || 'N/A'}</p>
+                  </div>
+                  <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium {getStatusColor(item.status)}">
+                    {getStatusText(item.status)}
+                  </span>
+                </div>
+                
+                <div class="space-y-2 mb-3">
+                  <div class="flex items-center text-xs">
+                    <i class="fas fa-boxes text-blue-600 mr-2 w-3"></i>
+                    <span class="text-gray-600 font-medium">{item.currentStock} {item.packUnit}</span>
+                    <span class="text-gray-500 ml-2">Min: {item.minimumStock}</span>
+                  </div>
+                  <div class="flex items-center text-xs">
+                    <i class="fas fa-dollar-sign text-green-600 mr-2 w-3"></i>
+                    <span class="text-gray-600 font-medium">{formatCurrency(item.sellingPrice)}</span>
+                    <span class="text-gray-500 ml-2">Cost: {formatCurrency(item.costPrice)}</span>
+                  </div>
+                </div>
+                
+                <div class="flex space-x-2">
+                  <button 
+                    class="flex-1 text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                    on:click={() => { selectedItem = item; showEditItemModal = true }}
+                  >
+                    <i class="fas fa-edit mr-1"></i>
+                    Edit
+                  </button>
+                  <button 
+                    class="flex-1 text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                    on:click={() => { selectedItem = item; showBatchModal = true }}
+                  >
+                    <i class="fas fa-layer-group mr-1"></i>
+                    Batches
+                  </button>
+                  <button 
+                    class="flex-1 text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                    on:click={() => deleteInventoryItem(item.id)}
+                  >
+                    <i class="fas fa-trash mr-1"></i>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            {/each}
           </div>
           
           <!-- Pagination -->

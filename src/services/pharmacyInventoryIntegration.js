@@ -114,10 +114,7 @@ class PharmacyInventoryIntegrationService {
       
       // Check if medication already exists in pharmacy inventory
       const existingItems = await inventoryService.getInventoryItems(pharmacyId, {
-        limit: 1000,
-        search: medicationData.genericName || medicationData.brandName || '',
-        category: '',
-        status: 'active'
+        limit: 1000
       })
 
       // Check for existing medication by brand/generic name

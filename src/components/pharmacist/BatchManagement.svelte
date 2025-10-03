@@ -241,7 +241,8 @@
             </button>
           </div>
         {:else}
-          <div class="overflow-x-auto">
+          <!-- Desktop Table View -->
+          <div class="hidden md:block overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
@@ -322,6 +323,82 @@
                 {/each}
               </tbody>
             </table>
+          </div>
+
+          <!-- Mobile Card View -->
+          <div class="md:hidden space-y-3 p-4">
+            {#each batches as batch}
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div class="flex justify-between items-start mb-3">
+                  <div class="flex-1">
+                    <h3 class="font-semibold text-gray-900 text-sm">{batch.batchNumber}</h3>
+                    <p class="text-xs text-gray-500">Added: {formatDate(batch.receivedDate)}</p>
+                  </div>
+                  <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium {getBatchStatusColor(batch)}">
+                    {getBatchStatusText(batch)}
+                  </span>
+                </div>
+                
+                <div class="space-y-2 mb-3">
+                  <div class="flex items-center text-xs">
+                    <i class="fas fa-boxes text-blue-600 mr-2 w-3"></i>
+                    <span class="text-gray-600 font-medium">{batch.quantity} {item.packUnit}</span>
+                  </div>
+                  <div class="flex items-center text-xs">
+                    <i class="fas fa-calendar text-red-600 mr-2 w-3"></i>
+                    <span class="text-gray-600">{formatDate(batch.expiryDate)}</span>
+                    {#if batch.status === 'active'}
+                      {@const daysToExpiry = Math.ceil((new Date(batch.expiryDate) - new Date()) / (1000 * 60 * 60 * 24))}
+                      {#if daysToExpiry <= 0}
+                        <span class="text-red-600 ml-2">Expired</span>
+                      {:else if daysToExpiry <= 30}
+                        <span class="text-yellow-600 ml-2">{daysToExpiry} days left</span>
+                      {:else}
+                        <span class="text-green-600 ml-2">{daysToExpiry} days left</span>
+                      {/if}
+                    {/if}
+                  </div>
+                  <div class="flex items-center text-xs">
+                    <i class="fas fa-dollar-sign text-green-600 mr-2 w-3"></i>
+                    <span class="text-gray-600 font-medium">{formatCurrency(batch.costPrice)}</span>
+                  </div>
+                  <div class="flex items-center text-xs">
+                    <i class="fas fa-truck text-purple-600 mr-2 w-3"></i>
+                    <span class="text-gray-600">{batch.supplier || 'N/A'}</span>
+                  </div>
+                </div>
+                
+                <div class="flex space-x-2">
+                  {#if batch.status === 'active'}
+                    <button 
+                      class="flex-1 text-yellow-600 hover:text-yellow-900 bg-yellow-50 hover:bg-yellow-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                      on:click={() => updateBatchStatus(batch.id, 'quarantine')}
+                      title="Quarantine"
+                    >
+                      <i class="fas fa-ban mr-1"></i>
+                      Quarantine
+                    </button>
+                  {:else if batch.status === 'quarantine'}
+                    <button 
+                      class="flex-1 text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                      on:click={() => updateBatchStatus(batch.id, 'active')}
+                      title="Activate"
+                    >
+                      <i class="fas fa-check mr-1"></i>
+                      Activate
+                    </button>
+                  {/if}
+                  <button 
+                    class="flex-1 text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                    on:click={() => updateBatchStatus(batch.id, 'expired')}
+                    title="Mark as Expired"
+                  >
+                    <i class="fas fa-times mr-1"></i>
+                    Expire
+                  </button>
+                </div>
+              </div>
+            {/each}
           </div>
         {/if}
       </div>

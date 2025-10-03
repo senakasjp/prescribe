@@ -35,8 +35,8 @@ class PharmacyMedicationService {
 
       // Fetch medication names from all connected pharmacy inventories
       const allMedications = []
-      const promises = connectedPharmacies.map(pharmacy => 
-        this.fetchMedicationNamesFromPharmacy(pharmacy.id)
+      const promises = connectedPharmacies.map(pharmacyId => 
+        this.fetchMedicationNamesFromPharmacy(pharmacyId)
       )
 
       const pharmacyMedications = await Promise.all(promises)
@@ -100,10 +100,7 @@ class PharmacyMedicationService {
       
       // Get inventory items from the pharmacy
       const inventoryItems = await inventoryService.getInventoryItems(pharmacyId, {
-        limit: 1000, // Get all items for medication names
-        search: '',
-        category: '',
-        status: 'active'
+        limit: 1000 // Get all items for medication names
       })
 
       // Extract medication names and format them

@@ -1,5 +1,27 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.2.0 - Prescription Notes & Enhanced Doctor Portal
+
+### 📝 Prescription Notes System
+- **Notes Field**: Added prescription notes textarea in doctor portal
+- **Strategic Placement**: Notes field appears at bottom of prescription form
+- **PDF Integration**: Notes automatically included in prescription PDF generation
+- **Two-Way Binding**: Seamless data binding between components
+- **Professional Styling**: Consistent with app design using Flowbite components
+- **Icon Integration**: Added sticky note icon for visual clarity
+
+### 🏥 Doctor Portal Enhancements
+- **Enhanced Workflow**: Notes field integrated into existing prescription flow
+- **Data Persistence**: Notes saved with prescription data
+- **User Experience**: Clear placeholder text and intuitive interface
+- **Accessibility**: Proper form labels and focus management
+
+### 🔧 Technical Implementation
+- **Component Updates**: Modified `PrescriptionsTab.svelte` to include notes field
+- **Data Binding**: Added `bind:prescriptionNotes` between components
+- **Form Integration**: Notes field positioned after medications list
+- **PDF Support**: Existing PDF generation automatically includes notes
+
 ## Version 2.1.0 - Individual Drug Dispatch & Enhanced UX
 
 ### 💊 Individual Drug Dispatch System

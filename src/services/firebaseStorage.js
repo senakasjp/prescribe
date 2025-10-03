@@ -14,6 +14,7 @@ import {
   onSnapshot
 } from 'firebase/firestore'
 import { db } from '../firebase-config.js'
+import { capitalizePatientNames } from '../utils/nameUtils.js'
 
 class FirebaseStorageService {
   constructor() {
@@ -419,10 +420,15 @@ class FirebaseStorageService {
   async updatePatient(patientId, updatedPatientData) {
     try {
       console.log('👤 Updating patient:', patientId)
+      
+      // Capitalize names before updating
+      const capitalizedPatientData = capitalizePatientNames(updatedPatientData)
+      console.log('🔍 FirebaseStorage: Capitalized patient update data:', capitalizedPatientData)
+      
       const patientRef = doc(db, this.collections.patients, patientId)
-      await updateDoc(patientRef, updatedPatientData)
+      await updateDoc(patientRef, capitalizedPatientData)
       console.log('✅ Patient updated successfully')
-      return { id: patientId, ...updatedPatientData }
+      return { id: patientId, ...capitalizedPatientData }
     } catch (error) {
       console.error('Error updating patient:', error)
       throw error
@@ -566,21 +572,25 @@ class FirebaseStorageService {
       )
       console.log('🔍 FirebaseStorage: Cleaned patient data:', cleanPatientData)
 
+      // Capitalize names before saving
+      const capitalizedPatientData = capitalizePatientNames(cleanPatientData)
+      console.log('🔍 FirebaseStorage: Capitalized patient data:', capitalizedPatientData)
+
       const patient = {
-        firstName: cleanPatientData.firstName?.trim() || '',
-        lastName: cleanPatientData.lastName?.trim() || '',
-        email: cleanPatientData.email?.trim() || '',
-        phone: cleanPatientData.phone?.trim() || '',
-        dateOfBirth: cleanPatientData.dateOfBirth || '',
-        age: cleanPatientData.age?.toString().trim() || '',
-        weight: cleanPatientData.weight?.toString().trim() || '',
-        bloodGroup: cleanPatientData.bloodGroup?.trim() || '',
-        idNumber: cleanPatientData.idNumber?.trim() || '',
-        address: cleanPatientData.address?.trim() || '',
-        allergies: cleanPatientData.allergies?.trim() || '',
-        emergencyContact: cleanPatientData.emergencyContact?.trim() || '',
-        emergencyPhone: cleanPatientData.emergencyPhone?.trim() || '',
-        doctorId: cleanPatientData.doctorId,
+        firstName: capitalizedPatientData.firstName?.trim() || '',
+        lastName: capitalizedPatientData.lastName?.trim() || '',
+        email: capitalizedPatientData.email?.trim() || '',
+        phone: capitalizedPatientData.phone?.trim() || '',
+        dateOfBirth: capitalizedPatientData.dateOfBirth || '',
+        age: capitalizedPatientData.age?.toString().trim() || '',
+        weight: capitalizedPatientData.weight?.toString().trim() || '',
+        bloodGroup: capitalizedPatientData.bloodGroup?.trim() || '',
+        idNumber: capitalizedPatientData.idNumber?.trim() || '',
+        address: capitalizedPatientData.address?.trim() || '',
+        allergies: capitalizedPatientData.allergies?.trim() || '',
+        emergencyContact: capitalizedPatientData.emergencyContact?.trim() || '',
+        emergencyPhone: capitalizedPatientData.emergencyPhone?.trim() || '',
+        doctorId: capitalizedPatientData.doctorId,
         createdAt: new Date().toISOString()
       }
       

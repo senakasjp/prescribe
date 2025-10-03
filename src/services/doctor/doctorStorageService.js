@@ -16,6 +16,7 @@ import {
   onSnapshot
 } from 'firebase/firestore'
 import { db } from '../../firebase-config.js'
+import { capitalizePatientNames } from '../../utils/nameUtils.js'
 
 class DoctorStorageService {
   constructor() {
@@ -177,8 +178,12 @@ class DoctorStorageService {
 
   async updatePatient(patientId, updateData) {
     try {
+      // Capitalize names before updating
+      const capitalizedUpdateData = capitalizePatientNames(updateData)
+      console.log('DoctorStorage: Capitalized patient update data:', capitalizedUpdateData)
+      
       const docRef = doc(db, this.collections.patients, patientId)
-      await updateDoc(docRef, updateData)
+      await updateDoc(docRef, capitalizedUpdateData)
       console.log('DoctorStorage: Patient updated successfully')
     } catch (error) {
       console.error('DoctorStorage: Error updating patient:', error)

@@ -2,6 +2,17 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **📝 Prescription Notes System (January 16, 2025)**
+- **Notes Field Integration**: Added prescription notes textarea in doctor portal for additional instructions
+- **Strategic Placement**: Notes field appears at bottom of prescription form, after medications list
+- **PDF Integration**: Notes automatically included in prescription PDF generation at bottom of document
+- **Two-Way Data Binding**: Seamless data binding between `PatientDetails.svelte` and `PrescriptionsTab.svelte`
+- **Professional Styling**: Consistent with app design using Flowbite components and teal color scheme
+- **Icon Integration**: Added sticky note icon (fas fa-sticky-note) for visual clarity and user recognition
+- **Form Validation**: Proper form labels, focus management, and accessibility compliance
+- **Data Persistence**: Notes saved with prescription data and available across sessions
+- **Enhanced Workflow**: Integrated into existing prescription creation and management flow
+
 ### **💊 Individual Drug Dispatch System (January 16, 2025)**
 - **Granular Medication Control**: Pharmacists can now select individual medications to mark as dispensed using checkboxes
 - **Smart Button Interface**: "Mark as Dispensed" button dynamically shows count of selected medications (e.g., "Mark 2 as Dispensed")

@@ -2177,19 +2177,19 @@
     fullScreen={false}
   />
 {:else}
-<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mx-2 sm:mx-0">
   <div class="bg-teal-600 text-white px-3 sm:px-6 py-3 sm:py-4 rounded-t-lg">
     <!-- Mobile: Stacked layout -->
     <div class="block sm:hidden">
-      <div class="flex items-center space-x-3 mb-3">
+      <div class="flex items-center space-x-2 sm:space-x-3 mb-3">
         <div class="flex-shrink-0">
-          <div class="w-10 h-10 bg-teal-500 rounded-full flex items-center justify-center">
-            <i class="fas fa-user text-white text-sm"></i>
+          <div class="w-8 h-8 sm:w-10 sm:h-10 bg-teal-500 rounded-full flex items-center justify-center">
+            <i class="fas fa-user text-white text-xs sm:text-sm"></i>
           </div>
         </div>
         <div class="flex-1 min-w-0">
           {#if selectedPatient.firstName || selectedPatient.lastName}
-            <h5 class="text-lg font-bold text-white mb-1 truncate">
+            <h5 class="text-sm sm:text-base md:text-lg font-bold text-white mb-1 truncate">
               {selectedPatient.firstName} {selectedPatient.lastName}
             </h5>
           {/if}
@@ -2221,7 +2221,7 @@
       </div>
       <div class="flex space-x-2" role="group">
         <button 
-          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
+          class="flex-1 inline-flex items-center justify-center px-2 sm:px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
@@ -2231,7 +2231,7 @@
           <span class="xs:hidden">Hist</span>
         </button>
         <button 
-          class="flex-1 inline-flex items-center justify-center px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
+          class="flex-1 inline-flex items-center justify-center px-2 sm:px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -2248,17 +2248,17 @@
       <div class="flex justify-between items-center">
         <div class="flex items-center space-x-3">
           <div class="flex-shrink-0">
-            <div class="w-12 h-12 bg-teal-500 rounded-full flex items-center justify-center">
-              <i class="fas fa-user text-white text-lg"></i>
+            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-teal-500 rounded-full flex items-center justify-center">
+              <i class="fas fa-user text-white text-sm sm:text-base md:text-lg"></i>
             </div>
           </div>
       <div>
             {#if selectedPatient.firstName || selectedPatient.lastName}
-              <h5 class="text-xl font-bold text-white mb-1">
+              <h5 class="text-base sm:text-lg md:text-xl font-bold text-white mb-1">
         {selectedPatient.firstName} {selectedPatient.lastName}
       </h5>
             {/if}
-            <div class="flex items-center text-teal-100 text-sm">
+            <div class="flex items-center text-teal-100 text-xs sm:text-sm md:text-base">
               <i class="fas fa-calendar-alt mr-2"></i>
               <span>Age: {(() => {
             // Use stored age field if available
@@ -2284,92 +2284,92 @@
       </div>
           </div>
         </div>
-        <div class="flex space-x-3" role="group">
+        <div class="flex space-x-2 sm:space-x-3" role="group">
         <button 
-            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
+            class="inline-flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
         >
-            <i class="fas fa-history mr-2"></i>History
+            <i class="fas fa-history mr-1 sm:mr-2 text-xs sm:text-sm"></i><span class="hidden md:inline">History</span><span class="md:hidden">Hist</span>
         </button>
         <button 
-            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
+            class="inline-flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
         >
-            <i class="fas fa-edit mr-1"></i>Edit
+            <i class="fas fa-edit mr-1 text-xs sm:text-sm"></i><span class="hidden md:inline">Edit</span><span class="md:hidden">Edit</span>
         </button>
         </div>
       </div>
     </div>
   </div>
   
-  <div class="p-4">
+  <div class="p-3 sm:p-4">
     <!-- Responsive Progress Bar -->
-    <div class="mb-4 sm:mb-6">
+    <div class="mb-3 sm:mb-4 md:mb-6">
       <!-- Mobile: Horizontal scrollable tabs -->
       <div class="block sm:hidden">
         <div class="flex overflow-x-auto pb-2 space-x-2">
           <button 
-            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'overview' ? 'bg-teal-600 text-white' : enabledTabs.includes('overview') ? 'bg-indigo-500 text-white hover:bg-indigo-600' : 'bg-gray-300 text-gray-500'}"
+            class="flex-shrink-0 flex flex-col items-center px-1 sm:px-2 py-2 rounded-lg transition-all duration-200 w-16 sm:w-20 {activeTab === 'overview' ? 'bg-teal-600 text-white' : enabledTabs.includes('overview') ? 'bg-indigo-500 text-white hover:bg-indigo-600' : 'bg-gray-300 text-gray-500'}"
             on:click={() => enabledTabs.includes('overview') && handleTabChange('overview')}
             disabled={!enabledTabs.includes('overview')}
             title={enabledTabs.includes('overview') ? 'View patient overview' : 'Complete previous steps to unlock'}
           >
-            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'overview' ? 'bg-teal-600' : enabledTabs.includes('overview') ? 'bg-indigo-500' : 'bg-gray-300'}">
-              <i class="fas fa-user text-sm"></i>
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'overview' ? 'bg-teal-600' : enabledTabs.includes('overview') ? 'bg-indigo-500' : 'bg-gray-300'}">
+              <i class="fas fa-user text-xs sm:text-sm"></i>
             </div>
-            <div class="text-xs font-medium text-center leading-tight">Overview</div>
+            <div class="text-xs sm:text-sm font-medium text-center leading-tight">Overview</div>
           </button>
           
           <button 
-            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'symptoms' ? 'bg-teal-600 text-white' : enabledTabs.includes('symptoms') ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-300 text-gray-500'}"
+            class="flex-shrink-0 flex flex-col items-center px-1 sm:px-2 py-2 rounded-lg transition-all duration-200 w-16 sm:w-20 {activeTab === 'symptoms' ? 'bg-teal-600 text-white' : enabledTabs.includes('symptoms') ? 'bg-orange-500 text-white hover:bg-orange-600' : 'bg-gray-300 text-gray-500'}"
             on:click={() => enabledTabs.includes('symptoms') && handleTabChange('symptoms')}
             disabled={!enabledTabs.includes('symptoms')}
             title={enabledTabs.includes('symptoms') ? 'Document patient symptoms' : 'Complete previous steps to unlock'}
           >
-            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'symptoms' ? 'bg-teal-600' : enabledTabs.includes('symptoms') ? 'bg-orange-500' : 'bg-gray-300'}">
-              <i class="fas fa-thermometer-half text-sm"></i>
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'symptoms' ? 'bg-teal-600' : enabledTabs.includes('symptoms') ? 'bg-orange-500' : 'bg-gray-300'}">
+              <i class="fas fa-thermometer-half text-xs sm:text-sm"></i>
             </div>
-            <div class="text-xs font-medium text-center leading-tight">Symptoms</div>
+            <div class="text-xs sm:text-sm font-medium text-center leading-tight">Symptoms</div>
           </button>
           
           <button 
-            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'reports' ? 'bg-teal-600 text-white' : enabledTabs.includes('reports') ? 'bg-purple-500 text-white hover:bg-purple-600' : 'bg-gray-300 text-gray-500'}"
+            class="flex-shrink-0 flex flex-col items-center px-1 sm:px-2 py-2 rounded-lg transition-all duration-200 w-16 sm:w-20 {activeTab === 'reports' ? 'bg-teal-600 text-white' : enabledTabs.includes('reports') ? 'bg-purple-500 text-white hover:bg-purple-600' : 'bg-gray-300 text-gray-500'}"
             on:click={() => enabledTabs.includes('reports') && handleTabChange('reports')}
             disabled={!enabledTabs.includes('reports')}
             title={enabledTabs.includes('reports') ? 'View medical reports' : 'Complete previous steps to unlock'}
           >
-            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'reports' ? 'bg-teal-600' : enabledTabs.includes('reports') ? 'bg-purple-500' : 'bg-gray-300'}">
-              <i class="fas fa-file-medical text-sm"></i>
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'reports' ? 'bg-teal-600' : enabledTabs.includes('reports') ? 'bg-purple-500' : 'bg-gray-300'}">
+              <i class="fas fa-file-medical text-xs sm:text-sm"></i>
             </div>
-            <div class="text-xs font-medium text-center leading-tight">Reports</div>
+            <div class="text-xs sm:text-sm font-medium text-center leading-tight">Reports</div>
           </button>
           
           <button 
-            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'diagnoses' ? 'bg-teal-600 text-white' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-gray-300 text-gray-500'}"
+            class="flex-shrink-0 flex flex-col items-center px-1 sm:px-2 py-2 rounded-lg transition-all duration-200 w-16 sm:w-20 {activeTab === 'diagnoses' ? 'bg-teal-600 text-white' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-gray-300 text-gray-500'}"
             on:click={() => enabledTabs.includes('diagnoses') && handleTabChange('diagnoses')}
             disabled={!enabledTabs.includes('diagnoses')}
             title={enabledTabs.includes('diagnoses') ? 'View diagnoses' : 'Complete previous steps to unlock'}
           >
-            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'diagnoses' ? 'bg-teal-600' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500' : 'bg-gray-300'}">
-              <i class="fas fa-stethoscope text-sm"></i>
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'diagnoses' ? 'bg-teal-600' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500' : 'bg-gray-300'}">
+              <i class="fas fa-stethoscope text-xs sm:text-sm"></i>
             </div>
-            <div class="text-xs font-medium text-center leading-tight">Diagnoses</div>
+            <div class="text-xs sm:text-sm font-medium text-center leading-tight">Diagnoses</div>
           </button>
           
           <button 
-            class="flex-shrink-0 flex flex-col items-center px-2 py-2 rounded-lg transition-all duration-200 w-20 {activeTab === 'prescriptions' ? 'bg-teal-600 text-white' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-gray-300 text-gray-500'}"
+            class="flex-shrink-0 flex flex-col items-center px-1 sm:px-2 py-2 rounded-lg transition-all duration-200 w-16 sm:w-20 {activeTab === 'prescriptions' ? 'bg-teal-600 text-white' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-gray-300 text-gray-500'}"
             on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}
             disabled={!enabledTabs.includes('prescriptions')}
             title={enabledTabs.includes('prescriptions') ? 'View prescriptions' : 'Complete previous steps to unlock'}
           >
-            <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'prescriptions' ? 'bg-teal-600' : enabledTabs.includes('prescriptions') ? 'bg-rose-500' : 'bg-gray-300'}">
-              <i class="fas fa-pills text-sm"></i>
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'prescriptions' ? 'bg-teal-600' : enabledTabs.includes('prescriptions') ? 'bg-rose-500' : 'bg-gray-300'}">
+              <i class="fas fa-pills text-xs sm:text-sm"></i>
             </div>
-            <div class="text-xs font-medium text-center leading-tight break-words">Prescriptions</div>
+            <div class="text-xs sm:text-sm font-medium text-center leading-tight break-words">Prescriptions</div>
           </button>
         </div>
       </div>
@@ -2380,10 +2380,10 @@
           <div class="flex items-center cursor-pointer {enabledTabs.includes('overview') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('overview') && handleTabChange('overview')}>
             <div class="flex flex-col items-center">
-              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'overview' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('overview') ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-gray-300'}">
-                <i class="fas fa-user text-base"></i>
+              <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'overview' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('overview') ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-gray-300'}">
+                <i class="fas fa-user text-sm sm:text-base md:text-lg"></i>
           </div>
-              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'overview' ? 'text-teal-600' : enabledTabs.includes('overview') ? 'text-gray-700' : 'text-gray-400'}">Overview</div>
+              <div class="text-xs sm:text-sm md:text-base font-medium mt-2 {activeTab === 'overview' ? 'text-teal-600' : enabledTabs.includes('overview') ? 'text-gray-700' : 'text-gray-400'}">Overview</div>
             </div>
         </div>
         
@@ -2392,10 +2392,10 @@
           <div class="flex items-center cursor-pointer {enabledTabs.includes('symptoms') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('symptoms') && handleTabChange('symptoms')}>
             <div class="flex flex-col items-center">
-              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'symptoms' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('symptoms') ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-300'}">
-                <i class="fas fa-thermometer-half text-base"></i>
+              <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'symptoms' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('symptoms') ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-300'}">
+                <i class="fas fa-thermometer-half text-sm sm:text-base md:text-lg"></i>
           </div>
-              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'symptoms' ? 'text-teal-600' : enabledTabs.includes('symptoms') ? 'text-gray-700' : 'text-gray-400'}">Symptoms</div>
+              <div class="text-xs sm:text-sm md:text-base font-medium mt-2 {activeTab === 'symptoms' ? 'text-teal-600' : enabledTabs.includes('symptoms') ? 'text-gray-700' : 'text-gray-400'}">Symptoms</div>
             </div>
         </div>
         
@@ -2404,10 +2404,10 @@
           <div class="flex items-center cursor-pointer {enabledTabs.includes('reports') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('reports') && handleTabChange('reports')}>
             <div class="flex flex-col items-center">
-              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'reports' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('reports') ? 'bg-purple-500 hover:bg-purple-600' : 'bg-gray-300'}">
-                <i class="fas fa-file-medical text-base"></i>
+              <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'reports' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('reports') ? 'bg-purple-500 hover:bg-purple-600' : 'bg-gray-300'}">
+                <i class="fas fa-file-medical text-sm sm:text-base md:text-lg"></i>
           </div>
-              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'reports' ? 'text-teal-600' : enabledTabs.includes('reports') ? 'text-gray-700' : 'text-gray-400'}">Reports</div>
+              <div class="text-xs sm:text-sm md:text-base font-medium mt-2 {activeTab === 'reports' ? 'text-teal-600' : enabledTabs.includes('reports') ? 'text-gray-700' : 'text-gray-400'}">Reports</div>
             </div>
         </div>
         
@@ -2416,10 +2416,10 @@
           <div class="flex items-center cursor-pointer {enabledTabs.includes('diagnoses') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('diagnoses') && handleTabChange('diagnoses')}>
             <div class="flex flex-col items-center">
-              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'diagnoses' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-gray-300'}">
-                <i class="fas fa-stethoscope text-base"></i>
+              <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'diagnoses' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('diagnoses') ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-gray-300'}">
+                <i class="fas fa-stethoscope text-sm sm:text-base md:text-lg"></i>
           </div>
-              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'diagnoses' ? 'text-teal-600' : enabledTabs.includes('diagnoses') ? 'text-gray-700' : 'text-gray-400'}">Diagnoses</div>
+              <div class="text-xs sm:text-sm md:text-base font-medium mt-2 {activeTab === 'diagnoses' ? 'text-teal-600' : enabledTabs.includes('diagnoses') ? 'text-gray-700' : 'text-gray-400'}">Diagnoses</div>
             </div>
         </div>
         
@@ -2428,10 +2428,10 @@
           <div class="flex items-center cursor-pointer {enabledTabs.includes('prescriptions') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
              on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}>
             <div class="flex flex-col items-center">
-              <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'prescriptions' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 hover:bg-rose-600' : 'bg-gray-300'}">
-                <i class="fas fa-pills text-base"></i>
+              <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'prescriptions' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 hover:bg-rose-600' : 'bg-gray-300'}">
+                <i class="fas fa-pills text-sm sm:text-base md:text-lg"></i>
           </div>
-              <div class="text-xs sm:text-sm font-medium mt-2 {activeTab === 'prescriptions' ? 'text-teal-600' : enabledTabs.includes('prescriptions') ? 'text-gray-700' : 'text-gray-400'}">Prescriptions</div>
+              <div class="text-xs sm:text-sm md:text-base font-medium mt-2 {activeTab === 'prescriptions' ? 'text-teal-600' : enabledTabs.includes('prescriptions') ? 'text-gray-700' : 'text-gray-400'}">Prescriptions</div>
             </div>
           </div>
         </div>
@@ -2439,29 +2439,29 @@
     </div>
     
     <!-- Tab Content -->
-    <div class="mt-4">
+    <div class="mt-3 sm:mt-4">
       <!-- Overview Tab -->
       {#if activeTab === 'overview'}
         <div>
-          <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4">
-            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-              <h6 class="text-lg font-semibold text-gray-900 mb-0">
-                <i class="fas fa-info-circle mr-2 text-teal-600"></i>Patient Information
+          <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-3 sm:mb-4">
+            <div class="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
+              <h6 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0">
+                <i class="fas fa-info-circle mr-1 sm:mr-2 text-teal-600"></i>Patient Information
               </h6>
             </div>
-            <div class="p-4">
+            <div class="p-3 sm:p-4">
               {#if isEditingPatient}
                 <!-- Edit Patient Form -->
                 <form on:submit|preventDefault={savePatientChanges}>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                      <div class="mb-4">
-                        <label for="editFirstName" class="block text-sm font-medium text-gray-700 mb-1">
+                      <div class="mb-3 sm:mb-4">
+                        <label for="editFirstName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                           <i class="fas fa-user mr-1"></i>First Name <span class="text-red-500">*</span>
                         </label>
                         <input 
                           type="text" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editFirstName" 
                           bind:value={editPatientData.firstName}
                           required
@@ -2470,11 +2470,11 @@
                       </div>
                     </div>
                     <div>
-                      <div class="mb-4">
-                        <label for="editLastName" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                      <div class="mb-3 sm:mb-4">
+                        <label for="editLastName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Last Name</label>
                         <input 
                           type="text" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editLastName" 
                           bind:value={editPatientData.lastName}
                           disabled={savingPatient}
@@ -2483,15 +2483,15 @@
                     </div>
                   </div>
                   
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
-                      <div class="mb-4">
-                        <label for="editEmail" class="block text-sm font-medium text-gray-700 mb-1">
+                      <div class="mb-3 sm:mb-4">
+                        <label for="editEmail" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                           <i class="fas fa-envelope mr-1"></i>Email Address
                         </label>
                         <input 
                           type="email" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editEmail" 
                           bind:value={editPatientData.email}
                           disabled={savingPatient}
@@ -2499,11 +2499,11 @@
                       </div>
                     </div>
                     <div>
-                      <div class="mb-4">
-                        <label for="editPhone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                      <div class="mb-3 sm:mb-4">
+                        <label for="editPhone" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                         <input 
                           type="tel" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editPhone" 
                           bind:value={editPatientData.phone}
                           disabled={savingPatient}
@@ -3321,8 +3321,8 @@
       {#if activeTab === 'diagnoses'}
         <div class="tab-pane active">
           <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-3 sm:mb-4 gap-2 sm:gap-0">
-            <h6 class="text-base sm:text-lg font-semibold text-gray-900 mb-0">
-              <i class="fas fa-stethoscope mr-1 sm:mr-2 text-sm sm:text-base"></i>Medical Diagnoses
+            <h6 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0">
+              <i class="fas fa-stethoscope mr-1 sm:mr-2 text-sm sm:text-base md:text-lg"></i>Medical Diagnoses
             </h6>
             <button 
               class="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 

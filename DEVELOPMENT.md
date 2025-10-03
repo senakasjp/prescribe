@@ -2,7 +2,40 @@
 
 ## 📋 Recent Updates (January 16, 2025)
 
-### **💊 Individual Drug Dispatch System (Latest)**
+### **📝 Prescription Notes System (Latest)**
+- **Notes Field Implementation**: Added prescription notes textarea in `PrescriptionsTab.svelte` component
+- **Data Binding Integration**: Implemented two-way binding between `PatientDetails.svelte` and `PrescriptionsTab.svelte`
+- **Strategic UI Placement**: Notes field positioned at bottom of prescription form, after medications list
+- **PDF Integration**: Notes automatically included in prescription PDF generation
+- **Professional Styling**: Consistent with app design using Flowbite components and teal color scheme
+- **Icon Integration**: Added sticky note icon (fas fa-sticky-note) for visual clarity
+- **Form Validation**: Proper form labels, focus management, and accessibility compliance
+- **Data Persistence**: Notes saved with prescription data and available across sessions
+
+**Technical Implementation**:
+```javascript
+// In PrescriptionsTab.svelte
+export let prescriptionNotes = ''
+
+// Notes field HTML
+<div class="mt-4">
+  <label for="prescriptionNotes" class="block text-sm font-medium text-gray-700 mb-2">
+    <i class="fas fa-sticky-note mr-1"></i>Prescription Notes
+  </label>
+  <textarea
+    id="prescriptionNotes"
+    bind:value={prescriptionNotes}
+    rows="3"
+    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+    placeholder="Additional instructions or notes for the prescription..."
+  ></textarea>
+</div>
+
+// In PatientDetails.svelte
+bind:prescriptionNotes
+```
+
+### **💊 Individual Drug Dispatch System**
 - **Granular Medication Selection**: Implemented individual checkboxes for each medication in prescriptions
 - **Smart State Management**: Used `Set` data structure to track selected medications with unique keys
 - **Responsive UI Components**: Desktop table checkboxes and mobile card checkboxes for seamless experience

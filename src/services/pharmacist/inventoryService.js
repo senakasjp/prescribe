@@ -332,7 +332,7 @@ class InventoryService {
    */
   async createStockMovement(pharmacistId, movementData) {
     try {
-      console.log('📦 InventoryService: Creating stock movement')
+      console.log('📦 InventoryService: Creating stock movement for itemId:', movementData.itemId)
       
       const movement = {
         id: this.generateId(),
@@ -351,9 +351,12 @@ class InventoryService {
         createdBy: pharmacistId
       }
       
+      console.log('📦 InventoryService: Adding stock movement to collection:', this.collections.stockMovements)
       const docRef = await addDoc(collection(db, this.collections.stockMovements), movement)
+      console.log('✅ InventoryService: Stock movement document created with ID:', docRef.id)
       
       // Update inventory item stock
+      console.log('📦 InventoryService: Updating stock level for item:', movementData.itemId)
       await this.updateStockLevel(movementData.itemId, movementData.quantity, movementData.type)
       
       console.log('📦 InventoryService: Stock movement created successfully')
@@ -370,17 +373,32 @@ class InventoryService {
    */
   async updateStockLevel(itemId, quantity, type) {
     try {
+      console.log('🔍 InventoryService: Updating stock level for itemId:', itemId, 'quantity:', quantity, 'type:', type)
+      
       const itemRef = doc(db, this.collections.inventory, itemId)
       
+      // First, check if the document exists
+      const itemDoc = await getDoc(itemRef)
+      if (!itemDoc.exists()) {
+        console.error('❌ InventoryService: Document does not exist for itemId:', itemId)
+        throw new Error(`Inventory item with ID ${itemId} does not exist`)
+      }
+      
+      console.log('✅ InventoryService: Document exists, current stock:', itemDoc.data().currentStock)
+      
       let stockChange = parseInt(quantity)
-      if (type === this.MOVEMENT_TYPES.SALE || type === this.MOVEMENT_TYPES.EXPIRED || type === this.MOVEMENT_TYPES.DAMAGED) {
+      if (type === this.MOVEMENT_TYPES.SALE || type === this.MOVEMENT_TYPES.EXPIRED || type === this.MOVEMENT_TYPES.DAMAGED || type === 'dispatch') {
         stockChange = -stockChange
       }
+      
+      console.log('🔍 InventoryService: Stock change to apply:', stockChange)
       
       await updateDoc(itemRef, {
         currentStock: increment(stockChange),
         lastUpdated: new Date().toISOString()
       })
+      
+      console.log('✅ InventoryService: Stock level updated successfully')
       
       // Check if stock level triggers alerts
       await this.checkStockAlerts(itemId)

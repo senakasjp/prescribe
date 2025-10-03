@@ -13,6 +13,7 @@
   let name = ''
   let dosage = ''
   let dosageUnit = 'mg'
+  let route = ''
   let instructions = ''
   let frequency = ''
   let duration = ''
@@ -38,6 +39,7 @@
     name = ''
     dosage = ''
     dosageUnit = 'mg'
+    route = ''
     instructions = ''
     frequency = ''
     duration = ''
@@ -76,6 +78,7 @@
       dosageUnit = 'mg'
     }
     
+    route = editingMedication.route || ''
     instructions = editingMedication.instructions || ''
     frequency = editingMedication.frequency || ''
     duration = editingMedication.duration || ''
@@ -113,6 +116,7 @@
         name: name.trim(),
         dosage: dosage.trim() + dosageUnit,
         dosageUnit: dosageUnit,
+        route: route.trim(),
         instructions: instructions.trim(),
         frequency,
         duration: duration.trim(),
@@ -157,6 +161,7 @@
       name = ''
       dosage = ''
       dosageUnit = 'mg'
+      route = ''
       instructions = ''
       frequency = ''
       duration = ''
@@ -217,16 +222,16 @@
   })
 </script>
 
-<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
-  <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
-    <h6 class="text-lg font-semibold mb-0">
+<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mx-2 sm:mx-0">
+  <div class="bg-teal-600 text-white px-3 sm:px-4 py-3 rounded-t-lg">
+    <h6 class="text-base sm:text-lg font-semibold mb-0">
       <i class="fas fa-pills mr-2"></i>{editingMedication ? 'Edit Medication' : 'Add New Medication'}
     </h6>
   </div>
-  <div class="p-4">
-    <form on:submit={handleSubmit} class="space-y-4">
+  <div class="p-3 sm:p-4">
+    <form on:submit={handleSubmit} class="space-y-3 sm:space-y-4">
       <div>
-        <label for="medicationName" class="block text-sm font-medium text-gray-700 mb-1">Medication Name <span class="text-red-500">*</span></label>
+        <label for="medicationName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Medication Name <span class="text-red-500">*</span></label>
         <DrugAutocomplete 
           bind:value={name}
           placeholder="e.g., Metformin, Lisinopril"
@@ -236,13 +241,13 @@
         />
       </div>
       
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         <div>
-          <label for="medicationDosage" class="block text-sm font-medium text-gray-700 mb-1">Dosage <span class="text-red-500">*</span></label>
+          <label for="medicationDosage" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dosage <span class="text-red-500">*</span></label>
           <div class="flex">
             <input 
               type="text" 
-              class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="medicationDosage" 
               bind:value={dosage}
               required
@@ -250,7 +255,7 @@
               placeholder="500"
             >
             <select 
-              class="px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              class="px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="dosageUnit" 
               bind:value={dosageUnit}
               disabled={loading}
@@ -272,9 +277,45 @@
           </div>
         </div>
         <div>
-          <label for="medicationFrequency" class="block text-sm font-medium text-gray-700 mb-1">Frequency <span class="text-red-500">*</span></label>
+          <label for="medicationRoute" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Route of Administration</label>
+          <div class="flex">
+            <select 
+              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              id="medicationRoute" 
+              on:change={(e) => {
+                if (e.target.value) {
+                  route = e.target.value;
+                }
+              }}
+              disabled={loading}
+            >
+              <option value="">Select route</option>
+              <option value="IM">IM (Intramuscular)</option>
+              <option value="IV">IV (Intravenous)</option>
+              <option value="SC">SC (Subcutaneous)</option>
+              <option value="PO">PO (Oral)</option>
+              <option value="Topical">Topical</option>
+              <option value="Inhalation">Inhalation</option>
+              <option value="Rectal">Rectal</option>
+              <option value="Vaginal">Vaginal</option>
+              <option value="Otic">Otic (Ear)</option>
+              <option value="Ophthalmic">Ophthalmic (Eye)</option>
+              <option value="Nasal">Nasal</option>
+              <option value="Transdermal">Transdermal</option>
+            </select>
+            <input 
+              type="text" 
+              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              placeholder="Or enter custom route"
+              bind:value={route}
+              disabled={loading}
+            >
+          </div>
+        </div>
+        <div>
+          <label for="medicationFrequency" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Frequency <span class="text-red-500">*</span></label>
           <select 
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationFrequency" 
             bind:value={frequency}
             required
@@ -293,9 +334,9 @@
       </div>
       
       <div>
-        <label for="medicationInstructions" class="block text-sm font-medium text-gray-700 mb-1">Instructions <span class="text-red-500">*</span></label>
+        <label for="medicationInstructions" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Instructions <span class="text-red-500">*</span></label>
         <textarea 
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="medicationInstructions" 
           rows="2" 
           bind:value={instructions}
@@ -305,12 +346,12 @@
         ></textarea>
       </div>
       
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <div>
-          <label for="medicationDuration" class="block text-sm font-medium text-gray-700 mb-1">Duration <span class="text-red-500">*</span></label>
+          <label for="medicationDuration" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Duration <span class="text-red-500">*</span></label>
           <input 
             type="text" 
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationDuration" 
             bind:value={duration}
             disabled={loading}
@@ -318,20 +359,20 @@
           >
         </div>
         <div>
-          <label for="medicationStartDate" class="block text-sm font-medium text-gray-700 mb-1">Start Date <span class="text-gray-500 text-xs">(Optional)</span></label>
+          <label for="medicationStartDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Start Date <span class="text-gray-500 text-xs">(Optional)</span></label>
           <input 
             type="date" 
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationStartDate" 
             bind:value={startDate}
             disabled={loading}
           >
         </div>
         <div>
-          <label for="medicationEndDate" class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <label for="medicationEndDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">End Date</label>
           <input 
             type="date" 
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationEndDate" 
             bind:value={endDate}
             disabled={loading}
@@ -340,9 +381,9 @@
       </div>
       
       <div>
-        <label for="medicationNotes" class="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
+        <label for="medicationNotes" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
         <textarea 
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="medicationNotes" 
           rows="2" 
           bind:value={notes}
@@ -352,20 +393,20 @@
       </div>
       
       {#if error}
-        <div class="bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-2 sm:p-3" role="alert">
           <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-          <span class="text-sm text-red-700">{error}</span>
+          <span class="text-xs sm:text-sm text-red-700">{error}</span>
         </div>
       {/if}
       
-      <div class="flex flex-col sm:flex-row gap-3">
+      <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
         <button 
           type="submit" 
-          class="flex-1 text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center" 
+          class="flex-1 text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-xs sm:text-sm px-3 sm:px-5 py-2 sm:py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center" 
           disabled={loading}
         >
           {#if loading}
-            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin -ml-1 mr-2 h-3 w-3 sm:h-4 sm:w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -374,7 +415,7 @@
         </button>
         <button 
           type="button" 
-          class="flex-1 py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200 flex items-center justify-center" 
+          class="flex-1 py-2 sm:py-2.5 px-3 sm:px-5 text-xs sm:text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200 flex items-center justify-center" 
           on:click={handleCancel}
           disabled={loading}
         >

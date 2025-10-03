@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher } from 'svelte'
+  import prescriptionStatusService from '../services/doctor/prescriptionStatusService.js'
   
   const dispatch = createEventDispatcher()
   
@@ -17,6 +18,7 @@
   export let toggleIllnessesNotes
   export let togglePrescriptionsNotes
   export let groupByDate
+  export let doctorId = null
 
   // Reactive tab counts
   $: symptomsCount = symptoms?.length || 0
@@ -26,9 +28,14 @@
   // Track if prescription medications are expanded
   let showAllMedications = false
   
+  // Dispensed status tracking
+  let prescriptionDispensedStatus = {}
+  let checkingDispensedStatus = false
+  
   // Reset expanded state when selected patient changes
   $: if (selectedPatient) {
     showAllMedications = false
+    checkPrescriptionDispensedStatus()
   }
   
   // Extract all medications from prescriptions and group by drug name
@@ -53,6 +60,43 @@
     drugName,
     doses: doses.sort((a, b) => new Date(b.createdAt || b.prescriptionDate || 0) - new Date(a.createdAt || a.prescriptionDate || 0))
   })).sort((a, b) => new Date(b.doses[0].createdAt || b.doses[0].prescriptionDate || 0) - new Date(a.doses[0].createdAt || a.doses[0].prescriptionDate || 0))
+
+  // Check dispensed status for prescriptions
+  const checkPrescriptionDispensedStatus = async () => {
+    try {
+      if (!doctorId || !selectedPatient?.id) return
+      
+      checkingDispensedStatus = true
+      console.log('🔍 MedicalSummary: Checking dispensed status for patient:', selectedPatient.id)
+      
+      // Get dispensed status for all patient prescriptions
+      const status = await prescriptionStatusService.getPatientPrescriptionsStatus(selectedPatient.id, doctorId)
+      prescriptionDispensedStatus = status
+      
+      console.log('✅ MedicalSummary: Dispensed status loaded:', prescriptionDispensedStatus)
+      
+    } catch (error) {
+      console.error('❌ MedicalSummary: Error checking dispensed status:', error)
+      prescriptionDispensedStatus = {}
+    } finally {
+      checkingDispensedStatus = false
+    }
+  }
+
+  // Check if a prescription is dispensed
+  const isPrescriptionDispensed = (prescriptionId) => {
+    return prescriptionDispensedStatus[prescriptionId]?.isDispensed || false
+  }
+
+  // Get dispensed info for a prescription
+  const getPrescriptionDispensedInfo = (prescriptionId) => {
+    return prescriptionDispensedStatus[prescriptionId] || {
+      isDispensed: false,
+      dispensedAt: null,
+      dispensedBy: null,
+      dispensedMedications: []
+    }
+  }
   
   // Handle tab change
   const handleTabChange = (tab) => {
@@ -130,7 +174,7 @@
                           <div class="flex-1">
                             <span class="text-sm text-gray-900">
                               {#if symptom.description}
-                                {symptom.description.length > 20 ? symptom.description.substring(0, 20) + '...' : symptom.description}
+                                {symptom.description}
                               {:else}
                                 <span class="text-gray-500">No description</span>
                               {/if}
@@ -207,7 +251,7 @@
                           <div class="flex-1">
                             <span class="text-sm font-semibold text-gray-900">
                               {#if illness.name}
-                                {illness.name.length > 20 ? illness.name.substring(0, 20) + '...' : illness.name}
+                                {illness.name}
                               {:else}
                                 <span class="text-gray-500">Unknown illness</span>
                               {/if}
@@ -271,30 +315,42 @@
         {#if activeMedicalTab === 'prescriptions'}
           <div>
             {#if allMedications && allMedications.length > 0}
-              <div class="mb-3">
-                <small class="text-gray-500 text-sm">Medications by drug name (latest first):</small>
-                <div class="mt-2">
+              <div class="mb-2">
+                <small class="text-gray-500 text-xs">Medications by drug name (latest first):</small>
+                <div class="mt-1">
                   {#each (showAllMedications ? allMedications : allMedications.slice(0, 3)) as drugGroup}
-                    <div class="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
-                      <div class="flex items-center mb-3">
-                        <h6 class="text-base font-semibold text-blue-600 mr-2 mb-0">
+                    <div class="mb-2 p-2 border border-gray-200 rounded bg-gray-50">
+                      <div class="flex items-center mb-1">
+                        <h6 class="text-sm font-semibold text-blue-600 mr-2 mb-0">
                           {drugGroup.drugName}
                         </h6>
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{drugGroup.doses.length} dose{drugGroup.doses.length !== 1 ? 's' : ''}</span>
+                        <div class="flex items-center gap-1">
+                          {#if drugGroup.doses.some(dose => isPrescriptionDispensed(dose.prescriptionId))}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <i class="fas fa-check-circle mr-1"></i>Dispensed
+                            </span>
+                          {/if}
+                          <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{drugGroup.doses.length}</span>
+                        </div>
                       </div>
-                     <div class="ml-3">
+                     <div class="ml-2">
                        {#each drugGroup.doses as dose}
-                         <div class="flex justify-between items-center mb-2 p-2 border-b border-gray-200 last:border-b-0">
+                         <div class="flex justify-between items-center mb-1 py-1 border-b border-gray-200 last:border-b-0">
                            <div class="flex-1">
-                             <div class="flex items-center flex-wrap gap-2">
-                               <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{dose.dosage || 'No dosage'}</span>
+                             <div class="flex items-center flex-wrap gap-1">
+                               <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">{dose.dosage || 'No dosage'}</span>
+                               {#if isPrescriptionDispensed(dose.prescriptionId)}
+                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                   <i class="fas fa-check-circle mr-1"></i>Dispensed
+                                 </span>
+                               {/if}
                                <small class="text-gray-500 text-xs">
                                  <i class="fas fa-clock mr-1"></i>{dose.duration || 'No duration'}
                                </small>
                                <small class="text-gray-500 text-xs">
                                  <i class="fas fa-calendar mr-1"></i>
                                  {#if dose.daysAgo !== null}
-                                   {dose.daysAgo === 0 ? 'Today' : dose.daysAgo === 1 ? '1 day ago' : `${dose.daysAgo} days ago`}
+                                   {dose.daysAgo === 0 ? 'Today' : dose.daysAgo === 1 ? '1d' : `${dose.daysAgo}d`}
                                  {:else}
                                    {dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
                                  {/if}
@@ -302,7 +358,7 @@
                              </div>
                            </div>
                            <button 
-                             class="inline-flex items-center px-3 py-1 border border-teal-300 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 rounded-lg transition-colors duration-200"
+                             class="inline-flex items-center px-2 py-0.5 border border-teal-300 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 rounded transition-colors duration-200"
                              on:click={() => addToPrescription(dose)}
                              title="Add to today's prescription"
                            >
@@ -317,13 +373,13 @@
                   {#if allMedications.length > 3}
                     <button
                       type="button"
-                      class="w-full text-gray-500 hover:text-teal-600 text-sm block text-center mt-2 py-1 transition-colors duration-200"
+                      class="w-full text-gray-500 hover:text-teal-600 text-xs block text-center mt-1 py-0.5 transition-colors duration-200"
                       on:click={() => showAllMedications = !showAllMedications}
                     >
                       {#if showAllMedications}
                         <i class="fas fa-chevron-up mr-1"></i>Show less
                       {:else}
-                        <i class="fas fa-chevron-down mr-1"></i>+{allMedications.length - 3} more drug group{allMedications.length - 3 !== 1 ? 's' : ''}
+                        <i class="fas fa-chevron-down mr-1"></i>+{allMedications.length - 3} more
                       {/if}
                     </button>
                   {/if}
@@ -332,9 +388,9 @@
               
               <!-- Show Notes Button -->
               {#if allMedications.some(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim()))}
-                <div class="mt-3">
+                <div class="mt-2">
                   <button 
-                    class="inline-flex items-center px-3 py-2 border border-teal-300 text-sm font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 rounded-lg transition-colors duration-200"
+                    class="inline-flex items-center px-2 py-1 border border-teal-300 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-1 focus:ring-teal-500 focus:border-teal-500 rounded transition-colors duration-200"
                     on:click={togglePrescriptionsNotes}
                   >
                     <i class="fas fa-sticky-note mr-1"></i>
@@ -345,15 +401,15 @@
               
               <!-- Notes Display -->
               {#if showPrescriptionsNotes && allMedications.some(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim()))}
-                <div class="mt-3">
-                  <small class="text-gray-600 font-semibold text-sm">Notes:</small>
-                  <div class="mt-2">
+                <div class="mt-2">
+                  <small class="text-gray-600 font-semibold text-xs">Notes:</small>
+                  <div class="mt-1">
                     {#each allMedications.filter(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim())) as drugGroup}
                       {#each drugGroup.doses.filter(dose => dose.notes && dose.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as dose}
-                        <div class="mb-2 p-3 bg-teal-50 border border-teal-200 rounded-lg">
-                          <div class="font-semibold text-gray-900 text-sm">{drugGroup.drugName}</div>
-                          <div class="text-gray-600 text-sm mt-1">{dose.notes}</div>
-                          <small class="text-gray-500 text-xs mt-1 block">
+                        <div class="mb-1 p-2 bg-teal-50 border border-teal-200 rounded">
+                          <div class="font-semibold text-gray-900 text-xs">{drugGroup.drugName}</div>
+                          <div class="text-gray-600 text-xs mt-0.5">{dose.notes}</div>
+                          <small class="text-gray-500 text-xs mt-0.5 block">
                             <i class="fas fa-calendar mr-1"></i>{dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
                           </small>
                         </div>

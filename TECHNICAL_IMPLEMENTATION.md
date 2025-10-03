@@ -24,8 +24,9 @@
 - Patient information display with conditional rendering
 - Tab-based navigation (Overview, Symptoms, Reports, Diagnoses, Prescriptions)
 - AI-powered drug suggestions
-- Prescription management
+- Prescription management with notes field
 - Current medications tracking
+- Prescription notes integration
 
 **Technical Implementation**:
 ```javascript
@@ -40,6 +41,12 @@ function getCurrentMedications() {
     p.medications?.filter(med => isMedicationStillActive(med)) || []
   ) || []
 }
+
+// Prescription notes integration
+let prescriptionNotes = ''
+
+// Notes field in PrescriptionsTab component
+bind:prescriptionNotes
 ```
 
 ### 2. PharmacistDashboard.svelte
@@ -76,7 +83,58 @@ function markSelectedAsDispensed() {
 }
 ```
 
-### 3. AdminDashboard.svelte
+### 3. PrescriptionsTab.svelte
+**Purpose**: Prescription management interface in doctor portal
+**Key Features**:
+- Prescription notes field
+- Medication management
+- AI drug suggestions
+- Pharmacy stock availability checking
+- Form validation and submission
+
+**Technical Implementation**:
+```javascript
+// Prescription notes field
+export let prescriptionNotes = ''
+
+// Notes field HTML
+<div class="mt-4">
+  <label for="prescriptionNotes" class="block text-sm font-medium text-gray-700 mb-2">
+    <i class="fas fa-sticky-note mr-1"></i>Prescription Notes
+  </label>
+  <textarea
+    id="prescriptionNotes"
+    bind:value={prescriptionNotes}
+    rows="3"
+    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+    placeholder="Additional instructions or notes for the prescription..."
+  ></textarea>
+</div>
+
+// Pharmacy stock availability checking
+function isMedicationAvailable(medication) {
+  if (!medication || !pharmacyStock.length) return null
+  
+  const matchingStock = pharmacyStock.find(stock => {
+    const stockName = stock.drugName?.toLowerCase().trim() || ''
+    const medName = medication.name?.toLowerCase().trim() || ''
+    return stockName && medName && stockName.includes(medName)
+  })
+  
+  if (matchingStock) {
+    const quantity = parseInt(matchingStock.quantity) || 0
+    return {
+      available: quantity > 0,
+      quantity: quantity,
+      stockItem: matchingStock
+    }
+  }
+  
+  return { available: false, quantity: 0, stockItem: null }
+}
+```
+
+### 4. AdminDashboard.svelte
 **Purpose**: Administrative controls and analytics
 **Key Features**:
 - Doctor token quota management
