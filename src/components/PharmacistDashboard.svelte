@@ -5,6 +5,7 @@
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import InventoryDashboard from './pharmacist/InventoryDashboard.svelte'
+  import inventoryService from '../services/pharmacist/inventoryService.js'
   
   export let pharmacist
   
@@ -86,31 +87,138 @@
     if (dispensedMedications.size === totalMedications) {
       showConfirmation(
         'Mark All as Dispensed',
-        `Are you sure you want to mark all ${totalMedications} medications as dispensed?`,
+        `Are you sure you want to mark all ${totalMedications} medications as dispensed? This will reduce inventory stock.`,
         'Mark as Dispensed',
         'Cancel',
         'success'
       )
       pendingAction = () => {
-        notifySuccess(`Successfully marked ${dispensedMedications.size} medications as dispensed.`)
-        dispensedMedications.clear()
-        dispensedMedications = new Set(dispensedMedications)
-        closePrescriptionDetails()
+        handleDispensedMedications()
       }
     } else {
       showConfirmation(
         'Mark Selected as Dispensed',
-        `Are you sure you want to mark ${dispensedMedications.size} of ${totalMedications} medications as dispensed?`,
+        `Are you sure you want to mark ${dispensedMedications.size} of ${totalMedications} medications as dispensed? This will reduce inventory stock.`,
         'Mark as Dispensed',
         'Cancel',
         'warning'
       )
       pendingAction = () => {
-        notifySuccess(`Successfully marked ${dispensedMedications.size} medications as dispensed.`)
-        dispensedMedications.clear()
-        dispensedMedications = new Set(dispensedMedications)
-        closePrescriptionDetails()
+        handleDispensedMedications()
       }
+    }
+  }
+  
+  // Handle the actual dispensing and inventory reduction
+  async function handleDispensedMedications() {
+    try {
+      if (!pharmacist?.id) {
+        notifyError('Pharmacist information not available')
+        return
+      }
+      
+      let inventoryReductions = []
+      let inventoryErrors = []
+      
+      // Process each dispensed medication
+      for (const dispensedKey of dispensedMedications) {
+        const [prescriptionId, medicationId] = dispensedKey.split('-')
+        
+        // Find the medication details
+        let medication = null
+        for (const prescription of selectedPrescription.prescriptions) {
+          if (prescription.id === prescriptionId) {
+            medication = prescription.medications?.find(med => 
+              (med.id || med.name) === medicationId
+            )
+            if (medication) break
+          }
+        }
+        
+        if (!medication) {
+          console.warn('Medication not found:', medicationId)
+          continue
+        }
+        
+        try {
+          // Find the inventory item by drug name
+          const inventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
+          const inventoryItem = inventoryItems.find(item => 
+            item.drugName.toLowerCase() === medication.name.toLowerCase() ||
+            item.genericName?.toLowerCase() === medication.name.toLowerCase() ||
+            item.brandName?.toLowerCase() === medication.name.toLowerCase()
+          )
+          
+          if (inventoryItem) {
+            // Calculate quantity to reduce (default to 1 if not specified)
+            const quantity = medication.quantity || medication.dosage || 1
+            
+            // Create stock movement for dispatch
+            await inventoryService.createStockMovement(pharmacist.id, {
+              itemId: inventoryItem.id,
+              type: 'dispatch', // Using 'dispatch' for dispensed medications
+              quantity: -Math.abs(quantity), // Negative quantity for reduction
+              unitCost: inventoryItem.costPrice || 0,
+              reference: 'prescription_dispatch',
+              referenceId: prescriptionId,
+              notes: `Dispensed for prescription ${prescriptionId} - ${medication.name}`,
+              batchNumber: '',
+              expiryDate: ''
+            })
+            
+            inventoryReductions.push({
+              drugName: medication.name,
+              quantity: quantity,
+              inventoryItem: inventoryItem.drugName
+            })
+            
+            console.log(`✅ Reduced inventory for ${medication.name}: -${quantity}`)
+          } else {
+            inventoryErrors.push({
+              drugName: medication.name,
+              error: 'Not found in inventory'
+            })
+            console.warn(`⚠️ Inventory item not found for: ${medication.name}`)
+          }
+        } catch (error) {
+          inventoryErrors.push({
+            drugName: medication.name,
+            error: error.message
+          })
+          console.error(`❌ Error reducing inventory for ${medication.name}:`, error)
+        }
+      }
+      
+      // Show results
+      if (inventoryReductions.length > 0) {
+        const reductionSummary = inventoryReductions.map(r => 
+          `${r.drugName} (-${r.quantity})`
+        ).join(', ')
+        
+        notifySuccess(
+          `✅ Marked ${dispensedMedications.size} medications as dispensed. ` +
+          `Inventory reduced: ${reductionSummary}`
+        )
+      }
+      
+      if (inventoryErrors.length > 0) {
+        const errorSummary = inventoryErrors.map(e => 
+          `${e.drugName}: ${e.error}`
+        ).join(', ')
+        
+        notifyError(
+          `⚠️ Some medications couldn't be reduced from inventory: ${errorSummary}`
+        )
+      }
+      
+      // Clear dispensed medications and close modal
+      dispensedMedications.clear()
+      dispensedMedications = new Set(dispensedMedications)
+      closePrescriptionDetails()
+      
+    } catch (error) {
+      console.error('❌ Error handling dispensed medications:', error)
+      notifyError('Error processing dispensed medications: ' + error.message)
     }
   }
   

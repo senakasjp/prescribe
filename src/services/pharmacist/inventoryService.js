@@ -47,6 +47,7 @@ class InventoryService {
     this.MOVEMENT_TYPES = {
       PURCHASE: 'purchase',
       SALE: 'sale',
+      DISPATCH: 'dispatch',
       ADJUSTMENT: 'adjustment',
       TRANSFER: 'transfer',
       EXPIRED: 'expired',

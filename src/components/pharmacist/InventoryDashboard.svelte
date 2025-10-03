@@ -293,6 +293,36 @@
     showConfirmationModal = false
   }
   
+  // Handle edit item
+  const handleEditItem = async () => {
+    try {
+      if (!selectedItem || !pharmacist?.id) {
+        notifyError('Unable to update item: Missing data')
+        return
+      }
+
+      // Update the item using the inventory service
+      const updatedItem = await inventoryService.updateInventoryItem(selectedItem.id, selectedItem)
+      
+      if (updatedItem) {
+        // Update the local inventory items array
+        const index = inventoryItems.findIndex(item => item.id === selectedItem.id)
+        if (index !== -1) {
+          inventoryItems[index] = { ...selectedItem, ...updatedItem }
+        }
+        
+        notifySuccess('Inventory item updated successfully')
+        showEditItemModal = false
+        selectedItem = null
+      } else {
+        notifyError('Failed to update inventory item')
+      }
+    } catch (error) {
+      console.error('Error updating inventory item:', error)
+      notifyError('Error updating inventory item: ' + error.message)
+    }
+  }
+  
   // Reactive statements
   $: filteredItems = inventoryItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
   $: if (searchQuery || categoryFilter || statusFilter || sortBy || sortOrder) {
@@ -919,6 +949,248 @@
             </div>
           </form>
         </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Edit Item Modal -->
+{#if showEditItemModal && selectedItem}
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
+      <div class="mt-3">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-medium text-gray-900">
+            <i class="fas fa-edit mr-2 text-blue-600"></i>
+            Edit Inventory Item
+          </h3>
+          <button 
+            class="text-gray-400 hover:text-gray-600"
+            on:click={() => showEditItemModal = false}
+          >
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+        
+        <form on:submit|preventDefault={handleEditItem}>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Drug Information -->
+            <div class="space-y-4">
+              <h4 class="text-md font-medium text-gray-900 border-b pb-2">Drug Information</h4>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Drug Name *</label>
+                <input 
+                  type="text"
+                  bind:value={selectedItem.drugName}
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Generic Name</label>
+                <input 
+                  type="text"
+                  bind:value={selectedItem.genericName}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Brand Name</label>
+                <input 
+                  type="text"
+                  bind:value={selectedItem.brandName}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
+                <input 
+                  type="text"
+                  bind:value={selectedItem.manufacturer}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Strength</label>
+                  <input 
+                    type="text"
+                    bind:value={selectedItem.strength}
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                  <select 
+                    bind:value={selectedItem.strengthUnit}
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="mg">mg</option>
+                    <option value="g">g</option>
+                    <option value="ml">ml</option>
+                    <option value="units">units</option>
+                    <option value="%">%</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
+                <select 
+                  bind:value={selectedItem.dosageForm}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="tablet">Tablet</option>
+                  <option value="capsule">Capsule</option>
+                  <option value="syrup">Syrup</option>
+                  <option value="injection">Injection</option>
+                  <option value="cream">Cream</option>
+                  <option value="gel">Gel</option>
+                  <option value="drops">Drops</option>
+                  <option value="spray">Spray</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Stock & Pricing -->
+            <div class="space-y-4">
+              <h4 class="text-md font-medium text-gray-900 border-b pb-2">Stock & Pricing</h4>
+              
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Pack Size</label>
+                  <input 
+                    type="text"
+                    bind:value={selectedItem.packSize}
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Pack Unit</label>
+                  <select 
+                    bind:value={selectedItem.packUnit}
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="tablets">tablets</option>
+                    <option value="capsules">capsules</option>
+                    <option value="ml">ml</option>
+                    <option value="box">box</option>
+                    <option value="vial">vial</option>
+                    <option value="tube">tube</option>
+                    <option value="bottle">bottle</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Current Stock</label>
+                <input 
+                  type="number"
+                  bind:value={selectedItem.currentStock}
+                  min="0"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Stock</label>
+                  <input 
+                    type="number"
+                    bind:value={selectedItem.minimumStock}
+                    min="0"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Maximum Stock</label>
+                  <input 
+                    type="number"
+                    bind:value={selectedItem.maximumStock}
+                    min="0"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
+                  <input 
+                    type="number"
+                    bind:value={selectedItem.costPrice}
+                    min="0"
+                    step="0.01"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Selling Price</label>
+                  <input 
+                    type="number"
+                    bind:value={selectedItem.sellingPrice}
+                    min="0"
+                    step="0.01"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Storage Location</label>
+                <input 
+                  type="text"
+                  bind:value={selectedItem.storageLocation}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Storage Conditions</label>
+                <select 
+                  bind:value={selectedItem.storageConditions}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="room temperature">Room Temperature</option>
+                  <option value="refrigerated">Refrigerated (2-8°C)</option>
+                  <option value="frozen">Frozen (-20°C)</option>
+                  <option value="controlled">Controlled Temperature</option>
+                </select>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea 
+                  bind:value={selectedItem.notes}
+                  rows="3"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+          
+          <div class="flex justify-end space-x-3 mt-6">
+            <button 
+              type="button"
+              class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+              on:click={() => showEditItemModal = false}
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit"
+              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+            >
+              <i class="fas fa-save mr-2"></i>
+              Save Changes
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
