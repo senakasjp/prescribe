@@ -117,16 +117,18 @@
     console.log('🔄 Prescriptions length:', prescriptions.length)
     console.log('🔄 Dispensed status keys:', Object.keys(prescriptionDispensedStatus).length)
     console.log('🔄 CheckingDispensedStatus:', checkingDispensedStatus)
+    console.log('🔄 Full prescriptionDispensedStatus:', prescriptionDispensedStatus)
     
     if (!prescriptions.length) {
       console.log('🔍 No prescriptions available yet')
       return null
     }
     
-    if (!Object.keys(prescriptionDispensedStatus).length) {
-      console.log('🔍 No dispensed status available yet')
-      return null
-    }
+    // Don't wait for dispensed status - show prescription even if status is still loading
+    // if (!Object.keys(prescriptionDispensedStatus).length) {
+    //   console.log('🔍 No dispensed status available yet')
+    //   return null
+    // }
     
     console.log('🔍 Selecting prescription for Last Prescription card...')
     console.log('🔍 Prescriptions available:', prescriptions.length)
@@ -534,14 +536,16 @@
       let last30Days = []
       let prescriptionsPerDay = []
       
+      // Force reload fresh data (skip cache for now to test deduplication)
+      console.log('Force loading fresh chart data (cache disabled for testing)')
       // Use cached data if available and not expired
-      if (cachedData && cacheTimestamp && (now - parseInt(cacheTimestamp)) < cacheExpiry) {
-        console.log('Using cached chart data')
-        const parsedData = JSON.parse(cachedData)
-        last30Days = parsedData.last30Days
-        prescriptionsPerDay = parsedData.prescriptionsPerDay
-      } else {
-        console.log('Loading fresh chart data')
+      // if (cachedData && cacheTimestamp && (now - parseInt(cacheTimestamp)) < cacheExpiry) {
+      //   console.log('Using cached chart data')
+      //   const parsedData = JSON.parse(cachedData)
+      //   last30Days = parsedData.last30Days
+      //   prescriptionsPerDay = parsedData.prescriptionsPerDay
+      // } else {
+      console.log('Loading fresh chart data')
         
         // Batch load all prescription data once
         const allPrescriptions = []
@@ -553,6 +557,19 @@
             console.warn(`Failed to load prescriptions for patient ${patient.id}:`, error)
           }
         }
+        
+        // Deduplicate prescriptions by ID, keeping the most recent one
+        const uniquePrescriptions = new Map()
+        allPrescriptions.forEach(prescription => {
+          const existing = uniquePrescriptions.get(prescription.id)
+          if (!existing || new Date(prescription.createdAt) > new Date(existing.createdAt)) {
+            uniquePrescriptions.set(prescription.id, prescription)
+          }
+        })
+        const deduplicatedPrescriptions = Array.from(uniquePrescriptions.values())
+        
+        console.log('📊 Chart: Total prescriptions before deduplication:', allPrescriptions.length)
+        console.log('📊 Chart: Total prescriptions after deduplication:', deduplicatedPrescriptions.length)
         
         // Generate date range
         const dateRange = []
@@ -570,10 +587,10 @@
           })
         }
         
-        // Count prescriptions per day using pre-loaded data
+        // Count prescriptions per day using deduplicated data
         last30Days = dateRange.map(d => d.displayDate)
         prescriptionsPerDay = dateRange.map(({ dateStr }) => {
-          return allPrescriptions.filter(prescription => {
+          return deduplicatedPrescriptions.filter(prescription => {
             const createdDate = new Date(prescription.createdAt || prescription.dateCreated)
             const prescriptionYear = createdDate.getFullYear()
             const prescriptionMonth = createdDate.getMonth() + 1
@@ -588,7 +605,7 @@
         const cacheData = { last30Days, prescriptionsPerDay }
         localStorage.setItem(cacheKey, JSON.stringify(cacheData))
         localStorage.setItem(`${cacheKey}-timestamp`, now.toString())
-      }
+      // }
       
       // Create ApexCharts chart with Flowbite styling
       setTimeout(() => {
@@ -938,29 +955,40 @@
       prescriptionId,
       medicationId,
       dispensedInfo,
-      dispensedMedications: dispensedInfo.dispensedMedications
+      dispensedMedications: dispensedInfo.dispensedMedications,
+      allPrescriptionStatus: prescriptionDispensedStatus,
+      allPrescriptionStatusKeys: Object.keys(prescriptionDispensedStatus)
     })
     
     if (!dispensedInfo.dispensedMedications || !Array.isArray(dispensedInfo.dispensedMedications)) {
-      console.log('❌ No dispensed medications array found')
+      console.log('❌ No dispensed medications array found for prescription:', prescriptionId)
+      console.log('❌ Dispensed info:', dispensedInfo)
       return false
     }
     
+    console.log('🔍 Dispensed medications array:', dispensedInfo.dispensedMedications)
+    
     // Check if the medication ID is in the dispensed medications array
     const isDispensed = dispensedInfo.dispensedMedications.some(dispensedMed => {
-      console.log('🔍 Comparing:', {
+      console.log('🔍 Comparing medication:', {
         dispensedMed,
         medicationId,
-        match: dispensedMed.medicationId === medicationId || 
-               dispensedMed.medicationId === medicationId.toString() ||
-               dispensedMed.name === medicationId
+        medicationIdType: typeof medicationId,
+        dispensedMedId: dispensedMed.medicationId,
+        dispensedMedIdType: typeof dispensedMed.medicationId,
+        dispensedMedName: dispensedMed.name,
+        matchById: dispensedMed.medicationId === medicationId,
+        matchByIdString: dispensedMed.medicationId === medicationId.toString(),
+        matchByName: dispensedMed.name === medicationId,
+        matchByNameString: dispensedMed.name === medicationId.toString()
       })
       return dispensedMed.medicationId === medicationId || 
              dispensedMed.medicationId === medicationId.toString() ||
-             dispensedMed.name === medicationId
+             dispensedMed.name === medicationId ||
+             dispensedMed.name === medicationId.toString()
     })
     
-    console.log('🔍 Medication dispensed result:', isDispensed)
+    console.log('🔍 Final medication dispensed result:', isDispensed)
     return isDispensed
   }
   
@@ -1461,7 +1489,16 @@
         <tbody class="bg-white divide-y divide-gray-200">
           {#if (searchQuery ? filteredPatients : patients).length > 0}
             {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient (patient.id)}
-              <tr class="hover:bg-gray-50 transition-colors duration-150">
+              <tr 
+                class="hover:bg-gray-50 transition-colors duration-150 cursor-pointer"
+                on:click={() => {
+                  selectPatient(patient)
+                  currentView = 'prescriptions' // Change view to show sidebar layout
+                }}
+                role="button"
+                tabindex="0"
+                on:keydown={(e) => e.key === 'Enter' && (selectPatient(patient), currentView = 'prescriptions')}
+              >
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center">
                     <div class="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm sm:text-base font-semibold mr-3">
@@ -1490,7 +1527,7 @@
                 <td class="px-6 py-4 whitespace-nowrap text-sm sm:text-base">
                   <button 
                     class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
-                    on:click={() => {
+                    on:click|stopPropagation={() => {
                       selectPatient(patient)
                       currentView = 'prescriptions' // Change view to show sidebar layout
                     }}
@@ -1523,7 +1560,16 @@
     <div class="md:hidden space-y-3 p-4">
       {#if (searchQuery ? filteredPatients : patients).length > 0}
         {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient (patient.id)}
-          <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <div 
+            class="bg-gray-50 border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors duration-200"
+            on:click={() => {
+              selectPatient(patient)
+              currentView = 'prescriptions' // Change view to show sidebar layout
+            }}
+            role="button"
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && (selectPatient(patient), currentView = 'prescriptions')}
+          >
             <div class="flex justify-between items-start mb-3">
               <div class="flex items-center">
                 <div class="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm sm:text-base font-semibold mr-3">
@@ -1536,7 +1582,7 @@
               </div>
               <button 
                 class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
-                on:click={() => {
+                on:click|stopPropagation={() => {
                   selectPatient(patient)
                   currentView = 'prescriptions' // Change view to show sidebar layout
                 }}
@@ -1608,13 +1654,6 @@
           </h6>
         </div>
         <div class="p-3">
-          <!-- Debug info -->
-          <div class="text-xs text-gray-500 mb-2">
-            Debug: prescriptions.length = {prescriptions.length}
-            {#if prescriptions.length > 0}
-              , prescriptions with medications = {prescriptions.filter(p => p.medications && p.medications.length > 0).length}
-            {/if}
-          </div>
           
           {#if prescriptions.length > 0}
             {#if selectedPrescriptionForCard}
@@ -1639,6 +1678,11 @@
                         {#if isMedicationDispensed(selectedPrescriptionForCard.id, medication.id || medication.name)}
                           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             <i class="fas fa-check-circle mr-1"></i>Dispensed
+                          </span>
+                        {:else}
+                          <!-- Debug: Show why medication is not dispensed -->
+                          <span class="text-xs text-gray-400" title="Debug: {JSON.stringify({prescriptionId: selectedPrescriptionForCard.id, medicationId: medication.id || medication.name, dispensedStatus: prescriptionDispensedStatus[selectedPrescriptionForCard.id]})}">
+                            Not dispensed
                           </span>
                         {/if}
                       </div>

@@ -145,13 +145,57 @@ class DoctorPrescriptionStatusService {
       
       prescriptionsSnapshot.forEach((doc) => {
         const data = doc.data()
-        const prescriptionId = data.prescriptionId || doc.id
+        const pharmacistPrescriptionId = data.prescriptionId || doc.id
         
-        patientStatus[prescriptionId] = {
+        console.log('🔍 Pharmacist prescription data:', {
+          docId: doc.id,
+          prescriptionId: data.prescriptionId,
+          data: data,
+          allFields: Object.keys(data),
+          dispensedMedications: data.dispensedMedications,
+          status: data.status,
+          dispensedAt: data.dispensedAt
+        })
+        
+        // Create status object
+        const statusInfo = {
           isDispensed: data.status === 'dispensed' || !!data.dispensedAt,
           dispensedAt: data.dispensedAt || data.updatedAt,
           dispensedBy: data.pharmacistName || 'Pharmacy',
           dispensedMedications: data.dispensedMedications || []
+        }
+        
+        // Map to both pharmacist and doctor prescription IDs
+        patientStatus[pharmacistPrescriptionId] = statusInfo
+        
+        // Also check if there's a doctor prescription ID in the data
+        if (data.doctorPrescriptionId) {
+          patientStatus[data.doctorPrescriptionId] = statusInfo
+        }
+        
+        // Try to extract doctor prescription ID from pharmacist prescription ID
+        // Format: timestamp_doctorPrescriptionId
+        if (pharmacistPrescriptionId.includes('_')) {
+          const parts = pharmacistPrescriptionId.split('_')
+          if (parts.length >= 2) {
+            const doctorPrescriptionId = parts.slice(1).join('_') // Join remaining parts in case ID contains underscores
+            patientStatus[doctorPrescriptionId] = statusInfo
+            console.log('🔍 Mapped pharmacist ID to doctor ID:', pharmacistPrescriptionId, '->', doctorPrescriptionId)
+          }
+        }
+        
+        // Also check if there's a different doctor prescription ID format
+        // Sometimes the doctor prescription ID might be different from the extracted one
+        // Let's also check if there are any other prescription IDs in the data
+        if (data.originalPrescriptionId) {
+          patientStatus[data.originalPrescriptionId] = statusInfo
+          console.log('🔍 Mapped using originalPrescriptionId:', data.originalPrescriptionId)
+        }
+        
+        // Check if there's a doctorId field that might contain the prescription ID
+        if (data.doctorId && data.doctorId !== doctorId) {
+          patientStatus[data.doctorId] = statusInfo
+          console.log('🔍 Mapped using doctorId field:', data.doctorId)
         }
       })
       
