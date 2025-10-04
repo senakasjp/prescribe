@@ -2,6 +2,35 @@
 
 ## Architecture Overview
 
+### Recent Critical Fix - Add New Patient Button (December 28, 2024)
+
+#### Issue Summary
+- **Problem**: "+ Add New Patient" button was non-functional despite proper state management
+- **Root Cause**: PatientForm conditional rendering was in wrong component section
+- **Solution**: Moved PatientForm to correct location within patients view conditional block
+- **Status**: ✅ **FULLY RESOLVED AND DEPLOYED**
+
+#### Technical Details
+```svelte
+<!-- BEFORE: Incorrect conditional rendering location -->
+{#if showPatientForm}
+  <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
+{/if}
+
+<!-- AFTER: Correct location within patients view -->
+{#if currentView === 'patients'}
+  {#if showPatientForm}
+    <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
+  {/if}
+{/if}
+```
+
+#### Component Architecture Fix
+- **PatientManagement.svelte**: Fixed conditional rendering structure
+- **Component Views**: Properly organized home, patients, and prescriptions views
+- **State Management**: Maintained proper Svelte reactivity
+- **UI Restoration**: Cleaned up debug code and restored professional interface
+
 ### Frontend Stack
 - **Svelte 5.x**: Reactive framework for building user interfaces
 - **Tailwind CSS**: Utility-first CSS framework for styling

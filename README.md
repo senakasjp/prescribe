@@ -5,11 +5,12 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 ## 🚀 Features
 
 ### Doctor Portal
-- **Patient Management**: Create, view, and manage patient records
+- **Patient Management**: Create, view, and manage patient records ✅ **FULLY FUNCTIONAL**
 - **Prescription Creation**: Build prescriptions with AI-powered drug suggestions
 - **Medical History**: Track patient symptoms, reports, and diagnoses
 - **AI Integration**: Get intelligent drug recommendations based on patient context
 - **Token Management**: Monitor AI usage with quota tracking
+- **Add New Patient**: Seamless patient addition workflow (Fixed December 28, 2024)
 
 ### Pharmacist Portal
 - **Prescription Management**: View and manage prescriptions from doctors
@@ -48,6 +49,8 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 ### Developer Documentation
 - **[TECHNICAL_IMPLEMENTATION.md](./TECHNICAL_IMPLEMENTATION.md)** - Technical documentation
 - **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)** - API reference guide
+- **[ADD_PATIENT_BUTTON_FIX.md](./ADD_PATIENT_BUTTON_FIX.md)** - Critical bug fix documentation
+- **[COMPONENT_RENDERING_TROUBLESHOOTING.md](./COMPONENT_RENDERING_TROUBLESHOOTING.md)** - Troubleshooting guide
 
 ### Testing Documentation
 - **[TESTING_QUICK_START.md](./TESTING_QUICK_START.md)** - Get started with testing in 2 minutes
@@ -106,6 +109,20 @@ npm run build
 ```bash
 firebase deploy
 ```
+
+## 🔄 Recent Updates
+
+### Version 2.3.1 - Add New Patient Button Fix (December 28, 2024)
+- **Critical Bug Fix**: Resolved "+ Add New Patient" button functionality
+- **Root Cause**: Fixed PatientForm conditional rendering location in component architecture
+- **Impact**: Restored core patient addition workflow
+- **Status**: ✅ **FULLY RESOLVED AND DEPLOYED**
+
+### Version 2.3.0 - Dispensed Status Integration
+- Real-time dispensed status tracking between doctors and pharmacists
+- Enhanced prescription management with status indicators
+- Improved doctor-pharmacy communication
+- Maintained strict decoupling between portals
 
 ## 🧪 Testing
 

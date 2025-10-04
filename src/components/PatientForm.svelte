@@ -130,12 +130,14 @@
   const handleCancel = () => {
     dispatch('cancel')
   }
+
 </script>
 
-<div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm">
-  <div class="bg-blue-600 text-white px-4 py-3 rounded-t-lg">
+<div class="bg-white rounded-lg shadow-lg border border-gray-200">
+  <div class="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
     <h5 class="text-lg font-semibold mb-0">
-      <i class="fas fa-user-plus mr-2"></i>Add New Patient
+      <i class="fas fa-user-plus mr-2"></i>
+      Add New Patient
     </h5>
   </div>
   <div class="p-4">

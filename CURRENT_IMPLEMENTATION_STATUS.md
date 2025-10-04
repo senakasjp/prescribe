@@ -38,6 +38,7 @@ This document provides a comprehensive overview of the current state of the M-Pr
 - **Patient Details**: Comprehensive patient information
 - **Medical History**: Symptoms, reports, diagnoses, prescriptions
 - **Patient Forms**: Modular form components
+- **Add New Patient**: Fully functional patient addition workflow (Fixed December 28, 2024)
 
 #### 5. Prescription Management
 - **Prescription Creation**: Create new prescriptions
@@ -250,6 +251,15 @@ src/
 - OpenAI API keys
 - Admin credentials
 
+## Recent Critical Fixes
+
+### ✅ Add New Patient Button Fix (December 28, 2024)
+- **Issue**: "+ Add New Patient" button was non-functional
+- **Root Cause**: PatientForm conditional rendering was in wrong component section
+- **Solution**: Moved PatientForm to correct location within patients view
+- **Status**: ✅ **FULLY RESOLVED AND DEPLOYED**
+- **Impact**: Restored core patient addition functionality
+
 ## Known Issues and Limitations
 
 ### Current Limitations
@@ -315,6 +325,7 @@ src/
 
 ---
 
-**Last Updated**: December 2024
-**Version**: Current Production Version
+**Last Updated**: December 28, 2024
+**Version**: 2.3.1 (Add New Patient Button Fix)
 **Status**: Fully Functional and Deployed
+**Latest Fix**: Add New Patient Button functionality restored

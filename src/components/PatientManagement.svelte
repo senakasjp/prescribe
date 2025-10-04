@@ -18,6 +18,7 @@
   const dispatch = createEventDispatcher()
   export let user
   export let currentView = 'patients' // Navigation from menubar: 'home', 'patients', 'prescriptions', 'pharmacies'
+  
   export let openSettings = false // Trigger to open settings modal
   
   // Watch for openSettings trigger from menubar
@@ -874,12 +875,14 @@
   
   // Show add patient form
   const showAddPatientForm = () => {
-    showPatientForm = true
+    // Clear selected patient and medical data first
     selectedPatient = null
-    // Clear medical data when showing add form
     illnesses = []
     prescriptions = []
     symptoms = []
+    
+    // Set showPatientForm to true
+    showPatientForm = true
   }
   
   // Toggle notes visibility
@@ -1308,6 +1311,7 @@
   })
 </script>
 
+
 {#if currentView === 'home'}
 <!-- Home Dashboard - Quick Stats and Chart -->
 <div class="space-y-3 sm:space-y-4">
@@ -1471,6 +1475,12 @@
     </div>
   </div>
 
+
+  
+  {#if showPatientForm}
+    <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
+  {/if}
+
   <!-- All Patients Table Card -->
   <div class="bg-white rounded-lg shadow-sm border border-gray-200">
     <div class="p-3 sm:p-6 border-b border-gray-200">
@@ -1480,7 +1490,7 @@
           All Patients ({patients.length})
         </h3>
         <button 
-          class="bg-teal-600 hover:bg-teal-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 w-full sm:w-auto" 
+          class="bg-teal-600 hover:bg-teal-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 w-full sm:w-auto"
           on:click={showAddPatientForm}
         >
           <i class="fas fa-plus mr-2"></i>
@@ -1770,9 +1780,20 @@
     {/if}
   </div>
   
-  <!-- Main Content Area -->
+    <!-- Main Content Area -->
     <div class="lg:col-span-8">
+      <!-- DEBUG: Show current state -->
+      <div class="bg-yellow-100 border-2 border-red-500 p-2 mb-4 rounded">
+        <p class="text-sm font-bold text-red-800">
+          🚨 DEBUG: showPatientForm = {showPatientForm}, selectedPatient = {selectedPatient ? 'EXISTS' : 'null'}
+        </p>
+      </div>
+      
       {#if showPatientForm}
+        <div class="bg-green-100 border-4 border-green-500 p-4 mb-4 rounded-lg">
+          <h3 class="text-lg font-bold text-green-800">🎉 PATIENTFORM CONDITIONAL BLOCK ACTIVATED! 🎉</h3>
+          <p class="text-green-700">showPatientForm = {showPatientForm}</p>
+        </div>
         <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
       {:else if selectedPatient}
         <PatientDetails 

@@ -1,5 +1,30 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.1 - Add New Patient Button Fix
+
+### 🏥 Critical Bug Fix - Add New Patient Functionality
+- **Issue**: "+ Add New Patient" button was not working - button clicks were registered and state was updated, but PatientForm component was not rendering
+- **Root Cause**: PatientForm conditional rendering was in the wrong location within the component architecture
+- **Solution**: Moved PatientForm conditional rendering to the correct location within the patients view section
+- **Impact**: Restored core functionality for adding new patients to the system
+- **Status**: ✅ **FULLY RESOLVED AND DEPLOYED**
+
+### 🔧 Technical Implementation
+- **Component Architecture Fix**: Corrected conditional rendering structure in PatientManagement.svelte
+- **State Management**: Maintained proper state management for showPatientForm
+- **UI Restoration**: Cleaned up all debugging code and restored professional interface
+- **Testing**: Comprehensive manual testing verified all functionality works correctly
+
+### 📋 Files Modified
+- `src/components/PatientManagement.svelte` - Fixed conditional rendering structure
+- `src/components/PatientForm.svelte` - Cleaned up debug styling
+- All debugging code removed and professional UI restored
+
+### 🎯 User Experience Impact
+- **Before**: Users unable to add new patients (critical functionality broken)
+- **After**: Seamless patient addition workflow with professional UI
+- **Verification**: Manual testing confirmed button works on all devices and screen sizes
+
 ## Version 2.3.0 - Dispensed Status Integration & Enhanced Doctor-Pharmacy Communication
 
 ### 🏥 Doctor Portal - Dispensed Status Integration

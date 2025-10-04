@@ -360,7 +360,6 @@
         await pharmacistAuthService.signOutPharmacist()
       } else {
         // Fallback to original services
-        await authService.signOut()
         await firebaseAuthService.signOut()
         await adminAuthService.signOut()
       }
@@ -387,8 +386,14 @@
     // Force reactive update by creating a new object reference
     user = { ...updatedUser }
     
-    // Ensure authService also has the updated user
-    authService.saveCurrentUser(updatedUser)
+    // Save updated user to appropriate decoupled service
+    if (updatedUser.role === 'doctor') {
+      doctorAuthService.saveCurrentDoctor(updatedUser)
+    } else if (updatedUser.role === 'pharmacist') {
+      pharmacistAuthService.saveCurrentPharmacist(updatedUser)
+    } else if (updatedUser.role === 'admin') {
+      adminAuthService.saveCurrentAdmin(updatedUser)
+    }
     
     // Set flag to prevent Firebase from overriding this update
     userJustUpdated = true
@@ -746,7 +751,6 @@
     </nav>
     
     <div class="p-4">
-      <script>alert('🔍 App.svelte: currentView = ' + currentView + ', user = ' + (user?.email || 'null'));</script>
       {#if currentView === 'settings'}
         <SettingsPage 
           {user}
@@ -784,8 +788,7 @@
           {/if}
         </div>
       {:else}
-        <div on:mount={() => alert('🏠 App.svelte: Rendering PatientManagement! User: ' + user?.email + ', View: ' + currentView)}>
-          <PatientManagement 
+        <PatientManagement 
             {user} 
             {currentView}
             key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} 
@@ -793,7 +796,6 @@
             on:profile-updated={handleProfileUpdate}
             on:view-change={(e) => handleMenuNavigation(e.detail)}
           />
-        </div>
       {/if}
     </div>
     {/if}
