@@ -15,6 +15,9 @@
   let lastName = ''
   let country = ''
   let city = ''
+  let consultationCharge = ''
+  let hospitalCharge = ''
+  let currency = 'USD' // New state variable
   let loading = false
   let error = ''
 
@@ -26,6 +29,30 @@
 
   // Tab management
   let activeTab = 'edit-profile'
+
+  // Currency options
+  const currencies = [
+    { code: 'USD', name: 'US Dollar', symbol: '$' },
+    { code: 'EUR', name: 'Euro', symbol: '€' },
+    { code: 'GBP', name: 'British Pound', symbol: '£' },
+    { code: 'LKR', name: 'Sri Lankan Rupee', symbol: '₨' },
+    { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
+    { code: 'CAD', name: 'Canadian Dollar', symbol: 'C$' },
+    { code: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
+    { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
+    { code: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
+    { code: 'KRW', name: 'South Korean Won', symbol: '₩' },
+    { code: 'SGD', name: 'Singapore Dollar', symbol: 'S$' },
+    { code: 'MYR', name: 'Malaysian Ringgit', symbol: 'RM' },
+    { code: 'THB', name: 'Thai Baht', symbol: '฿' },
+    { code: 'PHP', name: 'Philippine Peso', symbol: '₱' },
+    { code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp' },
+    { code: 'VND', name: 'Vietnamese Dong', symbol: '₫' },
+    { code: 'AED', name: 'UAE Dirham', symbol: 'د.إ' },
+    { code: 'SAR', name: 'Saudi Riyal', symbol: '﷼' },
+    { code: 'QAR', name: 'Qatari Riyal', symbol: '﷼' },
+    { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'د.ك' }
+  ]
 
   // Reactive variable for cities based on selected country
   $: availableCities = country ? getCitiesByCountry(country) : []
@@ -41,6 +68,9 @@
     lastName = user?.lastName || ''
     country = user?.country || ''
     city = user?.city || ''
+    consultationCharge = user?.consultationCharge || ''
+    hospitalCharge = user?.hospitalCharge || ''
+    currency = user?.currency || 'USD'
   }
 
   // Initialize form when user changes
@@ -76,6 +106,9 @@
         lastName: lastName.trim(),
         country: country.trim(),
         city: city.trim(),
+        consultationCharge: consultationCharge.trim(),
+        hospitalCharge: hospitalCharge.trim(),
+        currency: currency,
         name: `${firstName.trim()} ${lastName.trim()}`
       }
       
@@ -295,6 +328,77 @@
                     <option value={cityOption.name}>{cityOption.name}</option>
                   {/each}
                 </select>
+              </div>
+              
+              <!-- Currency Selection -->
+              <div>
+                <label for="currency" class="block text-sm font-medium text-gray-700 mb-2">Currency *</label>
+                <select 
+                  id="currency"
+                  bind:value={currency}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  required
+                >
+                  {#each currencies as currencyOption}
+                    <option value={currencyOption.code}>{currencyOption.symbol} {currencyOption.name} ({currencyOption.code})</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+            
+            <!-- Charges Section -->
+            <div class="mt-6">
+              <h6 class="text-sm font-semibold text-gray-700 mb-4">
+                <i class="fas fa-dollar-sign mr-2"></i>
+                Consultation & Hospital Charges
+              </h6>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label for="consultationCharge" class="block text-sm font-medium text-gray-700 mb-2">
+                    Consultation Charge
+                  </label>
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
+                    </div>
+                    <input 
+                      type="number" 
+                      id="consultationCharge"
+                      bind:value={consultationCharge}
+                      class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Your standard consultation fee
+                  </div>
+                </div>
+                <div>
+                  <label for="hospitalCharge" class="block text-sm font-medium text-gray-700 mb-2">
+                    Hospital Charge
+                  </label>
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
+                    </div>
+                    <input 
+                      type="number" 
+                      id="hospitalCharge"
+                      bind:value={hospitalCharge}
+                      class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Hospital visit or admission fee
+                  </div>
+                </div>
               </div>
             </div>
           </form>
