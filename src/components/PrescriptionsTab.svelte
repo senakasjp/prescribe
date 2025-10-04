@@ -30,6 +30,7 @@
   export let onAddDrug
   export let onPrintPrescriptions
   export let prescriptionNotes = ''
+  export let prescriptionDiscount = 0 // New discount field
   
   // Debug AI suggestions
   $: console.log('🔍 PrescriptionsTab - showAIDrugSuggestions:', showAIDrugSuggestions)
@@ -377,6 +378,45 @@
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 placeholder="Additional instructions or notes for the prescription..."
               ></textarea>
+            </div>
+            
+            <!-- Discount Field -->
+            <div class="mt-4">
+              <label for="prescriptionDiscount" class="block text-sm font-medium text-gray-700 mb-2">
+                <i class="fas fa-percentage mr-2 text-teal-600"></i>
+                Discount (for pharmacy use only)
+              </label>
+              <select
+                id="prescriptionDiscount"
+                bind:value={prescriptionDiscount}
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+              >
+                <option value={0}>0% - No Discount</option>
+                <option value={5}>5%</option>
+                <option value={10}>10%</option>
+                <option value={15}>15%</option>
+                <option value={20}>20%</option>
+                <option value={25}>25%</option>
+                <option value={30}>30%</option>
+                <option value={35}>35%</option>
+                <option value={40}>40%</option>
+                <option value={45}>45%</option>
+                <option value={50}>50%</option>
+                <option value={55}>55%</option>
+                <option value={60}>60%</option>
+                <option value={65}>65%</option>
+                <option value={70}>70%</option>
+                <option value={75}>75%</option>
+                <option value={80}>80%</option>
+                <option value={85}>85%</option>
+                <option value={90}>90%</option>
+                <option value={95}>95%</option>
+                <option value={100}>100%</option>
+              </select>
+              <div class="text-xs text-gray-500 mt-1">
+                <i class="fas fa-info-circle mr-1"></i>
+                Discount applies only when sending to pharmacy (not included in PDF)
+              </div>
             </div>
             
             <!-- Prescription Actions -->

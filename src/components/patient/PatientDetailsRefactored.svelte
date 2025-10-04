@@ -59,6 +59,7 @@
   
   // Prescription state
   let prescriptionNotes = ''
+  let prescriptionDiscount = 0 // New discount field
   let prescriptionsFinalized = false
   let printButtonClicked = false
   
@@ -280,6 +281,7 @@
     showPrescriptionForm = false
     currentMedications = []
     prescriptionNotes = ''
+    prescriptionDiscount = 0
   }
   
   function handleAddMedication() {
@@ -367,6 +369,7 @@
         {currentPrescription}
         bind:currentMedications
         bind:prescriptionNotes
+        bind:prescriptionDiscount
         {prescriptionsFinalized}
         on:add-prescription={handleAddPrescription}
         on:edit-prescription={handleEditPrescription}

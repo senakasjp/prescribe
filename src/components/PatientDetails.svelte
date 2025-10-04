@@ -221,6 +221,7 @@
   let loading = true
   let editingMedication = null
   let prescriptionNotes = ''
+  let prescriptionDiscount = 0 // New discount field
   let prescriptionsFinalized = false
   let printButtonClicked = false
   
@@ -1329,6 +1330,7 @@
         doctorId: doctor.id,
         medications: currentMedications,
         notes: prescriptionNotes || '',
+        discount: prescriptionDiscount || 0, // Include discount for pharmacy
         createdAt: new Date().toISOString(),
         status: 'pending'
       }]
@@ -3876,6 +3878,7 @@
           {symptoms}
           {openaiService}
           bind:prescriptionNotes
+          bind:prescriptionDiscount
           onMedicationAdded={handleMedicationAdded}
           onCancelMedication={handleCancelMedication}
           onEditPrescription={handleEditPrescription}
