@@ -60,36 +60,92 @@
   let headerSize = 300 // Default header size in pixels
   
   // Reactive variable for cities based on selected country
-  $: availableCities = country ? getCitiesByCountry(country) : []
+  $: {
+    console.log('🔍 Debug - Reactive statement triggered:')
+    console.log('  country:', country, typeof country)
+    console.log('  city:', city, typeof city)
+    
+    try {
+      availableCities = (country && typeof country === 'string' && country.trim()) ? getCitiesByCountry(country.trim()) : []
+      console.log('  availableCities set successfully:', availableCities.length, 'cities')
+    } catch (error) {
+      console.error('❌ Error in reactive statement for cities:', error)
+      availableCities = []
+    }
+  }
   
   
   // Reset city when country changes
-  $: if (country && city && !availableCities.find(c => c.name === city)) {
-    city = ''
+  $: {
+    try {
+      if (country && city && !availableCities.find(c => c.name === city)) {
+        console.log('🔍 Debug - Resetting city because not found in availableCities')
+        city = ''
+      }
+    } catch (error) {
+      console.error('❌ Error in city reset reactive statement:', error)
+    }
   }
   
   // Function to initialize form fields
   const initializeForm = () => {
     if (user) {
-      firstName = user.firstName || ''
-      lastName = user.lastName || ''
-      email = user.email || ''
-      country = user.country || ''
-      city = user.city || ''
-      consultationCharge = user.consultationCharge || ''
-      hospitalCharge = user.hospitalCharge || ''
-      currency = user.currency || 'USD'
+      console.log('🔍 Debug - Initializing form with user:', user)
+      firstName = String(user.firstName || '')
+      lastName = String(user.lastName || '')
+      email = String(user.email || '')
+      country = String(user.country || '')
+      city = String(user.city || '')
+      consultationCharge = String(user.consultationCharge || '')
+      hospitalCharge = String(user.hospitalCharge || '')
+      currency = String(user.currency || 'USD')
+      
+      console.log('🔍 Debug - Form initialized:')
+      console.log('  firstName:', firstName, typeof firstName)
+      console.log('  lastName:', lastName, typeof lastName)
+      console.log('  country:', country, typeof country)
+      console.log('  city:', city, typeof city)
+      console.log('  consultationCharge:', consultationCharge, typeof consultationCharge)
+      console.log('  hospitalCharge:', hospitalCharge, typeof hospitalCharge)
     }
   }
   
   // Initialize form fields when component mounts
   onMount(() => {
+    // Add global error handler to catch trim errors
+    window.addEventListener('error', (event) => {
+      if (event.message && event.message.includes('trim is not a function')) {
+        console.error('🚨 Global trim error caught:', event)
+        console.error('🚨 Error details:', {
+          message: event.message,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          error: event.error
+        })
+      }
+    })
+    
     initializeForm()
   })
   
   // Initialize form fields when user data changes
   $: if (user) {
-    initializeForm()
+    try {
+      console.log('🔍 Debug - User changed, initializing form:', user)
+      initializeForm()
+    } catch (error) {
+      console.error('❌ Error initializing form:', error)
+      // Set default values to prevent errors
+      firstName = ''
+      lastName = ''
+      email = ''
+      country = ''
+      city = ''
+      consultationCharge = ''
+      hospitalCharge = ''
+      currency = 'USD'
+    }
   }
   
   
@@ -101,16 +157,29 @@
     loading = true
     
     try {
-      // Validate required fields
-      if (!firstName.trim() || !lastName.trim()) {
+      // Debug logging to identify the problematic variable
+      console.log('🔍 Debug - firstName type:', typeof firstName, 'value:', firstName)
+      console.log('🔍 Debug - lastName type:', typeof lastName, 'value:', lastName)
+      console.log('🔍 Debug - country type:', typeof country, 'value:', country)
+      console.log('🔍 Debug - city type:', typeof city, 'value:', city)
+      console.log('🔍 Debug - consultationCharge type:', typeof consultationCharge, 'value:', consultationCharge)
+      console.log('🔍 Debug - hospitalCharge type:', typeof hospitalCharge, 'value:', hospitalCharge)
+      
+      // Validate required fields with safe string conversion
+      const safeFirstName = String(firstName || '').trim()
+      const safeLastName = String(lastName || '').trim()
+      const safeCountry = String(country || '').trim()
+      const safeCity = String(city || '').trim()
+      
+      if (!safeFirstName || !safeLastName) {
         throw new Error('First name and last name are required')
       }
       
-      if (!country.trim()) {
+      if (!safeCountry) {
         throw new Error('Country is required')
       }
       
-      if (!city.trim()) {
+      if (!safeCity) {
         throw new Error('City is required')
       }
       
@@ -118,14 +187,14 @@
       // Update user data
       const updatedUser = {
         ...user,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        country: country.trim(),
-        city: city.trim(),
-        consultationCharge: consultationCharge.trim(),
-        hospitalCharge: hospitalCharge.trim(),
+        firstName: safeFirstName,
+        lastName: safeLastName,
+        country: safeCountry,
+        city: safeCity,
+        consultationCharge: String(consultationCharge || '').trim(),
+        hospitalCharge: String(hospitalCharge || '').trim(),
         currency: currency,
-        name: `${firstName.trim()} ${lastName.trim()}`
+        name: `${safeFirstName} ${safeLastName}`
       }
       
       // Update in auth service
@@ -370,16 +439,15 @@
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
                   </div>
-                  <input 
-                    type="number" 
-                    class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                    id="editConsultationCharge" 
-                    bind:value={consultationCharge}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    disabled={loading}
-                  />
+                    <input 
+                      type="text" 
+                      class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      id="editConsultationCharge" 
+                      bind:value={consultationCharge}
+                      placeholder="0.00"
+                      pattern="[0-9]*\.?[0-9]*"
+                      disabled={loading}
+                    />
                 </div>
                 <div class="text-xs text-gray-500 mt-1">
                   <i class="fas fa-info-circle mr-1"></i>
@@ -394,16 +462,15 @@
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
                   </div>
-                  <input 
-                    type="number" 
-                    class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                    id="editHospitalCharge" 
-                    bind:value={hospitalCharge}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    disabled={loading}
-                  />
+                    <input 
+                      type="text" 
+                      class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      id="editHospitalCharge" 
+                      bind:value={hospitalCharge}
+                      placeholder="0.00"
+                      pattern="[0-9]*\.?[0-9]*"
+                      disabled={loading}
+                    />
                 </div>
                 <div class="text-xs text-gray-500 mt-1">
                   <i class="fas fa-info-circle mr-1"></i>
@@ -612,7 +679,7 @@
           <button 
             type="submit" 
             form="edit-profile-form"
-            class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center"
+            class="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center"
             disabled={loading}
           >
           {#if loading}

@@ -966,45 +966,46 @@
               </div>
             {:else}
               <!-- Desktop Table View -->
-              <div class="hidden md:block overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                  <thead class="bg-gray-50">
-                    <tr>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medications</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
+              <div class="hidden md:block">
+                <div class="overflow-x-auto">
+                  <table class="w-full divide-y divide-gray-200" style="table-layout: auto; width: max-content; min-width: 100%;">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medications</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
                   <tbody class="bg-white divide-y divide-gray-200">
                     {#each paginatedPrescriptions as prescription}
                       <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          <div class="font-semibold text-gray-900">{prescription.patientName || 'Unknown Patient'}</div>
-                          <div class="text-sm text-gray-500">{prescription.patientEmail || 'No email'}</div>
+                        <td class="px-3 sm:px-6 py-4 align-top" style="white-space: normal; word-wrap: break-word; max-width: 200px;">
+                          <div class="font-semibold text-gray-900 text-xs sm:text-sm">{prescription.patientName || 'Unknown Patient'}</div>
+                          <div class="text-xs sm:text-sm text-gray-500">{prescription.patientEmail || 'No email'}</div>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          <div class="font-semibold text-gray-900">{prescription.doctorName || getDoctorName(prescription.doctorId)}</div>
-                          <div class="text-sm text-gray-500">ID: {prescription.doctorId}</div>
+                        <td class="px-3 sm:px-6 py-4 align-top" style="white-space: normal; word-wrap: break-word; max-width: 300px;">
+                          <div class="font-semibold text-gray-900 text-xs sm:text-sm">{prescription.doctorName || getDoctorName(prescription.doctorId)}</div>
+                          <div class="text-xs sm:text-sm text-gray-500" style="word-break: break-all;">ID: {prescription.doctorId}</div>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <td class="px-3 sm:px-6 py-4 align-top" style="white-space: normal; word-wrap: break-word;">
+                          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             {prescription.prescriptions ? prescription.prescriptions.reduce((total, p) => total + (p.medications ? p.medications.length : 0), 0) : 0} medication(s)
                           </span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td class="px-3 sm:px-6 py-4 align-top text-xs sm:text-sm text-gray-500" style="white-space: normal; word-wrap: break-word;">
                           {formatDate(prescription.receivedAt || prescription.sentAt || prescription.createdAt)}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        <td class="px-3 sm:px-6 py-4 align-top" style="white-space: normal; word-wrap: break-word;">
+                          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                             {prescription.status || 'Pending'}
                           </span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <td class="px-3 sm:px-6 py-4 align-top text-xs sm:text-sm font-medium" style="white-space: normal; word-wrap: break-word;">
                           <button 
-                            class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
+                            class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium transition-colors duration-200"
                             on:click={() => viewPrescription(prescription)}
                           >
                             <i class="fas fa-eye mr-1"></i>
@@ -1014,7 +1015,8 @@
                       </tr>
                     {/each}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
 
               <!-- Mobile Card View -->
@@ -1177,9 +1179,9 @@
 
 <!-- Prescription Details Modal -->
 {#if showPrescriptionDetails && selectedPrescription}
-  <div id="prescriptionModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-2 sm:p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-full max-h-full">
+  <div id="prescriptionModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-2 sm:p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-full max-h-full bg-black bg-opacity-50 backdrop-blur-sm">
     <div class="relative w-full max-w-4xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 h-full max-h-full flex flex-col">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 h-full max-h-full flex flex-col border border-white">
         <!-- Mobile Header -->
         <div class="flex items-center justify-between p-3 sm:p-5 border-b rounded-t dark:border-gray-600 bg-blue-600 text-white sm:bg-white sm:text-gray-900">
           <h3 class="text-lg sm:text-xl font-medium">

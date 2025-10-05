@@ -29,6 +29,9 @@
 
   // Tab management
   let activeTab = 'edit-profile'
+  
+  // Available cities based on selected country
+  let availableCities = []
 
   // Currency options
   const currencies = [
@@ -55,11 +58,24 @@
   ]
 
   // Reactive variable for cities based on selected country
-  $: availableCities = country ? getCitiesByCountry(country) : []
+  $: {
+    try {
+      availableCities = (country && typeof country === 'string' && country.trim()) ? getCitiesByCountry(country.trim()) : []
+    } catch (error) {
+      console.error('❌ SettingsPage: Error in availableCities reactive statement:', error)
+      availableCities = []
+    }
+  }
 
   // Reset city when country changes
-  $: if (country && city && !availableCities.find(c => c.name === city)) {
-    city = ''
+  $: {
+    try {
+      if (country && city && !availableCities.find(c => c.name === city)) {
+        city = ''
+      }
+    } catch (error) {
+      console.error('❌ SettingsPage: Error in city reset reactive statement:', error)
+    }
   }
 
   // Initialize form with user data
@@ -68,14 +84,28 @@
     lastName = user?.lastName || ''
     country = user?.country || ''
     city = user?.city || ''
-    consultationCharge = user?.consultationCharge || ''
-    hospitalCharge = user?.hospitalCharge || ''
+    consultationCharge = String(user?.consultationCharge || '')
+    hospitalCharge = String(user?.hospitalCharge || '')
     currency = user?.currency || 'USD'
   }
 
   // Initialize form when user changes
   $: if (user) {
-    initializeForm()
+    try {
+      console.log('🔍 Debug - SettingsPage: User changed, initializing form:', user)
+      initializeForm()
+    } catch (error) {
+      console.error('❌ SettingsPage: Error initializing form:', error)
+      // Set default values to prevent errors
+      firstName = ''
+      lastName = ''
+      email = ''
+      country = ''
+      city = ''
+      consultationCharge = ''
+      hospitalCharge = ''
+      currency = 'USD'
+    }
   }
 
   // Handle form submission
@@ -106,8 +136,8 @@
         lastName: lastName.trim(),
         country: country.trim(),
         city: city.trim(),
-        consultationCharge: consultationCharge.trim(),
-        hospitalCharge: hospitalCharge.trim(),
+        consultationCharge: String(consultationCharge || '').trim(),
+        hospitalCharge: String(hospitalCharge || '').trim(),
         currency: currency,
         name: `${firstName.trim()} ${lastName.trim()}`
       }
@@ -279,13 +309,14 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label for="firstName" class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
-                <input 
-                  type="text" 
-                  id="firstName"
-                  bind:value={firstName}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                  required
-                />
+                  <input 
+                    type="text" 
+                    id="firstName"
+                    value={firstName}
+                    on:input={(e) => firstName = e.target.value}
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    required
+                  />
               </div>
               
               <div>
@@ -293,7 +324,8 @@
                 <input 
                   type="text" 
                   id="lastName"
-                  bind:value={lastName}
+                  value={lastName}
+                  on:input={(e) => lastName = e.target.value}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   required
                 />
@@ -303,7 +335,8 @@
                 <label for="country" class="block text-sm font-medium text-gray-700 mb-2">Country *</label>
                 <select 
                   id="country"
-                  bind:value={country}
+                  value={country}
+                  on:change={(e) => country = e.target.value}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   required
                 >
@@ -318,7 +351,8 @@
                 <label for="city" class="block text-sm font-medium text-gray-700 mb-2">City *</label>
                 <select 
                   id="city"
-                  bind:value={city}
+                  value={city}
+                  on:change={(e) => city = e.target.value}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   required
                   disabled={!country}
@@ -335,7 +369,8 @@
                 <label for="currency" class="block text-sm font-medium text-gray-700 mb-2">Currency *</label>
                 <select 
                   id="currency"
-                  bind:value={currency}
+                  value={currency}
+                  on:change={(e) => currency = e.target.value}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   required
                 >
@@ -362,13 +397,12 @@
                       <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
                     </div>
                     <input 
-                      type="number" 
+                      type="text" 
                       id="consultationCharge"
-                      bind:value={consultationCharge}
+                      value={consultationCharge}
+                      on:input={(e) => consultationCharge = e.target.value}
                       class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                       placeholder="0.00"
-                      min="0"
-                      step="0.01"
                     />
                   </div>
                   <div class="text-xs text-gray-500 mt-1">
@@ -385,13 +419,12 @@
                       <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
                     </div>
                     <input 
-                      type="number" 
+                      type="text" 
                       id="hospitalCharge"
-                      bind:value={hospitalCharge}
+                      value={hospitalCharge}
+                      on:input={(e) => hospitalCharge = e.target.value}
                       class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                       placeholder="0.00"
-                      min="0"
-                      step="0.01"
                     />
                   </div>
                   <div class="text-xs text-gray-500 mt-1">
@@ -453,7 +486,8 @@
                         min="50" 
                         max="300" 
                         step="10"
-                        bind:value={headerSize}
+                        value={headerSize}
+                        on:input={(e) => headerSize = parseInt(e.target.value)}
                       />
                     </div>
                     <div class="flex-shrink-0">
@@ -678,7 +712,8 @@
             <button 
               type="submit" 
               form="edit-profile-form"
-              class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center transition-colors duration-200"
+              class="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center transition-colors duration-200"
+              style="background-color: #dc2626 !important;"
               disabled={loading}
             >
               {#if loading}
