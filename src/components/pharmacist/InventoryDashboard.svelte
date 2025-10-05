@@ -176,7 +176,7 @@
         return
       }
       
-      if (!newItemForm.drugName || !newItemForm.initialStock || !newItemForm.costPrice || !newItemForm.sellingPrice) {
+      if (!newItemForm.drugName || !newItemForm.genericName || !newItemForm.initialStock || !newItemForm.minimumStock || !newItemForm.sellingPrice || !newItemForm.expiryDate || !newItemForm.storageConditions) {
         notifyError('Please fill in all required fields')
         return
       }

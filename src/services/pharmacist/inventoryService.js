@@ -592,7 +592,7 @@ class InventoryService {
    * Validate inventory item data
    */
   validateInventoryItem(itemData) {
-    const required = ['drugName', 'initialStock', 'costPrice', 'sellingPrice']
+    const required = ['drugName', 'genericName', 'initialStock', 'minimumStock', 'sellingPrice', 'expiryDate', 'storageConditions']
     const missing = required.filter(field => {
       const value = itemData[field]
       // Check if field is truly missing (undefined, null, empty string) but allow 0 as valid
@@ -607,7 +607,8 @@ class InventoryService {
       throw new Error('Initial stock cannot be negative')
     }
     
-    if (parseFloat(itemData.costPrice) < 0) {
+    // Only validate costPrice if it's provided
+    if (itemData.costPrice !== undefined && itemData.costPrice !== null && itemData.costPrice !== '' && parseFloat(itemData.costPrice) < 0) {
       throw new Error('Cost price cannot be negative')
     }
     
