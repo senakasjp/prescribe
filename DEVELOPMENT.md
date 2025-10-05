@@ -131,6 +131,7 @@ bind:prescriptionNotes
 - **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
 - **Pharmacy Integration**: Doctors can see medication availability from connected pharmacies
 - **Stock Management**: Comprehensive inventory management for pharmacists with quantity, strength, and expiry tracking
+- **Primary Key Logic**: Inventory items uniquely identified by Brand/Drug Name + Strength combination
 - **Visual Stock Alerts**: Orange badges for normal stock, red badges for low stock (≤10% of initial)
 
 ### **🔥 Firebase-Only Migration**

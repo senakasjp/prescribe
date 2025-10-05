@@ -40,9 +40,8 @@
   
   // Form data
   let newItemForm = {
-    drugName: '',
-    genericName: '',
     brandName: '',
+    genericName: '',
     manufacturer: '',
     category: 'prescription',
     strength: '',
@@ -111,9 +110,11 @@
       // Apply search filter
       if (searchQuery) {
         inventoryItems = inventoryItems.filter(item => 
-          item.drugName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (item.brandName || item.drugName)?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           item.genericName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.manufacturer?.toLowerCase().includes(searchQuery.toLowerCase())
+          item.manufacturer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.strength?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          `${item.brandName || item.drugName} ${item.strength}`.toLowerCase().includes(searchQuery.toLowerCase())
         )
       }
       
@@ -176,18 +177,19 @@
         return
       }
       
-      if (!newItemForm.drugName || !newItemForm.genericName || !newItemForm.initialStock || !newItemForm.minimumStock || !newItemForm.sellingPrice || !newItemForm.expiryDate || !newItemForm.storageConditions) {
-        notifyError('Please fill in all required fields')
+      if (!newItemForm.brandName || !newItemForm.genericName || !newItemForm.strength || !newItemForm.strengthUnit || !newItemForm.initialStock || !newItemForm.minimumStock || !newItemForm.sellingPrice || !newItemForm.expiryDate || !newItemForm.storageConditions) {
+        notifyError('Please fill in all required fields including brand name, strength, and strength unit')
         return
       }
       
       await inventoryService.createInventoryItem(pharmacist.id, newItemForm)
       
+      notifySuccess('Inventory item added successfully!')
+      
       // Reset form
       newItemForm = {
-        drugName: '',
-        genericName: '',
         brandName: '',
+        genericName: '',
         manufacturer: '',
         category: 'prescription',
         strength: '',
@@ -213,6 +215,37 @@
     } catch (error) {
       console.error('Error adding inventory item:', error)
       notifyError('Failed to add inventory item: ' + error.message)
+    }
+  }
+
+  // Edit inventory item
+  const editInventoryItem = async () => {
+    try {
+      if (!pharmacist?.id) {
+        notifyError('Pharmacist information not available')
+        return
+      }
+      
+      if (!editItemForm.brandName || !editItemForm.genericName || !editItemForm.strength || !editItemForm.strengthUnit || !editItemForm.currentStock || !editItemForm.minimumStock || !editItemForm.sellingPrice || !editItemForm.expiryDate || !editItemForm.storageConditions) {
+        notifyError('Please fill in all required fields including brand name, strength, and strength unit')
+        return
+      }
+      
+      await inventoryService.updateInventoryItem(editingItem.id, pharmacist.id, editItemForm)
+      
+      notifySuccess('Inventory item updated successfully!')
+      
+      // Close modal and reset form
+      showEditModal = false
+      editItemForm = {}
+      editingItem = null
+      
+      // Reload items
+      await loadInventoryItems()
+      
+    } catch (error) {
+      console.error('❌ Error updating inventory item:', error)
+      notifyError('Failed to update inventory item: ' + error.message)
     }
   }
   
@@ -564,7 +597,7 @@
                 bind:value={sortBy}
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="drugName">Drug Name</option>
+                <option value="drugName">Brand Name</option>
                 <option value="currentStock">Stock Level</option>
                 <option value="costPrice">Cost Price</option>
                 <option value="sellingPrice">Selling Price</option>
@@ -581,11 +614,12 @@
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Drug Information</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Stock</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Pricing</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Status</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Actions</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32">Brand Name</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Strength</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Stock</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Pricing</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Status</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-48">Actions</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
@@ -593,9 +627,23 @@
                   <tr class="hover:bg-gray-50">
                     <td class="px-6 py-4">
                       <div class="min-w-0 flex-1">
-                        <div class="font-semibold text-gray-900 break-words">{item.drugName}</div>
-                        <div class="text-sm text-gray-500 break-words">{item.genericName || 'N/A'}</div>
-                        <div class="text-xs text-gray-400 break-words">{item.manufacturer || 'N/A'}</div>
+                        <div class="font-semibold text-gray-900 break-words">{item.brandName || item.drugName}</div>
+                        {#if item.genericName && item.genericName !== (item.brandName || item.drugName)}
+                          <div class="text-sm text-gray-500 break-words">Generic: {item.genericName}</div>
+                        {/if}
+                        {#if item.manufacturer}
+                          <div class="text-xs text-gray-400 break-words">Mfg: {item.manufacturer}</div>
+                        {/if}
+                      </div>
+                    </td>
+                    <td class="px-6 py-4">
+                      <div class="min-w-0 flex-1">
+                        {#if item.strength}
+                          <div class="font-medium text-gray-900">{item.strength} {item.strengthUnit || ''}</div>
+                          <div class="text-xs text-gray-500">{item.dosageForm || 'N/A'}</div>
+                        {:else}
+                          <div class="text-sm text-gray-400">Not specified</div>
+                        {/if}
                       </div>
                     </td>
                     <td class="px-6 py-4">
@@ -656,9 +704,16 @@
               <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
                 <div class="flex justify-between items-start mb-3">
                   <div class="flex-1">
-                    <h3 class="font-semibold text-gray-900 text-sm">{item.drugName}</h3>
-                    <p class="text-xs text-gray-500">{item.genericName || 'N/A'}</p>
-                    <p class="text-xs text-gray-400">{item.manufacturer || 'N/A'}</p>
+                    <h3 class="font-semibold text-gray-900 text-sm">{item.brandName || item.drugName}</h3>
+                    {#if item.strength}
+                      <p class="text-xs text-blue-600 font-medium">Strength: {item.strength} {item.strengthUnit || ''}</p>
+                    {/if}
+                    {#if item.genericName && item.genericName !== (item.brandName || item.drugName)}
+                      <p class="text-xs text-gray-500">Generic: {item.genericName}</p>
+                    {/if}
+                    {#if item.manufacturer}
+                      <p class="text-xs text-gray-400">Mfg: {item.manufacturer}</p>
+                    {/if}
                   </div>
                   <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium {getStatusColor(item.status)}">
                     {getStatusText(item.status)}
@@ -860,12 +915,13 @@
             <!-- Basic Information -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Drug Name *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Brand Name *</label>
                 <input 
                   type="text" 
-                  bind:value={newItemForm.drugName}
+                  bind:value={newItemForm.brandName}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter brand name"
                 />
               </div>
               
@@ -1099,13 +1155,17 @@
               <h4 class="text-md font-medium text-gray-900 border-b pb-2">Drug Information</h4>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Drug Name *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Brand Name *</label>
                 <input 
                   type="text"
-                  bind:value={selectedItem.drugName}
+                  value={selectedItem?.brandName || selectedItem?.drugName || ''}
                   required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                  disabled
+                  readonly
+                  title="Brand Name cannot be changed (Primary Key)"
                 />
+                <p class="text-xs text-gray-500 mt-1">Brand Name is part of the primary key and cannot be changed</p>
               </div>
               
               <div>
@@ -1114,15 +1174,6 @@
                   type="text"
                   bind:value={selectedItem.genericName}
                   required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Brand Name</label>
-                <input 
-                  type="text"
-                  bind:value={selectedItem.brandName}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1138,25 +1189,32 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Strength</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Strength *</label>
                   <input 
                     type="text"
                     bind:value={selectedItem.strength}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                    disabled
+                    title="Strength cannot be changed (Primary Key)"
                   />
+                  <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key and cannot be changed</p>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Strength Unit *</label>
                   <select 
                     bind:value={selectedItem.strengthUnit}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                    disabled
+                    title="Strength Unit cannot be changed (Primary Key)"
                   >
                     <option value="mg">mg</option>
                     <option value="g">g</option>
                     <option value="ml">ml</option>
+                    <option value="mcg">mcg</option>
                     <option value="units">units</option>
                     <option value="%">%</option>
                   </select>
+                  <p class="text-xs text-gray-500 mt-1">Strength Unit is part of the primary key and cannot be changed</p>
                 </div>
               </div>
               
@@ -1308,11 +1366,22 @@
               </div>
               
               <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea 
+                  bind:value={selectedItem.description}
+                  rows="3"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter any additional notes or description"
+                ></textarea>
+              </div>
+              
+              <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea 
                   bind:value={selectedItem.notes}
-                  rows="3"
+                  rows="2"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Internal notes"
                 ></textarea>
               </div>
             </div>

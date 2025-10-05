@@ -37,6 +37,28 @@ The pharmacist portal has been enhanced with a sophisticated drug inventory mana
 - **Overstock Alerts**: Notifications for excessive inventory
 - **Price Change Alerts**: Monitor supplier price changes
 
+## Primary Key Logic
+
+### Inventory Item Identification
+**CRITICAL BUSINESS RULE**: The primary key for inventory items is the combination of **Brand/Drug Name + Strength**.
+
+This means:
+- ✅ **Unique Identification**: Items are uniquely identified by both name AND strength together
+- ✅ **Duplicate Prevention**: No two items can exist with the same name + strength combination
+- ✅ **Search Logic**: All inventory operations must consider both fields as a composite key
+- ✅ **Stock Management**: Quantities are tracked based on this combined identifier
+
+**Examples**:
+- "Paracetamol 500mg" and "Paracetamol 1000mg" are different items
+- "Aspirin 75mg" and "Aspirin 325mg" are separate inventory entries
+- Same brand name with different strengths = separate inventory items
+
+**Implementation Requirements**:
+- All validation logic must check for duplicates using both fields
+- Search functionality must consider both name and strength
+- Database queries should use composite key logic
+- UI displays should prominently show both fields as the unique identifier
+
 ## Technical Architecture
 
 ### Core Components
@@ -85,21 +107,23 @@ The pharmacist portal has been enhanced with a sophisticated drug inventory mana
   pharmacistId: string,
   barcode: string,
   
-  // Basic Information
-  drugName: string,
+  // Basic Information (PRIMARY KEY COMPONENTS)
+  drugName: string,        // Part of composite primary key
   genericName: string,
-  brandName: string,
+  brandName: string,       // Part of composite primary key  
   manufacturer: string,
   category: string, // prescription, otc, controlled, medical
   subcategory: string,
   
-  // Pharmaceutical Details
-  strength: string,
-  strengthUnit: string, // mg, g, ml, mcg, units
+  // Pharmaceutical Details (PRIMARY KEY COMPONENTS)
+  strength: string,        // Part of composite primary key
+  strengthUnit: string,    // mg, g, ml, mcg, units
   dosageForm: string, // tablet, capsule, liquid, injection, cream, ointment
   route: string, // oral, topical, injection
   packSize: number,
   packUnit: string,
+  
+  // COMPOSITE PRIMARY KEY: (brandName + strength) OR (drugName + strength)
   
   // Regulatory Information
   ndcNumber: string,
@@ -230,6 +254,8 @@ The enhanced inventory system is integrated into the existing `PharmacistDashboa
 - **Regulatory Compliance**: Support for controlled substances and prescription requirements
 
 ### 2. Data Integrity
+- **Primary Key Validation**: Enforce Brand/Drug Name + Strength as composite primary key
+- **Duplicate Prevention**: Prevent creation of items with identical name + strength combinations
 - **Validation**: Comprehensive input validation for all fields
 - **Audit Trail**: Complete history of all inventory movements
 - **Error Handling**: Robust error handling and user feedback

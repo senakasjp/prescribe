@@ -14,7 +14,7 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 
 ### Pharmacist Portal
 - **Prescription Management**: View and manage prescriptions from doctors
-- **Inventory Tracking**: Monitor medication stock levels
+- **Inventory Tracking**: Monitor medication stock levels with Brand/Drug Name + Strength as primary key
 - **Doctor Connections**: Connect with doctors for prescription delivery
 - **Status Updates**: Update prescription fulfillment status
 

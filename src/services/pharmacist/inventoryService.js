@@ -586,13 +586,296 @@ class InventoryService {
     }
   }
 
+  // ==================== CORE CRUD OPERATIONS ====================
+
+  /**
+   * Create a new inventory item with primary key validation
+   */
+  async createInventoryItem(pharmacistId, itemData) {
+    try {
+      console.log('📦 Creating inventory item:', itemData)
+      
+      // Validate required fields including strength
+      this.validateInventoryItem(itemData)
+      
+      // Check for duplicate primary key (drug name + strength)
+      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength)
+      
+      // Prepare the item data
+      const inventoryItem = this.prepareInventoryItemData(pharmacistId, itemData)
+      
+      // Add to Firestore
+      const docRef = await addDoc(collection(db, 'drugStock'), inventoryItem)
+      
+      console.log('✅ Inventory item created successfully:', docRef.id)
+      return { id: docRef.id, ...inventoryItem }
+      
+    } catch (error) {
+      console.error('❌ Error creating inventory item:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Update an existing inventory item with primary key validation
+   */
+  async updateInventoryItem(itemId, pharmacistId, itemData) {
+    try {
+      console.log('📦 Updating inventory item:', itemId, itemData)
+      
+      // Validate required fields including strength
+      this.validateInventoryItem(itemData)
+      
+      // Check for duplicate primary key (excluding current item)
+      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength, itemId)
+      
+      // Prepare the update data
+      const updateData = {
+        ...itemData,
+        pharmacistId,
+        lastUpdated: new Date().toISOString(),
+        updatedBy: pharmacistId
+      }
+      
+      // Clean undefined values
+      const cleanedData = this.cleanUndefinedValues(updateData)
+      
+      // Update in Firestore
+      await updateDoc(doc(db, 'drugStock', itemId), cleanedData)
+      
+      console.log('✅ Inventory item updated successfully:', itemId)
+      return { id: itemId, ...cleanedData }
+      
+    } catch (error) {
+      console.error('❌ Error updating inventory item:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Delete an inventory item
+   */
+  async deleteInventoryItem(itemId) {
+    try {
+      console.log('🗑️ Deleting inventory item:', itemId)
+      
+      await deleteDoc(doc(db, 'drugStock', itemId))
+      
+      console.log('✅ Inventory item deleted successfully:', itemId)
+      return true
+      
+    } catch (error) {
+      console.error('❌ Error deleting inventory item:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Get inventory items for a pharmacist with filters
+   */
+  async getInventoryItems(pharmacistId, filters = {}) {
+    try {
+      console.log('📦 Getting inventory items for pharmacist:', pharmacistId, filters)
+      
+      // Use simple query to avoid composite index requirements
+      let q = query(
+        collection(db, 'drugStock'),
+        where('pharmacistId', '==', pharmacistId)
+      )
+      
+      const querySnapshot = await getDocs(q)
+      let items = []
+      
+      querySnapshot.forEach((doc) => {
+        items.push({
+          id: doc.id,
+          ...doc.data()
+        })
+      })
+      
+      // Apply filters client-side to avoid composite index requirements
+      if (filters.category && filters.category !== 'all') {
+        items = items.filter(item => item.category === filters.category)
+      }
+      
+      if (filters.status && filters.status !== 'all') {
+        items = items.filter(item => item.status === filters.status)
+      }
+      
+      // Apply sorting client-side
+      if (filters.sortBy) {
+        const sortOrder = filters.sortOrder === 'desc' ? 'desc' : 'asc'
+        items.sort((a, b) => {
+          const aVal = a[filters.sortBy] || ''
+          const bVal = b[filters.sortBy] || ''
+          
+          if (sortOrder === 'desc') {
+            return bVal > aVal ? 1 : -1
+          } else {
+            return aVal > bVal ? 1 : -1
+          }
+        })
+      }
+      
+      console.log('📦 Retrieved inventory items:', items.length)
+      return items
+      
+    } catch (error) {
+      console.error('❌ Error getting inventory items:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Get inventory analytics for a pharmacist
+   */
+  async getInventoryAnalytics(pharmacistId) {
+    try {
+      console.log('📊 Getting inventory analytics for pharmacist:', pharmacistId)
+      
+      const items = await this.getInventoryItems(pharmacistId)
+      
+      const analytics = {
+        totalItems: items.length,
+        totalStockValue: 0,
+        lowStockItems: 0,
+        expiringItems: 0,
+        expiredItems: 0,
+        categoryBreakdown: {},
+        topItems: []
+      }
+      
+      const today = new Date()
+      const thirtyDaysFromNow = new Date(today.getTime() + (30 * 24 * 60 * 60 * 1000))
+      
+      items.forEach(item => {
+        // Calculate stock value
+        analytics.totalStockValue += (item.currentStock || 0) * (item.sellingPrice || 0)
+        
+        // Count low stock items
+        if ((item.currentStock || 0) <= (item.minimumStock || 0)) {
+          analytics.lowStockItems++
+        }
+        
+        // Count expiring items
+        if (item.expiryDate) {
+          const expiryDate = new Date(item.expiryDate)
+          if (expiryDate <= thirtyDaysFromNow && expiryDate > today) {
+            analytics.expiringItems++
+          }
+          if (expiryDate <= today) {
+            analytics.expiredItems++
+          }
+        }
+        
+        // Category breakdown
+        const category = item.category || 'Other'
+        analytics.categoryBreakdown[category] = (analytics.categoryBreakdown[category] || 0) + 1
+      })
+      
+      // Get top items by stock value
+      analytics.topItems = items
+        .sort((a, b) => (b.currentStock || 0) * (b.sellingPrice || 0) - (a.currentStock || 0) * (a.sellingPrice || 0))
+        .slice(0, 10)
+      
+      console.log('📊 Generated analytics:', analytics)
+      return analytics
+      
+    } catch (error) {
+      console.error('❌ Error getting inventory analytics:', error)
+      throw error
+    }
+  }
+
   // ==================== UTILITY FUNCTIONS ====================
+
+  /**
+   * Prepare inventory item data for database storage
+   */
+  prepareInventoryItemData(pharmacistId, itemData) {
+    return {
+      // Basic Information
+      brandName: itemData.brandName,
+      genericName: itemData.genericName,
+      manufacturer: itemData.manufacturer || '',
+      category: itemData.category || 'prescription',
+      subcategory: itemData.subcategory || '',
+      
+      // Pharmaceutical Details
+      strength: itemData.strength,
+      strengthUnit: itemData.strengthUnit,
+      dosageForm: itemData.dosageForm || 'tablet',
+      route: itemData.route || 'oral',
+      packSize: itemData.packSize ? parseInt(itemData.packSize) : null,
+      packUnit: itemData.packUnit || 'tablets',
+      
+      // Regulatory Information
+      ndcNumber: itemData.ndcNumber || '',
+      rxNumber: itemData.rxNumber || '',
+      controlledSubstance: itemData.controlledSubstance || false,
+      schedule: itemData.schedule || '',
+      requiresPrescription: itemData.requiresPrescription !== false,
+      
+      // Inventory Details
+      currentStock: parseInt(itemData.initialStock) || 0,
+      minimumStock: parseInt(itemData.minimumStock) || 10,
+      maximumStock: parseInt(itemData.maximumStock) || 1000,
+      reorderPoint: parseInt(itemData.reorderPoint) || 20,
+      reorderQuantity: parseInt(itemData.reorderQuantity) || 100,
+      
+      // Financial Information
+      costPrice: itemData.costPrice ? parseFloat(itemData.costPrice) : null,
+      sellingPrice: parseFloat(itemData.sellingPrice) || 0,
+      margin: itemData.costPrice ? (parseFloat(itemData.sellingPrice) - parseFloat(itemData.costPrice)) / parseFloat(itemData.sellingPrice) * 100 : 0,
+      taxRate: parseFloat(itemData.taxRate) || 0,
+      
+      // Supplier Information
+      primarySupplier: itemData.primarySupplier || '',
+      secondarySuppliers: itemData.secondarySuppliers || [],
+      supplierPartNumber: itemData.supplierPartNumber || '',
+      
+      // Storage Information
+      storageLocation: itemData.storageLocation || '',
+      storageConditions: itemData.storageConditions || 'room temperature',
+      storageNotes: itemData.storageNotes || '',
+      expiryDate: itemData.expiryDate || '',
+      
+      // Batch Information
+      batches: itemData.batches || [],
+      
+      // Status and Tracking
+      status: this.STOCK_STATUS.IN_STOCK,
+      isActive: true,
+      lastUpdated: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      createdBy: pharmacistId,
+      
+      // Analytics
+      totalSold: 0,
+      totalPurchased: parseInt(itemData.initialStock) || 0,
+      averageMonthlySales: 0,
+      lastSaleDate: null,
+      lastPurchaseDate: new Date().toISOString(),
+      
+      // Additional Data
+      description: itemData.description || '',
+      sideEffects: itemData.sideEffects || '',
+      contraindications: itemData.contraindications || '',
+      interactions: itemData.interactions || '',
+      notes: itemData.notes || '',
+      
+      // Additional fields for search and compatibility
+      brandNameLower: (itemData.brandName || '').toLowerCase(),
+      genericNameLower: (itemData.genericName || '').toLowerCase(),
+      pharmacistId: pharmacistId
+    }
+  }
 
   /**
    * Validate inventory item data
    */
   validateInventoryItem(itemData) {
-    const required = ['drugName', 'genericName', 'initialStock', 'minimumStock', 'sellingPrice', 'expiryDate', 'storageConditions']
+    const required = ['brandName', 'genericName', 'strength', 'strengthUnit', 'initialStock', 'minimumStock', 'sellingPrice', 'expiryDate', 'storageConditions']
     const missing = required.filter(field => {
       const value = itemData[field]
       // Check if field is truly missing (undefined, null, empty string) but allow 0 as valid
@@ -614,6 +897,50 @@ class InventoryService {
     
     if (parseFloat(itemData.sellingPrice) < 0) {
       throw new Error('Selling price cannot be negative')
+    }
+  }
+
+  /**
+   * Check if a brand name + strength combination already exists for a pharmacist
+   * This implements the primary key rule: Brand Name + Strength
+   */
+  async checkDuplicatePrimaryKey(pharmacistId, brandName, strength, excludeId = null) {
+    try {
+      console.log('🔍 Checking for duplicate primary key:', { pharmacistId, brandName, strength, excludeId })
+      
+      // Use simple query to avoid composite index requirements
+      const stockRef = collection(db, 'drugStock')
+      const q = query(stockRef, where('pharmacistId', '==', pharmacistId))
+      
+      const querySnapshot = await getDocs(q)
+      const duplicates = []
+      
+      querySnapshot.forEach((doc) => {
+        if (excludeId && doc.id === excludeId) {
+          return // Skip the item being edited
+        }
+        
+        const data = doc.data()
+        // Check for duplicate using client-side filtering - brandName is primary
+        if (data.brandName === brandName && data.strength === strength) {
+          duplicates.push({
+            id: doc.id,
+            ...data
+          })
+        }
+      })
+      
+      console.log('🔍 Duplicate check result:', duplicates.length, 'duplicates found')
+      
+      if (duplicates.length > 0) {
+        const duplicateItem = duplicates[0]
+        throw new Error(`A drug with brand name "${brandName}" and strength "${strength}" already exists. Each brand name + strength combination must be unique.`)
+      }
+      
+      return false // No duplicates found
+    } catch (error) {
+      console.error('❌ Error checking duplicate primary key:', error)
+      throw error
     }
   }
 
