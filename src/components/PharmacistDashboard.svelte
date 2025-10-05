@@ -5,6 +5,7 @@
   import authService from '../services/authService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import InventoryDashboard from './pharmacist/InventoryDashboard.svelte'
   import PharmacistSettings from './pharmacist/PharmacistSettings.svelte'
@@ -40,6 +41,11 @@
   let prescriptionsPerPage = 10
   
   let activeTab = 'prescriptions' // 'prescriptions' or 'inventory'
+  
+  // Charge calculation state
+  let chargeBreakdown = null
+  let calculatingCharges = false
+  let chargeCalculationError = null
   let showProfileSettings = false
   
   // Confirmation modal state
@@ -597,6 +603,11 @@
     currentPrescriptionPage = 1
   }
   
+  // Automatically calculate charges when a prescription is selected
+  $: if (selectedPrescription && pharmacist && showPrescriptionDetails) {
+    calculatePrescriptionCharges()
+  }
+  
   // Pagination functions for prescriptions
   const goToPrescriptionPage = (page) => {
     if (page >= 1 && page <= totalPrescriptionPages) {
@@ -686,9 +697,51 @@
   }
   
   
+  // Charge calculation functions
+  const calculatePrescriptionCharges = async () => {
+    if (!selectedPrescription || !pharmacist) {
+      console.warn('⚠️ Cannot calculate charges: missing prescription or pharmacist data')
+      return
+    }
+    
+    calculatingCharges = true
+    chargeCalculationError = null
+    chargeBreakdown = null
+    
+    try {
+      console.log('💰 Starting charge calculation for prescription:', selectedPrescription.id)
+      chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(selectedPrescription, pharmacist)
+      console.log('✅ Charge calculation completed:', chargeBreakdown)
+    } catch (error) {
+      console.error('❌ Error calculating prescription charges:', error)
+      chargeCalculationError = error.message
+      notifyError(`Failed to calculate charges: ${error.message}`)
+    } finally {
+      calculatingCharges = false
+    }
+  }
   
-  
-  
+  // Format currency for display
+  const formatCurrencyDisplay = (amount, currency = 'USD') => {
+    try {
+      if (currency === 'LKR') {
+        // For LKR, return just the number without symbol
+        return new Intl.NumberFormat('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(amount)
+      } else {
+        // For other currencies, use standard formatting
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: currency
+        }).format(amount)
+      }
+    } catch (error) {
+      console.error('❌ Error formatting currency:', error)
+      return amount.toFixed(2)
+    }
+  }
 
   onMount(() => {
     console.log('🔍 PharmacistDashboard: Received pharmacist data:', pharmacist)
@@ -1285,6 +1338,157 @@
               </div>
             </div>
           {/if}
+          
+          <!-- Charge Calculation Section -->
+          <div class="mb-4">
+            <h6 class="font-semibold text-blue-600 text-sm sm:text-base mb-2">
+              <i class="fas fa-calculator mr-2"></i>
+              Prescription Charges
+            </h6>
+            
+            {#if calculatingCharges}
+              <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div class="flex items-center">
+                  <i class="fas fa-spinner fa-spin text-blue-600 mr-2"></i>
+                  <span class="text-blue-700 text-sm">Calculating charges...</span>
+                </div>
+              </div>
+            {:else if chargeCalculationError}
+              <div class="bg-red-50 border border-red-200 rounded-lg p-3">
+                <div class="flex items-center">
+                  <i class="fas fa-exclamation-triangle text-red-600 mr-2"></i>
+                  <span class="text-red-700 text-sm">Error calculating charges: {chargeCalculationError}</span>
+                </div>
+                <button 
+                  class="mt-2 text-xs text-red-600 hover:text-red-800 underline"
+                  on:click={calculatePrescriptionCharges}
+                >
+                  Try again
+                </button>
+              </div>
+            {:else if chargeBreakdown}
+              <div class="bg-white border border-gray-200 rounded-lg p-3 sm:p-4">
+                <!-- Doctor Charges -->
+                <div class="mb-3">
+                  <h7 class="font-semibold text-gray-700 text-xs sm:text-sm mb-2">Doctor Charges</h7>
+                  <div class="space-y-1 text-xs sm:text-sm">
+                    <div class="flex justify-between">
+                      <span class="text-gray-600">Consultation Charge:</span>
+                      <span class="text-gray-900">
+                        {#if pharmacist.currency === 'LKR'}
+                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, pharmacist.currency)}
+                        {:else}
+                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, pharmacist.currency)}
+                        {/if}
+                      </span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-gray-600">Hospital Charge:</span>
+                      <span class="text-gray-900">
+                        {#if pharmacist.currency === 'LKR'}
+                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, pharmacist.currency)}
+                        {:else}
+                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, pharmacist.currency)}
+                        {/if}
+                      </span>
+                    </div>
+                    <div class="flex justify-between border-t pt-1">
+                      <span class="text-gray-600 font-medium">Subtotal:</span>
+                      <span class="text-gray-900 font-medium">
+                        {#if pharmacist.currency === 'LKR'}
+                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalBeforeDiscount, pharmacist.currency)}
+                        {:else}
+                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalBeforeDiscount, pharmacist.currency)}
+                        {/if}
+                      </span>
+                    </div>
+                    {#if chargeBreakdown.doctorCharges.discountPercentage > 0}
+                      <div class="flex justify-between">
+                        <span class="text-gray-600">Discount ({chargeBreakdown.doctorCharges.discountPercentage}%):</span>
+                        <span class="text-green-600">
+                          -{#if pharmacist.currency === 'LKR'}
+                            Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
+                          {:else}
+                            {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
+                          {/if}
+                        </span>
+                      </div>
+                      <div class="flex justify-between border-t pt-1">
+                        <span class="text-gray-600 font-medium">After Discount:</span>
+                        <span class="text-gray-900 font-medium">
+                          {#if pharmacist.currency === 'LKR'}
+                            Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalAfterDiscount, pharmacist.currency)}
+                          {:else}
+                            {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalAfterDiscount, pharmacist.currency)}
+                          {/if}
+                        </span>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+                
+                <!-- Drug Charges -->
+                <div class="mb-3">
+                  <h7 class="font-semibold text-gray-700 text-xs sm:text-sm mb-2">Drug Charges</h7>
+                  <div class="space-y-1 text-xs sm:text-sm">
+                    {#each chargeBreakdown.drugCharges.medicationBreakdown as medication}
+                      <div class="flex justify-between">
+                        <span class="text-gray-600">{medication.medicationName}</span>
+                        <span class="text-gray-900">
+                          {#if medication.found}
+                            {#if pharmacist.currency === 'LKR'}
+                              Rs {formatCurrencyDisplay(medication.totalCost, pharmacist.currency)}
+                            {:else}
+                              {formatCurrencyDisplay(medication.totalCost, pharmacist.currency)}
+                            {/if}
+                          {:else}
+                            <span class="text-gray-400 italic">Not available</span>
+                          {/if}
+                        </span>
+                      </div>
+                    {/each}
+                    <div class="flex justify-between border-t pt-1">
+                      <span class="text-gray-600 font-medium">Total Drug Cost:</span>
+                      <span class="text-gray-900 font-medium">
+                        {#if pharmacist.currency === 'LKR'}
+                          Rs {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, pharmacist.currency)}
+                        {:else}
+                          {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, pharmacist.currency)}
+                        {/if}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Total Charge -->
+                <div class="border-t pt-3">
+                  <div class="flex justify-between items-center">
+                    <span class="font-bold text-gray-900 text-sm sm:text-base">Total Charge:</span>
+                    <span class="font-bold text-blue-600 text-sm sm:text-base">
+                      {#if pharmacist.currency === 'LKR'}
+                        Rs {formatCurrencyDisplay(chargeBreakdown.totalCharge, pharmacist.currency)}
+                      {:else}
+                        {formatCurrencyDisplay(chargeBreakdown.totalCharge, pharmacist.currency)}
+                      {/if}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            {:else}
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div class="flex items-center">
+                  <i class="fas fa-info-circle text-gray-600 mr-2"></i>
+                  <span class="text-gray-700 text-sm">Click "Calculate Charges" to view prescription cost breakdown</span>
+                </div>
+                <button 
+                  class="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                  on:click={calculatePrescriptionCharges}
+                >
+                  Calculate Charges
+                </button>
+              </div>
+            {/if}
+          </div>
         </div>
         
         <!-- Mobile Footer -->

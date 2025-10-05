@@ -358,20 +358,21 @@
   <!-- Header -->
   <div class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex justify-between items-center py-6">
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900">
+      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center py-4 sm:py-6 gap-4">
+        <div class="flex-1">
+          <h1 class="text-xl sm:text-2xl font-bold text-gray-900">
             <i class="fas fa-boxes mr-2 text-blue-600"></i>
             Drug Inventory Management
           </h1>
-          <p class="text-gray-600 mt-1">Comprehensive pharmaceutical inventory system</p>
+          <p class="text-sm sm:text-base text-gray-600 mt-1">Comprehensive pharmaceutical inventory system</p>
         </div>
         <button 
-          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-sm sm:text-base"
           on:click={() => showAddItemModal = true}
         >
-          <i class="fas fa-plus mr-2"></i>
-          Add Inventory Item
+          <i class="fas fa-plus mr-1 sm:mr-2"></i>
+          <span class="hidden sm:inline">Add Inventory Item</span>
+          <span class="sm:hidden">Add Item</span>
         </button>
       </div>
     </div>
@@ -380,51 +381,51 @@
   <!-- Navigation Tabs -->
   <div class="bg-white border-b border-gray-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <nav class="flex space-x-8">
+      <nav class="flex flex-wrap overflow-x-auto space-x-2 sm:space-x-4 lg:space-x-8">
         <button 
-          class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'overview' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+          class="py-3 sm:py-4 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap {activeTab === 'overview' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
           on:click={() => activeTab = 'overview'}
         >
-          <i class="fas fa-chart-pie mr-2"></i>
-          Overview
+          <i class="fas fa-chart-pie mr-1 sm:mr-2"></i>
+          <span class="hidden sm:inline">Overview</span>
         </button>
         <button 
-          class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'items' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+          class="py-3 sm:py-4 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap {activeTab === 'items' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
           on:click={() => activeTab = 'items'}
         >
-          <i class="fas fa-boxes mr-2"></i>
-          Inventory Items
+          <i class="fas fa-boxes mr-1 sm:mr-2"></i>
+          <span class="hidden sm:inline">Inventory Items</span>
         </button>
         <button 
-          class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'analytics' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+          class="py-3 sm:py-4 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap {activeTab === 'analytics' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
           on:click={() => activeTab = 'analytics'}
         >
-          <i class="fas fa-chart-bar mr-2"></i>
-          Analytics
+          <i class="fas fa-chart-bar mr-1 sm:mr-2"></i>
+          <span class="hidden sm:inline">Analytics</span>
         </button>
         <button 
-          class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'alerts' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+          class="py-3 sm:py-4 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap {activeTab === 'alerts' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
           on:click={() => activeTab = 'alerts'}
         >
-          <i class="fas fa-bell mr-2"></i>
-          Alerts
+          <i class="fas fa-bell mr-1 sm:mr-2"></i>
+          <span class="hidden sm:inline">Alerts</span>
           {#if alerts.length > 0}
-            <span class="ml-2 bg-red-100 text-red-800 text-xs font-medium px-2 py-0.5 rounded-full">{alerts.length}</span>
+            <span class="ml-1 sm:ml-2 bg-red-100 text-red-800 text-xs font-medium px-1 sm:px-2 py-0.5 rounded-full">{alerts.length}</span>
           {/if}
         </button>
         <button 
-          class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'suppliers' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+          class="py-3 sm:py-4 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap {activeTab === 'suppliers' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
           on:click={() => activeTab = 'suppliers'}
         >
-          <i class="fas fa-truck mr-2"></i>
-          Suppliers
+          <i class="fas fa-truck mr-1 sm:mr-2"></i>
+          <span class="hidden sm:inline">Suppliers</span>
         </button>
       </nav>
     </div>
   </div>
 
   <!-- Main Content -->
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
     {#if loading}
       <div class="text-center py-12">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
@@ -432,53 +433,53 @@
       </div>
     {:else if activeTab === 'overview'}
       <!-- Overview Tab -->
-      <div class="space-y-6">
+      <div class="space-y-4 sm:space-y-6">
         <!-- Key Metrics Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <i class="fas fa-boxes text-2xl text-blue-600"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500">Total Items</p>
-                <p class="text-2xl font-semibold text-gray-900">{analytics?.totalItems || 0}</p>
+              <div class="ml-2 sm:ml-4">
+                <p class="text-xs sm:text-sm font-medium text-gray-500">Total Items</p>
+                <div class="flex flex-col">
+                  <i class="fas fa-boxes text-sm sm:text-base md:text-lg text-blue-600"></i>
+                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{analytics?.totalItems || 0}</p>
+                </div>
               </div>
             </div>
           </div>
           
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <i class="fas fa-chart-line text-2xl text-green-600"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500">Stock Value</p>
-                <p class="text-2xl font-semibold text-gray-900">{formatCurrency(analytics?.totalStockValue || 0)}</p>
+              <div class="ml-2 sm:ml-4">
+                <p class="text-xs sm:text-sm font-medium text-gray-500">Stock Value</p>
+                <div class="flex flex-col">
+                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">Rs</p>
+                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{formatCurrency(analytics?.totalStockValue || 0)}</p>
+                </div>
               </div>
             </div>
           </div>
           
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <i class="fas fa-exclamation-triangle text-2xl text-yellow-600"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500">Low Stock Items</p>
-                <p class="text-2xl font-semibold text-gray-900">{analytics?.lowStockItems || 0}</p>
+              <div class="ml-2 sm:ml-4">
+                <p class="text-xs sm:text-sm font-medium text-gray-500">Low Stock Items</p>
+                <div class="flex flex-col">
+                  <i class="fas fa-exclamation-triangle text-sm sm:text-base md:text-lg text-yellow-600"></i>
+                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{analytics?.lowStockItems || 0}</p>
+                </div>
               </div>
             </div>
           </div>
           
-          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
             <div class="flex items-center">
-              <div class="flex-shrink-0">
-                <i class="fas fa-clock text-2xl text-orange-600"></i>
-              </div>
-              <div class="ml-4">
-                <p class="text-sm font-medium text-gray-500">Expiring Items</p>
-                <p class="text-2xl font-semibold text-gray-900">{analytics?.expiringItems || 0}</p>
+              <div class="ml-2 sm:ml-4">
+                <p class="text-xs sm:text-sm font-medium text-gray-500">Expiring Items</p>
+                <div class="flex flex-col">
+                  <i class="fas fa-clock text-sm sm:text-base md:text-lg text-orange-600"></i>
+                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{analytics?.expiringItems || 0}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -580,63 +581,67 @@
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="bg-gray-50">
                 <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drug Information</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pricing</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Drug Information</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Stock</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Pricing</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Status</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-0">Actions</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
                 {#each filteredItems as item}
                   <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div class="font-semibold text-gray-900">{item.drugName}</div>
-                        <div class="text-sm text-gray-500">{item.genericName || 'N/A'}</div>
-                        <div class="text-xs text-gray-400">{item.manufacturer || 'N/A'}</div>
+                    <td class="px-6 py-4">
+                      <div class="min-w-0 flex-1">
+                        <div class="font-semibold text-gray-900 break-words">{item.drugName}</div>
+                        <div class="text-sm text-gray-500 break-words">{item.genericName || 'N/A'}</div>
+                        <div class="text-xs text-gray-400 break-words">{item.manufacturer || 'N/A'}</div>
                       </div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div class="font-semibold text-gray-900">{item.currentStock} {item.packUnit}</div>
+                    <td class="px-6 py-4">
+                      <div class="min-w-0 flex-1">
+                        <div class="font-semibold text-gray-900 break-words">{item.currentStock} {item.packUnit}</div>
                         <div class="text-sm text-gray-500">Min: {item.minimumStock}</div>
                       </div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div class="font-semibold text-gray-900">{formatCurrency(item.sellingPrice)}</div>
+                    <td class="px-6 py-4">
+                      <div class="min-w-0 flex-1">
+                        <div class="font-semibold text-gray-900 break-words">{formatCurrency(item.sellingPrice)}</div>
                         <div class="text-sm text-gray-500">Cost: {formatCurrency(item.costPrice)}</div>
                       </div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {getStatusColor(item.status)}">
-                        {getStatusText(item.status)}
-                      </span>
+                    <td class="px-6 py-4">
+                      <div class="min-w-0 flex-1">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {getStatusColor(item.status)}">
+                          {getStatusText(item.status)}
+                        </span>
+                      </div>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div class="flex space-x-2">
-                        <button 
-                          class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
-                          on:click={() => { selectedItem = item; showEditItemModal = true }}
-                        >
-                          <i class="fas fa-edit mr-1"></i>
-                          Edit
-                        </button>
-                        <button 
-                          class="text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
-                          on:click={() => { selectedItem = item; showBatchModal = true }}
-                        >
-                          <i class="fas fa-layer-group mr-1"></i>
-                          Batches
-                        </button>
-                        <button 
-                          class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
-                          on:click={() => deleteInventoryItem(item.id)}
-                        >
-                          <i class="fas fa-trash mr-1"></i>
-                          Delete
-                        </button>
+                    <td class="px-6 py-4 text-sm font-medium">
+                      <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap gap-1">
+                          <button 
+                            class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-xs font-medium transition-colors duration-200"
+                            on:click={() => { selectedItem = item; showEditItemModal = true }}
+                          >
+                            <i class="fas fa-edit mr-1"></i>
+                            Edit
+                          </button>
+                          <button 
+                            class="text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-2 py-1 rounded text-xs font-medium transition-colors duration-200"
+                            on:click={() => { selectedItem = item; showBatchModal = true }}
+                          >
+                            <i class="fas fa-layer-group mr-1"></i>
+                            Batches
+                          </button>
+                          <button 
+                            class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-2 py-1 rounded text-xs font-medium transition-colors duration-200"
+                            on:click={() => deleteInventoryItem(item.id)}
+                          >
+                            <i class="fas fa-trash mr-1"></i>
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -668,8 +673,17 @@
                   </div>
                   <div class="flex items-center text-xs">
                     <i class="fas fa-chart-line text-green-600 mr-2 w-3"></i>
-                    <span class="text-gray-600 font-medium">{formatCurrency(item.sellingPrice)}</span>
-                    <span class="text-gray-500 ml-2">Cost: {formatCurrency(item.costPrice)}</span>
+                    <div class="flex flex-col">
+                      <span class="text-gray-600 font-medium text-xs">Rs</span>
+                      <span class="text-gray-600 font-medium text-xs -mt-1">{formatCurrency(item.sellingPrice)}</span>
+                    </div>
+                    <div class="flex flex-col ml-2">
+                      <span class="text-gray-500 text-xs">Cost:</span>
+                      <div class="flex flex-col -mt-1">
+                        <span class="text-gray-500 text-xs">Rs</span>
+                        <span class="text-gray-500 text-xs -mt-1">{formatCurrency(item.costPrice)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
@@ -856,10 +870,11 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Generic Name</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Generic Name *</label>
                 <input 
                   type="text" 
                   bind:value={newItemForm.genericName}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -943,21 +958,21 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock *</label>
                 <input 
                   type="number" 
                   bind:value={newItemForm.minimumStock}
+                  required
                   min="0"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Cost Price *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
                 <input 
                   type="number" 
                   bind:value={newItemForm.costPrice}
-                  required
                   min="0"
                   step="0.01"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -980,10 +995,11 @@
             <!-- Expiry Date -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date *</label>
                 <input 
                   type="date" 
                   bind:value={newItemForm.expiryDate}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1012,11 +1028,13 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Storage Conditions</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Storage Conditions *</label>
                 <select 
                   bind:value={newItemForm.storageConditions}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">Select storage condition</option>
                   <option value="room temperature">Room Temperature</option>
                   <option value="refrigerated">Refrigerated (2-8°C)</option>
                   <option value="frozen">Frozen (-20°C)</option>
@@ -1091,10 +1109,11 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Generic Name</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Generic Name *</label>
                 <input 
                   type="text"
                   bind:value={selectedItem.genericName}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1201,10 +1220,11 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Stock</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Stock *</label>
                   <input 
                     type="number"
                     bind:value={selectedItem.minimumStock}
+                    required
                     min="0"
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -1253,11 +1273,13 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Storage Conditions</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Storage Conditions *</label>
                 <select 
                   bind:value={selectedItem.storageConditions}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">Select storage condition</option>
                   <option value="room temperature">Room Temperature</option>
                   <option value="refrigerated">Refrigerated (2-8°C)</option>
                   <option value="frozen">Frozen (-20°C)</option>
@@ -1266,10 +1288,11 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date *</label>
                 <input 
                   type="date"
                   bind:value={selectedItem.expiryDate}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

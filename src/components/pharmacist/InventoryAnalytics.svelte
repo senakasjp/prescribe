@@ -174,51 +174,51 @@
     </div>
   {:else}
     <!-- Key Metrics -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
         <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <i class="fas fa-boxes text-2xl text-blue-600"></i>
-          </div>
-          <div class="ml-4">
-            <p class="text-sm font-medium text-gray-500">Total Items</p>
-            <p class="text-2xl font-semibold text-gray-900">{analytics?.totalItems || 0}</p>
+          <div class="ml-2 sm:ml-4">
+            <p class="text-xs sm:text-sm font-medium text-gray-500">Total Items</p>
+            <div class="flex flex-col">
+              <i class="fas fa-boxes text-sm sm:text-base md:text-lg text-blue-600"></i>
+              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{analytics?.totalItems || 0}</p>
+            </div>
           </div>
         </div>
       </div>
       
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
         <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <i class="fas fa-chart-line text-2xl text-green-600"></i>
-          </div>
-          <div class="ml-4">
-            <p class="text-sm font-medium text-gray-500">Stock Value</p>
-            <p class="text-2xl font-semibold text-gray-900">{formatCurrency(analytics?.totalStockValue || 0)}</p>
+          <div class="ml-2 sm:ml-4">
+            <p class="text-xs sm:text-sm font-medium text-gray-500">Stock Value</p>
+            <div class="flex flex-col">
+              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">Rs</p>
+              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{formatCurrency(analytics?.totalStockValue || 0)}</p>
+            </div>
           </div>
         </div>
       </div>
       
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
         <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <i class="fas fa-chart-line text-2xl text-purple-600"></i>
-          </div>
-          <div class="ml-4">
-            <p class="text-sm font-medium text-gray-500">Stock Turnover</p>
-            <p class="text-2xl font-semibold text-gray-900">{analytics?.stockTurnover?.toFixed(2) || 0}</p>
+          <div class="ml-2 sm:ml-4">
+            <p class="text-xs sm:text-sm font-medium text-gray-500">Stock Turnover</p>
+            <div class="flex flex-col">
+              <i class="fas fa-chart-line text-sm sm:text-base md:text-lg text-purple-600"></i>
+              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{analytics?.stockTurnover?.toFixed(2) || 0}</p>
+            </div>
           </div>
         </div>
       </div>
       
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
         <div class="flex items-center">
-          <div class="flex-shrink-0">
-            <i class="fas fa-percentage text-2xl text-orange-600"></i>
-          </div>
-          <div class="ml-4">
-            <p class="text-sm font-medium text-gray-500">Avg Margin</p>
-            <p class="text-2xl font-semibold text-gray-900">{formatPercentage(analytics?.averageMargin || 0)}</p>
+          <div class="ml-2 sm:ml-4">
+            <p class="text-xs sm:text-sm font-medium text-gray-500">Avg Margin</p>
+            <div class="flex flex-col">
+              <i class="fas fa-percentage text-sm sm:text-base md:text-lg text-orange-600"></i>
+              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{formatPercentage(analytics?.averageMargin || 0)}</p>
+            </div>
           </div>
         </div>
       </div>
