@@ -6,7 +6,7 @@
   import pharmacistAuthService from '../../services/pharmacist/pharmacistAuthService.js'
   import pharmacistStorageService from '../../services/pharmacist/pharmacistStorageService.js'
   import PharmacistDashboard from '../PharmacistDashboard.svelte'
-  import EditProfile from '../EditProfile.svelte'
+  import PharmacistSettings from './PharmacistSettings.svelte'
   import NotificationContainer from '../NotificationContainer.svelte'
   import LoadingSpinner from '../LoadingSpinner.svelte'
   import PrivacyPolicyModal from '../PrivacyPolicyModal.svelte'
@@ -82,6 +82,10 @@
   function handleProfileUpdate(updatedPharmacist) {
     pharmacist = updatedPharmacist
     console.log('PharmacistModuleRouter: Pharmacist profile updated')
+  }
+  
+  function handleBackToDashboard() {
+    currentView = 'dashboard'
   }
   
   function showPrivacyPolicyModal() {
@@ -199,9 +203,10 @@
           <p class="text-gray-600">Doctor connection management will be implemented here.</p>
         </div>
       {:else if currentView === 'profile'}
-        <EditProfile 
+        <PharmacistSettings 
           {pharmacist}
-          on:profile-updated={(e) => handleProfileUpdate(e.detail.pharmacist)}
+          on:profile-updated={(e) => handleProfileUpdate(e.detail)}
+          on:back-to-dashboard={handleBackToDashboard}
         />
       {/if}
     </main>

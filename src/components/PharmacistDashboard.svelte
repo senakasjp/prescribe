@@ -7,6 +7,7 @@
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import InventoryDashboard from './pharmacist/InventoryDashboard.svelte'
+  import PharmacistSettings from './pharmacist/PharmacistSettings.svelte'
   import inventoryService from '../services/pharmacist/inventoryService.js'
   
   export let pharmacist
@@ -39,6 +40,7 @@
   let prescriptionsPerPage = 10
   
   let activeTab = 'prescriptions' // 'prescriptions' or 'inventory'
+  let showProfileSettings = false
   
   // Confirmation modal state
   let showConfirmationModal = false
@@ -655,6 +657,23 @@
     return doctor ? (doctor.name || `${doctor.firstName} ${doctor.lastName}` || doctor.email) : 'Unknown Doctor'
   }
   
+  // Handle profile settings
+  const handleProfileSettings = () => {
+    showProfileSettings = true
+  }
+  
+  // Handle profile update
+  const handleProfileUpdate = (updatedPharmacist) => {
+    pharmacist = updatedPharmacist
+    showProfileSettings = false
+    notifySuccess('Profile updated successfully!')
+  }
+  
+  // Handle back to dashboard
+  const handleBackToDashboard = () => {
+    showProfileSettings = false
+  }
+
   // Sign out
   const handleSignOut = async () => {
     try {
@@ -711,6 +730,11 @@
           </div>
           <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
             <li>
+                <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" on:click={handleProfileSettings}>
+                <i class="fas fa-cog mr-2"></i>Profile Settings
+              </button>
+            </li>
+            <li>
                 <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" on:click={handleSignOut}>
                 <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
               </button>
@@ -722,6 +746,22 @@
     </div>
   </div>
   
+  <!-- Profile Settings Modal -->
+  {#if showProfileSettings}
+    <div class="fixed inset-0 z-50 overflow-y-auto">
+      <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" on:click={handleBackToDashboard}></div>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+          <PharmacistSettings 
+            {pharmacist}
+            on:profile-updated={handleProfileUpdate}
+            on:back-to-dashboard={handleBackToDashboard}
+          />
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Main Content -->
   <div class="px-3 py-4 sm:px-4 sm:py-6">
     <!-- Mobile Stats Cards -->

@@ -20,6 +20,10 @@ class PharmacistAuthService {
         console.log('PharmacistAuthService: Pharmacist email:', this.currentPharmacist.email)
         console.log('PharmacistAuthService: Pharmacist role:', this.currentPharmacist.role)
         console.log('PharmacistAuthService: Pharmacist business name from localStorage:', this.currentPharmacist.businessName)
+        console.log('PharmacistAuthService: Pharmacist ID from localStorage:', this.currentPharmacist.id)
+        console.log('PharmacistAuthService: Pharmacist pharmacistNumber from localStorage:', this.currentPharmacist.pharmacistNumber)
+        console.log('PharmacistAuthService: All pharmacist fields from localStorage:', Object.keys(this.currentPharmacist))
+        
         // Check if pharmacist data is valid (has required fields)
         if (!this.currentPharmacist.email || this.currentPharmacist.role !== 'pharmacist') {
           console.warn('PharmacistAuthService: Invalid pharmacist data found, clearing')
@@ -142,6 +146,30 @@ class PharmacistAuthService {
       console.log('PharmacistAuthService: Pharmacist signed out successfully')
     } catch (error) {
       console.error('PharmacistAuthService: Error signing out pharmacist:', error)
+      throw error
+    }
+  }
+
+  // Update pharmacist profile
+  async updatePharmacist(updatedPharmacist) {
+    try {
+      console.log('PharmacistAuthService: Updating pharmacist:', updatedPharmacist)
+      
+      // Validate required fields
+      if (!updatedPharmacist.id) {
+        throw new Error('Pharmacist ID is required for update')
+      }
+
+      // Update pharmacist in Firebase
+      await firebaseStorage.updatePharmacist(updatedPharmacist)
+      
+      // Save updated pharmacist to localStorage
+      this.saveCurrentPharmacist(updatedPharmacist)
+      
+      console.log('PharmacistAuthService: Pharmacist updated successfully:', updatedPharmacist)
+      return updatedPharmacist
+    } catch (error) {
+      console.error('PharmacistAuthService: Error updating pharmacist:', error)
       throw error
     }
   }

@@ -268,10 +268,32 @@
   
   // Format currency
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
+    const currency = pharmacist?.currency || 'USD'
+    
+    if (currency === 'LKR') {
+      // Format the number without currency style (icon shows currency)
+      const numberFormatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(amount)
+      return numberFormatted
+    } else {
+      // For other currencies, use the standard currency formatting
+      const formatted = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency
+      }).format(amount)
+      
+      if (currency === 'USD') {
+        return formatted.replace('$', 'USD $')
+      } else if (currency === 'EUR') {
+        return formatted.replace('€', 'EUR €')
+      } else if (currency === 'GBP') {
+        return formatted.replace('£', 'GBP £')
+      }
+      
+      return formatted
+    }
   }
   
   // Format date
@@ -428,7 +450,7 @@
           <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div class="flex items-center">
               <div class="flex-shrink-0">
-                <i class="fas fa-dollar-sign text-2xl text-green-600"></i>
+                <i class="fas fa-chart-line text-2xl text-green-600"></i>
               </div>
               <div class="ml-4">
                 <p class="text-sm font-medium text-gray-500">Stock Value</p>
@@ -645,7 +667,7 @@
                     <span class="text-gray-500 ml-2">Min: {item.minimumStock}</span>
                   </div>
                   <div class="flex items-center text-xs">
-                    <i class="fas fa-dollar-sign text-green-600 mr-2 w-3"></i>
+                    <i class="fas fa-chart-line text-green-600 mr-2 w-3"></i>
                     <span class="text-gray-600 font-medium">{formatCurrency(item.sellingPrice)}</span>
                     <span class="text-gray-500 ml-2">Cost: {formatCurrency(item.costPrice)}</span>
                   </div>

@@ -6,6 +6,7 @@ import {
   getDoc, 
   getDocs, 
   updateDoc, 
+  setDoc,
   deleteDoc, 
   query, 
   where, 
@@ -385,31 +386,106 @@ class FirebaseStorageService {
 
   async updatePharmacist(updatedPharmacist) {
     try {
+      console.log('Firebase: Starting pharmacist update for ID:', updatedPharmacist.id)
+      console.log('Firebase: Received pharmacist data:', updatedPharmacist)
+      
+      // Validate the pharmacist ID first
+      if (!updatedPharmacist.id || typeof updatedPharmacist.id !== 'string') {
+        throw new Error('Invalid pharmacist ID: ' + updatedPharmacist.id)
+      }
+      
+      console.log('Firebase: Creating document reference...')
       const docRef = doc(db, this.collections.pharmacists, updatedPharmacist.id)
+      console.log('Firebase: Document reference created:', docRef)
+      
+      // Check if document exists first
+      const docSnapshot = await getDoc(docRef)
+      if (!docSnapshot.exists()) {
+        throw new Error(`Pharmacist document with ID ${updatedPharmacist.id} does not exist`)
+      }
+      console.log('Firebase: Document exists, proceeding with update')
       
       // Only include serializable fields to avoid Firebase errors
-      const serializableData = {
-        email: updatedPharmacist.email,
-        businessName: updatedPharmacist.businessName,
-        pharmacistNumber: updatedPharmacist.pharmacistNumber,
-        role: updatedPharmacist.role,
-        connectedDoctors: updatedPharmacist.connectedDoctors,
-        uid: updatedPharmacist.uid,
-        displayName: updatedPharmacist.displayName,
-        photoURL: updatedPharmacist.photoURL,
-        provider: updatedPharmacist.provider,
+      let serializableData = {
+        email: updatedPharmacist.email ? String(updatedPharmacist.email).trim() : '',
+        businessName: updatedPharmacist.businessName ? String(updatedPharmacist.businessName).trim() : '',
+        pharmacistNumber: updatedPharmacist.pharmacistNumber ? String(updatedPharmacist.pharmacistNumber).trim() : '',
+        role: updatedPharmacist.role ? String(updatedPharmacist.role).trim() : 'pharmacist',
+        connectedDoctors: Array.isArray(updatedPharmacist.connectedDoctors) ? updatedPharmacist.connectedDoctors : [],
+        country: updatedPharmacist.country ? String(updatedPharmacist.country).trim() : '',
+        city: updatedPharmacist.city ? String(updatedPharmacist.city).trim() : '',
+        currency: updatedPharmacist.currency ? String(updatedPharmacist.currency).trim() : 'USD',
+        uid: updatedPharmacist.uid ? String(updatedPharmacist.uid).trim() : '',
+        displayName: updatedPharmacist.displayName ? String(updatedPharmacist.displayName).trim() : '',
+        photoURL: updatedPharmacist.photoURL ? String(updatedPharmacist.photoURL).trim() : '',
+        provider: updatedPharmacist.provider ? String(updatedPharmacist.provider).trim() : '',
         updatedAt: new Date().toISOString()
       }
       
-      // Remove undefined values
+      // Remove undefined and null values, and ensure string fields are not empty
       Object.keys(serializableData).forEach(key => {
-        if (serializableData[key] === undefined) {
+        if (serializableData[key] === undefined || serializableData[key] === null) {
+          delete serializableData[key]
+        } else if (typeof serializableData[key] === 'string' && serializableData[key].trim() === '') {
+          delete serializableData[key]
+        } else if (typeof serializableData[key] === 'object' && serializableData[key] !== null && !Array.isArray(serializableData[key])) {
+          // Remove non-array objects that might cause serialization issues
           delete serializableData[key]
         }
       })
       
-      await updateDoc(docRef, serializableData)
-      return { id: updatedPharmacist.id, ...serializableData }
+      // Additional safety check - ensure all remaining values are Firebase-serializable
+      const safeData = {}
+      Object.keys(serializableData).forEach(key => {
+        const value = serializableData[key]
+        if (value !== undefined && value !== null) {
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value)) {
+            safeData[key] = value
+          } else {
+            console.warn(`Firebase: Skipping non-serializable field ${key}:`, value)
+          }
+        }
+      })
+      
+      serializableData = safeData
+      
+      console.log('Firebase: Cleaned data to send:', serializableData)
+      
+      // Final validation before sending to Firebase
+      if (!serializableData.id && !updatedPharmacist.id) {
+        throw new Error('Pharmacist ID is required for update')
+      }
+      
+      // Ensure we have at least some data to update
+      if (Object.keys(serializableData).length === 0) {
+        throw new Error('No valid data to update')
+      }
+      
+      // Try with absolute minimal data and different approach
+      console.log('Firebase: Document reference:', docRef)
+      console.log('Firebase: Pharmacist ID:', updatedPharmacist.id)
+      
+      // Try using setDoc with merge instead of updateDoc
+      console.log('Firebase: Attempting to use setDoc with merge...')
+      
+      const updateData = {
+        businessName: String(updatedPharmacist.businessName || ''),
+        country: String(updatedPharmacist.country || ''),
+        city: String(updatedPharmacist.city || ''),
+        currency: String(updatedPharmacist.currency || 'USD'),
+        updatedAt: new Date().toISOString()
+      }
+      
+      console.log('Firebase: Update data prepared:', updateData)
+      
+      // Use setDoc with merge: true instead of updateDoc
+      await setDoc(docRef, updateData, { merge: true })
+      console.log('Firebase: Successfully updated using setDoc with merge')
+      
+      return { 
+        id: updatedPharmacist.id, 
+        ...updateData
+      }
     } catch (error) {
       console.error('Error updating pharmacist:', error)
       throw error
