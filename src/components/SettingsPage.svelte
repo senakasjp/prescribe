@@ -6,6 +6,7 @@
   import { cities, getCitiesByCountry } from '../data/cities.js'
   import ThreeDots from './ThreeDots.svelte'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import HeaderEditor from './HeaderEditor.svelte'
 
   const dispatch = createEventDispatcher()
   export let user
@@ -26,6 +27,8 @@
   let uploadedHeader = null
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
+  let headerText = ''
+  let previewElement = null
 
   // Tab management
   let activeTab = 'edit-profile'
@@ -71,7 +74,7 @@
   $: {
     try {
       if (country && city && !availableCities.find(c => c.name === city)) {
-        city = ''
+    city = ''
       }
     } catch (error) {
       console.error('❌ SettingsPage: Error in city reset reactive statement:', error)
@@ -93,7 +96,7 @@
   $: if (user) {
     try {
       console.log('🔍 Debug - SettingsPage: User changed, initializing form:', user)
-      initializeForm()
+    initializeForm()
     } catch (error) {
       console.error('❌ SettingsPage: Error initializing form:', error)
       // Set default values to prevent errors
@@ -187,7 +190,59 @@
       practiceName: `${user?.firstName || ''} ${user?.lastName || ''} Medical Practice`,
       address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
       phone: '+1 (555) 123-4567',
-      email: user?.email || 'doctor@example.com'
+      email: user?.email || 'doctor@example.com',
+      formattedHeader: '',
+      logo: null
+    }
+    
+    // Load saved header content if available
+    const savedHeader = localStorage.getItem('prescriptionHeader')
+    if (savedHeader) {
+      headerText = savedHeader
+      templatePreview.formattedHeader = savedHeader
+    } else {
+      // Initialize with default content
+      updateHeaderText()
+    }
+  }
+  
+  // Update header text from template preview
+  const updateHeaderText = () => {
+    if (templatePreview) {
+      // If there's saved formatted content, use it; otherwise use default
+      if (templatePreview.formattedHeader) {
+        headerText = templatePreview.formattedHeader
+      } else {
+        headerText = `<h5 style="font-weight: bold; margin: 10px 0; text-align: center;">${templatePreview.doctorName}</h5>
+<p style="font-weight: 600; margin: 5px 0; text-align: center;">${templatePreview.practiceName}</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">${templatePreview.address}</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: ${templatePreview.phone} | Email: ${templatePreview.email}</p>
+<hr style="margin: 10px 0; border: 1px solid #ccc;">
+<p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>`
+      }
+    }
+  }
+  
+  // Legacy functions removed - now using TinyMCE component
+  
+  // TinyMCE Editor handlers
+  const handleHeaderContentChange = (content) => {
+    headerText = content
+    if (templatePreview) {
+      templatePreview.formattedHeader = content
+      // Trigger reactive update
+      templatePreview = { ...templatePreview }
+    }
+  }
+  
+  const handleHeaderSave = (content) => {
+    headerText = content
+    if (templatePreview) {
+      templatePreview.formattedHeader = content
+      // Save to localStorage or database if needed
+      localStorage.setItem('prescriptionHeader', content)
+      // Trigger reactive update
+      templatePreview = { ...templatePreview }
     }
   }
 
@@ -309,14 +364,14 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label for="firstName" class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
-                  <input 
-                    type="text" 
-                    id="firstName"
+                <input 
+                  type="text" 
+                  id="firstName"
                     value={firstName}
                     on:input={(e) => firstName = e.target.value}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                    required
-                  />
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  required
+                />
               </div>
               
               <div>
@@ -587,17 +642,15 @@
                   
                   {#if templatePreview && templatePreview.type === 'system'}
                   <div class="mt-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">System Header Preview:</label>
-                    <div class="border rounded p-3 bg-gray-50">
-                      <div class="text-center">
-                        <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>
-                        <p class="mb-1 fw-semibold">{templatePreview.practiceName}</p>
-                        <p class="mb-1 small">{templatePreview.address}</p>
-                        <p class="mb-1 small">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
-                        <hr class="my-2">
-                        <p class="mb-0 fw-bold">PRESCRIPTION</p>
-                      </div>
-                    </div>
+                    <label class="block text-sm font-medium text-gray-700 mb-4">
+                      <i class="fas fa-edit mr-2"></i>Professional Header Editor
+                    </label>
+                    
+                    <HeaderEditor 
+                      bind:headerText={headerText}
+                      onContentChange={handleHeaderContentChange}
+                      onSave={handleHeaderSave}
+                    />
                   </div>
                   {/if}
                 </div>
@@ -628,12 +681,18 @@
                   </div>
                 {:else if templatePreview.type === 'system'}
                   <div class="text-center mb-6 bg-gray-50 p-4 rounded-lg">
-                    <h4 class="font-bold text-lg mb-2">{templatePreview.doctorName}</h4>
-                    <p class="font-semibold mb-1">{templatePreview.practiceName}</p>
-                    <p class="text-sm mb-1">{templatePreview.address}</p>
-                    <p class="text-sm">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
-                    <hr class="my-3 border-gray-300">
-                    <p class="font-bold text-teal-600">PRESCRIPTION</p>
+                    {#if templatePreview.formattedHeader}
+                      <div class="system-header-preview" bind:this={previewElement}>
+                        {@html templatePreview.formattedHeader}
+                      </div>
+                    {:else}
+                      <h4 class="font-bold text-lg mb-2">{templatePreview.doctorName}</h4>
+                      <p class="font-semibold mb-1">{templatePreview.practiceName}</p>
+                      <p class="text-sm mb-1">{templatePreview.address}</p>
+                      <p class="text-sm">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
+                      <hr class="my-3 border-gray-300">
+                      <p class="font-bold text-teal-600">PRESCRIPTION</p>
+                    {/if}
                   </div>
                 {/if}
                 

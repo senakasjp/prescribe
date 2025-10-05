@@ -601,18 +601,6 @@
               <i class="fas fa-user"></i>
               <span class="text-sm font-medium">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
               
-              <!-- AI Health Bar - Tailwind Progress Bar -->
-              <div class="flex items-center space-x-2">
-                <i class="fas fa-brain text-white"></i>
-                <div class="w-32 bg-gray-200 rounded-full h-2 dark:bg-gray-700" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / {doctorQuotaStatus?.quotaTokens?.toLocaleString() || 'No quota'} tokens">
-                  <div class="h-2 rounded-full transition-all duration-300 ease-in-out {doctorQuotaStatus?.isExceeded ? 'bg-red-600' : doctorQuotaStatus?.percentageUsed > 80 ? 'bg-yellow-500' : 'bg-teal-500'}" 
-                       style="width: {doctorQuotaStatus?.hasQuota ? Math.min(doctorQuotaStatus.percentageUsed, 100) : Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
-                  </div>
-                </div>
-                <span class="text-xs text-white font-medium">
-                  {doctorQuotaStatus?.hasQuota ? Math.round(doctorQuotaStatus.percentageUsed) : Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
-                </span>
-                </div>
               </div>
               
               <!-- Action Buttons -->
@@ -646,18 +634,6 @@
               <span class="text-sm">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
               </div>
               
-              <!-- AI Health Bar Row -->
-            <div class="flex items-center space-x-2">
-              <i class="fas fa-brain text-white"></i>
-              <div class="flex-1 bg-gray-200 rounded-full h-2 dark:bg-gray-700" title="AI Token Usage: {doctorUsageStats?.today?.tokens?.toLocaleString() || '0'} / {doctorQuotaStatus?.quotaTokens?.toLocaleString() || 'No quota'} tokens">
-                <div class="h-2 rounded-full transition-all duration-300 ease-in-out {doctorQuotaStatus?.isExceeded ? 'bg-red-600' : doctorQuotaStatus?.percentageUsed > 80 ? 'bg-yellow-500' : 'bg-teal-500'}" 
-                     style="width: {doctorQuotaStatus?.hasQuota ? Math.min(doctorQuotaStatus.percentageUsed, 100) : Math.min((doctorUsageStats?.today?.tokens || 0) / 100000 * 100, 100)}%">
-                </div>
-              </div>
-              <span class="text-xs text-white font-medium">
-                {doctorQuotaStatus?.hasQuota ? Math.round(doctorQuotaStatus.percentageUsed) : Math.round((doctorUsageStats?.today?.tokens || 0) / 100000 * 100)}%
-              </span>
-              </div>
               
               <!-- Action Buttons Row -->
             <div class="flex space-x-2">

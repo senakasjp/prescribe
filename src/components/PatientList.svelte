@@ -130,7 +130,11 @@
                   {#if patient.dateOfBirth}
                     <p class="mb-1 text-gray-600 dark:text-gray-300 small">
                       <i class="fas fa-calendar mr-1"></i>
-                      DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}
+                      DOB: {new Date(patient.dateOfBirth).toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                      })}
                     </p>
                   {/if}
                   {#if patient.phone}
@@ -179,7 +183,11 @@
                 {#if patient.dateOfBirth}
                   <div class="flex items-center text-xs sm:text-sm">
                     <i class="fas fa-calendar text-blue-600 mr-2 w-3"></i>
-                    <span class="text-gray-600">DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}</span>
+                    <span class="text-gray-600">DOB: {new Date(patient.dateOfBirth).toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    })}</span>
                   </div>
                 {/if}
                 {#if patient.phone}

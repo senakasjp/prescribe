@@ -1,6 +1,5 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte'
-  import DrugAutocomplete from './DrugAutocomplete.svelte'
   import drugDatabase from '../services/drugDatabase.js'
   import { notifySuccess, notifyInfo } from '../stores/notifications.js'
   
@@ -177,33 +176,6 @@
     }
   }
   
-  // Handle drug selection from autocomplete
-  const handleDrugSelect = (drug) => {
-    name = drug.displayName
-    // Only auto-fill other fields when editing an existing prescription
-    // For new prescriptions, only fill the name field
-    if (editingMedication) {
-      // Parse dosage if it exists
-      if (drug.dosage) {
-        // Try to extract number and unit from dosage string
-        const dosageMatch = drug.dosage.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
-        if (dosageMatch) {
-          dosage = dosageMatch[1]
-          dosageUnit = dosageMatch[2]
-        } else {
-          dosage = drug.dosage
-          dosageUnit = 'mg' // default
-        }
-      }
-      instructions = drug.instructions || instructions
-      frequency = drug.frequency || frequency
-      duration = drug.duration || duration
-      notes = drug.notes || notes
-    }
-    
-    // Show notification
-    notifyInfo(`"${drug.displayName}" selected`)
-  }
   
   // Handle cancel
   const handleCancel = () => {
@@ -231,13 +203,15 @@
   <div class="p-3 sm:p-4">
     <form on:submit={handleSubmit} class="space-y-3 sm:space-y-4">
       <div>
-        <label for="medicationName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Medication Name <span class="text-red-500">*</span></label>
-        <DrugAutocomplete 
+        <label for="brandName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Brand Name <span class="text-red-500">*</span></label>
+        <input 
+          type="text" 
+          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          id="brandName" 
           bind:value={name}
-          placeholder="e.g., Metformin, Lisinopril"
-          {doctorId}
-          onDrugSelect={handleDrugSelect}
+          required
           disabled={loading}
+          placeholder="e.g., Glucophage, Prinivil"
         />
       </div>
       

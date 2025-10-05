@@ -1042,6 +1042,7 @@
   let templateType = '' // 'printed', 'upload', 'system'
   let uploadedHeader = null
   let templatePreview = null
+  let headerText = ''
   let headerSize = 300 // Default header size in pixels
   
   // Reactive variable for cities based on selected country
@@ -1149,10 +1150,62 @@
     templatePreview = {
       type: 'system',
       doctorName: user?.name || 'Dr. [Your Name]',
-      practiceName: '[Your Practice Name]',
-      address: '[Your Address]',
-      phone: '[Your Phone]',
+      practiceName: `${user?.firstName || ''} ${user?.lastName || ''} Medical Practice`.trim() || '[Your Practice Name]',
+      address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
+      phone: user?.phone || '[Your Phone]',
       email: user?.email || '[Your Email]'
+    }
+    
+    // Initialize header text
+    updateHeaderText()
+  }
+  
+  // Update header text from template preview
+  const updateHeaderText = () => {
+    if (templatePreview) {
+      headerText = `
+        <h5 class="fw-bold mb-1 text-lg">${templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
+        <p class="mb-1 fw-semibold text-base">${templatePreview.practiceName || '[Your Practice Name]'}</p>
+        <p class="mb-1 small text-sm text-gray-600">${templatePreview.address || '[Your Address]'}</p>
+        <p class="mb-1 small text-sm text-gray-600">Tel: ${templatePreview.phone || '[Your Phone]'} | Email: ${templatePreview.email || '[Your Email]'}</p>
+        <hr class="my-2">
+        <p class="mb-0 fw-bold text-teal-600">PRESCRIPTION</p>
+      `
+    }
+  }
+  
+  // Handle text editor input
+  const handleHeaderTextChange = (event) => {
+    headerText = event.target.innerHTML
+  }
+  
+  // Parse header text back to template preview when editing is done
+  const parseHeaderText = (event) => {
+    const text = event.target.innerHTML
+    
+    // Extract doctor name (first h5 element)
+    const doctorNameMatch = text.match(/<h5[^>]*>(.*?)<\/h5>/)
+    if (doctorNameMatch) {
+      templatePreview.doctorName = doctorNameMatch[1].replace(/<[^>]*>/g, '')
+    }
+    
+    // Extract practice name (first p element after h5)
+    const practiceNameMatch = text.match(/<p class="mb-1 fw-semibold[^>]*>(.*?)<\/p>/)
+    if (practiceNameMatch) {
+      templatePreview.practiceName = practiceNameMatch[1].replace(/<[^>]*>/g, '')
+    }
+    
+    // Extract address (p with text-gray-600 class)
+    const addressMatch = text.match(/<p class="mb-1 small text-sm text-gray-600">(.*?)<\/p>/)
+    if (addressMatch) {
+      templatePreview.address = addressMatch[1].replace(/<[^>]*>/g, '')
+    }
+    
+    // Extract phone and email from contact line
+    const contactMatch = text.match(/Tel: (.*?) \| Email: (.*?)<\/p>/)
+    if (contactMatch) {
+      templatePreview.phone = contactMatch[1].replace(/<[^>]*>/g, '')
+      templatePreview.email = contactMatch[2].replace(/<[^>]*>/g, '')
     }
   }
   
@@ -1782,18 +1835,8 @@
   
     <!-- Main Content Area -->
     <div class="lg:col-span-8">
-      <!-- DEBUG: Show current state -->
-      <div class="bg-yellow-100 border-2 border-red-500 p-2 mb-4 rounded">
-        <p class="text-sm font-bold text-red-800">
-          🚨 DEBUG: showPatientForm = {showPatientForm}, selectedPatient = {selectedPatient ? 'EXISTS' : 'null'}
-        </p>
-      </div>
       
       {#if showPatientForm}
-        <div class="bg-green-100 border-4 border-green-500 p-4 mb-4 rounded-lg">
-          <h3 class="text-lg font-bold text-green-800">🎉 PATIENTFORM CONDITIONAL BLOCK ACTIVATED! 🎉</h3>
-          <p class="text-green-700">showPatientForm = {showPatientForm}</p>
-        </div>
         <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
       {:else if selectedPatient}
         <PatientDetails 
@@ -2434,30 +2477,36 @@
                           
                           {#if templateType === 'system'}
                           <div class="mt-3">
-                            <button 
-                              type="button" 
-                              class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
-                              on:click={generateSystemHeader}
-                            >
-                              <i class="fas fa-eye mr-2"></i>
-                              Preview System Header
-                            </button>
+                            <!-- Initialize templatePreview if not already set -->
+                            {#if !templatePreview || templatePreview.type !== 'system'}
+                              {generateSystemHeader()}
+                            {/if}
                             
-                            {#if templatePreview && templatePreview.type === 'system'}
                             <div class="mt-4">
-                              <label class="block text-sm font-medium text-gray-700 mb-2">System Header Preview:</label>
+                              <label class="block text-sm font-medium text-gray-700 mb-2">System Header Text Editor:</label>
+                              
+                              <!-- Inline Text Editor -->
                               <div class="border rounded p-3 bg-gray-50">
-                                <div class="text-center">
-                                  <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>
-                                  <p class="mb-1 fw-semibold">{templatePreview.practiceName}</p>
-                                  <p class="mb-1 small">{templatePreview.address}</p>
-                                  <p class="mb-1 small">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
-                                  <hr class="my-2">
-                                  <p class="mb-0 fw-bold">PRESCRIPTION</p>
+                                <label class="block text-xs font-medium text-gray-600 mb-2">Click and edit the text directly:</label>
+                                <div class="text-center bg-white p-4 rounded border min-h-[200px] focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+                                  <div contenteditable="true" class="outline-none" 
+                                       bind:innerHTML={headerText}
+                                       on:input={handleHeaderTextChange}
+                                       on:blur={parseHeaderText}>
+                                    <h5 class="fw-bold mb-1 text-lg">{templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
+                                    <p class="mb-1 fw-semibold text-base">{templatePreview.practiceName || '[Your Practice Name]'}</p>
+                                    <p class="mb-1 small text-sm text-gray-600">{templatePreview.address || '[Your Address]'}</p>
+                                    <p class="mb-1 small text-sm text-gray-600">Tel: {templatePreview.phone || '[Your Phone]'} | Email: {templatePreview.email || '[Your Email]'}</p>
+                                    <hr class="my-2">
+                                    <p class="mb-0 fw-bold text-teal-600">PRESCRIPTION</p>
+                                  </div>
                                 </div>
+                                <p class="text-xs text-gray-500 mt-2">
+                                  <i class="fas fa-info-circle mr-1"></i>
+                                  Click on any text to edit it directly. The header will be saved with your changes.
+                                </p>
                               </div>
                             </div>
-                            {/if}
                           </div>
                           {/if}
                         </div>

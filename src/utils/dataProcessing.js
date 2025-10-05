@@ -19,7 +19,7 @@ export function formatDate(date, options = {}) {
     const {
       includeTime = false,
       format = 'short',
-      locale = 'en-US'
+      locale = 'en-GB' // Use British locale for DD/MM/YYYY format
     } = options
     
     if (format === 'long') {
@@ -34,9 +34,9 @@ export function formatDate(date, options = {}) {
       })
     } else if (format === 'short') {
       return dateObj.toLocaleDateString(locale, {
+        day: '2-digit',
+        month: '2-digit',
         year: 'numeric',
-        month: 'short',
-        day: 'numeric',
         ...(includeTime && {
           hour: '2-digit',
           minute: '2-digit'
@@ -49,11 +49,38 @@ export function formatDate(date, options = {}) {
       })
     }
     
-    return dateObj.toLocaleDateString(locale)
+    // Default DD/MM/YYYY format
+    return dateObj.toLocaleDateString(locale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
   } catch (error) {
     console.error('Error formatting date:', error)
     return 'Invalid Date'
   }
+}
+
+/**
+ * Converts HTML date input format (YYYY-MM-DD) to DD/MM/YYYY display format
+ * @param {string} htmlDate - Date in YYYY-MM-DD format
+ * @returns {string} - Date in DD/MM/YYYY format
+ */
+export function htmlDateToDisplay(htmlDate) {
+  if (!htmlDate) return ''
+  const [year, month, day] = htmlDate.split('-')
+  return `${day}/${month}/${year}`
+}
+
+/**
+ * Converts DD/MM/YYYY display format to HTML date input format (YYYY-MM-DD)
+ * @param {string} displayDate - Date in DD/MM/YYYY format
+ * @returns {string} - Date in YYYY-MM-DD format
+ */
+export function displayDateToHtml(displayDate) {
+  if (!displayDate) return ''
+  const [day, month, year] = displayDate.split('/')
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
 }
 
 /**

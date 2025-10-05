@@ -36,7 +36,11 @@
   // Helper function to format prescription date
   const formatPrescriptionDate = (dateString) => {
     if (!dateString) return 'Unknown date'
-    return new Date(dateString).toLocaleDateString()
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
   }
   
   // Pagination functions
@@ -107,7 +111,11 @@
                   <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Added</div>
                   <div class="text-gray-600">
                     <i class="fas fa-calendar mr-1"></i>
-                    {medication.createdAt ? new Date(medication.createdAt).toLocaleDateString() : 'Unknown date'}
+                    {medication.createdAt ? new Date(medication.createdAt).toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    }) : 'Unknown date'}
                   </div>
                 </div>
                 <div class="col-span-full">

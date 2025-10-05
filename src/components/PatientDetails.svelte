@@ -1553,9 +1553,9 @@
         format: 'a5'
       })
       
-      const currentDate = new Date().toLocaleDateString('en-US', {
+      const currentDate = new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
         month: '2-digit',
-        day: '2-digit', 
         year: 'numeric'
       })
       
@@ -3102,7 +3102,11 @@
                       </div>
                       <div class="text-xs text-gray-500">
                         <i class="fas fa-calendar mr-1"></i>
-                        Recorded: {symptom.createdAt ? new Date(symptom.createdAt).toLocaleDateString() : 'Unknown date'}
+                        Recorded: {symptom.createdAt ? new Date(symptom.createdAt).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        }) : 'Unknown date'}
                       </div>
                     </div>
                     <button 
@@ -3241,7 +3245,11 @@
                       {/if}
                       <small class="text-gray-600 dark:text-gray-300">
                         <i class="fas fa-calendar me-1"></i>
-                        Recorded: {illness.createdAt ? new Date(illness.createdAt).toLocaleDateString() : 'Unknown date'}
+                        Recorded: {illness.createdAt ? new Date(illness.createdAt).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        }) : 'Unknown date'}
                       </small>
                     </div>
                     <button 
@@ -3490,7 +3498,11 @@
                   <div class="p-4">
                     <p class="text-gray-500 text-xs mb-3">
                       <i class="fas fa-calendar mr-1"></i>
-                        {new Date(report.date).toLocaleDateString()}
+                        {new Date(report.date).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        })}
                       </p>
                       {#if report.type === 'text'}
                         <div class="report-content">
@@ -3728,7 +3740,11 @@
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 sm:mb-3 gap-1 sm:gap-0">
                       <div class="text-gray-500 text-xs">
                         <i class="fas fa-calendar mr-1"></i>
-                            {new Date(diagnosis.date).toLocaleDateString()}
+                            {new Date(diagnosis.date).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric'
+                            })}
               </div>
                       <span class="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-xs font-medium {diagnosis.severity === 'mild' ? 'bg-green-100 text-teal-800' : diagnosis.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'} self-start sm:self-auto">
                             {diagnosis.severity.charAt(0).toUpperCase() + diagnosis.severity.slice(1)}

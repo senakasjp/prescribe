@@ -178,7 +178,11 @@
                         <div class="font-semibold text-gray-900 text-sm">{symptom.description || 'Symptom'}</div>
                         <div class="text-gray-600 text-sm mt-1">{symptom.notes}</div>
                         <small class="text-gray-500 text-xs mt-1 block">
-                          <i class="fas fa-calendar mr-1"></i>{symptom.createdAt ? new Date(symptom.createdAt).toLocaleDateString() : 'No date'}
+                          <i class="fas fa-calendar mr-1"></i>{symptom.createdAt ? new Date(symptom.createdAt).toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                          }) : 'No date'}
                         </small>
                       </div>
                     {/each}
@@ -255,7 +259,11 @@
                         <div class="font-semibold text-gray-900 text-sm">{illness.name || 'Illness'}</div>
                         <div class="text-gray-600 text-sm mt-1">{illness.notes}</div>
                         <small class="text-gray-500 text-xs mt-1 block">
-                          <i class="fas fa-calendar mr-1"></i>{illness.createdAt ? new Date(illness.createdAt).toLocaleDateString() : 'No date'}
+                          <i class="fas fa-calendar mr-1"></i>{illness.createdAt ? new Date(illness.createdAt).toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                          }) : 'No date'}
                         </small>
                       </div>
                     {/each}
@@ -301,7 +309,11 @@
                                  {#if dose.daysAgo !== null}
                                    {dose.daysAgo === 0 ? 'Today' : dose.daysAgo === 1 ? '1d' : `${dose.daysAgo}d`}
                                  {:else}
-                                   {dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
+                                   {dose.createdAt ? new Date(dose.createdAt).toLocaleDateString('en-GB', {
+                                     day: '2-digit',
+                                     month: '2-digit',
+                                     year: 'numeric'
+                                   }) : 'No date'}
                                  {/if}
                                </small>
                              </div>
@@ -359,7 +371,11 @@
                           <div class="font-semibold text-gray-900 text-xs">{drugGroup.drugName}</div>
                           <div class="text-gray-600 text-xs mt-0.5">{dose.notes}</div>
                           <small class="text-gray-500 text-xs mt-0.5 block">
-                            <i class="fas fa-calendar mr-1"></i>{dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
+                            <i class="fas fa-calendar mr-1"></i>{dose.createdAt ? new Date(dose.createdAt).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric'
+                            }) : 'No date'}
                           </small>
                         </div>
                       {/each}

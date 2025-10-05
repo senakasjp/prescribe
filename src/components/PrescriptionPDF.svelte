@@ -17,7 +17,11 @@
     
     try {
       const doc = new jsPDF()
-      const currentDate = new Date().toLocaleDateString()
+      const currentDate = new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
       
       // Header
       doc.setFontSize(20)
