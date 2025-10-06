@@ -11,6 +11,11 @@
   const handleInput = (event) => {
     headerText = event.target.innerHTML
     onContentChange(event.target.innerHTML)
+    
+    // Process any new images that might have been added
+    setTimeout(() => {
+      makeImagesResizable()
+    }, 100)
   }
   
   const handleBlur = (event) => {
@@ -51,17 +56,23 @@
       const reader = new FileReader()
       reader.onload = (e) => {
         const imageData = e.target.result
-        const imgHtml = `<img src="${imageData}" alt="Logo" class="floating-resizable-image" style="height: 60px; width: auto; margin: 5px; float: left; cursor: move; border: 2px dashed #ccc; border-radius: 4px; user-select: none;">`
         
         if (editorElement) {
           editorElement.focus()
+          
+          // Create image HTML with proper attributes
+          const imgHtml = `<img src="${imageData}" alt="Logo" style="position: absolute; top: 10px; left: 10px; width: 150px; height: 150px; object-fit: contain; z-index: 10; border: 2px dashed #ccc; border-radius: 4px; cursor: move;">`
+          
+          // Insert the image
           document.execCommand('insertHTML', false, imgHtml)
+          
+          // Update content and process images
           handleInput({ target: { innerHTML: editorElement.innerHTML } })
           
-          // Make the newly inserted image resizable
+          // Process the new image
           setTimeout(() => {
             makeImagesResizable()
-          }, 100)
+          }, 300)
         }
       }
       reader.readAsDataURL(file)
@@ -101,85 +112,201 @@
   
   // Make images resizable and draggable
   const makeImagesResizable = () => {
-    if (editorElement) {
-      const images = editorElement.querySelectorAll('img')
+    if (!editorElement) return
+    
+    // Wait a bit for DOM to settle
+    setTimeout(() => {
+      const images = editorElement.querySelectorAll('img:not(.processed-image)')
+      
       images.forEach(img => {
-        // Add resizable class if not already present
-        if (!img.classList.contains('floating-resizable-image')) {
-          img.classList.add('floating-resizable-image')
-          img.style.float = 'left'
-          img.style.cursor = 'move'
-          img.style.border = '2px dashed #ccc'
-          img.style.borderRadius = '4px'
-          img.style.userSelect = 'none'
-        }
+        console.log('Processing image:', img)
+        console.log('Image current styles:', img.style.cssText)
+        console.log('Image computed styles:', window.getComputedStyle(img))
+        
+        // Mark as processed
+        img.classList.add('processed-image')
+        
+        // Apply styles directly to image
+        img.style.cssText = `
+          margin: 5px !important;
+          cursor: move !important;
+          border: 2px dashed #ccc !important;
+          border-radius: 4px !important;
+          user-select: none !important;
+          position: absolute !important;
+          display: block !important;
+          max-width: none !important;
+          max-height: none !important;
+          width: 150px !important;
+          height: 150px !important;
+          object-fit: contain !important;
+          z-index: 10 !important;
+        `
         
         // Make draggable
         img.draggable = true
         
-        // Add resize handles
-        if (!img.parentNode.querySelector('.resize-handle')) {
-          const resizeHandle = document.createElement('div')
-          resizeHandle.className = 'resize-handle'
-          resizeHandle.style.cssText = `
-            position: absolute;
-            bottom: -5px;
-            right: -5px;
-            width: 10px;
-            height: 10px;
-            background: #007bff;
-            border: 1px solid #fff;
-            cursor: se-resize;
-            border-radius: 50%;
-          `
+        // Add drag functionality
+        let isDragging = false
+        let dragStartX = 0
+        let dragStartY = 0
+        let initialLeft = 0
+        let initialTop = 0
+        
+        img.addEventListener('mousedown', (e) => {
+          if (e.target === resizeHandle) return // Don't drag if clicking resize handle
           
-          // Wrap image in a container
-          const container = document.createElement('div')
-          container.style.cssText = `
-            position: relative;
-            display: inline-block;
-            margin: 5px;
-          `
-          img.parentNode.insertBefore(container, img)
-          container.appendChild(img)
-          container.appendChild(resizeHandle)
+          isDragging = true
+          dragStartX = e.clientX
+          dragStartY = e.clientY
+          initialLeft = parseInt(img.style.left) || 10
+          initialTop = parseInt(img.style.top) || 10
           
-          // Add resize functionality
-          let isResizing = false
-          let startX, startY, startWidth, startHeight
+          img.style.cursor = 'grabbing'
+          e.preventDefault()
+        })
+        
+        document.addEventListener('mousemove', (e) => {
+          if (!isDragging) return
           
-          resizeHandle.addEventListener('mousedown', (e) => {
-            isResizing = true
-            startX = e.clientX
-            startY = e.clientY
-            startWidth = img.offsetWidth
-            startHeight = img.offsetHeight
-            
-            e.preventDefault()
-            e.stopPropagation()
-          })
+          const deltaX = e.clientX - dragStartX
+          const deltaY = e.clientY - dragStartY
           
-          document.addEventListener('mousemove', (e) => {
+          const newLeft = Math.max(0, Math.min(editorElement.offsetWidth - 150, initialLeft + deltaX))
+          const newTop = Math.max(0, Math.min(editorElement.offsetHeight - 150, initialTop + deltaY))
+          
+          img.style.left = newLeft + 'px'
+          img.style.top = newTop + 'px'
+          
+          // Update wrapper position too
+          wrapper.style.left = newLeft + 'px'
+          wrapper.style.top = newTop + 'px'
+        })
+        
+        document.addEventListener('mouseup', () => {
+          if (isDragging) {
+            isDragging = false
+            img.style.cursor = 'move'
+            handleInput({ target: { innerHTML: editorElement.innerHTML } })
+          }
+        })
+        
+        // Create wrapper container for resize handle
+        const wrapper = document.createElement('div')
+        wrapper.className = 'image-wrapper'
+        wrapper.style.cssText = `
+          position: absolute;
+          display: block;
+          margin: 5px;
+          top: 10px;
+          left: 10px;
+          z-index: 10;
+        `
+        
+        console.log('Wrapper created with styles:', wrapper.style.cssText)
+        
+        // Wrap the image
+        img.parentNode.insertBefore(wrapper, img)
+        wrapper.appendChild(img)
+        
+        console.log('Image wrapped, wrapper computed styles:', window.getComputedStyle(wrapper))
+        console.log('Image computed styles after wrapping:', window.getComputedStyle(img))
+        
+        // Create resize handle
+        const resizeHandle = document.createElement('div')
+        resizeHandle.className = 'resize-handle'
+        resizeHandle.innerHTML = '↘'
+        resizeHandle.style.cssText = `
+          position: absolute;
+          bottom: -8px;
+          right: -8px;
+          width: 16px;
+          height: 16px;
+          background: #007bff;
+          color: white;
+          border: 2px solid #fff;
+          cursor: se-resize;
+          border-radius: 50%;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          font-weight: bold;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          user-select: none;
+        `
+        
+        wrapper.appendChild(resizeHandle)
+        
+        // Add resize functionality
+        let isResizing = false
+        let startX, startY, startWidth, startHeight
+        
+        resizeHandle.addEventListener('mousedown', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          
+          isResizing = true
+          startX = e.clientX
+          startY = e.clientY
+          startWidth = img.offsetWidth
+          startHeight = img.offsetHeight
+          
+          console.log('Starting resize:', startWidth, startHeight)
+          
+          // Visual feedback
+          img.style.opacity = '0.8'
+          resizeHandle.style.background = '#0056b3'
+          
+          // Global event listeners
+          const handleMouseMove = (e) => {
             if (!isResizing) return
             
-            const newWidth = Math.max(20, startWidth + (e.clientX - startX))
-            const newHeight = Math.max(20, startHeight + (e.clientY - startY))
+            const newWidth = Math.max(30, startWidth + (e.clientX - startX))
+            const newHeight = Math.max(30, startHeight + (e.clientY - startY))
             
             img.style.width = newWidth + 'px'
             img.style.height = newHeight + 'px'
-            img.style.maxWidth = 'none'
-            img.style.maxHeight = 'none'
             
-            e.preventDefault()
-          })
+            console.log('Resizing to:', newWidth, newHeight)
+          }
           
-          document.addEventListener('mouseup', () => {
+          const handleMouseUp = () => {
             isResizing = false
+            img.style.opacity = '1'
+            resizeHandle.style.background = '#007bff'
+            
+            console.log('Resize complete')
+            
+            // Update content
             handleInput({ target: { innerHTML: editorElement.innerHTML } })
-          })
-        }
+            
+            // Remove global listeners
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+          }
+          
+          document.addEventListener('mousemove', handleMouseMove)
+          document.addEventListener('mouseup', handleMouseUp)
+        })
+        
+        // Hover effects
+        resizeHandle.addEventListener('mouseenter', () => {
+          resizeHandle.style.background = '#0056b3'
+          resizeHandle.style.transform = 'scale(1.2)'
+        })
+        
+        resizeHandle.addEventListener('mouseleave', () => {
+          if (!isResizing) {
+            resizeHandle.style.background = '#007bff'
+            resizeHandle.style.transform = 'scale(1)'
+          }
+        })
+        
+        console.log('Image processed successfully')
       })
-    }
+    }, 100)
   }
   
   // Initialize default content if empty
@@ -192,6 +319,7 @@
         <p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: +1 (555) 123-4567 | Email: doctor@example.com</p>
         <hr style="margin: 10px 0; border: 1px solid #ccc;">
         <p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>
+        <p style="margin: 10px 0; text-align: left;">This is some sample text to test floating behavior. When you add an image, this text should wrap around it if floating is working correctly. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
       `
       headerText = defaultContent
       if (editorElement) {
@@ -377,6 +505,7 @@
       bind:innerHTML={headerText}
       on:input={handleInput}
       on:blur={handleBlur}
+      style="overflow: visible;"
     >
     </div>
   </div>
@@ -411,6 +540,7 @@
   .rich-text-editor {
     @apply outline-none;
     line-height: 1.6;
+    overflow: visible !important;
   }
   
   .rich-text-editor:focus {
@@ -419,34 +549,63 @@
   
   /* Ensure images in editor are properly styled */
   .rich-text-editor img {
-    margin: 5px !important;
-    vertical-align: middle !important;
-    border: 2px dashed #ccc !important;
-    border-radius: 4px !important;
-    display: inline-block;
-    user-select: none;
-    cursor: move;
-  }
-  
-  .rich-text-editor .floating-resizable-image {
-    float: left !important;
-    cursor: move !important;
-    border: 2px dashed #ccc !important;
-    border-radius: 4px !important;
     user-select: none !important;
   }
   
+  .rich-text-editor {
+    position: relative;
+    text-align: justify;
+  }
+  
+  .rich-text-editor .image-wrapper {
+    position: absolute !important;
+    display: block !important;
+    margin: 5px !important;
+    z-index: 10 !important;
+  }
+  
+  /* Ensure images inside wrappers are positioned */
+  .rich-text-editor .image-wrapper img {
+    position: absolute !important;
+    display: block !important;
+    margin: 0 !important;
+    width: 150px !important;
+    height: 150px !important;
+    object-fit: contain !important;
+  }
+  
   .rich-text-editor .resize-handle {
-    position: absolute;
-    bottom: -5px;
-    right: -5px;
-    width: 10px;
-    height: 10px;
-    background: #007bff;
-    border: 1px solid #fff;
-    cursor: se-resize;
-    border-radius: 50%;
-    z-index: 10;
+    position: absolute !important;
+    bottom: -8px !important;
+    right: -8px !important;
+    width: 16px !important;
+    height: 16px !important;
+    background: #007bff !important;
+    color: white !important;
+    border: 2px solid #fff !important;
+    cursor: se-resize !important;
+    border-radius: 50% !important;
+    z-index: 1000 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 10px !important;
+    font-weight: bold !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+    user-select: none !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .rich-text-editor .resize-handle:hover {
+    background: #0056b3 !important;
+    transform: scale(1.2) !important;
+  }
+  
+  /* Hide resize handles in preview areas */
+  .system-header-preview .resize-handle,
+  .template-preview .resize-handle,
+  [class*="preview"] .resize-handle {
+    display: none !important;
   }
   
   /* Default content styling */
