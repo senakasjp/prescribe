@@ -1,6 +1,5 @@
 <!-- Settings Page - Full page settings interface -->
 <script>
-  console.log('📄 SettingsPage script loaded')
   
   import { createEventDispatcher, onMount } from 'svelte'
   import authService from '../services/authService.js'
@@ -25,12 +24,13 @@
   let error = ''
 
   // Prescription template variables
-  let templateType = 'printed' // 'printed', 'upload', 'system'
+  let templateType = '' // Will be set from user.templateSettings
   let uploadedHeader = null
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
   let headerText = ''
   let previewElement = null
+  let isSaving = false
 
   // Tab management
   let activeTab = 'edit-profile'
@@ -40,18 +40,12 @@
 
   // Debug: Log initial state
   onMount(() => {
-    console.log('🚀 SettingsPage onMount called')
-    console.log('🚀 Initial templateType:', templateType)
-    console.log('🚀 Initial templatePreview:', templatePreview)
-    console.log('🚀 Initial headerText:', headerText)
-    console.log('🚀 User object:', user)
-    console.log('🚀 Active tab:', activeTab)
+    // Component mounted
   })
 
   // Add debugging to template type reactive statement
   $: {
-    console.log('🔄 templateType changed to:', templateType)
-    console.log('🔄 templatePreview is:', templatePreview)
+    // Template type reactive statement
   }
 
   // Currency options
@@ -111,28 +105,23 @@
     
     // Load template settings
     if (user?.templateSettings) {
-      console.log('🔍 Loading template settings from user:', user.templateSettings)
       templateType = user.templateSettings.templateType || 'printed'
       headerSize = user.templateSettings.headerSize || 300
       headerText = user.templateSettings.headerText || ''
       templatePreview = user.templateSettings.templatePreview || null
       uploadedHeader = user.templateSettings.uploadedHeader || null
-      console.log('🔍 Applied template settings - templateType:', templateType)
     } else {
-      console.log('🔍 No template settings found, using defaults')
-      console.log('🔍 User object keys:', Object.keys(user || {}))
-      console.log('🔍 User.templateSettings:', user?.templateSettings)
+      // Set default values only if no template settings exist
+      templateType = 'printed'
     }
   }
 
-  // Initialize form when user changes
-  $: if (user) {
+  // Initialize form when user changes (but only once per user ID)
+  let lastUserId = null
+  $: if (user && user.id && user.id !== lastUserId && !isSaving) {
     try {
-      console.log('🔍 Debug - SettingsPage: User changed, initializing form:', user)
-      console.log('🔍 Current templateType:', templateType)
-      console.log('🔍 Current templatePreview:', templatePreview)
-      console.log('🔍 Current headerText:', headerText)
       initializeForm()
+      lastUserId = user.id
     } catch (error) {
       console.error('❌ SettingsPage: Error initializing form:', error)
       // Set default values to prevent errors
@@ -144,6 +133,22 @@
       consultationCharge = ''
       hospitalCharge = ''
       currency = 'USD'
+    }
+  }
+
+  // Initialize system template when templateType becomes 'system'
+  $: if (templateType === 'system' && !templatePreview) {
+    generateSystemHeader()
+    
+    // Initialize headerText with default content if empty
+    if (!headerText || headerText.trim() === '') {
+      headerText = `<h5 style="font-weight: bold; margin: 10px 0; text-align: center;">Dr. ${user?.name || '[Your Name]'}</h5>
+<p style="font-weight: 600; margin: 5px 0; text-align: center;">${user?.firstName || ''} ${user?.lastName || ''} Medical Practice</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">${user?.city || 'City'}, ${user?.country || 'Country'}</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: +1 (555) 123-4567 | Email: ${user?.email || 'doctor@example.com'}</p>
+<hr style="margin: 10px 0; border: 1px solid #ccc;">
+<p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>`
+      console.log('🔧 Auto-initialized headerText with default content')
     }
   }
 
@@ -201,33 +206,40 @@
 
   // Handle template type selection
   const selectTemplateType = async (type) => {
-    console.log('🚀🚀🚀 NEW DEBUG VERSION LOADED! 🚀🚀🚀')
-    console.log('🔧 selectTemplateType called with:', type)
-    console.log('🔧 Current templateType before change:', templateType)
-    console.log('🔧 Current templatePreview before change:', templatePreview)
     
     templateType = type
     uploadedHeader = null
     
-    console.log('🔧 templateType after change:', templateType)
     
-    // Only clear templatePreview if not switching to system
-    if (type !== 'system') {
-      console.log('🔧 Clearing templatePreview for non-system type')
-      templatePreview = null
-    } else {
-      console.log('🔧 Initializing system template preview')
+    // Clear conflicting data based on template type
+    if (type === 'system') {
+      uploadedHeader = null
       // Initialize system template preview
       generateSystemHeader()
-      console.log('🔧 templatePreview after generateSystemHeader:', templatePreview)
+      
+      // Also initialize headerText with default content if empty
+      if (!headerText || headerText.trim() === '') {
+        headerText = `<h5 style="font-weight: bold; margin: 10px 0; text-align: center;">Dr. ${user?.name || '[Your Name]'}</h5>
+<p style="font-weight: 600; margin: 5px 0; text-align: center;">${user?.firstName || ''} ${user?.lastName || ''} Medical Practice</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">${user?.city || 'City'}, ${user?.country || 'Country'}</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: +1 (555) 123-4567 | Email: ${user?.email || 'doctor@example.com'}</p>
+<hr style="margin: 10px 0; border: 1px solid #ccc;">
+<p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>`
+      }
+    } else if (type === 'upload') {
+      templatePreview = null
+      headerText = ''
+    } else {
+      templatePreview = null
+      headerText = ''
+      uploadedHeader = null
     }
     
-    console.log('🔧 Final state - templateType:', templateType, 'templatePreview:', templatePreview)
     
     // Auto-save template settings when selecting system type
     if (type === 'system') {
-      console.log('🔧 Auto-saving template settings for system type')
       try {
+        // Save immediately with current values
         await saveTemplateSettings()
       } catch (error) {
         console.error('❌ Error auto-saving template settings:', error)
@@ -236,10 +248,28 @@
   }
 
   // Handle third option click specifically
-  const handleThirdOptionClick = () => {
-    console.log('🔥 CLICK DETECTED ON THIRD OPTION!')
-    selectTemplateType('system')
-  }
+    const handleThirdOptionClick = async () => {
+      
+      // Set templateType immediately for visual feedback
+      templateType = 'system'
+      
+      selectTemplateType('system')
+      
+      // Additional test: Force save just the templateType
+      try {
+        const firebaseModule = await import('../services/firebaseStorage.js')
+        const firebaseStorage = firebaseModule.default
+        
+        const simpleSettings = {
+          doctorId: user.id,
+          templateType: 'system',
+          updatedAt: new Date().toISOString()
+        }
+        
+        await firebaseStorage.saveDoctorTemplateSettings(user.id, simpleSettings)
+      } catch (error) {
+      }
+    }
 
   // Removed temporary click test
 
@@ -257,8 +287,6 @@
 
   // Generate system header preview
   const generateSystemHeader = () => {
-    console.log('🏥 generateSystemHeader called')
-    console.log('🏥 Current user:', user)
     
     templatePreview = {
       type: 'system',
@@ -271,24 +299,18 @@
       logo: null
     }
     
-    console.log('🏥 templatePreview created:', templatePreview)
     
     // Load saved header content if available
     const savedHeader = localStorage.getItem('prescriptionHeader')
-    console.log('🏥 savedHeader from localStorage:', savedHeader)
     
     if (savedHeader) {
       headerText = savedHeader
       templatePreview.formattedHeader = savedHeader
-      console.log('🏥 Using saved header content')
     } else {
       // Initialize with default content
-      console.log('🏥 Using default header content')
       updateHeaderText()
     }
     
-    console.log('🏥 Final templatePreview:', templatePreview)
-    console.log('🏥 Final headerText:', headerText)
   }
   
   // Update header text from template preview
@@ -365,46 +387,41 @@
 
   // Save template settings
   const saveTemplateSettings = async () => {
+    isSaving = true
     try {
-      console.log('🔍 Saving template settings...')
-      console.log('🔍 Current templateType:', templateType)
-      console.log('🔍 Current templatePreview:', templatePreview)
-      console.log('🔍 Current headerText:', headerText)
-      console.log('🔍 Current headerSize:', headerSize)
-      console.log('🔍 Current uploadedHeader:', uploadedHeader)
       
       if (!user?.id) {
-        console.error('❌ No user ID available')
-        console.error('❌ User object:', user)
         notifyError('User not authenticated')
         return
       }
       
-      console.log('🔍 User ID found:', user.id)
       
       // Prepare template settings object
       const templateSettings = {
+        doctorId: user.id,
         templateType: templateType,
         headerSize: headerSize,
-        headerText: headerText,
+        headerText: headerText || '',
         templatePreview: templatePreview,
-        uploadedHeader: uploadedHeader
+        uploadedHeader: uploadedHeader,
+        updatedAt: new Date().toISOString()
       }
       
-      console.log('🔍 Template settings to save:', templateSettings)
+      
       
       // Import firebaseStorage service (default export)
-      console.log('🔍 Importing firebaseStorage service (default export)...')
       const firebaseModule = await import('../services/firebaseStorage.js')
       const firebaseStorage = firebaseModule.default
-      console.log('🔍 firebaseStorage service imported:', !!firebaseStorage)
       
       // Persist via dedicated API that handles serialization
-      console.log('🔍 Calling firebaseStorage.saveDoctorTemplateSettings...')
       const result = await firebaseStorage.saveDoctorTemplateSettings(user.id, templateSettings)
       
-      console.log('🔍 Update result:', result)
-      console.log('✅ Template settings saved successfully!')
+      
+      // Update the user object in memory to reflect the new template settings
+      if (user) {
+        user.templateSettings = templateSettings
+      }
+      
       notifySuccess('Template settings saved successfully!')
       
     } catch (error) {
@@ -416,6 +433,8 @@
         templateSettings: templateSettings
       })
       notifyError(`Failed to save template settings: ${error.message}`)
+    } finally {
+      isSaving = false
     }
   }
 
@@ -728,19 +747,16 @@
             </button>
             
             <!-- Option 3: System Header -->
-            <button type="button" class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'}" style="display: block !important;" on:click={handleThirdOptionClick} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleThirdOptionClick()}>
+            <div class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'} cursor-pointer" style="display: block !important;" on:click={(e) => { handleThirdOptionClick(); }} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleThirdOptionClick()}>
               <div class="p-4">
                 <div class="flex items-center">
-                  <input 
-                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
-                    type="radio" 
-                    name="templateType" 
-                    id="templateSystem" 
-                    value="system"
-                    checked={templateType === 'system'}
-                    on:change={() => selectTemplateType('system')}
-                  />
-                  <label class="w-full cursor-pointer" for="templateSystem">
+                  <!-- Visual indicator instead of radio button -->
+                  <div class="w-4 h-4 rounded-full border-2 mr-3 {templateType === 'system' ? 'bg-teal-600 border-teal-600' : 'border-gray-300'}" style="position: relative;">
+                    {#if templateType === 'system'}
+                      <div class="w-2 h-2 bg-white rounded-full" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);"></div>
+                    {/if}
+                  </div>
+                  <div class="w-full">
                     <div class="flex items-center">
                       <div class="flex-shrink-0 mr-3">
                         <i class="fas fa-cog text-2xl text-teal-600"></i>
@@ -750,11 +766,12 @@
                         <p class="text-gray-500 text-sm mb-0">Use a system-generated header with your practice information.</p>
                       </div>
                     </div>
-                  </label>
+                  </div>
                 </div>
                 
                 {#if templateType === 'system'}
                 <div class="mt-3">
+                  
                   <button 
                     type="button" 
                     class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
@@ -764,12 +781,6 @@
                     Preview System Header
                   </button>
                   
-                  <!-- Debug info -->
-                  <div class="mt-2 p-2 bg-yellow-100 text-xs">
-                    Debug: templateType = {templateType}, templatePreview = {JSON.stringify(templatePreview)}
-                  </div>
-                  
-                  {#if templatePreview && templatePreview.type === 'system'}
                   <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-4">
                       <i class="fas fa-edit mr-2"></i>Professional Header Editor
@@ -781,15 +792,10 @@
                       onSave={handleHeaderSave}
                     />
                   </div>
-                  {:else}
-                  <div class="mt-4 p-3 bg-red-100 text-red-700 text-sm">
-                    Editor not showing. templatePreview: {JSON.stringify(templatePreview)}
-                  </div>
-                  {/if}
                 </div>
                 {/if}
               </div>
-            </button>
+            </div>
           </div>
           
           <!-- Prescription Preview Section -->
@@ -811,17 +817,17 @@
                   <div class="text-center mb-6">
                     <img src={templatePreview.headerImage} alt="Header Preview" class="max-w-full h-auto mx-auto rounded" style="max-height: 200px;">
                   </div>
-                {:else if templatePreview.type === 'system'}
+                {:else if templateType === 'system'}
                   <div class="text-center mb-6 bg-gray-50 p-4 rounded-lg">
-                    {#if templatePreview.formattedHeader}
+                    {#if headerText && headerText.trim()}
                       <div class="system-header-preview" bind:this={previewElement}>
-                        {@html templatePreview.formattedHeader}
+                        {@html headerText}
                       </div>
                     {:else}
-                      <h4 class="font-bold text-lg mb-2">{templatePreview.doctorName}</h4>
-                      <p class="font-semibold mb-1">{templatePreview.practiceName}</p>
-                      <p class="text-sm mb-1">{templatePreview.address}</p>
-                      <p class="text-sm">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
+                      <h4 class="font-bold text-lg mb-2">Dr. {user?.name || '[Your Name]'}</h4>
+                      <p class="font-semibold mb-1">{user?.firstName || ''} {user?.lastName || ''} Medical Practice</p>
+                      <p class="text-sm mb-1">{user?.city || 'City'}, {user?.country || 'Country'}</p>
+                      <p class="text-sm">Tel: +1 (555) 123-4567 | Email: {user?.email || 'doctor@example.com'}</p>
                       <hr class="my-3 border-gray-300">
                       <p class="font-bold text-teal-600">PRESCRIPTION</p>
                     {/if}

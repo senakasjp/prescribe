@@ -1728,35 +1728,155 @@
           if (headerContent) {
             console.log('📝 Custom header content found:', headerContent)
             
-            // Create a temporary div to parse HTML content
+            // Create a temporary div to parse HTML content with formatting
             const tempDiv = document.createElement('div')
             tempDiv.innerHTML = headerContent
             
-            // Extract text content and apply to PDF
-            const headerText = tempDiv.textContent || tempDiv.innerText || ''
-            const lines = headerText.split('\n').filter(line => line.trim())
-            
             let currentY = headerYStart
-            doc.setFontSize(12)
-            doc.setFont('helvetica', 'normal')
             
-            lines.forEach(line => {
-              if (line.trim()) {
-                // Check if line contains "PRESCRIPTION" for special formatting
-                if (line.includes('PRESCRIPTION')) {
-                  doc.setFont('helvetica', 'bold')
-                  doc.setFontSize(14)
-                  doc.text(line.trim(), margin, currentY)
-                  doc.setFontSize(12)
-                } else if (line.includes('Dr.') || line.includes('Medical Practice')) {
-                  doc.setFont('helvetica', 'bold')
-                  doc.text(line.trim(), margin, currentY)
-                } else {
-                  doc.setFont('helvetica', 'normal')
-                  doc.text(line.trim(), margin, currentY)
+            // Function to process HTML elements and preserve formatting
+            const processElement = (element, baseFontSize = 12) => {
+              if (element.nodeType === Node.TEXT_NODE) {
+                // Text node - add text with current formatting
+                const text = element.textContent.trim()
+                if (text) {
+                  // Check if parent has centering
+                  const parent = element.parentElement
+                  const isCentered = parent && (
+                    parent.style.textAlign === 'center' || 
+                    parent.classList.contains('text-center') ||
+                    parent.getAttribute('align') === 'center'
+                  )
+                  
+                  if (isCentered) {
+                    doc.text(text, pageWidth / 2, currentY, { align: 'center' })
+                  } else {
+                    doc.text(text, margin, currentY)
+                  }
+                  currentY += 6
                 }
-                currentY += 6
+                return
               }
+              
+              if (element.nodeType === Node.ELEMENT_NODE) {
+                const tagName = element.tagName.toLowerCase()
+                
+                // Handle images
+                if (tagName === 'img') {
+                  const src = element.getAttribute('src')
+                  if (src) {
+                    try {
+                      // Check if it's a base64 image
+                      if (src.startsWith('data:image/')) {
+                        console.log('🖼️ Processing image in header:', src.substring(0, 50) + '...')
+                        
+                        // Determine image format
+                        let imageFormat = 'JPEG'
+                        if (src.includes('data:image/png')) {
+                          imageFormat = 'PNG'
+                        } else if (src.includes('data:image/gif')) {
+                          imageFormat = 'GIF'
+                        }
+                        
+                        // Get image dimensions from element
+                        const width = element.getAttribute('width') || element.style.width || '50'
+                        const height = element.getAttribute('height') || element.style.height || '50'
+                        
+                        // Convert to mm (approximate: 1px ≈ 0.264583mm)
+                        const widthMm = parseFloat(width) * 0.264583
+                        const heightMm = parseFloat(height) * 0.264583
+                        
+                        // Check if image should be centered
+                        const isCentered = element.style.textAlign === 'center' || 
+                                         element.classList.contains('text-center') ||
+                                         element.getAttribute('align') === 'center'
+                        
+                        let xPos = margin
+                        if (isCentered) {
+                          xPos = (pageWidth - widthMm) / 2
+                        }
+                        
+                        // Add image to PDF
+                        doc.addImage(src, imageFormat, xPos, currentY, widthMm, heightMm)
+                        currentY += heightMm + 3
+                        return
+                      }
+                    } catch (error) {
+                      console.error('❌ Error processing image:', error)
+                      // Continue without image if there's an error
+                    }
+                  }
+                }
+                
+                // Set formatting based on HTML tags
+                switch (tagName) {
+                  case 'h1':
+                    doc.setFontSize(16)
+                    doc.setFont('helvetica', 'bold')
+                    break
+                  case 'h2':
+                    doc.setFontSize(14)
+                    doc.setFont('helvetica', 'bold')
+                    break
+                  case 'h3':
+                    doc.setFontSize(13)
+                    doc.setFont('helvetica', 'bold')
+                    break
+                  case 'h4':
+                  case 'h5':
+                  case 'h6':
+                    doc.setFontSize(12)
+                    doc.setFont('helvetica', 'bold')
+                    break
+                  case 'p':
+                    doc.setFontSize(baseFontSize)
+                    doc.setFont('helvetica', 'normal')
+                    break
+                  case 'strong':
+                  case 'b':
+                    doc.setFont('helvetica', 'bold')
+                    break
+                  case 'em':
+                  case 'i':
+                    doc.setFont('helvetica', 'italic')
+                    break
+                  case 'br':
+                    currentY += 3
+                    return
+                  case 'div':
+                    // Check for centering on div elements
+                    const isCentered = element.style.textAlign === 'center' || 
+                                     element.classList.contains('text-center') ||
+                                     element.getAttribute('align') === 'center'
+                    
+                    if (isCentered) {
+                      // Process children with centering context
+                      Array.from(element.childNodes).forEach(child => {
+                        processElement(child, baseFontSize)
+                      })
+                      return
+                    }
+                    break
+                  default:
+                    doc.setFontSize(baseFontSize)
+                    doc.setFont('helvetica', 'normal')
+                }
+                
+                // Process children recursively
+                Array.from(element.childNodes).forEach(child => {
+                  processElement(child, baseFontSize)
+                })
+                
+                // Reset to normal after processing
+                if (tagName.startsWith('h')) {
+                  currentY += 2 // Extra spacing after headings
+                }
+              }
+            }
+            
+            // Process all child elements
+            Array.from(tempDiv.childNodes).forEach(child => {
+              processElement(child)
             })
             
             contentYStart = currentY + 5
