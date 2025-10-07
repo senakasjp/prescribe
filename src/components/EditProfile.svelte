@@ -54,7 +54,7 @@
   let activeTab = 'edit-profile'
   
   // Prescription template variables
-  let templateType = '' // 'printed', 'upload', 'system'
+  let templateType = 'printed' // 'printed', 'upload', 'system'
   let uploadedHeader = null
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
@@ -224,7 +224,14 @@
   const selectTemplateType = (type) => {
     templateType = type
     uploadedHeader = null
-    templatePreview = null
+    
+    // Only clear templatePreview if not switching to system
+    if (type !== 'system') {
+      templatePreview = null
+    } else {
+      // Initialize system template preview
+      generateSystemHeader()
+    }
   }
   
   // Handle header image upload
@@ -604,7 +611,6 @@
                 </div>
                 
                 <!-- Option 3: System Header -->
-                {#if templateType !== 'printed' && templateType !== 'upload'}
                 <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'system' ? '#36807a' : '#e5e7eb'};">
                   <div class="p-4">
                     <div class="flex items-center">
@@ -660,7 +666,6 @@
                     {/if}
                   </div>
                 </div>
-                {/if}
               </div>
             </div>
             

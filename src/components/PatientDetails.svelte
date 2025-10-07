@@ -1517,6 +1517,9 @@
           if (doctor?.id) {
             templateSettings = await firebaseStorage.getDoctorTemplateSettings(doctor.id)
             console.log('📋 Template settings loaded:', templateSettings)
+            console.log('🔍 Template type:', templateSettings?.templateType)
+            console.log('🔍 Template preview:', templateSettings?.templatePreview)
+            console.log('🔍 Header text:', templateSettings?.headerText)
           } else {
             console.warn('⚠️ Doctor not found in Firebase for email:', currentUser.email)
           }
@@ -1582,13 +1585,12 @@
           
           try {
             // Convert pixels to mm (approximate: 1px ≈ 0.264583mm)
-            const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
-            const headerWidthMm = pageWidth - (margin * 2) // Full width minus margins
+            const maxHeaderHeightMm = (templateSettings.headerSize || 300) * 0.264583
+            const maxHeaderWidthMm = pageWidth - (margin * 2) // Full width minus margins
             
             headerYStart = 10
-            contentYStart = headerYStart + headerHeightMm + 5
             
-            console.log('🖼️ Header image dimensions:', headerWidthMm + 'mm x ' + headerHeightMm + 'mm')
+            console.log('🖼️ Max header dimensions:', maxHeaderWidthMm + 'mm x ' + maxHeaderHeightMm + 'mm')
             
             // Determine image format from base64 data
             let imageFormat = 'JPEG' // default
@@ -1602,19 +1604,88 @@
             
             console.log('🖼️ Detected image format:', imageFormat)
             
-            // Add the actual image to the PDF
-            doc.addImage(
-              templateSettings.uploadedHeader, // Base64 image data
-              imageFormat, // detected format
-              margin, // x position
-              headerYStart, // y position
-              headerWidthMm, // width
-              headerHeightMm, // height
-              undefined, // alias
-              'FAST' // compression
-            )
+            // Function to embed image with aspect ratio preservation
+            const embedImageWithAspectRatio = () => {
+              return new Promise((resolve, reject) => {
+                // Create a temporary image to get dimensions and preserve aspect ratio
+                const img = new Image()
+                
+                img.onload = () => {
+                  try {
+                    // Calculate aspect ratio
+                    const aspectRatio = img.width / img.height
+                    
+                    // Calculate actual dimensions preserving aspect ratio
+                    let actualWidthMm = maxHeaderWidthMm
+                    let actualHeightMm = maxHeaderWidthMm / aspectRatio
+                    
+                    // If height exceeds max, scale down by height
+                    if (actualHeightMm > maxHeaderHeightMm) {
+                      actualHeightMm = maxHeaderHeightMm
+                      actualWidthMm = maxHeaderHeightMm * aspectRatio
+                    }
+                    
+                    console.log('🖼️ Original image dimensions:', img.width + 'px x ' + img.height + 'px')
+                    console.log('🖼️ Aspect ratio:', aspectRatio.toFixed(2))
+                    console.log('🖼️ Final PDF dimensions:', actualWidthMm.toFixed(1) + 'mm x ' + actualHeightMm.toFixed(1) + 'mm')
+                    
+                    // Update content start position based on actual height
+                    contentYStart = headerYStart + actualHeightMm + 5
+                    
+                    // Add the actual image to the PDF with preserved aspect ratio
+                    doc.addImage(
+                      templateSettings.uploadedHeader, // Base64 image data
+                      imageFormat, // detected format
+                      margin, // x position
+                      headerYStart, // y position
+                      actualWidthMm, // width (preserved aspect ratio)
+                      actualHeightMm, // height (preserved aspect ratio)
+                      undefined, // alias
+                      'FAST' // compression
+                    )
+                    
+                    console.log('✅ Header image embedded successfully with preserved aspect ratio')
+                    resolve()
+                  } catch (error) {
+                    reject(error)
+                  }
+                }
+                
+                img.onerror = () => {
+                  console.error('❌ Failed to load image for dimension calculation')
+                  // Fallback to fixed dimensions
+                  try {
+                    const headerHeightMm = maxHeaderHeightMm
+                    const headerWidthMm = maxHeaderWidthMm
+                    
+                    headerYStart = 10
+                    contentYStart = headerYStart + headerHeightMm + 5
+                    
+                    doc.addImage(
+                      templateSettings.uploadedHeader,
+                      imageFormat,
+                      margin,
+                      headerYStart,
+                      headerWidthMm,
+                      headerHeightMm,
+                      undefined,
+                      'FAST'
+                    )
+                    
+                    console.log('✅ Header image embedded with fallback dimensions')
+                    resolve()
+                  } catch (error) {
+                    reject(error)
+                  }
+                }
+                
+                // Load the image to trigger onload
+                img.src = templateSettings.uploadedHeader
+              })
+            }
             
-            console.log('✅ Header image embedded successfully')
+            // Wait for image to be processed
+            await embedImageWithAspectRatio()
             
           } catch (imageError) {
             console.error('❌ Error embedding header image:', imageError)
@@ -1642,15 +1713,75 @@
           doc.text('[Printed Letterhead Area - ' + Math.round(headerHeightMm) + 'mm height]', margin, headerYStart + 5)
           
         } else if (templateSettings.templateType === 'system') {
-          // System header - use the default header
-          console.log('🏥 Using system header')
+          // System header - use custom header content
+          console.log('🏥 Using system header with custom content')
+          console.log('🔍 Template settings debug:', JSON.stringify(templateSettings, null, 2))
+          
+          // Parse the header content from template settings
+          const headerContent = templateSettings.templatePreview?.formattedHeader || templateSettings.headerText
+          console.log('🔍 Header content sources:', {
+            formattedHeader: templateSettings.templatePreview?.formattedHeader,
+            headerText: templateSettings.headerText,
+            selectedContent: headerContent
+          })
+          
+          if (headerContent) {
+            console.log('📝 Custom header content found:', headerContent)
+            
+            // Create a temporary div to parse HTML content
+            const tempDiv = document.createElement('div')
+            tempDiv.innerHTML = headerContent
+            
+            // Extract text content and apply to PDF
+            const headerText = tempDiv.textContent || tempDiv.innerText || ''
+            const lines = headerText.split('\n').filter(line => line.trim())
+            
+            let currentY = headerYStart
+            doc.setFontSize(12)
+            doc.setFont('helvetica', 'normal')
+            
+            lines.forEach(line => {
+              if (line.trim()) {
+                // Check if line contains "PRESCRIPTION" for special formatting
+                if (line.includes('PRESCRIPTION')) {
+                  doc.setFont('helvetica', 'bold')
+                  doc.setFontSize(14)
+                  doc.text(line.trim(), margin, currentY)
+                  doc.setFontSize(12)
+                } else if (line.includes('Dr.') || line.includes('Medical Practice')) {
+                  doc.setFont('helvetica', 'bold')
+                  doc.text(line.trim(), margin, currentY)
+                } else {
+                  doc.setFont('helvetica', 'normal')
+                  doc.text(line.trim(), margin, currentY)
+                }
+                currentY += 6
+              }
+            })
+            
+            contentYStart = currentY + 5
+            
+          } else {
+            console.log('⚠️ No custom header content found, using default')
+            // Fallback to default header if no custom content
+            doc.setFontSize(16)
+            doc.setFont('helvetica', 'bold')
+            doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
+            
+            doc.setFontSize(10)
+            doc.setFont('helvetica', 'normal')
+            doc.text('Your Medical Clinic', margin, headerYStart + 7)
+            doc.text('123 Medical Street, City', margin, headerYStart + 12)
+            doc.text('Phone: (555) 123-4567', margin, headerYStart + 17)
+            contentYStart = headerYStart + 25
+          }
         }
       }
       
-      // Header with clinic name (only if not using uploaded/printed template)
-      if (!templateSettings || templateSettings.templateType === 'system') {
-      doc.setFontSize(16)
-      doc.setFont('helvetica', 'bold')
+      // Header with clinic name (only if no template settings are available)
+      if (!templateSettings) {
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
         doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
         
         // Clinic details
@@ -1659,6 +1790,7 @@
         doc.text('Your Medical Clinic', margin, headerYStart + 7)
         doc.text('123 Medical Street, City', margin, headerYStart + 12)
         doc.text('Phone: (555) 123-4567', margin, headerYStart + 17)
+        contentYStart = headerYStart + 25
       }
       
       // Patient information section

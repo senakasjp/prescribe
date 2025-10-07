@@ -1,5 +1,7 @@
 <!-- Settings Page - Full page settings interface -->
 <script>
+  console.log('📄 SettingsPage script loaded')
+  
   import { createEventDispatcher, onMount } from 'svelte'
   import authService from '../services/authService.js'
   import { countries } from '../data/countries.js'
@@ -23,7 +25,7 @@
   let error = ''
 
   // Prescription template variables
-  let templateType = '' // 'printed', 'upload', 'system'
+  let templateType = 'printed' // 'printed', 'upload', 'system'
   let uploadedHeader = null
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
@@ -35,6 +37,22 @@
   
   // Available cities based on selected country
   let availableCities = []
+
+  // Debug: Log initial state
+  onMount(() => {
+    console.log('🚀 SettingsPage onMount called')
+    console.log('🚀 Initial templateType:', templateType)
+    console.log('🚀 Initial templatePreview:', templatePreview)
+    console.log('🚀 Initial headerText:', headerText)
+    console.log('🚀 User object:', user)
+    console.log('🚀 Active tab:', activeTab)
+  })
+
+  // Add debugging to template type reactive statement
+  $: {
+    console.log('🔄 templateType changed to:', templateType)
+    console.log('🔄 templatePreview is:', templatePreview)
+  }
 
   // Currency options
   const currencies = [
@@ -90,13 +108,31 @@
     consultationCharge = String(user?.consultationCharge || '')
     hospitalCharge = String(user?.hospitalCharge || '')
     currency = user?.currency || 'USD'
+    
+    // Load template settings
+    if (user?.templateSettings) {
+      console.log('🔍 Loading template settings from user:', user.templateSettings)
+      templateType = user.templateSettings.templateType || 'printed'
+      headerSize = user.templateSettings.headerSize || 300
+      headerText = user.templateSettings.headerText || ''
+      templatePreview = user.templateSettings.templatePreview || null
+      uploadedHeader = user.templateSettings.uploadedHeader || null
+      console.log('🔍 Applied template settings - templateType:', templateType)
+    } else {
+      console.log('🔍 No template settings found, using defaults')
+      console.log('🔍 User object keys:', Object.keys(user || {}))
+      console.log('🔍 User.templateSettings:', user?.templateSettings)
+    }
   }
 
   // Initialize form when user changes
   $: if (user) {
     try {
       console.log('🔍 Debug - SettingsPage: User changed, initializing form:', user)
-    initializeForm()
+      console.log('🔍 Current templateType:', templateType)
+      console.log('🔍 Current templatePreview:', templatePreview)
+      console.log('🔍 Current headerText:', headerText)
+      initializeForm()
     } catch (error) {
       console.error('❌ SettingsPage: Error initializing form:', error)
       // Set default values to prevent errors
@@ -164,11 +200,48 @@
   }
 
   // Handle template type selection
-  const selectTemplateType = (type) => {
+  const selectTemplateType = async (type) => {
+    console.log('🚀🚀🚀 NEW DEBUG VERSION LOADED! 🚀🚀🚀')
+    console.log('🔧 selectTemplateType called with:', type)
+    console.log('🔧 Current templateType before change:', templateType)
+    console.log('🔧 Current templatePreview before change:', templatePreview)
+    
     templateType = type
     uploadedHeader = null
-    templatePreview = null
+    
+    console.log('🔧 templateType after change:', templateType)
+    
+    // Only clear templatePreview if not switching to system
+    if (type !== 'system') {
+      console.log('🔧 Clearing templatePreview for non-system type')
+      templatePreview = null
+    } else {
+      console.log('🔧 Initializing system template preview')
+      // Initialize system template preview
+      generateSystemHeader()
+      console.log('🔧 templatePreview after generateSystemHeader:', templatePreview)
+    }
+    
+    console.log('🔧 Final state - templateType:', templateType, 'templatePreview:', templatePreview)
+    
+    // Auto-save template settings when selecting system type
+    if (type === 'system') {
+      console.log('🔧 Auto-saving template settings for system type')
+      try {
+        await saveTemplateSettings()
+      } catch (error) {
+        console.error('❌ Error auto-saving template settings:', error)
+      }
+    }
   }
+
+  // Handle third option click specifically
+  const handleThirdOptionClick = () => {
+    console.log('🔥 CLICK DETECTED ON THIRD OPTION!')
+    selectTemplateType('system')
+  }
+
+  // Removed temporary click test
 
   // Handle header image upload
   const handleHeaderUpload = (event) => {
@@ -184,10 +257,13 @@
 
   // Generate system header preview
   const generateSystemHeader = () => {
+    console.log('🏥 generateSystemHeader called')
+    console.log('🏥 Current user:', user)
+    
     templatePreview = {
       type: 'system',
       doctorName: user?.name || 'Dr. [Your Name]',
-      practiceName: `${user?.firstName || ''} ${user?.lastName || ''} Medical Practice`,
+      practiceName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Medical Practice',
       address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
       phone: '+1 (555) 123-4567',
       email: user?.email || 'doctor@example.com',
@@ -195,15 +271,24 @@
       logo: null
     }
     
+    console.log('🏥 templatePreview created:', templatePreview)
+    
     // Load saved header content if available
     const savedHeader = localStorage.getItem('prescriptionHeader')
+    console.log('🏥 savedHeader from localStorage:', savedHeader)
+    
     if (savedHeader) {
       headerText = savedHeader
       templatePreview.formattedHeader = savedHeader
+      console.log('🏥 Using saved header content')
     } else {
       // Initialize with default content
+      console.log('🏥 Using default header content')
       updateHeaderText()
     }
+    
+    console.log('🏥 Final templatePreview:', templatePreview)
+    console.log('🏥 Final headerText:', headerText)
   }
   
   // Update header text from template preview
@@ -282,13 +367,55 @@
   const saveTemplateSettings = async () => {
     try {
       console.log('🔍 Saving template settings...')
+      console.log('🔍 Current templateType:', templateType)
+      console.log('🔍 Current templatePreview:', templatePreview)
+      console.log('🔍 Current headerText:', headerText)
+      console.log('🔍 Current headerSize:', headerSize)
+      console.log('🔍 Current uploadedHeader:', uploadedHeader)
       
-      // For now, just show success message
+      if (!user?.id) {
+        console.error('❌ No user ID available')
+        console.error('❌ User object:', user)
+        notifyError('User not authenticated')
+        return
+      }
+      
+      console.log('🔍 User ID found:', user.id)
+      
+      // Prepare template settings object
+      const templateSettings = {
+        templateType: templateType,
+        headerSize: headerSize,
+        headerText: headerText,
+        templatePreview: templatePreview,
+        uploadedHeader: uploadedHeader
+      }
+      
+      console.log('🔍 Template settings to save:', templateSettings)
+      
+      // Import firebaseStorage service (default export)
+      console.log('🔍 Importing firebaseStorage service (default export)...')
+      const firebaseModule = await import('../services/firebaseStorage.js')
+      const firebaseStorage = firebaseModule.default
+      console.log('🔍 firebaseStorage service imported:', !!firebaseStorage)
+      
+      // Persist via dedicated API that handles serialization
+      console.log('🔍 Calling firebaseStorage.saveDoctorTemplateSettings...')
+      const result = await firebaseStorage.saveDoctorTemplateSettings(user.id, templateSettings)
+      
+      console.log('🔍 Update result:', result)
+      console.log('✅ Template settings saved successfully!')
       notifySuccess('Template settings saved successfully!')
       
     } catch (error) {
       console.error('❌ Error saving template settings:', error)
-      notifyError('Failed to save template settings')
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        user: user,
+        templateSettings: templateSettings
+      })
+      notifyError(`Failed to save template settings: ${error.message}`)
     }
   }
 
@@ -504,8 +631,7 @@
             <label class="block text-sm font-semibold text-gray-700">Select Template Type:</label>
             
             <!-- Option 1: Printed Letterheads -->
-            {#if templateType !== 'upload'}
-            <div class="bg-white border-2 rounded-lg shadow-sm {templateType === 'printed' ? 'border-teal-500' : 'border-gray-200'}">
+              <button type="button" class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'printed' ? 'border-teal-500' : 'border-gray-200'}" on:click={() => selectTemplateType('printed')}>
               <div class="p-4">
                 <div class="flex items-center">
                   <input 
@@ -514,7 +640,7 @@
                     name="templateType" 
                     id="templatePrinted" 
                     value="printed"
-                    bind:group={templateType}
+                    checked={templateType === 'printed'}
                     on:change={() => selectTemplateType('printed')}
                   />
                   <label class="w-full cursor-pointer" for="templatePrinted">
@@ -556,11 +682,10 @@
                 </div>
                 {/if}
               </div>
-            </div>
-            {/if}
+            </button>
             
             <!-- Option 2: Upload Image -->
-            <div class="bg-white border-2 rounded-lg shadow-sm {templateType === 'upload' ? 'border-teal-500' : 'border-gray-200'}">
+              <button type="button" class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'upload' ? 'border-teal-500' : 'border-gray-200'}" on:click={() => selectTemplateType('upload')}>
               <div class="p-4">
                 <div class="flex items-center">
                   <input 
@@ -569,7 +694,7 @@
                     name="templateType" 
                     id="templateUpload" 
                     value="upload"
-                    bind:group={templateType}
+                    checked={templateType === 'upload'}
                     on:change={() => selectTemplateType('upload')}
                   />
                   <label class="w-full cursor-pointer" for="templateUpload">
@@ -600,11 +725,10 @@
                 </div>
                 {/if}
               </div>
-            </div>
+            </button>
             
             <!-- Option 3: System Header -->
-            {#if templateType !== 'printed' && templateType !== 'upload'}
-            <div class="bg-white border-2 rounded-lg shadow-sm {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'}">
+            <button type="button" class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'}" style="display: block !important;" on:click={handleThirdOptionClick} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleThirdOptionClick()}>
               <div class="p-4">
                 <div class="flex items-center">
                   <input 
@@ -613,7 +737,7 @@
                     name="templateType" 
                     id="templateSystem" 
                     value="system"
-                    bind:group={templateType}
+                    checked={templateType === 'system'}
                     on:change={() => selectTemplateType('system')}
                   />
                   <label class="w-full cursor-pointer" for="templateSystem">
@@ -640,6 +764,11 @@
                     Preview System Header
                   </button>
                   
+                  <!-- Debug info -->
+                  <div class="mt-2 p-2 bg-yellow-100 text-xs">
+                    Debug: templateType = {templateType}, templatePreview = {JSON.stringify(templatePreview)}
+                  </div>
+                  
                   {#if templatePreview && templatePreview.type === 'system'}
                   <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-4">
@@ -652,12 +781,15 @@
                       onSave={handleHeaderSave}
                     />
                   </div>
+                  {:else}
+                  <div class="mt-4 p-3 bg-red-100 text-red-700 text-sm">
+                    Editor not showing. templatePreview: {JSON.stringify(templatePreview)}
+                  </div>
                   {/if}
                 </div>
                 {/if}
               </div>
-            </div>
-            {/if}
+            </button>
           </div>
           
           <!-- Prescription Preview Section -->

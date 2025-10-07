@@ -1,245 +1,198 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   
   export let headerText = ''
   export let onContentChange = () => {}
   export let onSave = () => {}
   
   let editorElement = null
+  let quill = null
   
-  // Handle input changes
-  const handleInput = (event) => {
-    headerText = event.target.innerHTML
-    onContentChange(event.target.innerHTML)
+  // Initialize Quill editor
+  onMount(async () => {
+    // Load Quill CSS and JS dynamically
+    await loadQuill()
     
-    // Process any new images that might have been added
-    setTimeout(() => {
-      makeImagesResizable()
-    }, 100)
-  }
-  
-  const handleBlur = (event) => {
-    onSave(event.target.innerHTML)
-  }
-  
-  // Apply formatting
-  const applyFormatting = (command, value = null) => {
     if (editorElement) {
-      editorElement.focus()
+      // Initialize Quill
+      quill = new Quill(editorElement, {
+        theme: 'snow',
+        modules: {
+          toolbar: [
+            [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+            ['bold', 'italic', 'underline'],
+            [{ 'size': ['small', false, 'large', 'huge'] }],
+            [{ 'color': [] }, { 'background': [] }],
+            [{ 'align': [] }],
+            ['link', 'image'],
+            ['clean']
+          ]
+        },
+        placeholder: 'Click here to edit your header...'
+      })
       
-      if (command === 'fontSize') {
-        // Handle font size with CSS
-        document.execCommand('fontSize', false, '7') // Use a dummy font size
-        // Find the font tag and replace with span with proper style
-        const fontTags = editorElement.querySelectorAll('font[size="7"]')
-        fontTags.forEach(font => {
-          const span = document.createElement('span')
-          span.style.fontSize = value
-          span.innerHTML = font.innerHTML
-          font.parentNode.replaceChild(span, font)
-        })
+      // Set initial content
+      if (headerText) {
+        quill.root.innerHTML = headerText
       } else {
-        document.execCommand(command, false, value)
+        // Set default content
+        const defaultContent = `
+          <h5 style="font-weight: bold; margin: 10px 0; text-align: center;">Dr. [Your Name]</h5>
+          <p style="font-weight: 600; margin: 5px 0; text-align: center;">Medical Practice</p>
+          <p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">City, Country</p>
+          <p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: +1 (555) 123-4567 | Email: doctor@example.com</p>
+          <hr style="margin: 10px 0; border: 1px solid #ccc;">
+          <p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>
+        `
+        quill.root.innerHTML = defaultContent
+        headerText = defaultContent
       }
       
-      handleInput({ target: { innerHTML: editorElement.innerHTML } })
+      // Handle content changes
+      quill.on('text-change', () => {
+        const content = quill.root.innerHTML
+        headerText = content
+        onContentChange(content)
+        onSave(content)
+        
+        // Make images resizable after content change
+        setTimeout(() => {
+          makeImagesResizable()
+        }, 300)
+      })
       
-      // Make images resizable after any change
-      makeImagesResizable()
+      // Make existing images resizable
+      setTimeout(() => {
+        makeImagesResizable()
+      }, 400)
     }
+  })
+  
+  // Load Quill.js dynamically
+  const loadQuill = () => {
+    return new Promise((resolve) => {
+      // Check if already loaded
+      if (window.Quill) {
+        resolve()
+        return
+      }
+      
+      // Load CSS
+      const cssLink = document.createElement('link')
+      cssLink.rel = 'stylesheet'
+      cssLink.href = 'https://cdn.quilljs.com/1.3.7/quill.snow.css'
+      document.head.appendChild(cssLink)
+      
+      // Load JS
+      const script = document.createElement('script')
+      script.src = 'https://cdn.quilljs.com/1.3.7/quill.min.js'
+      script.onload = () => {
+        resolve()
+      }
+      document.head.appendChild(script)
+    })
   }
   
   // Handle logo upload
   const handleLogoUpload = async (event) => {
     const file = event.target.files[0]
-    if (file && file.type.startsWith('image/')) {
+    if (file && file.type.startsWith('image/') && quill) {
       const reader = new FileReader()
       reader.onload = (e) => {
         const imageData = e.target.result
         
-        if (editorElement) {
-          editorElement.focus()
-          
-          // Create image HTML with proper attributes
-          const imgHtml = `<img src="${imageData}" alt="Logo" style="position: absolute; top: 10px; left: 10px; width: 150px; height: 150px; object-fit: contain; z-index: 10; border: 2px dashed #ccc; border-radius: 4px; cursor: move;">`
-          
-          // Insert the image
-          document.execCommand('insertHTML', false, imgHtml)
-          
-          // Update content and process images
-          handleInput({ target: { innerHTML: editorElement.innerHTML } })
-          
-          // Process the new image
-          setTimeout(() => {
-            makeImagesResizable()
-          }, 300)
-        }
+        // Insert image at cursor position
+        const range = quill.getSelection() || { index: 0, length: 0 }
+        quill.insertEmbed(range.index, 'image', imageData)
+        
+        // Move cursor after the image
+        quill.setSelection(range.index + 1)
+        
+        // Make the new image resizable
+        setTimeout(() => {
+          makeImagesResizable()
+        }, 400)
       }
       reader.readAsDataURL(file)
+      
+      // Clear the input so same file can be uploaded again
+      event.target.value = ''
     }
   }
   
   // Remove all images
   const removeAllImages = () => {
-    if (editorElement) {
-      const content = editorElement.innerHTML
-      const contentWithoutImages = content.replace(/<img[^>]*>/gi, '')
-      editorElement.innerHTML = contentWithoutImages
-      handleInput({ target: { innerHTML: editorElement.innerHTML } })
+    if (quill) {
+      const ops = quill.getContents().ops
+      const newOps = ops.filter(op => op.insert?.image === undefined)
+      
+      quill.setContents(newOps)
     }
   }
   
   // Clear all content
   const clearContent = () => {
-    if (editorElement) {
-      editorElement.innerHTML = ''
-      handleInput({ target: { innerHTML: editorElement.innerHTML } })
+    if (quill) {
+      quill.setContents([])
     }
   }
   
-  // Set content programmatically
-  export function setContent(content) {
-    headerText = content
-    if (editorElement) {
-      editorElement.innerHTML = content
-    }
-  }
-  
-  // Get content
-  export function getContent() {
-    return headerText
-  }
-  
-  // Make images resizable and draggable
+  // Add resize functionality to images that works with Quill.js
   const makeImagesResizable = () => {
-    if (!editorElement) return
+    if (!quill) return
     
-    // Wait a bit for DOM to settle
     setTimeout(() => {
-      const images = editorElement.querySelectorAll('img:not(.processed-image)')
+      const images = quill.container.querySelectorAll('.ql-editor img:not(.resizable)')
       
       images.forEach(img => {
-        console.log('Processing image:', img)
-        console.log('Image current styles:', img.style.cssText)
-        console.log('Image computed styles:', window.getComputedStyle(img))
-        
         // Mark as processed
-        img.classList.add('processed-image')
+        img.classList.add('resizable')
         
-        // Apply styles directly to image
+        // Apply basic styling
         img.style.cssText = `
-          margin: 5px !important;
-          cursor: move !important;
-          border: 2px dashed #ccc !important;
+          max-width: 200px !important;
+          max-height: 200px !important;
+          border: 2px dashed #007bff !important;
           border-radius: 4px !important;
-          user-select: none !important;
-          position: absolute !important;
-          display: block !important;
-          max-width: none !important;
-          max-height: none !important;
-          width: 150px !important;
-          height: 150px !important;
-          object-fit: contain !important;
-          z-index: 10 !important;
+          margin: 5px !important;
+          cursor: pointer !important;
+          display: inline-block !important;
+          vertical-align: top !important;
+          position: relative !important;
         `
-        
-        // Make draggable
-        img.draggable = true
-        
-        // Add drag functionality
-        let isDragging = false
-        let dragStartX = 0
-        let dragStartY = 0
-        let initialLeft = 0
-        let initialTop = 0
-        
-        img.addEventListener('mousedown', (e) => {
-          if (e.target === resizeHandle) return // Don't drag if clicking resize handle
-          
-          isDragging = true
-          dragStartX = e.clientX
-          dragStartY = e.clientY
-          initialLeft = parseInt(img.style.left) || 10
-          initialTop = parseInt(img.style.top) || 10
-          
-          img.style.cursor = 'grabbing'
-          e.preventDefault()
-        })
-        
-        document.addEventListener('mousemove', (e) => {
-          if (!isDragging) return
-          
-          const deltaX = e.clientX - dragStartX
-          const deltaY = e.clientY - dragStartY
-          
-          const newLeft = Math.max(0, Math.min(editorElement.offsetWidth - 150, initialLeft + deltaX))
-          const newTop = Math.max(0, Math.min(editorElement.offsetHeight - 150, initialTop + deltaY))
-          
-          img.style.left = newLeft + 'px'
-          img.style.top = newTop + 'px'
-          
-          // Update wrapper position too
-          wrapper.style.left = newLeft + 'px'
-          wrapper.style.top = newTop + 'px'
-        })
-        
-        document.addEventListener('mouseup', () => {
-          if (isDragging) {
-            isDragging = false
-            img.style.cursor = 'move'
-            handleInput({ target: { innerHTML: editorElement.innerHTML } })
-          }
-        })
-        
-        // Create wrapper container for resize handle
-        const wrapper = document.createElement('div')
-        wrapper.className = 'image-wrapper'
-        wrapper.style.cssText = `
-          position: absolute;
-          display: block;
-          margin: 5px;
-          top: 10px;
-          left: 10px;
-          z-index: 10;
-        `
-        
-        console.log('Wrapper created with styles:', wrapper.style.cssText)
-        
-        // Wrap the image
-        img.parentNode.insertBefore(wrapper, img)
-        wrapper.appendChild(img)
-        
-        console.log('Image wrapped, wrapper computed styles:', window.getComputedStyle(wrapper))
-        console.log('Image computed styles after wrapping:', window.getComputedStyle(img))
         
         // Create resize handle
         const resizeHandle = document.createElement('div')
-        resizeHandle.className = 'resize-handle'
+        resizeHandle.className = 'quill-resize-handle'
         resizeHandle.innerHTML = '↘'
         resizeHandle.style.cssText = `
           position: absolute;
-          bottom: -8px;
-          right: -8px;
-          width: 16px;
-          height: 16px;
+          bottom: -2px;
+          right: -2px;
+          width: 12px;
+          height: 12px;
           background: #007bff;
           color: white;
-          border: 2px solid #fff;
+          border: 1px solid #fff;
           cursor: se-resize;
           border-radius: 50%;
           z-index: 1000;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 10px;
+          font-size: 8px;
           font-weight: bold;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
           user-select: none;
         `
         
-        wrapper.appendChild(resizeHandle)
+        // Add resize handle to image
+        img.appendChild(resizeHandle)
         
-        // Add resize functionality
+        // Make image container relative for absolute positioning
+        img.style.position = 'relative'
+        
+        // Resize functionality
         let isResizing = false
         let startX, startY, startWidth, startHeight
         
@@ -253,23 +206,19 @@
           startWidth = img.offsetWidth
           startHeight = img.offsetHeight
           
-          console.log('Starting resize:', startWidth, startHeight)
-          
-          // Visual feedback
           img.style.opacity = '0.8'
           resizeHandle.style.background = '#0056b3'
           
-          // Global event listeners
           const handleMouseMove = (e) => {
             if (!isResizing) return
             
-            const newWidth = Math.max(30, startWidth + (e.clientX - startX))
-            const newHeight = Math.max(30, startHeight + (e.clientY - startY))
+            const newWidth = Math.max(50, startWidth + (e.clientX - startX))
+            const newHeight = Math.max(50, startHeight + (e.clientY - startY))
             
             img.style.width = newWidth + 'px'
             img.style.height = newHeight + 'px'
-            
-            console.log('Resizing to:', newWidth, newHeight)
+            img.style.maxWidth = 'none'
+            img.style.maxHeight = 'none'
           }
           
           const handleMouseUp = () => {
@@ -277,12 +226,6 @@
             img.style.opacity = '1'
             resizeHandle.style.background = '#007bff'
             
-            console.log('Resize complete')
-            
-            // Update content
-            handleInput({ target: { innerHTML: editorElement.innerHTML } })
-            
-            // Remove global listeners
             document.removeEventListener('mousemove', handleMouseMove)
             document.removeEventListener('mouseup', handleMouseUp)
           }
@@ -303,34 +246,20 @@
             resizeHandle.style.transform = 'scale(1)'
           }
         })
-        
-        console.log('Image processed successfully')
       })
-    }, 100)
+    }, 200)
   }
   
-  // Initialize default content if empty
-  onMount(() => {
-    if (!headerText || headerText.trim() === '') {
-      const defaultContent = `
-        <h5 style="font-weight: bold; margin: 10px 0; text-align: center;">Dr. [Your Name]</h5>
-        <p style="font-weight: 600; margin: 5px 0; text-align: center;">Medical Practice</p>
-        <p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">City, Country</p>
-        <p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: +1 (555) 123-4567 | Email: doctor@example.com</p>
-        <hr style="margin: 10px 0; border: 1px solid #ccc;">
-        <p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>
-        <p style="margin: 10px 0; text-align: left;">This is some sample text to test floating behavior. When you add an image, this text should wrap around it if floating is working correctly. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
-      `
-      headerText = defaultContent
-      if (editorElement) {
-        editorElement.innerHTML = defaultContent
-      }
+  // Get content
+  export function getContent() {
+    return headerText
+  }
+  
+  // Cleanup
+  onDestroy(() => {
+    if (quill) {
+      quill = null
     }
-    
-    // Make existing images resizable
-    setTimeout(() => {
-      makeImagesResizable()
-    }, 100)
   })
 </script>
 
@@ -353,14 +282,13 @@
         <button 
           type="button"
           on:click={clearContent}
-          class="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors"
+          class="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 transition-colors"
           title="Clear all content"
         >
-          <i class="fas fa-eraser mr-1"></i>Clear All
+          <i class="fas fa-broom mr-1"></i>Clear All
         </button>
       </div>
     </div>
-    
     <div class="flex items-center space-x-3">
       <input 
         type="file" 
@@ -368,146 +296,16 @@
         on:change={handleLogoUpload}
         class="text-sm text-blue-600 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-blue-500 file:text-white hover:file:bg-blue-600"
       />
-      <span class="text-xs text-gray-600">
+      <span class="text-xs text-gray-500">
         <i class="fas fa-info-circle mr-1"></i>
         Upload logo images to insert into your header
       </span>
     </div>
   </div>
   
-  <!-- Formatting Toolbar -->
-  <div class="mb-3 p-3 bg-gray-100 rounded-lg border">
-    <div class="flex items-center space-x-2 flex-wrap">
-      <span class="text-sm font-medium text-gray-700">Formatting:</span>
-      
-      <!-- Text Formatting -->
-      <button 
-        type="button"
-        on:click={() => applyFormatting('bold')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors font-bold"
-        title="Bold (Ctrl+B)"
-      >
-        <strong>B</strong>
-      </button>
-      <button 
-        type="button"
-        on:click={() => applyFormatting('italic')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors italic"
-        title="Italic (Ctrl+I)"
-      >
-        <em>I</em>
-      </button>
-      <button 
-        type="button"
-        on:click={() => applyFormatting('underline')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors"
-        title="Underline (Ctrl+U)"
-        style="text-decoration: underline;"
-      >
-        U
-      </button>
-      
-      <div class="border-l border-gray-300 mx-2 h-6"></div>
-      
-      <!-- Font Size -->
-      <select 
-        on:change={(e) => applyFormatting('fontSize', e.target.value)}
-        class="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm border-0 focus:outline-none focus:ring-2 focus:ring-teal-500"
-        title="Font Size"
-      >
-        <option value="">Font Size</option>
-        <option value="8px">8px</option>
-        <option value="10px">10px</option>
-        <option value="12px">12px</option>
-        <option value="14px">14px</option>
-        <option value="16px">16px</option>
-        <option value="18px">18px</option>
-        <option value="20px">20px</option>
-        <option value="24px">24px</option>
-        <option value="28px">28px</option>
-        <option value="32px">32px</option>
-        <option value="36px">36px</option>
-      </select>
-      
-      <div class="border-l border-gray-300 mx-2 h-6"></div>
-      
-      <!-- Alignment -->
-      <button 
-        type="button"
-        on:click={() => applyFormatting('justifyLeft')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors"
-        title="Align Left"
-      >
-        <i class="fas fa-align-left"></i>
-      </button>
-      <button 
-        type="button"
-        on:click={() => applyFormatting('justifyCenter')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors"
-        title="Center Text"
-      >
-        <i class="fas fa-align-center"></i>
-      </button>
-      <button 
-        type="button"
-        on:click={() => applyFormatting('justifyRight')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors"
-        title="Align Right"
-      >
-        <i class="fas fa-align-right"></i>
-      </button>
-      
-      <div class="border-l border-gray-300 mx-2 h-6"></div>
-      
-      <!-- Lists -->
-      <button 
-        type="button"
-        on:click={() => applyFormatting('insertUnorderedList')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors"
-        title="Bullet List"
-      >
-        <i class="fas fa-list-ul"></i>
-      </button>
-      <button 
-        type="button"
-        on:click={() => applyFormatting('insertOrderedList')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors"
-        title="Numbered List"
-      >
-        <i class="fas fa-list-ol"></i>
-      </button>
-      
-      <div class="border-l border-gray-300 mx-2 h-6"></div>
-      
-      <!-- Other -->
-      <button 
-        type="button"
-        on:click={() => applyFormatting('removeFormat')}
-        class="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-sm transition-colors"
-        title="Remove Formatting"
-      >
-        <i class="fas fa-remove-format"></i>
-      </button>
-    </div>
-    
-    <div class="mt-2 text-xs text-gray-600">
-      <i class="fas fa-info-circle mr-1"></i>
-      Select text first, then click formatting buttons. All changes save automatically.
-    </div>
-  </div>
-  
-  <!-- Rich Text Editor -->
+  <!-- Quill Editor -->
   <div class="editor-wrapper">
-    <div 
-      bind:this={editorElement}
-      class="rich-text-editor border rounded p-3 bg-white min-h-[200px] focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500"
-      contenteditable="true"
-      bind:innerHTML={headerText}
-      on:input={handleInput}
-      on:blur={handleBlur}
-      style="overflow: visible;"
-    >
-    </div>
+    <div bind:this={editorElement} class="quill-editor"></div>
   </div>
   
   <!-- Help Text -->
@@ -517,11 +315,9 @@
       <strong>Rich Text Editor Features:</strong>
     </p>
     <ul class="text-xs text-gray-500 space-y-1">
-      <li>• <strong>Text Formatting:</strong> Bold, italic, underline, font size, alignment</li>
-      <li>• <strong>Lists:</strong> Bulleted and numbered lists</li>
+      <li>• <strong>Text Formatting:</strong> Bold, italic, underline, headers, colors, alignment</li>
       <li>• <strong>Images:</strong> Upload, drag to reposition, resize with corner handle</li>
       <li>• <strong>Auto-Save:</strong> Changes saved automatically</li>
-      <li>• <strong>Keyboard Shortcuts:</strong> Ctrl+B (bold), Ctrl+I (italic), Ctrl+U (underline)</li>
       <li>• <strong>Image Controls:</strong> Drag to move, use blue handle to resize</li>
     </ul>
   </div>
@@ -536,92 +332,87 @@
     @apply border border-gray-300 rounded-lg overflow-hidden;
   }
   
-  /* Rich text editor styling */
-  .rich-text-editor {
-    @apply outline-none;
-    line-height: 1.6;
-    overflow: visible !important;
+  /* Quill editor styling */
+  .quill-editor {
+    @apply min-h-[200px];
   }
   
-  .rich-text-editor:focus {
-    @apply outline-none;
+  /* Simple image styling */
+  :global(.ql-editor) {
+    min-height: 200px !important;
   }
   
-  /* Ensure images in editor are properly styled */
-  .rich-text-editor img {
-    user-select: none !important;
-  }
-  
-  .rich-text-editor {
-    position: relative;
-    text-align: justify;
-  }
-  
-  .rich-text-editor .image-wrapper {
-    position: absolute !important;
-    display: block !important;
+  :global(.ql-editor img) {
+    max-width: 200px !important;
+    max-height: 200px !important;
+    border: 2px dashed #007bff !important;
+    border-radius: 4px !important;
     margin: 5px !important;
-    z-index: 10 !important;
+    cursor: pointer !important;
+    display: inline-block !important;
+    vertical-align: top !important;
+    position: relative !important;
   }
   
-  /* Ensure images inside wrappers are positioned */
-  .rich-text-editor .image-wrapper img {
+  :global(.quill-resize-handle) {
     position: absolute !important;
-    display: block !important;
-    margin: 0 !important;
-    width: 150px !important;
-    height: 150px !important;
-    object-fit: contain !important;
-  }
-  
-  .rich-text-editor .resize-handle {
-    position: absolute !important;
-    bottom: -8px !important;
-    right: -8px !important;
-    width: 16px !important;
-    height: 16px !important;
+    bottom: -2px !important;
+    right: -2px !important;
+    width: 12px !important;
+    height: 12px !important;
     background: #007bff !important;
     color: white !important;
-    border: 2px solid #fff !important;
+    border: 1px solid #fff !important;
     cursor: se-resize !important;
     border-radius: 50% !important;
     z-index: 1000 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    font-size: 10px !important;
+    font-size: 8px !important;
     font-weight: bold !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
     user-select: none !important;
-    transition: all 0.2s ease !important;
   }
   
-  .rich-text-editor .resize-handle:hover {
+  :global(.quill-resize-handle:hover) {
     background: #0056b3 !important;
     transform: scale(1.2) !important;
   }
   
-  /* Hide resize handles in preview areas */
-  .system-header-preview .resize-handle,
-  .template-preview .resize-handle,
-  [class*="preview"] .resize-handle {
-    display: none !important;
+  /* Keep resize functionality but hide visual editing styles in preview mode */
+  :global(.template-preview .ql-editor img) {
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    cursor: default !important;
+    max-width: none !important;
+    max-height: none !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
   
-  /* Default content styling */
-  .rich-text-editor h5 {
-    font-weight: bold;
-    margin: 10px 0;
-    text-align: center;
+  /* Make resize handles more subtle in preview mode */
+  :global(.template-preview .quill-resize-handle) {
+    opacity: 0.3 !important;
+    background: #6b7280 !important;
   }
   
-  .rich-text-editor p {
-    margin: 5px 0;
-    text-align: center;
+  :global(.template-preview .quill-resize-handle:hover) {
+    opacity: 0.8 !important;
+    background: #374151 !important;
+    transform: scale(1.2) !important;
   }
   
-  .rich-text-editor hr {
-    margin: 10px 0;
-    border: 1px solid #ccc;
+  /* Quill toolbar customization */
+  :global(.ql-toolbar) {
+    @apply border-b border-gray-300;
+  }
+  
+  :global(.ql-editor) {
+    @apply min-h-[200px] p-4;
+    position: relative;
   }
 </style>
+
+
