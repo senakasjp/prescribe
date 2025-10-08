@@ -778,12 +778,12 @@
                     on:click={generateSystemHeader}
                   >
                     <i class="fas fa-eye mr-2"></i>
-                    Preview System Header
+                    Preview System Header <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-2">v2.1.5</span>
                   </button>
                   
                   <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-4">
-                      <i class="fas fa-edit mr-2"></i>Professional Header Editor
+                      <i class="fas fa-edit mr-2"></i>Professional Header Editor <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.1.5</span>
                     </label>
                     
                     <HeaderEditor 

@@ -1501,7 +1501,7 @@
   // Generate prescription PDF directly
   const generatePrescriptionPDF = async () => {
     try {
-      console.log('🔄 Starting PDF generation...')
+      console.log('🔄 Starting PDF generation... [UPDATE v2.1.5]')
       
       // Load template settings
       let templateSettings = null
@@ -1557,7 +1557,7 @@
       })
       
       const currentDate = new Date().toLocaleDateString('en-GB', {
-        day: '2-digit',
+        day: '2-digit', 
         month: '2-digit',
         year: 'numeric'
       })
@@ -1633,17 +1633,17 @@
                     contentYStart = headerYStart + actualHeightMm + 5
                     
                     // Add the actual image to the PDF with preserved aspect ratio
-                    doc.addImage(
-                      templateSettings.uploadedHeader, // Base64 image data
-                      imageFormat, // detected format
-                      margin, // x position
-                      headerYStart, // y position
+            doc.addImage(
+              templateSettings.uploadedHeader, // Base64 image data
+              imageFormat, // detected format
+              margin, // x position
+              headerYStart, // y position
                       actualWidthMm, // width (preserved aspect ratio)
                       actualHeightMm, // height (preserved aspect ratio)
-                      undefined, // alias
-                      'FAST' // compression
-                    )
-                    
+              undefined, // alias
+              'FAST' // compression
+            )
+            
                     console.log('✅ Header image embedded successfully with preserved aspect ratio')
                     resolve()
                   } catch (error) {
@@ -1728,158 +1728,330 @@
           if (headerContent) {
             console.log('📝 Custom header content found:', headerContent)
             
-            // Create a temporary div to parse HTML content with formatting
-            const tempDiv = document.createElement('div')
-            tempDiv.innerHTML = headerContent
+            // Create a temporary container to render the header for image capture
+            const headerContainer = document.createElement('div')
+            headerContainer.style.position = 'absolute'
+            headerContainer.style.left = '-9999px'
+            headerContainer.style.top = '0'
+            headerContainer.style.width = `${pageWidth - (margin * 2)}mm`
+            headerContainer.style.minWidth = `${pageWidth - (margin * 2)}mm`
+            headerContainer.style.backgroundColor = 'white'
+            headerContainer.style.padding = '10px'
+            headerContainer.style.fontFamily = 'Arial, sans-serif'
+            headerContainer.style.lineHeight = '1.4'
+            headerContainer.style.color = '#000000'
+            headerContainer.style.textAlign = 'center'
+            headerContainer.style.direction = 'ltr'
             
-            let currentY = headerYStart
-            
-            // Function to process HTML elements and preserve formatting
-            const processElement = (element, baseFontSize = 12) => {
-              if (element.nodeType === Node.TEXT_NODE) {
-                // Text node - add text with current formatting
-                const text = element.textContent.trim()
-                if (text) {
-                  // Check if parent has centering
-                  const parent = element.parentElement
-                  const isCentered = parent && (
-                    parent.style.textAlign === 'center' || 
-                    parent.classList.contains('text-center') ||
-                    parent.getAttribute('align') === 'center'
-                  )
-                  
-                  if (isCentered) {
-                    doc.text(text, pageWidth / 2, currentY, { align: 'center' })
-                  } else {
-                    doc.text(text, margin, currentY)
-                  }
-                  currentY += 6
-                }
-                return
+            // Add CSS to normalize styling and ensure proper alignment
+            const style = document.createElement('style')
+            style.textContent = `
+              .header-capture-container {
+                text-align: center !important; /* Ensure the container itself is centered for html2canvas */
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: 100% !important;
+                position: relative !important;
+              }
+              .header-capture-container * {
+                box-sizing: border-box !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                outline: none !important;
+                border: none !important;
+                box-shadow: none !important;
+                text-decoration: none !important;
+              }
+              .header-capture-container p, .header-capture-container div, .header-capture-container span {
+                display: block !important;
+                text-align: center !important; /* Default to center for html2canvas */
+                width: 100% !important;
+              }
+              .header-capture-container .ql-editor, .header-capture-container [contenteditable] {
+                outline: none !important;
+                border: none !important;
+                box-shadow: none !important;
+                width: 100% !important;
+              }
+              .header-capture-container p,
+              .header-capture-container div,
+              .header-capture-container span {
+                font-size: 20px !important;
+                line-height: 1.4 !important;
+                color: #000000 !important;
+              }
+              .header-capture-container h1,
+              .header-capture-container h2,
+              .header-capture-container h3,
+              .header-capture-container h4,
+              .header-capture-container h5,
+              .header-capture-container h6 {
+                font-size: 28px !important;
+                line-height: 1.3 !important;
+                color: #000000 !important;
+                font-weight: bold !important;
+              }
+              .header-capture-container img {
+                width: 300px !important;
+                height: 200px !important;
+                max-width: 300px !important;
+                max-height: 200px !important;
+                display: block !important;
+                margin: 0 auto !important;
+                object-fit: contain !important;
+                align-self: center !important;
+                position: relative !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
+              }
+              .header-capture-container .resize-handle,
+              .header-capture-container .quill-resize-handle {
+                display: none !important;
+              }
+              /* Ensure centering works properly */
+              .header-capture-container [style*="text-align: center"],
+              .header-capture-container [style*="text-align:center"],
+              .header-capture-container .text-center,
+              .header-capture-container [align="center"] {
+                text-align: center !important;
+                display: block !important;
+                width: 100% !important;
               }
               
-              if (element.nodeType === Node.ELEMENT_NODE) {
-                const tagName = element.tagName.toLowerCase()
+              /* Force all images to be centered and sized consistently */
+              .header-capture-container img {
+                margin-left: auto !important;
+                margin-right: auto !important;
+                width: 300px !important;
+                height: 200px !important;
+                max-width: 300px !important;
+                max-height: 200px !important;
+                object-fit: contain !important;
+              }
+              
+              /* Force center alignment for all content by default */
+              .header-capture-container {
+                text-align: center !important;
+              }
+              
+              /* Override specific alignment when needed */
+              .header-capture-container [style*="text-align: left"],
+              .header-capture-container [style*="text-align:left"],
+              .header-capture-container .text-left,
+              .header-capture-container [align="left"] {
+                text-align: left !important;
+                display: block !important;
+                width: 100% !important;
+              }
+              
+              /* Handle Quill.js specific centering */
+              .header-capture-container .ql-align-center {
+                text-align: center !important;
+              }
+              .header-capture-container .ql-align-right {
+                text-align: right !important;
+              }
+              .header-capture-container .ql-align-left {
+                text-align: left !important;
+              }
+              /* Ensure images respect alignment and maintain consistent sizing */
+              .header-capture-container .ql-align-center img,
+              .header-capture-container [style*="text-align: center"] img,
+              .header-capture-container [style*="text-align:center"] img {
+                display: block !important;
+                margin: 0 auto !important;
+                max-width: 200px !important;
+                max-height: 150px !important;
+                width: auto !important;
+                height: auto !important;
+                object-fit: contain !important;
+              }
+            `
+            document.head.appendChild(style)
+            headerContainer.className = 'header-capture-container'
+            
+            // Clean the header content to remove editing artifacts while preserving alignment
+            let cleanHeaderContent = headerContent
+              .replace(/style="[^"]*outline[^"]*"/gi, '') // Remove outline styles
+              .replace(/style="[^"]*border[^"]*dotted[^"]*"/gi, '') // Remove dotted borders
+              .replace(/style="[^"]*box-shadow[^"]*"/gi, '') // Remove box shadows
+              .replace(/class="[^"]*resize-handle[^"]*"/gi, '') // Remove resize handles
+              .replace(/class="[^"]*quill-resize-handle[^"]*"/gi, '') // Remove quill resize handles
+              .replace(/<div[^>]*class="[^"]*resize-handle[^"]*"[^>]*>.*?<\/div>/gi, '') // Remove resize handle divs
+              .replace(/<div[^>]*class="[^"]*quill-resize-handle[^"]*"[^>]*>.*?<\/div>/gi, '') // Remove quill resize handle divs
+              // Preserve and normalize alignment styles and image sizing
+              .replace(/style="([^"]*)"/gi, (match, styles) => {
+                // Keep alignment styles and image sizing but clean others
+                const cleanStyles = styles
+                  .split(';')
+                  .filter(style => {
+                    const trimmed = style.trim()
+                    return trimmed.includes('text-align') || 
+                           trimmed.includes('font-') || 
+                           trimmed.includes('color') ||
+                           trimmed.includes('background') ||
+                           trimmed.includes('margin') ||
+                           trimmed.includes('padding') ||
+                           trimmed.includes('width') ||
+                           trimmed.includes('height') ||
+                           trimmed.includes('max-width') ||
+                           trimmed.includes('max-height')
+                  })
+                  .join(';')
+                return cleanStyles ? `style="${cleanStyles}"` : ''
+              })
+            
+            headerContainer.innerHTML = cleanHeaderContent
+            
+            // Add to DOM temporarily
+            document.body.appendChild(headerContainer)
+            
+            // Small delay to ensure CSS is applied
+            await new Promise(resolve => setTimeout(resolve, 100))
+            
+            try {
+              // Import html2canvas dynamically
+              const html2canvasModule = await import('html2canvas')
+              const html2canvas = html2canvasModule.default
+              
+              console.log('📸 Capturing header as image... [UPDATE v2.1.5]')
+              
+              // Ensure the container has proper dimensions for capture
+              headerContainer.style.width = '800px'
+              headerContainer.style.height = 'auto'
+              headerContainer.style.padding = '20px'
+              headerContainer.style.backgroundColor = 'white'
+              
+              // Force all images to be the correct size before capture
+              const images = headerContainer.querySelectorAll('img')
+              images.forEach(img => {
+                img.style.width = '300px'  // Larger size for better quality when scaled up
+                img.style.height = '200px' // Larger size for better quality when scaled up
+                img.style.objectFit = 'contain'
+                img.style.display = 'block'
+                img.style.margin = '0 auto'
+                img.style.maxWidth = '300px'
+                img.style.maxHeight = '200px'
+              })
+              
+              // Ensure all text has proper sizing and is larger for PDF readability
+              const textElements = headerContainer.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6')
+              textElements.forEach(el => {
+                // Force larger font sizes for better PDF readability
+                const currentFontSize = el.style.fontSize || window.getComputedStyle(el).fontSize
+                const numericSize = parseFloat(currentFontSize)
                 
-                // Handle images
-                if (tagName === 'img') {
-                  const src = element.getAttribute('src')
-                  if (src) {
-                    try {
-                      // Check if it's a base64 image
-                      if (src.startsWith('data:image/')) {
-                        console.log('🖼️ Processing image in header:', src.substring(0, 50) + '...')
-                        
-                        // Determine image format
-                        let imageFormat = 'JPEG'
-                        if (src.includes('data:image/png')) {
-                          imageFormat = 'PNG'
-                        } else if (src.includes('data:image/gif')) {
-                          imageFormat = 'GIF'
-                        }
-                        
-                        // Get image dimensions from element
-                        const width = element.getAttribute('width') || element.style.width || '50'
-                        const height = element.getAttribute('height') || element.style.height || '50'
-                        
-                        // Convert to mm (approximate: 1px ≈ 0.264583mm)
-                        const widthMm = parseFloat(width) * 0.264583
-                        const heightMm = parseFloat(height) * 0.264583
-                        
-                        // Check if image should be centered
-                        const isCentered = element.style.textAlign === 'center' || 
-                                         element.classList.contains('text-center') ||
-                                         element.getAttribute('align') === 'center'
-                        
-                        let xPos = margin
-                        if (isCentered) {
-                          xPos = (pageWidth - widthMm) / 2
-                        }
-                        
-                        // Add image to PDF
-                        doc.addImage(src, imageFormat, xPos, currentY, widthMm, heightMm)
-                        currentY += heightMm + 3
-                        return
-                      }
-                    } catch (error) {
-                      console.error('❌ Error processing image:', error)
-                      // Continue without image if there's an error
-                    }
-                  }
+                // Scale up font sizes for better PDF visibility
+                if (numericSize < 18) {
+                  el.style.fontSize = '20px'  // Minimum readable size
+                } else if (numericSize < 24) {
+                  el.style.fontSize = '24px'  // Good size for body text
+                } else {
+                  el.style.fontSize = `${Math.max(numericSize * 1.2, 24)}px`  // Scale up larger text
                 }
                 
-                // Set formatting based on HTML tags
-                switch (tagName) {
-                  case 'h1':
-                    doc.setFontSize(16)
-                    doc.setFont('helvetica', 'bold')
-                    break
-                  case 'h2':
-                    doc.setFontSize(14)
-                    doc.setFont('helvetica', 'bold')
-                    break
-                  case 'h3':
-                    doc.setFontSize(13)
-                    doc.setFont('helvetica', 'bold')
-                    break
-                  case 'h4':
-                  case 'h5':
-                  case 'h6':
-                    doc.setFontSize(12)
-                    doc.setFont('helvetica', 'bold')
-                    break
-                  case 'p':
-                    doc.setFontSize(baseFontSize)
-                    doc.setFont('helvetica', 'normal')
-                    break
-                  case 'strong':
-                  case 'b':
-                    doc.setFont('helvetica', 'bold')
-                    break
-                  case 'em':
-                  case 'i':
-                    doc.setFont('helvetica', 'italic')
-                    break
-                  case 'br':
-                    currentY += 3
-                    return
-                  case 'div':
-                    // Check for centering on div elements
-                    const isCentered = element.style.textAlign === 'center' || 
-                                     element.classList.contains('text-center') ||
-                                     element.getAttribute('align') === 'center'
-                    
-                    if (isCentered) {
-                      // Process children with centering context
-                      Array.from(element.childNodes).forEach(child => {
-                        processElement(child, baseFontSize)
-                      })
-                      return
-                    }
-                    break
-                  default:
-                    doc.setFontSize(baseFontSize)
-                    doc.setFont('helvetica', 'normal')
+                el.style.lineHeight = '1.4'
+                el.style.color = '#000000'
+                el.style.fontWeight = el.style.fontWeight || 'normal'
+              })
+              
+              // Small delay to ensure styles are applied
+              await new Promise(resolve => setTimeout(resolve, 100))
+              
+              // Capture the header as an image
+              const canvas = await html2canvas(headerContainer, {
+                backgroundColor: 'white',
+                scale: 3, // Even higher quality for better image capture
+                useCORS: true,
+                allowTaint: true,
+                width: headerContainer.offsetWidth,
+                height: headerContainer.offsetHeight,
+                removeContainer: true,
+                foreignObjectRendering: false,
+                logging: false,
+                ignoreElements: (element) => {
+                  // Ignore resize handles and editing elements
+                  return element.classList.contains('resize-handle') ||
+                         element.classList.contains('quill-resize-handle') ||
+                         element.classList.contains('ql-editor') ||
+                         element.style.outline ||
+                         element.style.border?.includes('dotted')
                 }
-                
-                // Process children recursively
-                Array.from(element.childNodes).forEach(child => {
-                  processElement(child, baseFontSize)
-                })
-                
-                // Reset to normal after processing
-                if (tagName.startsWith('h')) {
-                  currentY += 2 // Extra spacing after headings
+              })
+              
+              // Convert canvas to base64 image
+              const headerImageData = canvas.toDataURL('image/png')
+              console.log('📸 Header captured successfully [UPDATE v2.1.5]:', headerImageData.substring(0, 50) + '...')
+              
+              // Calculate proper dimensions maintaining aspect ratio
+              const maxHeaderWidthMm = 200 // Maximum width in mm (increased for larger header)
+              const maxHeaderHeightMm = 100  // Maximum height in mm (increased for larger header)
+              
+              // Calculate aspect ratio from canvas dimensions
+              const aspectRatio = canvas.width / canvas.height
+              
+              // Calculate dimensions maintaining aspect ratio within limits
+              let headerImageWidthMm = maxHeaderWidthMm
+              let headerImageHeightMm = headerImageWidthMm / aspectRatio
+              
+              // If height exceeds limit, scale down based on height
+              if (headerImageHeightMm > maxHeaderHeightMm) {
+                headerImageHeightMm = maxHeaderHeightMm
+                headerImageWidthMm = headerImageHeightMm * aspectRatio
+              }
+              
+              // Ensure minimum size for readability
+              if (headerImageWidthMm < 150) {
+                headerImageWidthMm = 150
+                headerImageHeightMm = headerImageWidthMm / aspectRatio
+              }
+              
+              console.log('📸 Header image dimensions for PDF [UPDATE v2.1.5]:', `${headerImageWidthMm.toFixed(1)}mm x ${headerImageHeightMm.toFixed(1)}mm (aspect ratio: ${aspectRatio.toFixed(2)})`)
+              
+              // Center the header image horizontally
+              const headerImageX = (pageWidth - headerImageWidthMm) / 2
+              
+              // Add the header image to PDF with proper aspect ratio
+              doc.addImage(headerImageData, 'PNG', headerImageX, headerYStart, headerImageWidthMm, headerImageHeightMm)
+              
+              // Update content start position
+              contentYStart = headerYStart + headerImageHeightMm + 5
+              
+              console.log('✅ Header image added to PDF successfully')
+              
+            } catch (error) {
+              console.error('❌ Error capturing header as image:', error)
+              
+              // Fallback to simple text parsing if image capture fails
+              console.log('🔄 Falling back to text parsing...')
+              const tempDiv = document.createElement('div')
+              tempDiv.innerHTML = headerContent
+              const headerText = tempDiv.textContent || tempDiv.innerText || ''
+              const lines = headerText.split('\n').filter(line => line.trim())
+              
+              let currentY = headerYStart
+              doc.setFontSize(12)
+              doc.setFont('helvetica', 'normal')
+              
+              lines.forEach(line => {
+                if (line.trim()) {
+                  doc.text(line.trim(), margin, currentY)
+                  currentY += 6
                 }
+              })
+              
+              contentYStart = currentY + 5
+            } finally {
+              // Clean up temporary container and style
+              if (document.body.contains(headerContainer)) {
+                document.body.removeChild(headerContainer)
+              }
+              if (style && document.head.contains(style)) {
+                document.head.removeChild(style)
               }
             }
-            
-            // Process all child elements
-            Array.from(tempDiv.childNodes).forEach(child => {
-              processElement(child)
-            })
-            
-            contentYStart = currentY + 5
             
           } else {
             console.log('⚠️ No custom header content found, using default')
@@ -1887,6 +2059,11 @@
             doc.setFontSize(16)
             doc.setFont('helvetica', 'bold')
             doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
+            
+            // Add version number to PDF for tracking
+            doc.setFontSize(8)
+            doc.setFont('helvetica', 'normal')
+            doc.text('M-Prescribe v2.1.5', pageWidth - 10, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')
@@ -1900,9 +2077,14 @@
       
       // Header with clinic name (only if no template settings are available)
       if (!templateSettings) {
-        doc.setFontSize(16)
-        doc.setFont('helvetica', 'bold')
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
         doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
+        
+        // Add version number to PDF for tracking
+        doc.setFontSize(8)
+        doc.setFont('helvetica', 'normal')
+        doc.text('M-Prescribe v2.1.5', pageWidth - 10, pageHeight - 5, { align: 'right' })
         
         // Clinic details
         doc.setFontSize(10)
