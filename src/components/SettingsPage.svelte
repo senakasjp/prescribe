@@ -103,16 +103,30 @@
     hospitalCharge = String(user?.hospitalCharge || '')
     currency = user?.currency || 'USD'
     
-    // Load template settings
-    if (user?.templateSettings) {
-      templateType = user.templateSettings.templateType || 'printed'
+    // Load template settings - ENHANCED v2.2.2
+    console.log('🔍 SettingsPage v2.2.2: Loading template settings from user:', JSON.stringify(user?.templateSettings, null, 2))
+    console.log('🔍 SettingsPage v2.2.2: User object full:', JSON.stringify(user, null, 2))
+    if (user?.templateSettings && user.templateSettings.templateType) {
+      console.log('🔍 SettingsPage v2.2.2: Found existing templateSettings, loading...')
+      templateType = user.templateSettings.templateType
       headerSize = user.templateSettings.headerSize || 300
       headerText = user.templateSettings.headerText || ''
       templatePreview = user.templateSettings.templatePreview || null
       uploadedHeader = user.templateSettings.uploadedHeader || null
+      console.log('✅ SettingsPage v2.2.2: Loaded templateType from settings:', templateType)
+      console.log('✅ SettingsPage v2.2.2: Full template settings loaded:', {
+        templateType,
+        headerSize,
+        hasHeaderText: !!headerText,
+        hasTemplatePreview: !!templatePreview,
+        hasUploadedHeader: !!uploadedHeader
+      })
     } else {
       // Set default values only if no template settings exist
+      console.log('⚠️ SettingsPage v2.2.2: No template settings found, defaulting to printed')
+      console.log('⚠️ SettingsPage v2.2.2: user?.templateSettings:', user?.templateSettings)
       templateType = 'printed'
+      console.log('⚠️ SettingsPage v2.2.2: Set default templateType to:', templateType)
     }
   }
 
@@ -204,12 +218,14 @@
     activeTab = tabName
   }
 
-  // Handle template type selection
+  // Handle template type selection - COMPREHENSIVE FIX v2.2.2
   const selectTemplateType = async (type) => {
+    console.log('🔍 SettingsPage v2.2.2: selectTemplateType called with type:', type)
+    console.log('🔍 SettingsPage v2.2.2: Current templateType before change:', templateType)
+    console.log('🔍 SettingsPage v2.2.2: User ID:', user?.id)
     
     templateType = type
     uploadedHeader = null
-    
     
     // Clear conflicting data based on template type
     if (type === 'system') {
@@ -235,41 +251,31 @@
       uploadedHeader = null
     }
     
-    
-    // Auto-save template settings when selecting system type
-    if (type === 'system') {
+    // CRITICAL FIX v2.2.2: Always save template type immediately
+    if (user?.id && type !== '') {
+      console.log('🔍 SettingsPage v2.2.2: Auto-saving templateType:', type)
+      console.log('🔍 SettingsPage v2.2.2: About to call saveTemplateSettings...')
       try {
-        // Save immediately with current values
         await saveTemplateSettings()
+        console.log('✅ SettingsPage v2.2.2: Template type saved successfully:', type)
+        console.log('✅ SettingsPage v2.2.2: Final templateType after save:', templateType)
       } catch (error) {
-        console.error('❌ Error auto-saving template settings:', error)
+        console.error('❌ SettingsPage v2.2.2: Error saving template type:', error)
       }
+    } else {
+      console.log('⚠️ SettingsPage v2.2.2: Skipping save - user?.id:', user?.id, 'type:', type)
     }
   }
 
-  // Handle third option click specifically
-    const handleThirdOptionClick = async () => {
-      
-      // Set templateType immediately for visual feedback
-      templateType = 'system'
-      
-      selectTemplateType('system')
-      
-      // Additional test: Force save just the templateType
-      try {
-        const firebaseModule = await import('../services/firebaseStorage.js')
-        const firebaseStorage = firebaseModule.default
-        
-        const simpleSettings = {
-          doctorId: user.id,
-          templateType: 'system',
-          updatedAt: new Date().toISOString()
-        }
-        
-        await firebaseStorage.saveDoctorTemplateSettings(user.id, simpleSettings)
-      } catch (error) {
-      }
-    }
+  // Handle third option click specifically - SIMPLIFIED v2.2.2
+  const handleThirdOptionClick = async () => {
+    console.log('🔍 SettingsPage v2.2.2: handleThirdOptionClick called')
+    console.log('🔍 SettingsPage v2.2.2: Current templateType before click:', templateType)
+    
+    // Use the unified selectTemplateType function which now includes saving
+    await selectTemplateType('system')
+    console.log('✅ SettingsPage v2.2.2: handleThirdOptionClick completed, final templateType:', templateType)
+  }
 
   // Removed temporary click test
 
@@ -380,21 +386,28 @@
     }
   }
 
+  // CRITICAL DEBUG v2.2.2: Track templateType changes
+  $: {
+    console.log('🔍 SettingsPage v2.2.2: templateType changed to:', templateType)
+    console.log('🔍 SettingsPage v2.2.2: Current user.templateSettings:', user?.templateSettings)
+  }
+
   // Watch for template changes to auto-generate preview
-  $: if (templateType) {
+  $: if (templateType && !isSaving) {
     generatePrescriptionPreview()
   }
 
-  // Save template settings
+  // Save template settings - ENHANCED v2.2.2
   const saveTemplateSettings = async () => {
     isSaving = true
     try {
+      console.log('🔍 SettingsPage v2.2.2: saveTemplateSettings called with templateType:', templateType)
+      console.log('🔍 SettingsPage v2.2.2: User object:', JSON.stringify(user, null, 2))
       
       if (!user?.id) {
         notifyError('User not authenticated')
         return
       }
-      
       
       // Prepare template settings object
       const templateSettings = {
@@ -407,29 +420,40 @@
         updatedAt: new Date().toISOString()
       }
       
-      
+      console.log('🔍 SettingsPage v2.2.2: Saving template settings to Firebase:', JSON.stringify(templateSettings, null, 2))
       
       // Import firebaseStorage service (default export)
       const firebaseModule = await import('../services/firebaseStorage.js')
       const firebaseStorage = firebaseModule.default
       
+      console.log('🔍 SettingsPage v2.2.2: About to call saveDoctorTemplateSettings...')
+      
       // Persist via dedicated API that handles serialization
       const result = await firebaseStorage.saveDoctorTemplateSettings(user.id, templateSettings)
       
+      console.log('✅ SettingsPage v2.2.2: Template settings saved to Firebase successfully')
+      console.log('✅ SettingsPage v2.2.2: Firebase save result:', result)
       
       // Update the user object in memory to reflect the new template settings
       if (user) {
         user.templateSettings = templateSettings
+        console.log('✅ SettingsPage v2.2.3: Updated user object in memory with templateSettings:', JSON.stringify(user.templateSettings, null, 2))
+        console.log('✅ SettingsPage v2.2.3: User templateSettings.templateType:', user.templateSettings?.templateType)
+        
+        // CRITICAL FIX v2.2.3: Dispatch event to update App component's user object
+        console.log('🔍 SettingsPage v2.2.3: Dispatching user-updated event to sync with App component')
+        dispatch('user-updated', { user })
       }
       
       notifySuccess('Template settings saved successfully!')
       
     } catch (error) {
-      console.error('❌ Error saving template settings:', error)
+      console.error('❌ SettingsPage v2.2.2: Error saving template settings:', error)
       console.error('❌ Error details:', {
         message: error.message,
         stack: error.stack,
         user: user,
+        templateType: templateType,
         templateSettings: templateSettings
       })
       notifyError(`Failed to save template settings: ${error.message}`)
@@ -778,12 +802,12 @@
                     on:click={generateSystemHeader}
                   >
                     <i class="fas fa-eye mr-2"></i>
-                    Preview System Header <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-2">v2.1.5</span>
+                    Preview System Header <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-2">v2.2.3</span>
                   </button>
                   
                   <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-4">
-                      <i class="fas fa-edit mr-2"></i>Professional Header Editor <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.1.5</span>
+                      <i class="fas fa-edit mr-2"></i>Professional Header Editor <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.3</span>
                     </label>
                     
                     <HeaderEditor 

@@ -1501,7 +1501,7 @@
   // Generate prescription PDF directly
   const generatePrescriptionPDF = async () => {
     try {
-      console.log('🔄 Starting PDF generation... [UPDATE v2.1.5]')
+      console.log('🔄 Starting PDF generation... [UPDATE v2.1.6]')
       
       // Load template settings
       let templateSettings = null
@@ -1754,6 +1754,10 @@
                 justify-content: center !important;
                 width: 100% !important;
                 position: relative !important;
+                /* Additional centering reinforcement */
+                margin: 0 auto !important;
+                left: 0 !important;
+                right: 0 !important;
               }
               .header-capture-container * {
                 box-sizing: border-box !important;
@@ -1802,9 +1806,9 @@
                 margin: 0 auto !important;
                 object-fit: contain !important;
                 align-self: center !important;
-                position: relative !important;
-                left: 50% !important;
-                transform: translateX(-50%) !important;
+                /* Simplified centering - remove conflicting position/transform */
+                float: none !important;
+                clear: both !important;
               }
               .header-capture-container .resize-handle,
               .header-capture-container .quill-resize-handle {
@@ -1824,11 +1828,16 @@
               .header-capture-container img {
                 margin-left: auto !important;
                 margin-right: auto !important;
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
                 width: 300px !important;
                 height: 200px !important;
                 max-width: 300px !important;
                 max-height: 200px !important;
                 object-fit: contain !important;
+                display: block !important;
+                float: none !important;
+                clear: both !important;
               }
               
               /* Force center alignment for all content by default */
@@ -1916,7 +1925,7 @@
               const html2canvasModule = await import('html2canvas')
               const html2canvas = html2canvasModule.default
               
-              console.log('📸 Capturing header as image... [UPDATE v2.1.5]')
+              console.log('📸 Capturing header as image... [UPDATE v2.1.6]')
               
               // Ensure the container has proper dimensions for capture
               headerContainer.style.width = '800px'
@@ -1924,16 +1933,23 @@
               headerContainer.style.padding = '20px'
               headerContainer.style.backgroundColor = 'white'
               
-              // Force all images to be the correct size before capture
+              // Force all images to be the correct size and centered before capture
               const images = headerContainer.querySelectorAll('img')
               images.forEach(img => {
                 img.style.width = '300px'  // Larger size for better quality when scaled up
                 img.style.height = '200px' // Larger size for better quality when scaled up
                 img.style.objectFit = 'contain'
                 img.style.display = 'block'
-                img.style.margin = '0 auto'
+                img.style.margin = '0 auto'  // Center horizontally
+                img.style.marginTop = '0'
+                img.style.marginBottom = '0'
                 img.style.maxWidth = '300px'
                 img.style.maxHeight = '200px'
+                img.style.float = 'none'     // Prevent floating
+                img.style.clear = 'both'     // Clear any floating
+                img.style.position = 'static' // Remove any positioning
+                img.style.left = 'auto'      // Reset positioning
+                img.style.transform = 'none' // Remove transforms
               })
               
               // Ensure all text has proper sizing and is larger for PDF readability
@@ -1983,7 +1999,7 @@
               
               // Convert canvas to base64 image
               const headerImageData = canvas.toDataURL('image/png')
-              console.log('📸 Header captured successfully [UPDATE v2.1.5]:', headerImageData.substring(0, 50) + '...')
+              console.log('📸 Header captured successfully [UPDATE v2.1.6]:', headerImageData.substring(0, 50) + '...')
               
               // Calculate proper dimensions maintaining aspect ratio
               const maxHeaderWidthMm = 200 // Maximum width in mm (increased for larger header)
@@ -2008,7 +2024,7 @@
                 headerImageHeightMm = headerImageWidthMm / aspectRatio
               }
               
-              console.log('📸 Header image dimensions for PDF [UPDATE v2.1.5]:', `${headerImageWidthMm.toFixed(1)}mm x ${headerImageHeightMm.toFixed(1)}mm (aspect ratio: ${aspectRatio.toFixed(2)})`)
+              console.log('📸 Header image dimensions for PDF [UPDATE v2.1.6]:', `${headerImageWidthMm.toFixed(1)}mm x ${headerImageHeightMm.toFixed(1)}mm (aspect ratio: ${aspectRatio.toFixed(2)})`)
               
               // Center the header image horizontally
               const headerImageX = (pageWidth - headerImageWidthMm) / 2
@@ -2063,7 +2079,7 @@
             // Add version number to PDF for tracking
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.text('M-Prescribe v2.1.5', pageWidth - 10, pageHeight - 5, { align: 'right' })
+            doc.text('M-Prescribe v2.2.3', pageWidth - 10, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')
@@ -2084,7 +2100,7 @@
         // Add version number to PDF for tracking
         doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
-        doc.text('M-Prescribe v2.1.5', pageWidth - 10, pageHeight - 5, { align: 'right' })
+        doc.text('M-Prescribe v2.2.0', pageWidth - 10, pageHeight - 5, { align: 'right' })
         
         // Clinic details
         doc.setFontSize(10)
