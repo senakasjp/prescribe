@@ -2079,7 +2079,7 @@
             // Add version number to PDF for tracking
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.text('M-Prescribe v2.2.3', pageWidth - 10, pageHeight - 5, { align: 'right' })
+            doc.text('M-Prescribe v2.2.7', pageWidth - 10, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')

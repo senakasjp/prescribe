@@ -64,11 +64,11 @@
   }
   
   
-  // Force cache refresh for v2.2.3 with timestamp
+  // Force cache refresh for v2.2.7 with timestamp
   if (typeof window !== 'undefined') {
-    window.appVersion = '2.2.3'
+    window.appVersion = '2.2.5'
     window.buildTime = new Date().toISOString()
-    console.log('🚀 M-Prescribe v2.2.3 loaded with user object synchronization fix!')
+    console.log('🚀 M-Prescribe v2.2.7 loaded with upload preview fix!')
     console.log('📅 Build Time:', window.buildTime)
     console.log('🔄 Cache bust timestamp:', Date.now())
   }
@@ -414,11 +414,9 @@
     console.log('App: Profile update complete, full user object:', user)
   }
 
-  // Handle user update from SettingsPage - CRITICAL FIX v2.2.3
+  // Handle user update from SettingsPage
   const handleUserUpdate = (event) => {
     const { user: updatedUser } = event.detail
-    console.log('🔍 App v2.2.3: User updated from SettingsPage:', updatedUser)
-    console.log('🔍 App v2.2.3: Updated templateSettings:', updatedUser.templateSettings)
     
     // Force reactive update by creating a new object reference
     user = { ...updatedUser }
@@ -431,8 +429,6 @@
     } else if (updatedUser.role === 'admin') {
       adminAuthService.saveCurrentAdmin(updatedUser)
     }
-    
-    console.log('✅ App v2.2.3: User state synchronized with SettingsPage')
   }
   
   
@@ -592,7 +588,7 @@
     <LoadingSpinner 
       size="large" 
       color="teal" 
-      text="Loading M-Prescribe v2.2.3..." 
+      text="Loading M-Prescribe v2.2.7..." 
       fullScreen={true}
     />
   {:else if user}
@@ -605,7 +601,7 @@
       <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4">
         <a href="/" class="flex items-center space-x-3 rtl:space-x-reverse">
           <i class="fas fa-user-md text-white text-xl"></i>
-          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.3</span></span>
+          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.7</span></span>
         </a>
           
           <!-- Mobile Toggle Button -->
@@ -820,7 +816,7 @@
                   <i class="fas fa-stethoscope text-teal-600 text-xl"></i>
                 </div>
               </div>
-              <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.3</span> <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-1">{new Date().toLocaleTimeString()}</span></h1>
+              <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.7</span> <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-1">{new Date().toLocaleTimeString()}</span></h1>
               <p class="text-gray-600 text-sm hidden sm:block">AI-Powered Medical Prescription System</p>
               <p class="text-gray-600 text-xs sm:hidden">AI-Powered Medical System</p>
                 </div>
