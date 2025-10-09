@@ -1709,8 +1709,13 @@
                     console.log('🖼️ Aspect ratio:', aspectRatio.toFixed(2))
                     console.log('🖼️ Final PDF dimensions:', actualWidthMm.toFixed(1) + 'mm x ' + actualHeightMm.toFixed(1) + 'mm')
                     
+                    // Add horizontal line after header
+                    const lineY = headerYStart + actualHeightMm + 2
+                    doc.setLineWidth(0.5)
+                    doc.line(margin, lineY, pageWidth - margin, lineY)
+                    
                     // Update content start position based on actual height
-                    contentYStart = headerYStart + actualHeightMm + 5
+                    contentYStart = lineY + 5
                     
                     // Add the actual image to the PDF with preserved aspect ratio
             doc.addImage(
@@ -1745,7 +1750,13 @@
                     const headerWidthMm = maxHeaderWidthMm
                     
                     headerYStart = 5
-                    contentYStart = headerYStart + headerHeightMm + 5
+                    
+                    // Add horizontal line after header
+                    const lineY = headerYStart + headerHeightMm + 2
+                    doc.setLineWidth(0.5)
+                    doc.line(margin, lineY, pageWidth - margin, lineY)
+                    
+                    contentYStart = lineY + 5
                     
                     doc.addImage(
                       templateSettings.uploadedHeader,
@@ -1795,7 +1806,6 @@
           // For printed letterheads, reserve space
           const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
           headerYStart = 5
-          contentYStart = headerYStart + headerHeightMm + 10
           
           console.log('🖨️ Printed letterhead space reserved:', headerHeightMm + 'mm')
           
@@ -1803,6 +1813,13 @@
           doc.setFontSize(8)
           doc.setFont('helvetica', 'italic')
           doc.text('[Printed Letterhead Area - ' + Math.round(headerHeightMm) + 'mm height]', margin, headerYStart + 5)
+          
+          // Add horizontal line after header
+          const lineY = headerYStart + headerHeightMm + 2
+          doc.setLineWidth(0.5)
+          doc.line(margin, lineY, pageWidth - margin, lineY)
+          
+          contentYStart = lineY + 5
           
         } else if (templateSettings.templateType === 'system') {
           // System header - use custom header content
@@ -1963,8 +1980,8 @@
               .header-capture-container [style*="text-align:center"] img {
                 display: block !important;
                 margin: 0 auto !important;
-                max-width: 200px !important;
-                max-height: 150px !important;
+                max-width: 400px !important;
+                max-height: 250px !important;
                 width: auto !important;
                 height: auto !important;
                 object-fit: contain !important;
@@ -2028,15 +2045,15 @@
               // Force all images to be the correct size and centered before capture
               const images = headerContainer.querySelectorAll('img')
               images.forEach(img => {
-                img.style.width = '300px'  // Larger size for better quality when scaled up
-                img.style.height = '200px' // Larger size for better quality when scaled up
+                img.style.width = '400px'  // Larger size for better quality when scaled up
+                img.style.height = '250px' // Larger size for better quality when scaled up
                 img.style.objectFit = 'contain'
                 img.style.display = 'block'
                 img.style.margin = '0 auto'  // Center horizontally
                 img.style.marginTop = '0'
                 img.style.marginBottom = '0'
-                img.style.maxWidth = '300px'
-                img.style.maxHeight = '200px'
+                img.style.maxWidth = '400px'
+                img.style.maxHeight = '250px'
                 img.style.float = 'none'     // Prevent floating
                 img.style.clear = 'both'     // Clear any floating
                 img.style.position = 'static' // Remove any positioning
@@ -2057,22 +2074,22 @@
                 if (isHeading) {
                   // Special handling for headings - make them much larger
                   if (el.tagName === 'H1') {
-                    el.style.fontSize = '48px'  // Very large for main headings
+                    el.style.fontSize = '56px'  // Very large for main headings
                   } else if (el.tagName === 'H2') {
-                    el.style.fontSize = '42px'  // Large for sub-headings
+                    el.style.fontSize = '48px'  // Large for sub-headings
                   } else if (el.tagName === 'H3') {
-                    el.style.fontSize = '38px'  // Medium-large for sub-sub-headings
+                    el.style.fontSize = '44px'  // Medium-large for sub-sub-headings
                   } else {
-                    el.style.fontSize = '36px'  // Large for other headings
+                    el.style.fontSize = '40px'  // Large for other headings
                   }
                 } else {
                   // Regular text scaling (more aggressive scaling)
                   if (numericSize < 18) {
-                    el.style.fontSize = '32px'  // Much larger minimum size for PDF
+                    el.style.fontSize = '36px'  // Much larger minimum size for PDF
                   } else if (numericSize < 24) {
-                    el.style.fontSize = '36px'  // Larger body text size
+                    el.style.fontSize = '42px'  // Larger body text size
                   } else {
-                    el.style.fontSize = `${Math.max(numericSize * 1.8, 36)}px`  // More aggressive scaling for larger text
+                    el.style.fontSize = `${Math.max(numericSize * 2.0, 40)}px`  // More aggressive scaling for larger text
                   }
                 }
                 
@@ -2110,8 +2127,8 @@
               console.log('📸 Header captured successfully [UPDATE v2.1.6]:', headerImageData.substring(0, 50) + '...')
               
               // Calculate proper dimensions maintaining aspect ratio
-              const maxHeaderWidthMm = 200 // Maximum width in mm (increased for larger header)
-              const maxHeaderHeightMm = 100  // Maximum height in mm (increased for larger header)
+              const maxHeaderWidthMm = 250 // Maximum width in mm (increased for larger header)
+              const maxHeaderHeightMm = 120  // Maximum height in mm (increased for larger header)
               
               // Calculate aspect ratio from canvas dimensions
               const aspectRatio = canvas.width / canvas.height
@@ -2127,8 +2144,8 @@
               }
               
               // Ensure minimum size for readability
-              if (headerImageWidthMm < 150) {
-                headerImageWidthMm = 150
+              if (headerImageWidthMm < 180) {
+                headerImageWidthMm = 180
                 headerImageHeightMm = headerImageWidthMm / aspectRatio
               }
               
@@ -2146,8 +2163,13 @@
               capturedHeaderHeight = headerImageHeightMm
               capturedHeaderX = headerImageX
               
+              // Add horizontal line after header
+              const lineY = headerYStart + headerImageHeightMm + 2
+              doc.setLineWidth(0.5)
+              doc.line(margin, lineY, pageWidth - margin, lineY)
+              
               // Update content start position
-              contentYStart = headerYStart + headerImageHeightMm + 5
+              contentYStart = lineY + 5
               
               console.log('✅ Header image added to PDF successfully and stored for multi-page use')
               
@@ -2172,7 +2194,12 @@
                 }
               })
               
-              contentYStart = currentY + 5
+              // Add horizontal line after header
+              const lineY = currentY + 2
+              doc.setLineWidth(0.5)
+              doc.line(margin, lineY, pageWidth - margin, lineY)
+              
+              contentYStart = lineY + 5
             } finally {
               // Clean up temporary container and style
               if (document.body.contains(headerContainer)) {
@@ -2193,14 +2220,20 @@
             // Add version number to PDF for tracking
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.text('M-Prescribe v2.2.14', pageWidth - margin, pageHeight - 5, { align: 'right' })
+            doc.text('M-Prescribe v2.2.21', pageWidth - margin, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')
             doc.text('Your Medical Clinic', margin, headerYStart + 7)
             doc.text('123 Medical Street, City', margin, headerYStart + 12)
             doc.text('Phone: (555) 123-4567', margin, headerYStart + 17)
-            contentYStart = headerYStart + 25
+            
+            // Add horizontal line after header
+            const lineY = headerYStart + 22
+            doc.setLineWidth(0.5)
+            doc.line(margin, lineY, pageWidth - margin, lineY)
+            
+            contentYStart = lineY + 5
           }
         }
       }
@@ -2214,7 +2247,7 @@
         // Add version number to PDF for tracking
         doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
-        doc.text('M-Prescribe v2.2.14', pageWidth - margin, pageHeight - 5, { align: 'right' })
+        doc.text('M-Prescribe v2.2.21', pageWidth - margin, pageHeight - 5, { align: 'right' })
         
         // Clinic details
         doc.setFontSize(10)
@@ -2222,11 +2255,17 @@
         doc.text('Your Medical Clinic', margin, headerYStart + 7)
         doc.text('123 Medical Street, City', margin, headerYStart + 12)
         doc.text('Phone: (555) 123-4567', margin, headerYStart + 17)
-        contentYStart = headerYStart + 25
+        
+        // Add horizontal line after header
+        const lineY = headerYStart + 22
+        doc.setLineWidth(0.5)
+        doc.line(margin, lineY, pageWidth - margin, lineY)
+        
+        contentYStart = lineY + 5
       }
       
       // Patient information section
-      doc.setFontSize(12)
+      doc.setFontSize(11)
       doc.setFont('helvetica', 'bold')
       doc.text('PATIENT INFORMATION', margin, contentYStart)
       
@@ -2258,11 +2297,15 @@
       const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
       doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
       
+      // Sex/Gender on third line
+      const patientSex = selectedPatient.gender || selectedPatient.sex || 'Not specified'
+      doc.text(`Sex: ${patientSex}`, margin, contentYStart + 19)
+      
       // Prescription medications section
-      let yPos = contentYStart + 25
+      let yPos = contentYStart + 31
       
       if (currentMedications && currentMedications.length > 0) {
-        doc.setFontSize(12)
+        doc.setFontSize(11)
         doc.setFont('helvetica', 'bold')
         doc.text('PRESCRIPTION MEDICATIONS', margin, yPos)
         yPos += 6
@@ -2277,7 +2320,13 @@
             // Add header to new page if captured
             if (capturedHeaderImage) {
               doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
-              yPos = contentYStart
+              
+              // Add horizontal line after header
+              const lineY = headerYStart + capturedHeaderHeight + 2
+              doc.setLineWidth(0.5)
+              doc.line(margin, lineY, pageWidth - margin, lineY)
+              
+              yPos = lineY + 5
             } else {
             yPos = margin + 10
             }
@@ -2339,13 +2388,19 @@
           // Add header to new page if captured
           if (capturedHeaderImage) {
             doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
-            yPos = contentYStart
+            
+            // Add horizontal line after header
+            const lineY = headerYStart + capturedHeaderHeight + 2
+            doc.setLineWidth(0.5)
+            doc.line(margin, lineY, pageWidth - margin, lineY)
+            
+            yPos = lineY + 5
           } else {
           yPos = margin + 10
           }
         }
         
-      doc.setFontSize(12)
+      doc.setFontSize(11)
         doc.setFont('helvetica', 'bold')
         doc.text('ADDITIONAL NOTES', margin, yPos)
         yPos += 5
@@ -2357,22 +2412,7 @@
         yPos += notes.length * 3
       }
       
-      // Doctor signature section
-      if (yPos > pageHeight - 40) {
-        doc.addPage()
-        yPos = pageHeight - 35
-      } else {
-        yPos = Math.max(yPos + 6, pageHeight - 35)
-      }
-      
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
-      doc.text('Doctor Signature:', margin, yPos)
-      doc.line(margin + 30, yPos + 1, margin + 80, yPos + 1)
-      
-      // Date and stamp area
-      doc.text('Date:', margin + 90, yPos)
-      doc.line(margin + 105, yPos + 1, margin + 130, yPos + 1)
+      // Doctor signature section removed
       
       // Footer
       doc.setFontSize(7)

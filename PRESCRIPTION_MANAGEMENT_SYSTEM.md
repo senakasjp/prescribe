@@ -301,38 +301,173 @@ const generatePrescriptionPreview = () => {
 
 ## PDF Generation
 
-### PrescriptionPDF.svelte
+### PrescriptionPDF.svelte (v2.2.21)
+
+#### PDF Formatting Specifications
+
+**Current Version**: v2.2.21 (January 2025)
+
+#### Page Layout
+- **Page Size**: A4 (210mm x 297mm)
+- **Margins**: 20mm (left, right, top, bottom)
+- **Content Width**: 170mm (page width - margins)
+- **Multi-page Support**: Headers and footers on all pages
+
+#### Font Hierarchy
+```
+Section Headings:     11pt (bold) - PATIENT INFORMATION, PRESCRIPTION MEDICATIONS, ADDITIONAL NOTES
+Patient Details:      10pt (normal) - Name, Age, Sex, Date, Prescription #
+Medication Details:    9pt (normal) - Drug names, dosage, frequency, duration, instructions
+Footer Text:           8pt (normal) - Version number
+Footer Disclaimer:     7pt (normal) - Validity statement
+```
+
+#### PDF Structure
+
+**1. Custom Header Section** (Variable height based on template type)
+- **System Header**: html2canvas rendered custom header with rich text and images
+  - Uses advanced CSS normalization for proper rendering
+  - Font scaling (1.8x) for better PDF readability
+  - Image centering with flexbox and margin: auto
+  - Scale: 4 for high-quality capture
+- **Uploaded Header**: Image header with aspect ratio preservation
+  - Max dimensions: 250mm x 120mm
+  - Min width: 180mm
+  - Centered horizontally
+- **Printed Letterhead**: Reserved space for pre-printed letterhead
+  - Height: Configurable (default 50mm)
+  - Visual placeholder in preview mode
+
+**Horizontal Line After Header**: 0.5pt line, 2mm below header
+
+**2. Patient Information Section** (starts 5mm below header line)
+- **Line 1**: Name (left) | Date (right)
+- **Line 2**: Age (left) | Prescription # (right)
+- **Line 3**: Sex/Gender (left)
+- **Spacing**: 6mm between lines
+
+**3. Prescription Medications Section** (starts 31mm below patient info header)
+- **Section Heading**: "PRESCRIPTION MEDICATIONS" (11pt bold)
+- **Each Medication**:
+  - Drug name and dosage (10pt bold, same line)
+  - Frequency and duration (9pt normal)
+  - Instructions (9pt normal, italic)
+  - Additional notes (if present, 9pt normal, italic)
+  - 6mm spacing between medications
+- **Page Break Logic**: New page if < 30mm remaining space
+
+**4. Additional Notes Section** (if notes exist)
+- **Section Heading**: "ADDITIONAL NOTES" (11pt bold)
+- **Content**: 9pt normal, wrapped to content width
+- **Page Break Logic**: New page if < 60mm remaining space
+
+**5. Footer** (on every page)
+- **Left**: Validity statement (7pt) - "This prescription is valid for 30 days from the date of issue."
+- **Right**: Version number (8pt) - "M-Prescribe v2.2.21"
+
+#### Multi-Page Support (v2.2.19+)
+- **Header Replication**: Captured header image appears on every page
+- **Horizontal Lines**: Added after header on all pages
+- **Footer Consistency**: Footer appears on every page
+- **Content Flow**: Automatic pagination for medications and notes
+
+#### Technical Implementation
 ```javascript
-// PDF generation using jsPDF
+// PDF generation using jsPDF and html2canvas
 const generatePDF = async () => {
-  const pdf = new jsPDF()
+  const doc = new jsPDF('p', 'mm', 'a4')
+  const pageWidth = 210
+  const pageHeight = 297
+  const margin = 20
   
-  // Add header
-  if (templateType === 'system') {
-    pdf.setFontSize(16)
-    pdf.text(doctorName, 20, 30)
-    pdf.text(practiceName, 20, 40)
-    pdf.text(address, 20, 50)
-    pdf.text(`Tel: ${phone} | Email: ${email}`, 20, 60)
+  // 1. Capture custom header (if system template)
+  if (templateSettings.templateType === 'system') {
+    // Use html2canvas to capture header HTML
+    const canvas = await html2canvas(headerElement, {
+      backgroundColor: 'white',
+      scale: 4, // High-quality capture
+      useCORS: true,
+      allowTaint: true
+    })
+    const imgData = canvas.toDataURL('image/png')
+    // Add to PDF with proper sizing and centering
+    doc.addImage(imgData, 'PNG', headerX, headerYStart, headerWidth, headerHeight)
   }
   
-  // Add prescription content
-  pdf.setFontSize(12)
-  pdf.text(`Patient: ${patient.name}`, 20, 80)
-  pdf.text(`Date: ${new Date().toLocaleDateString()}`, 20, 90)
+  // 2. Add horizontal line after header
+  const lineY = headerYStart + headerHeight + 2
+  doc.setLineWidth(0.5)
+  doc.line(margin, lineY, pageWidth - margin, lineY)
   
-  // Add medications
-  let yPosition = 110
-  medications.forEach(medication => {
-    pdf.text(`${medication.name} - ${medication.dosage}`, 20, yPosition)
-    pdf.text(`Instructions: ${medication.instructions}`, 20, yPosition + 10)
-    yPosition += 30
+  // 3. Patient Information Section (11pt bold heading)
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.text('PATIENT INFORMATION', margin, contentYStart)
+  
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Name: ${patient.firstName} ${patient.lastName}`, margin, contentYStart + 7)
+  doc.text(`Date: ${currentDate}`, pageWidth - margin, contentYStart + 7, { align: 'right' })
+  doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
+  doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
+  doc.text(`Sex: ${patientSex}`, margin, contentYStart + 19)
+  
+  // 4. Medications Section (11pt bold heading)
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.text('PRESCRIPTION MEDICATIONS', margin, yPos)
+  
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  medications.forEach((medication) => {
+    // Check page break
+    if (yPos > pageHeight - 30) {
+      doc.addPage()
+      // Add header to new page
+      if (capturedHeaderImage) {
+        doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+        const lineY = headerYStart + capturedHeaderHeight + 2
+        doc.setLineWidth(0.5)
+        doc.line(margin, lineY, pageWidth - margin, lineY)
+        yPos = lineY + 5
+      }
+    }
+    // Render medication details
   })
   
-  // Save PDF
-  pdf.save(`prescription_${patient.name}_${Date.now()}.pdf`)
+  // 5. Additional Notes (11pt bold heading)
+  if (prescriptionNotes) {
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.text('ADDITIONAL NOTES', margin, yPos)
+    
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    const notes = doc.splitTextToSize(prescriptionNotes, contentWidth)
+    doc.text(notes, margin, yPos + 5)
+  }
+  
+  // 6. Footer on every page
+  doc.setFontSize(7)
+  doc.text('This prescription is valid for 30 days from the date of issue.', margin, pageHeight - 5)
+  doc.setFontSize(8)
+  doc.text('M-Prescribe v2.2.21', pageWidth - margin, pageHeight - 5, { align: 'right' })
+  
+  // Open in new window instead of download
+  const pdfBlob = doc.output('blob')
+  const pdfUrl = URL.createObjectURL(pdfBlob)
+  window.open(pdfUrl, '_blank')
 }
 ```
+
+#### Key Features
+- **HTML to PDF Conversion**: Uses html2canvas for pixel-perfect header rendering
+- **Font Scaling**: Intelligent font size management (1.8x multiplier for text, 48px for H1, 36px for other headings)
+- **Image Handling**: Proper image centering with CSS flexbox and margin: auto
+- **Content Cleaning**: Automatic removal of editing artifacts before capture
+- **Multi-page Headers**: Captured header image stored and reused on all pages
+- **Responsive Layout**: Automatic pagination based on content length
+- **Professional Typography**: Consistent font hierarchy throughout document
 
 ## Database Operations
 

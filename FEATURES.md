@@ -2,7 +2,7 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
-### **🎨 Prescription Template Header Editor System (January 16, 2025)**
+### **🎨 Prescription Template Header Editor System (January 16, 2025) - v2.2.21**
 - **Professional Header Editor**: Advanced rich text editor for creating custom prescription headers
 - **Template Type Selection**: Three options - Printed Letterheads, Upload Header Image, or System Header
 - **Rich Text Editing**: Bold, italic, font size controls, and image insertion capabilities
@@ -10,13 +10,19 @@
 - **Real-time Preview**: Live preview of header content as you edit
 - **PDF Integration**: Seamless conversion of custom headers to PDF with proper formatting and alignment
 - **Template Persistence**: Template selections and content retain across browser refreshes
-- **Version Tracking**: Comprehensive version tracking (currently v2.2.5) across all components
+- **Version Tracking**: Comprehensive version tracking (currently v2.2.21) across all components
 - **State Synchronization**: Proper user object synchronization between components for data persistence
 - **Clean Interface**: Streamlined UI with redundant preview buttons removed for better UX
 - **HTML to PDF Conversion**: Uses html2canvas for pixel-perfect header rendering in PDFs
 - **Image Centering**: Advanced CSS techniques ensure proper image alignment in both preview and PDF
-- **Font Scaling**: Intelligent font size management for consistent text rendering
+- **Font Scaling**: Intelligent font size management (1.8x multiplier, 48px for H1) for consistent text rendering
 - **Content Cleaning**: Automatic removal of editing artifacts before PDF generation
+- **Multi-page Support**: Headers appear on every page with horizontal separator lines
+- **Professional Typography**: 11pt section headings, 10pt patient details, 9pt medication info
+- **Patient Information**: Includes Name, Date, Age, Prescription #, and Sex/Gender
+- **PDF Layout**: 20mm margins, A4 size, automatic pagination for long prescriptions
+- **Footer System**: Validity statement (left) and version number (right) on every page
+- **Browser Preview**: PDFs open in new browser window instead of auto-downloading
 
 ### **🏥 Dispensed Status Integration System (January 16, 2025)**
 - **Real-time Dispensed Status**: Doctors can now see which medications have been dispensed from connected pharmacies

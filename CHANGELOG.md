@@ -1,6 +1,102 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.2.21 - PDF Formatting Refinements (January 2025)
+
+### 📄 Prescription PDF Typography Enhancement
+- **Section Headings**: Reduced font size from 12pt to 11pt for better visual balance
+- **Affected Sections**: "PATIENT INFORMATION", "PRESCRIPTION MEDICATIONS", "ADDITIONAL NOTES"
+- **Font Hierarchy**: More professional and balanced typography throughout PDF
+- **Visual Impact**: Improved readability with appropriately sized section headings
+
+### 🎯 Technical Details
+- **Font Size Optimization**: Section headings now 11pt instead of 12pt
+- **Consistency**: All three main section headings use same font size
+- **Professional Appearance**: Better proportions between headings and body text
+- **Version**: Updated to v2.2.21 across all components
+
+## Version 2.2.20 - Patient Information Enhancement (January 2025)
+
+### 👤 Patient Sex/Gender Field Addition
+- **New Field**: Added patient sex/gender to prescription PDF
+- **Placement**: Third line of patient information section
+- **Fallback Handling**: Shows "Not specified" if gender data not available
+- **Field Priority**: Checks both `gender` and `sex` fields for maximum compatibility
+
+### 📋 Patient Information Layout
+1. **Line 1**: Name (left) | Date (right)
+2. **Line 2**: Age (left) | Prescription # (right)
+3. **Line 3**: Sex/Gender (left) ← NEW
+4. **Spacing**: 6mm between each line
+
+## Version 2.2.19 - Multi-Page Consistency (January 2025)
+
+### 📄 Horizontal Lines on All Pages
+- **Separator Lines**: Added horizontal line after header on every PDF page
+- **Line Specifications**: 0.5pt width, 2mm below header
+- **Multi-Page Support**: Consistent header + line on all continuation pages
+- **Professional Appearance**: Clear visual separation between header and content
+
+### 🔄 Page Break Enhancement
+- **Medication Overflow**: Header + line added when medications continue to new page
+- **Notes Overflow**: Header + line added when additional notes overflow
+- **Consistent Layout**: Every page follows same header structure
+
+## Version 2.2.18 - PDF Header Lines (January 2025)
+
+### ➖ Horizontal Line After Headers
+- **Visual Separator**: Added 0.5pt horizontal line after all header types
+- **Consistent Placement**: 2mm below header content
+- **Content Positioning**: All content starts 5mm below the line
+- **Professional Look**: Clear separation between header and prescription body
+
+## Version 2.2.17-2.2.15 - PDF Layout Refinements (January 2025)
+
+### 📐 Layout Improvements
+- **Removed Doctor Signature Section**: Cleaner, more streamlined PDF layout
+- **Increased Header Dimensions**: Better visibility and readability (250mm x 120mm max)
+- **Enhanced Font Scaling**: More aggressive font size management for PDF clarity
+- **Centered Layout**: Improved signature and date positioning (later removed)
+
+## Version 2.2.14-2.2.12 - Margin and Multi-Page Fixes (January 2025)
+
+### 📏 Margin Adjustments
+- **Increased Margins**: Left and right margins increased from 10mm to 20mm
+- **Better Readability**: More comfortable reading space on printed documents
+- **Multi-Page Headers**: Fixed header appearing on all pages for all template types
+- **Consistent Spacing**: Proper margin application throughout document
+
+## Version 2.2.11-2.2.9 - Header Capture and Multi-Page Support (January 2025)
+
+### 🎨 Exact Preview Header Capture
+- **HTML to Image**: Captures exact preview header for PDF using html2canvas
+- **Multi-Page Headers**: Captured header appears on every page
+- **Browser Preview**: PDFs now open in new browser window instead of downloading
+- **Reduced Margins**: Optimized header margin spacing (5mm top)
+
+### 📊 Technical Implementation
+- **Image Storage**: Stores captured header data for reuse on multiple pages
+- **Position Tracking**: Maintains header X position for consistent alignment
+- **Scope Fixes**: Proper variable scoping for multi-page header rendering
+
+## Version 2.2.8 - PDF Font Size Enhancement (January 2025)
+
+### 🔤 Header Font Scaling Improvements
+- **Increased Font Sizes**: Larger minimum font sizes (32px for text, 36-48px for headings)
+- **Heading-Specific Scaling**: H1: 48px, H2: 42px, H3: 38px, H4-H6: 36px
+- **Higher Quality Capture**: html2canvas scale increased to 4 for sharper text
+- **Better Readability**: More aggressive font scaling (1.8x) for PDF clarity
+
+## Version 2.2.7-2.2.6 - Upload Preview and Version Updates (January 2025)
+
+### 🖼️ Upload Preview Enhancement
+- **Automatic Preview**: Upload header option now shows automatic preview
+- **Reactive Updates**: Preview updates automatically when image is uploaded
+- **Removed Manual Button**: Eliminated redundant "Preview Uploaded Header" button
+- **Streamlined UX**: Cleaner interface with automatic preview generation
+
 ## Version 2.2.5 - Header Editor System Enhancement
+
+
 
 ### 🎨 Prescription Template Header Editor Improvements
 - **Streamlined Interface**: Removed redundant "Preview System Header" button from third option (System Header)
