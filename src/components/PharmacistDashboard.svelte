@@ -760,7 +760,7 @@
         <div class="flex items-center min-w-0 flex-1">
           <i class="fas fa-pills text-blue-600 mr-2 text-lg"></i>
           <div class="min-w-0 flex-1">
-            <h1 class="text-sm sm:text-base font-bold text-blue-600 truncate">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1">v2.2.7</span></h1>
+            <h1 class="text-sm sm:text-base font-bold text-blue-600 truncate">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1">v2.2.14</span></h1>
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
       </div>
         </div>

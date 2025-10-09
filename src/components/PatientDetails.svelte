@@ -1569,17 +1569,97 @@
       // A5 dimensions: 148mm width, 210mm height
       const pageWidth = 148
       const pageHeight = 210
-      const margin = 10
+      const margin = 20
       const contentWidth = pageWidth - (margin * 2)
       
       // Apply template settings to header
-      let headerYStart = 15
-      let contentYStart = 45
+      let headerYStart = 5
+      let contentYStart = 35
+      
+      // Variables to store captured header image for multi-page use (moved to proper scope)
+      let capturedHeaderImage = null
+      let capturedHeaderWidth = 0
+      let capturedHeaderHeight = 0
+      let capturedHeaderX = 0 // Store X position for consistent placement
       
       if (templateSettings) {
         console.log('🎨 Applying template settings:', templateSettings.templateType)
         
-        if (templateSettings.templateType === 'upload' && templateSettings.uploadedHeader) {
+        // NEW APPROACH: Try to capture the exact preview header first
+        console.log('📸 Attempting to capture header from preview element...')
+        try {
+          // Determine which preview element to capture based on template type
+          let previewElementId = null
+          if (templateSettings.templateType === 'printed') {
+            previewElementId = 'prescription-header-preview-printed'
+          } else if (templateSettings.templateType === 'upload') {
+            previewElementId = 'prescription-header-preview-upload'
+          } else if (templateSettings.templateType === 'system') {
+            previewElementId = 'prescription-header-preview-system'
+          }
+          
+          if (previewElementId) {
+            const previewElement = document.getElementById(previewElementId)
+            
+            if (previewElement) {
+              console.log('✅ Found preview element:', previewElementId)
+              
+              // Import html2canvas dynamically
+              const html2canvasModule = await import('html2canvas')
+              const html2canvas = html2canvasModule.default
+              
+              // Capture the preview element as-is
+              const canvas = await html2canvas(previewElement, {
+                backgroundColor: 'white',
+                scale: 3, // High quality
+                useCORS: true,
+                allowTaint: true,
+                logging: false
+              })
+              
+              // Convert to image data
+              capturedHeaderImage = canvas.toDataURL('image/png')
+              
+              // Calculate dimensions for PDF (convert pixels to mm)
+              const maxHeaderWidthMm = pageWidth - (margin * 2)
+              const aspectRatio = canvas.width / canvas.height
+              let headerWidthMm = maxHeaderWidthMm
+              let headerHeightMm = headerWidthMm / aspectRatio
+              
+              // If height is too large, scale down
+              const maxHeaderHeightMm = 60 // Maximum 60mm height
+              if (headerHeightMm > maxHeaderHeightMm) {
+                headerHeightMm = maxHeaderHeightMm
+                headerWidthMm = headerHeightMm * aspectRatio
+              }
+              
+          capturedHeaderWidth = headerWidthMm
+          capturedHeaderHeight = headerHeightMm
+          capturedHeaderX = (pageWidth - headerWidthMm) / 2 // Store X position for multi-page use
+          
+          console.log('✅ Successfully captured preview header:', canvas.width + 'x' + canvas.height + 'px')
+          console.log('✅ PDF dimensions:', headerWidthMm.toFixed(2) + 'mm x ' + headerHeightMm.toFixed(2) + 'mm')
+            } else {
+              console.log('⚠️ Preview element not found:', previewElementId)
+            }
+          }
+        } catch (captureError) {
+          console.error('❌ Error capturing preview header:', captureError)
+          // Fall back to original method
+        }
+        
+        // If we successfully captured the header, use it for all pages
+        if (capturedHeaderImage) {
+          console.log('✅ Using captured preview header for PDF')
+          headerYStart = 5
+          contentYStart = headerYStart + capturedHeaderHeight + 5
+          
+          // Add the captured header to the first page
+          doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+          
+          console.log('✅ Captured header added to first page')
+        } else if (templateSettings.templateType === 'upload' && templateSettings.uploadedHeader) {
+          // Fall back to original upload logic if capture failed
           // For uploaded header image, embed the actual image
           console.log('🖼️ Embedding uploaded header image')
           
@@ -1588,7 +1668,7 @@
             const maxHeaderHeightMm = (templateSettings.headerSize || 300) * 0.264583
             const maxHeaderWidthMm = pageWidth - (margin * 2) // Full width minus margins
             
-            headerYStart = 10
+            headerYStart = 5
             
             console.log('🖼️ Max header dimensions:', maxHeaderWidthMm + 'mm x ' + maxHeaderHeightMm + 'mm')
             
@@ -1644,7 +1724,13 @@
               'FAST' // compression
             )
             
-                    console.log('✅ Header image embedded successfully with preserved aspect ratio')
+                    // Store uploaded header image for multi-page use
+                    capturedHeaderImage = templateSettings.uploadedHeader
+                    capturedHeaderWidth = actualWidthMm
+                    capturedHeaderHeight = actualHeightMm
+                    capturedHeaderX = margin // Store X position (left-aligned with margin)
+                    
+                    console.log('✅ Header image embedded successfully with preserved aspect ratio and stored for multi-page use')
                     resolve()
                   } catch (error) {
                     reject(error)
@@ -1658,7 +1744,7 @@
                     const headerHeightMm = maxHeaderHeightMm
                     const headerWidthMm = maxHeaderWidthMm
                     
-                    headerYStart = 10
+                    headerYStart = 5
                     contentYStart = headerYStart + headerHeightMm + 5
                     
                     doc.addImage(
@@ -1672,7 +1758,13 @@
                       'FAST'
                     )
                     
-                    console.log('✅ Header image embedded with fallback dimensions')
+                    // Store uploaded header image for multi-page use
+                    capturedHeaderImage = templateSettings.uploadedHeader
+                    capturedHeaderWidth = headerWidthMm
+                    capturedHeaderHeight = headerHeightMm
+                    capturedHeaderX = margin // Store X position (left-aligned with margin)
+                    
+                    console.log('✅ Header image embedded with fallback dimensions and stored for multi-page use')
                     resolve()
                   } catch (error) {
                     reject(error)
@@ -1691,7 +1783,7 @@
             console.error('❌ Error embedding header image:', imageError)
             // Fallback to placeholder if image embedding fails
             const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
-            headerYStart = 10
+            headerYStart = 5
             contentYStart = headerYStart + headerHeightMm + 10
             
             doc.setFontSize(8)
@@ -1702,7 +1794,7 @@
         } else if (templateSettings.templateType === 'printed') {
           // For printed letterheads, reserve space
           const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
-          headerYStart = 10
+          headerYStart = 5
           contentYStart = headerYStart + headerHeightMm + 10
           
           console.log('🖨️ Printed letterhead space reserved:', headerHeightMm + 'mm')
@@ -1955,17 +2047,33 @@
               // Ensure all text has proper sizing and is larger for PDF readability
               const textElements = headerContainer.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6')
               textElements.forEach(el => {
+                // Check if this is a heading element
+                const isHeading = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(el.tagName)
+                
                 // Force larger font sizes for better PDF readability
                 const currentFontSize = el.style.fontSize || window.getComputedStyle(el).fontSize
                 const numericSize = parseFloat(currentFontSize)
                 
-                // Scale up font sizes for better PDF visibility
-                if (numericSize < 18) {
-                  el.style.fontSize = '20px'  // Minimum readable size
-                } else if (numericSize < 24) {
-                  el.style.fontSize = '24px'  // Good size for body text
+                if (isHeading) {
+                  // Special handling for headings - make them much larger
+                  if (el.tagName === 'H1') {
+                    el.style.fontSize = '48px'  // Very large for main headings
+                  } else if (el.tagName === 'H2') {
+                    el.style.fontSize = '42px'  // Large for sub-headings
+                  } else if (el.tagName === 'H3') {
+                    el.style.fontSize = '38px'  // Medium-large for sub-sub-headings
+                  } else {
+                    el.style.fontSize = '36px'  // Large for other headings
+                  }
                 } else {
-                  el.style.fontSize = `${Math.max(numericSize * 1.2, 24)}px`  // Scale up larger text
+                  // Regular text scaling (more aggressive scaling)
+                  if (numericSize < 18) {
+                    el.style.fontSize = '32px'  // Much larger minimum size for PDF
+                  } else if (numericSize < 24) {
+                    el.style.fontSize = '36px'  // Larger body text size
+                  } else {
+                    el.style.fontSize = `${Math.max(numericSize * 1.8, 36)}px`  // More aggressive scaling for larger text
+                  }
                 }
                 
                 el.style.lineHeight = '1.4'
@@ -1979,7 +2087,7 @@
               // Capture the header as an image
               const canvas = await html2canvas(headerContainer, {
                 backgroundColor: 'white',
-                scale: 3, // Even higher quality for better image capture
+                scale: 4, // Even higher quality for better font clarity
                 useCORS: true,
                 allowTaint: true,
                 width: headerContainer.offsetWidth,
@@ -2032,10 +2140,16 @@
               // Add the header image to PDF with proper aspect ratio
               doc.addImage(headerImageData, 'PNG', headerImageX, headerYStart, headerImageWidthMm, headerImageHeightMm)
               
+              // Store system header image for multi-page use
+              capturedHeaderImage = headerImageData
+              capturedHeaderWidth = headerImageWidthMm
+              capturedHeaderHeight = headerImageHeightMm
+              capturedHeaderX = headerImageX
+              
               // Update content start position
               contentYStart = headerYStart + headerImageHeightMm + 5
               
-              console.log('✅ Header image added to PDF successfully')
+              console.log('✅ Header image added to PDF successfully and stored for multi-page use')
               
             } catch (error) {
               console.error('❌ Error capturing header as image:', error)
@@ -2072,14 +2186,14 @@
           } else {
             console.log('⚠️ No custom header content found, using default')
             // Fallback to default header if no custom content
-            doc.setFontSize(16)
-            doc.setFont('helvetica', 'bold')
-            doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+        doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
             
             // Add version number to PDF for tracking
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.text('M-Prescribe v2.2.7', pageWidth - 10, pageHeight - 5, { align: 'right' })
+            doc.text('M-Prescribe v2.2.14', pageWidth - margin, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')
@@ -2100,7 +2214,7 @@
         // Add version number to PDF for tracking
         doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
-        doc.text('M-Prescribe v2.2.0', pageWidth - 10, pageHeight - 5, { align: 'right' })
+        doc.text('M-Prescribe v2.2.14', pageWidth - margin, pageHeight - 5, { align: 'right' })
         
         // Clinic details
         doc.setFontSize(10)
@@ -2159,7 +2273,14 @@
         currentMedications.forEach((medication, index) => {
           if (yPos > pageHeight - 30) {
             doc.addPage()
+            
+            // Add header to new page if captured
+            if (capturedHeaderImage) {
+              doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+              yPos = contentYStart
+            } else {
             yPos = margin + 10
+            }
           }
           
           // Medication header with drug name and dosage on same line
@@ -2214,7 +2335,14 @@
       if (prescriptionNotes && prescriptionNotes.trim() !== '') {
         if (yPos > pageHeight - 60) {
           doc.addPage()
+          
+          // Add header to new page if captured
+          if (capturedHeaderImage) {
+            doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+            yPos = contentYStart
+          } else {
           yPos = margin + 10
+          }
         }
         
       doc.setFontSize(12)
@@ -2254,12 +2382,14 @@
       // Generate filename
       const filename = `Prescription_${selectedPatient.firstName}_${selectedPatient.lastName}_${currentDate.replace(/\//g, '-')}.pdf`
       
-      console.log('💾 Saving PDF with filename:', filename)
+      console.log('💾 Opening PDF in new window:', filename)
       
-      // Save the PDF (single download only)
-      doc.save(filename)
+      // Open PDF in new browser window instead of downloading
+      const pdfBlob = doc.output('blob')
+      const pdfUrl = URL.createObjectURL(pdfBlob)
+      window.open(pdfUrl, '_blank')
       
-      console.log('✅ A5 PDF generated and downloaded successfully:', filename)
+      console.log('✅ A5 PDF generated and opened in new window:', filename)
       
     } catch (error) {
       console.error('❌ Error generating PDF:', error)

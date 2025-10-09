@@ -764,7 +764,7 @@
               <div class="max-w-2xl mx-auto">
                 <!-- Prescription Header -->
                 {#if templatePreview.type === 'printed'}
-                  <div class="text-center mb-6" style="height: {templatePreview.headerSpace}px; border: 2px dashed #d1d5db; display: flex; align-items: center; justify-content: center;">
+                  <div id="prescription-header-preview-printed" class="text-center mb-6" style="height: {templatePreview.headerSpace}px; border: 2px dashed #d1d5db; display: flex; align-items: center; justify-content: center;">
                     <div class="text-gray-500 text-sm">
                       <i class="fas fa-print text-2xl mb-2"></i>
                       <p>Printed Letterhead Space</p>
@@ -772,11 +772,11 @@
                     </div>
                   </div>
                 {:else if templatePreview.type === 'upload' && templatePreview.headerImage}
-                  <div class="text-center mb-6">
+                  <div id="prescription-header-preview-upload" class="text-center mb-6" style="background: white; padding: 10px;">
                     <img src={templatePreview.headerImage} alt="Header Preview" class="max-w-full h-auto mx-auto rounded" style="max-height: 200px;">
                   </div>
                 {:else if templateType === 'system'}
-                  <div class="text-center mb-6 bg-gray-50 p-4 rounded-lg">
+                  <div id="prescription-header-preview-system" class="text-center mb-6 bg-white p-4 rounded-lg">
                     {#if headerText && headerText.trim()}
                       <div class="system-header-preview" bind:this={previewElement}>
                         {@html headerText}
