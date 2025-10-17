@@ -210,8 +210,20 @@
   }
 
   const selectNameSuggestion = (s) => {
-    name = s.brandName || s.displayName || ''
+    // Always use brandName if available, otherwise extract from displayName
+    if (s.brandName) {
+      name = s.brandName
+    } else if (s.displayName) {
+      // Extract brand name from displayName format "BrandName (GenericName)"
+      const match = s.displayName.match(/^([^(]+)\s*\(/)
+      name = match ? match[1].trim() : s.displayName
+    } else {
+      name = ''
+    }
+    
+    // Set generic name
     genericName = s.genericName || ''
+    
     // If the suggestion has a numeric strength like "500 mg", try to prefill dosage
     if (s.strength && !dosage) {
       const m = String(s.strength).match(/(\d+(?:\.\d+)?)/)

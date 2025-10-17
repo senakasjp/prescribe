@@ -3,6 +3,7 @@
 
 import firebaseStorage from '../firebaseStorage.js'
 import pharmacistStorageService from './pharmacistStorageService.js'
+import inventoryService from './inventoryService.js'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase-config.js'
 
@@ -10,7 +11,7 @@ class ChargeCalculationService {
   constructor() {
     this.collections = {
       doctors: 'doctors',
-      drugStock: 'drugStock'
+      pharmacistInventory: 'pharmacistInventory'
     }
   }
 
@@ -86,37 +87,6 @@ class ChargeCalculationService {
   }
 
   /**
-   * Get drug stock by pharmacist ID using a simple query (no composite index required)
-   * @param {string} pharmacistId - Pharmacist ID
-   * @returns {Promise<Array>} Array of drug stock items
-   */
-  async getDrugStockByPharmacistId(pharmacistId) {
-    try {
-      console.log('💊 Getting drug stock for pharmacist:', pharmacistId)
-      
-      // Use direct Firebase query without ordering to avoid composite index requirement
-      const stockRef = collection(db, 'drugStock')
-      const q = query(stockRef, where('pharmacistId', '==', pharmacistId))
-      const querySnapshot = await getDocs(q)
-      
-      const drugStock = []
-      querySnapshot.forEach((doc) => {
-        drugStock.push({
-          id: doc.id,
-          ...doc.data()
-        })
-      })
-      
-      console.log('💊 Retrieved drug stock:', drugStock.length, 'items')
-      return drugStock
-    } catch (error) {
-      console.error('❌ Error getting drug stock by pharmacist ID:', error)
-      // Return empty array instead of throwing to allow charge calculation to continue
-      return []
-    }
-  }
-
-  /**
    * Calculate drug charges for dispensed medications
    * @param {Object} prescription - The prescription object
    * @param {Object} pharmacist - The pharmacist object
@@ -130,8 +100,9 @@ class ChargeCalculationService {
       let medicationBreakdown = []
       let totalMedications = 0
 
-      // Get pharmacist's drug stock using a simpler query that doesn't require composite index
-      const drugStock = await this.getDrugStockByPharmacistId(pharmacist.id)
+      // Get pharmacist's inventory using the new inventory service
+      const inventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
+      console.log('💊 Retrieved inventory items:', inventoryItems.length, 'items')
       
       // Process each prescription in the prescription object
       if (prescription.prescriptions && prescription.prescriptions.length > 0) {
@@ -139,7 +110,7 @@ class ChargeCalculationService {
           if (presc.medications && presc.medications.length > 0) {
             for (const medication of presc.medications) {
               // Find matching drug in inventory
-              const matchingDrug = this.findMatchingDrug(medication.name, drugStock)
+              const matchingDrug = this.findMatchingDrug(medication.name, inventoryItems)
               
               if (matchingDrug) {
                 // For now, assume 1 unit per medication (can be enhanced later with quantity)
@@ -158,7 +129,12 @@ class ChargeCalculationService {
                   quantity: quantity,
                   unitCost: unitCost,
                   totalCost: totalMedicationCost,
-                  found: true
+                  found: true,
+                  inventoryItem: {
+                    brandName: matchingDrug.brandName,
+                    genericName: matchingDrug.genericName,
+                    drugName: matchingDrug.drugName
+                  }
                 })
               } else {
                 // Medication not found in inventory
@@ -197,34 +173,42 @@ class ChargeCalculationService {
   /**
    * Find matching drug in inventory by name (case-insensitive partial match)
    * @param {string} medicationName - Name of the medication
-   * @param {Array} drugStock - Array of drugs in stock
+   * @param {Array} inventoryItems - Array of inventory items
    * @returns {Object|null} Matching drug object or null
    */
-  findMatchingDrug(medicationName, drugStock) {
-    if (!medicationName || !drugStock || drugStock.length === 0) {
+  findMatchingDrug(medicationName, inventoryItems) {
+    if (!medicationName || !inventoryItems || inventoryItems.length === 0) {
       return null
     }
 
     const searchName = medicationName.toLowerCase().trim()
     
-    // First try exact match
-    let match = drugStock.find(drug => 
-      drug.drugName && drug.drugName.toLowerCase().trim() === searchName
+    // First try exact match with brandName
+    let match = inventoryItems.find(item => 
+      item.brandName && item.brandName.toLowerCase().trim() === searchName
+    )
+    
+    if (match) return match
+
+    // Then try exact match with drugName
+    match = inventoryItems.find(item => 
+      item.drugName && item.drugName.toLowerCase().trim() === searchName
     )
     
     if (match) return match
 
     // Then try generic name match
-    match = drugStock.find(drug => 
-      drug.genericName && drug.genericName.toLowerCase().trim() === searchName
+    match = inventoryItems.find(item => 
+      item.genericName && item.genericName.toLowerCase().trim() === searchName
     )
     
     if (match) return match
 
-    // Finally try partial match
-    match = drugStock.find(drug => 
-      (drug.drugName && drug.drugName.toLowerCase().includes(searchName)) ||
-      (drug.genericName && drug.genericName.toLowerCase().includes(searchName))
+    // Finally try partial match with all name fields
+    match = inventoryItems.find(item => 
+      (item.brandName && item.brandName.toLowerCase().includes(searchName)) ||
+      (item.drugName && item.drugName.toLowerCase().includes(searchName)) ||
+      (item.genericName && item.genericName.toLowerCase().includes(searchName))
     )
     
     return match || null
