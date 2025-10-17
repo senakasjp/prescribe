@@ -411,4 +411,60 @@ await inventoryService.checkDuplicatePrimaryKey(
 )
 ```
 
+## PharmacyMedicationService
+
+### Medication Search and Autofill
+```javascript
+// Search medications from connected pharmacy inventories
+async searchMedicationsFromPharmacies(doctorId, query, limit)
+// Parameters: doctorId (string), query (string), limit (number, default 10)
+// Returns: Array of matching medications with brand/generic names
+
+// Get all medication names from connected pharmacies
+async getMedicationNamesFromPharmacies(doctorId)
+// Parameters: doctorId (string)
+// Returns: Array of all available medications from connected pharmacies
+
+// Fetch medications from specific pharmacy
+async fetchMedicationNamesFromPharmacy(pharmacyId)
+// Parameters: pharmacyId (string)
+// Returns: Array of medications from specific pharmacy inventory
+```
+
+### Data Structure
+```javascript
+// Medication object structure
+{
+  id: "medication_id",
+  brandName: "Brand Name",           // Prioritized over drugName
+  genericName: "Generic Name",
+  displayName: "Brand Name (Generic Name)",
+  strength: "500",
+  dosageForm: "Tablet",
+  manufacturer: "Manufacturer Name",
+  pharmacyId: "pharmacy_id",
+  currentStock: 100,
+  packUnit: "tablets",
+  expiryDate: "2025-12-31"
+}
+```
+
+### Usage Examples
+```javascript
+// Search for medications with autofill
+const medications = await pharmacyMedicationService.searchMedicationsFromPharmacies(
+  doctorId, 
+  "Amoxicillin", 
+  20
+)
+
+// Get all available medications
+const allMedications = await pharmacyMedicationService.getMedicationNamesFromPharmacies(doctorId)
+
+// Enhanced search with debugging
+console.log('🔍 Searching for:', query, 'Doctor:', doctorId)
+const results = await pharmacyMedicationService.searchMedicationsFromPharmacies(doctorId, query, 10)
+console.log('🎯 Matching medications:', results.length)
+```
+
 

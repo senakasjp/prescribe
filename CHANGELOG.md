@@ -1,5 +1,23 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.2.24 - Brand Name Autofill Fix (January 2025)
+
+### 🔧 **Autofill Enhancement**
+- **Brand Name Autofill**: 
+  - ✅ Fixed autofill not working with brand names from pharmacist portal inventory
+  - ✅ Improved data mapping in pharmacyMedicationService to prioritize brandName over drugName
+  - ✅ Enhanced search logic with comprehensive matching (includes, startsWith)
+  - ✅ Added debugging logs for better troubleshooting
+- **Data Structure Improvements**:
+  - ✅ Updated medication display to show generic names in brackets when available
+  - ✅ Duration now displays as "30 days" instead of just "30"
+  - ✅ Improved brand/generic name handling across all medication components
+
+### 🐛 **Bug Fixes**
+- **MedicationForm**: Fixed "S.trim is not a function" error by adding proper null checks
+- **PharmacyMedicationService**: Fixed brand name mapping from inventory data
+- **Display Components**: Updated all medication display components to show generic names
+
 ## Version 2.2.23 - Enhanced Medication Form Fields (January 2025)
 
 ### 🔧 **Form Field Improvements**

@@ -2,6 +2,21 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🔧 Brand Name Autofill Enhancement (January 16, 2025) - v2.2.24**
+- **Pharmacy Inventory Integration**: 
+  - ✅ **Fixed Autofill**: Brand names from pharmacist portal inventory now work in doctor portal autocomplete
+  - ✅ **Improved Data Mapping**: System now prioritizes brandName over drugName for accurate suggestions
+  - ✅ **Enhanced Search**: Comprehensive matching including exact matches, partial matches, and startsWith
+  - ✅ **Debug Logging**: Added console logs for better troubleshooting and monitoring
+- **Medication Display Improvements**:
+  - ✅ **Generic Names**: Now display in brackets when available (e.g., "Cetirizine (Cetirizine Hydrochloride)")
+  - ✅ **Duration Clarity**: Shows "30 days" instead of just "30" for better understanding
+  - ✅ **Consistent Formatting**: Brand/generic name handling standardized across all components
+- **User Experience**:
+  - ✅ **Better Suggestions**: Autocomplete now shows relevant medications from connected pharmacies
+  - ✅ **Clear Tags**: "Inventory" tags distinguish pharmacy-sourced suggestions from local ones
+  - ✅ **Error Prevention**: Improved form validation with proper null checks
+
 ### **🔧 Enhanced Medication Form Fields (January 16, 2025) - v2.2.23**
 - **Duration Field Enhancement**: 
   - ✅ **Number-Only Input**: Duration field now only accepts numeric values

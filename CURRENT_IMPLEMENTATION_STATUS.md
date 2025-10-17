@@ -43,6 +43,9 @@ This document provides a comprehensive overview of the current state of the M-Pr
 #### 5. Prescription Management
 - **Prescription Creation**: Create new prescriptions
 - **Medication Management**: Add, edit, delete medications
+- **Brand Name Autofill**: Enhanced autofill from pharmacist inventory (v2.2.24)
+- **Generic Name Display**: Shows generic names in brackets when available
+- **Duration Formatting**: Displays duration as "30 days" for clarity
 - **Prescription History**: View all prescriptions with pagination
 - **Prescription Templates**: Customizable prescription templates
 - **AI Drug Suggestions**: AI-powered medication recommendations

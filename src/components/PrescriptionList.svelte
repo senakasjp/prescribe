@@ -92,7 +92,7 @@
                 <div class="col-span-full">
                   <h6 class="text-lg font-semibold text-teal-600 mb-2">
                     <i class="fas fa-pills mr-2"></i>
-                    {medication.name || 'Unknown Medication'}
+                    {medication.name || 'Unknown Medication'}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}
                   </h6>
                 </div>
                 <div>

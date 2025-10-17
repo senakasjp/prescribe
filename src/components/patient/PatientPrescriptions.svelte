@@ -150,7 +150,7 @@
                   <div class="flex items-center justify-between p-3 bg-white rounded-md border">
                     <div class="flex-1">
                       <div class="flex items-center space-x-3">
-                        <span class="font-medium text-gray-900">{medication.name}</span>
+                        <span class="font-medium text-gray-900">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</span>
                         <span class="text-sm text-gray-500">{medication.dosage}</span>
                         <span class="text-sm text-gray-500">{getFrequencyLabel(medication.frequency)}</span>
                         {#if medication.duration}

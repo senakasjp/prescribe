@@ -105,12 +105,12 @@ class PharmacyMedicationService {
 
       // Extract medication names and format them
       const medications = inventoryItems
-        .filter(item => item.drugName || item.genericName) // Only items with drug names
+        .filter(item => item.drugName || item.genericName || item.brandName) // Only items with drug names
         .map(item => ({
           id: item.id,
-          brandName: item.drugName || '',
+          brandName: item.brandName || item.drugName || '', // Prioritize brandName over drugName
           genericName: item.genericName || '',
-          displayName: this.createDisplayName(item.drugName, item.genericName),
+          displayName: this.createDisplayName(item.brandName || item.drugName, item.genericName),
           strength: item.strength || '',
           dosageForm: item.dosageForm || '',
           manufacturer: item.manufacturer || '',
@@ -155,7 +155,9 @@ class PharmacyMedicationService {
    */
   async searchMedicationsFromPharmacies(doctorId, query, limit = 10) {
     try {
+      console.log('🔍 PharmacyMedicationService: Searching for:', query, 'Doctor:', doctorId)
       const allMedications = await this.getMedicationNamesFromPharmacies(doctorId)
+      console.log('📦 Total medications available:', allMedications.length)
       
       if (!query || query.trim().length < 2) {
         return allMedications.slice(0, limit)
@@ -169,8 +171,29 @@ class PharmacyMedicationService {
         const genericMatch = medication.genericName?.toLowerCase().includes(searchTerm)
         const displayMatch = medication.displayName?.toLowerCase().includes(searchTerm)
         
-        return brandMatch || genericMatch || displayMatch
+        // Also check if search term matches the beginning of brand/generic names
+        const brandStartsWith = medication.brandName?.toLowerCase().startsWith(searchTerm)
+        const genericStartsWith = medication.genericName?.toLowerCase().startsWith(searchTerm)
+        
+        const matches = brandMatch || genericMatch || displayMatch || brandStartsWith || genericStartsWith
+        
+        if (matches) {
+          console.log('✅ Match found:', {
+            brandName: medication.brandName,
+            genericName: medication.genericName,
+            displayName: medication.displayName,
+            brandMatch,
+            genericMatch,
+            displayMatch,
+            brandStartsWith,
+            genericStartsWith
+          })
+        }
+        
+        return matches
       })
+
+      console.log('🎯 Matching medications:', matchingMedications.length)
 
       // Sort by relevance (exact matches first, then partial matches)
       matchingMedications.sort((a, b) => {

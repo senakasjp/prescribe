@@ -12,9 +12,10 @@
   const dispatch = createEventDispatcher()
   
   let name = ''
+  let genericName = '' // Generic name for display
   let dosage = ''
   let dosageUnit = 'mg'
-  let route = ''
+  let route = 'PO'
   let instructions = ''
   let frequency = ''
   let prnAmount = '' // Amount for PRN medications
@@ -62,11 +63,12 @@
   // Function to reset form to empty state
   const resetForm = () => {
     console.log('🔄 Resetting MedicationForm to empty state')
-    // Force reset all variables
+    // Force reset all variables to empty strings
     name = ''
+    genericName = ''
     dosage = ''
     dosageUnit = 'mg'
-    route = ''
+    route = 'PO' // Set default route
     instructions = ''
     frequency = ''
     prnAmount = ''
@@ -81,7 +83,7 @@
     // Force a small delay to ensure state updates
     setTimeout(() => {
       console.log('✅ MedicationForm reset complete - final state:', {
-        name, dosage, instructions, frequency, duration, startDate, endDate, notes
+        name, genericName, dosage, instructions, frequency, duration, startDate, endDate, notes
       })
     }, 10)
   }
@@ -89,6 +91,7 @@
   // Populate form when editing (only once)
   $: if (editingMedication && !formInitialized) {
     name = editingMedication.name || ''
+    genericName = editingMedication.genericName || ''
     
     // Parse dosage if it exists
     if (editingMedication.dosage) {
@@ -110,7 +113,8 @@
     instructions = editingMedication.instructions || ''
     frequency = editingMedication.frequency || ''
     prnAmount = editingMedication.prnAmount || ''
-    duration = editingMedication.duration || ''
+    // Remove 'days' suffix if present for editing
+    duration = editingMedication.duration ? editingMedication.duration.replace(/\s*days?$/i, '') : ''
     startDate = editingMedication.startDate || ''
     endDate = editingMedication.endDate || ''
     notes = editingMedication.notes || ''
@@ -121,7 +125,7 @@
 
   // Debounced search for brand name suggestions (local + connected pharmacies)
   const searchNameSuggestions = async () => {
-    const query = (name || '').trim()
+    const query = String(name ?? '').trim()
     if (!doctorId || !query || query.length < 2) {
       nameSuggestions = []
       showNameSuggestions = false
@@ -207,6 +211,7 @@
 
   const selectNameSuggestion = (s) => {
     name = s.brandName || s.displayName || ''
+    genericName = s.genericName || ''
     // If the suggestion has a numeric strength like "500 mg", try to prefill dosage
     if (s.strength && !dosage) {
       const m = String(s.strength).match(/(\d+(?:\.\d+)?)/)
@@ -241,17 +246,18 @@
       }
       
       const medicationData = {
-        name: name.trim(),
-        dosage: dosage.trim() + dosageUnit,
+        name: String(name ?? '').trim(),
+        genericName: String(genericName ?? '').trim(),
+        dosage: String(dosage ?? '').trim() + dosageUnit,
         dosageUnit: dosageUnit,
-        route: route.trim(),
-        instructions: instructions.trim(),
+        route: String(route ?? '').trim(),
+        instructions: String(instructions ?? '').trim(),
         frequency,
-        prnAmount: frequency.includes('PRN') ? prnAmount.trim() : '', // Include PRN amount if frequency is PRN
-        duration: duration.trim(),
+        prnAmount: frequency.includes('PRN') ? String(prnAmount ?? '').trim() : '', // Include PRN amount if frequency is PRN
+        duration: String(duration ?? '').trim() + ' days',
         startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
         endDate: endDate || null,
-        notes: notes.trim()
+        notes: String(notes ?? '').trim()
       }
       
       // Add editing information if in edit mode
@@ -263,24 +269,26 @@
       // Save to drug database for future autocomplete
       if (doctorId) {
         const existingDrug = drugDatabase.getDoctorDrugs(doctorId).find(drug => 
-          drug.name === name.trim().toLowerCase()
+          drug.name === String(name ?? '').trim().toLowerCase()
         )
         
         drugDatabase.addDrug(doctorId, {
-          name: name.trim(),
-          dosage: dosage.trim() + dosageUnit,
+          name: String(name ?? '').trim(),
+          brandName: String(name ?? '').trim(),
+          genericName: String(genericName ?? '').trim(),
+          dosage: String(dosage ?? '').trim() + dosageUnit,
           dosageUnit: dosageUnit,
-          instructions: instructions.trim(),
+          instructions: String(instructions ?? '').trim(),
           frequency,
-          duration: duration.trim(),
-          notes: notes.trim()
+          duration: String(duration ?? '').trim() + ' days',
+          notes: String(notes ?? '').trim()
         })
         
         // Show notification
         if (existingDrug) {
-          notifyInfo(`"${name.trim()}" updated in your drug database`)
+          notifyInfo(`"${String(name ?? '').trim()}" updated in your drug database`)
         } else {
-          notifySuccess(`"${name.trim()}" added to your drug database`)
+          notifySuccess(`"${String(name ?? '').trim()}" added to your drug database`)
         }
       }
       
@@ -288,11 +296,13 @@
       
       // Reset form
       name = ''
+      genericName = ''
       dosage = ''
       dosageUnit = 'mg'
-      route = ''
+      route = 'PO' // Set default route
       instructions = ''
       frequency = ''
+      prnAmount = ''
       duration = ''
       startDate = ''
       endDate = ''

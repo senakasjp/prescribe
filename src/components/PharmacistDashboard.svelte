@@ -1260,7 +1260,7 @@
                                   />
                                 </td>
                                 <td class="px-3 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                                  <span>{medication.name}</span>
+                                  <span>{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</span>
                                 </td>
                                 <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{medication.dosage}</td>
                                 <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{medication.frequency}</td>
@@ -1278,7 +1278,7 @@
                           <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
                             <div class="flex items-center justify-between mb-2">
                               <div class="flex items-center gap-2">
-                                <h4 class="font-semibold text-gray-900 text-sm">{medication.name}</h4>
+                                <h4 class="font-semibold text-gray-900 text-sm">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</h4>
                               </div>
                               <label class="flex items-center space-x-2 {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'cursor-not-allowed' : 'cursor-pointer'}">
                                 <input 

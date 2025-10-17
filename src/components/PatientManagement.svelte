@@ -1772,7 +1772,7 @@
                   <div class="flex items-start justify-between gap-2">
                     <div class="flex-1">
                       <div class="flex items-center gap-2 mb-1">
-                        <p class="text-base font-semibold text-blue-600">{medication.name}</p>
+                        <p class="text-base font-semibold text-blue-600">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</p>
                         {#if isMedicationDispensed(selectedPrescriptionForCard.id, medication.id || medication.name)}
                           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             Dispensed
