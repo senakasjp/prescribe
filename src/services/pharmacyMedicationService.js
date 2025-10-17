@@ -78,9 +78,39 @@ class PharmacyMedicationService {
    */
   async getConnectedPharmacies(doctorId) {
     try {
-      const doctorData = await firebaseStorage.getDoctorById(doctorId)
-      console.log('🔍 Doctor data for connected pharmacies:', { doctorId, connectedPharmacists: doctorData?.connectedPharmacists })
-      return doctorData?.connectedPharmacists || []
+      let doctorData = null
+
+      // Try lookup by document ID first
+      if (doctorId) {
+        doctorData = await firebaseStorage.getDoctorById(doctorId)
+      }
+
+      // Fallback to email lookup when ID lookup fails (common during migrations)
+      if (!doctorData && doctorId && typeof doctorId === 'string') {
+        console.log('🔍 Doctor not found by ID, attempting email lookup:', doctorId)
+        doctorData = await firebaseStorage.getDoctorByEmail(doctorId)
+      }
+
+      console.log('🔍 Doctor data for connected pharmacies:', { doctorId, hasDoctor: !!doctorData, connectedPharmacists: doctorData?.connectedPharmacists })
+
+      const connectedPharmacies = new Set(doctorData?.connectedPharmacists || [])
+
+      if (doctorData?.id) {
+        try {
+          const allPharmacists = await firebaseStorage.getAllPharmacists()
+          allPharmacists.forEach(pharmacist => {
+            if (Array.isArray(pharmacist.connectedDoctors) && pharmacist.connectedDoctors.includes(doctorData.id)) {
+              connectedPharmacies.add(pharmacist.id)
+            }
+          })
+        } catch (pharmacistError) {
+          console.error('Error loading pharmacists for doctor connection lookup:', pharmacistError)
+        }
+      }
+
+      const result = Array.from(connectedPharmacies)
+      console.log('🔍 Connected pharmacy IDs resolved:', result)
+      return result
     } catch (error) {
       console.error('Error getting connected pharmacies:', error)
       return []
@@ -122,9 +152,70 @@ class PharmacyMedicationService {
         .filter(med => med.brandName || med.genericName) // Ensure at least one name exists
 
       return medications
-
+    
     } catch (error) {
       console.error(`Error fetching medications from pharmacy ${pharmacyId}:`, error)
+      return []
+    }
+  }
+
+  /**
+   * Get normalized stock data from connected pharmacies
+   * @param {string} doctorId - Doctor's ID
+   * @returns {Promise<Array>} Array of stock items with availability details
+   */
+  async getPharmacyStock(doctorId) {
+    try {
+      const cacheKey = `stock-${doctorId}`
+      const cached = this.cache.get(cacheKey)
+      if (cached && (Date.now() - cached.timestamp) < this.cacheExpiry) {
+        return cached.data
+      }
+
+      const connectedPharmacies = await this.getConnectedPharmacies(doctorId)
+      if (!connectedPharmacies || connectedPharmacies.length === 0) {
+        return []
+      }
+
+      const inventoryServiceModule = await import('./pharmacist/inventoryService.js')
+      const inventoryService = inventoryServiceModule.default
+
+      const allStock = []
+
+      for (const pharmacyId of connectedPharmacies) {
+        try {
+          const inventoryItems = await inventoryService.getInventoryItems(pharmacyId, { limit: 1000 })
+          console.log(`📦 Loaded ${inventoryItems.length} inventory items for pharmacy ${pharmacyId}`)
+          const normalizedItems = inventoryItems.map(item => ({
+            pharmacyId,
+            inventoryItemId: item.id,
+            drugName: item.brandName || item.drugName || '',
+            genericName: item.genericName || '',
+            strength: item.strength || '',
+            strengthUnit: item.strengthUnit || '',
+            dosageForm: item.dosageForm || item.packUnit || '',
+            quantity: typeof item.currentStock === 'number'
+              ? item.currentStock
+              : parseInt(item.currentStock || item.quantity || 0, 10),
+            packUnit: item.packUnit || '',
+            expiryDate: item.expiryDate || '',
+            rawItem: item
+          }))
+
+          allStock.push(...normalizedItems)
+        } catch (pharmacyError) {
+          console.error(`Error fetching inventory for pharmacy ${pharmacyId}:`, pharmacyError)
+        }
+      }
+
+      this.cache.set(cacheKey, {
+        data: allStock,
+        timestamp: Date.now()
+      })
+
+      return allStock
+    } catch (error) {
+      console.error('Error fetching pharmacy stock:', error)
       return []
     }
   }
@@ -223,9 +314,11 @@ class PharmacyMedicationService {
    * @param {string} doctorId - Doctor's ID
    */
   clearCache(doctorId) {
-    const cacheKey = `medications-${doctorId}`
-    this.cache.delete(cacheKey)
-    console.log('Cleared medication cache for doctor:', doctorId)
+    const medicationKey = `medications-${doctorId}`
+    const stockKey = `stock-${doctorId}`
+    this.cache.delete(medicationKey)
+    this.cache.delete(stockKey)
+    console.log('Cleared pharmacy data cache for doctor:', doctorId)
   }
 
   /**

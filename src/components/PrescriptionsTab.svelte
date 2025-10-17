@@ -1,7 +1,6 @@
 <script>
-  import { onMount } from 'svelte'
   import PatientForms from './PatientForms.svelte'
-  import firebaseStorage from '../services/firebaseStorage.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   
   export let selectedPatient
   export let showMedicationForm
@@ -40,41 +39,40 @@
   // Pharmacy stock availability
   let pharmacyStock = []
   let stockLoading = false
-  
+  let resolvedDoctorIdentifier = null
+
   // Load pharmacy stock for availability checking
-  const loadPharmacyStock = async () => {
-    if (!doctorId) return
+  const loadPharmacyStock = async (identifier = null) => {
+    let resolvedDoctorId = identifier ?? doctorId
+
+    // Fallback to patient-linked doctor ID or email when primary doctorId is missing/default
+    if (!resolvedDoctorId || resolvedDoctorId === 'default-user' || resolvedDoctorId === 'unknown') {
+      resolvedDoctorId = selectedPatient?.doctorId ||
+        selectedPatient?.doctor?.id ||
+        currentPrescription?.doctorId ||
+        selectedPatient?.doctorEmail ||
+        currentPrescription?.doctorEmail ||
+        null
+    }
+
+    if (!resolvedDoctorId) {
+      console.warn('⚠️ Unable to resolve doctor identifier for pharmacy stock lookup')
+      pharmacyStock = []
+      return
+    }
     
     try {
       stockLoading = true
-      console.log('📦 Loading pharmacy stock for doctor:', doctorId)
-      
-      // Get doctor's connected pharmacists
-      const doctor = await firebaseStorage.getDoctorById(doctorId)
-      console.log('👨‍⚕️ Doctor data:', doctor)
-      
-      if (!doctor || !doctor.connectedPharmacists || doctor.connectedPharmacists.length === 0) {
-        console.log('⚠️ No connected pharmacists found for doctor')
-        pharmacyStock = []
-        return
-      }
-      
-      console.log('🏥 Connected pharmacists:', doctor.connectedPharmacists)
-      
-      // Get stock from all connected pharmacists
-      let allStock = []
-      for (const pharmacistId of doctor.connectedPharmacists) {
-        console.log('📦 Loading stock for pharmacist:', pharmacistId)
-        const stockData = await firebaseStorage.getPharmacistDrugStock(pharmacistId)
-        if (stockData && stockData.length > 0) {
-          allStock = allStock.concat(stockData)
-          console.log('📦 Added', stockData.length, 'items from pharmacist', pharmacistId)
-        }
-      }
-      
-      pharmacyStock = allStock
-      console.log('📦 Total loaded pharmacy stock:', pharmacyStock.length, 'items from', doctor.connectedPharmacists.length, 'pharmacists')
-      
+      console.log('📦 Loading pharmacy stock for doctor:', resolvedDoctorId)
+
+      // Clear cache to ensure we always reflect latest inventory (especially after doctor connection updates)
+      pharmacyMedicationService.clearCache(resolvedDoctorId)
+
+      const stockData = await pharmacyMedicationService.getPharmacyStock(resolvedDoctorId)
+      pharmacyStock = stockData
+
+      console.log('📦 Total loaded pharmacy stock:', pharmacyStock.length)
+
     } catch (error) {
       console.error('❌ Error loading pharmacy stock:', error)
       pharmacyStock = []
@@ -100,13 +98,22 @@
     if (!dosageMatch) {
       console.log('⚠️ Could not parse dosage:', medication.dosage, '- trying name-only match')
       
-      // Try to match by name only if dosage parsing fails
       const matchingStock = pharmacyStock.find(stock => {
         const stockName = stock.drugName?.toLowerCase().trim() || ''
+        const stockGeneric = stock.genericName?.toLowerCase().trim() || ''
+        const stockNames = [stockName, stockGeneric].filter(Boolean)
         const medName = medication.name?.toLowerCase().trim() || ''
-        const nameMatch = stockName && medName && stockName.includes(medName)
+        const normalizedMedNames = Array.from(new Set([
+          medName,
+          medName.split('(')[0]?.trim() || '',
+          medName.replace(/\(.*\)/, '').trim()
+        ])).filter(Boolean)
+
+        const nameMatch = normalizedMedNames.some(name => 
+          stockNames.some(stockValue => stockValue.includes(name) || name.includes(stockValue))
+        )
         
-        console.log('🔍 Name-only comparison:', stockName, 'vs', medName, 'match:', nameMatch)
+        console.log('🔍 Name-only comparison:', stockNames, 'vs', normalizedMedNames, 'match:', nameMatch)
         return nameMatch
       })
       
@@ -130,10 +137,19 @@
     const matchingStock = pharmacyStock.find(stock => {
       // Check drug name match (case insensitive, partial match)
       const stockName = stock.drugName?.toLowerCase().trim() || ''
-      const medName = medication.name?.toLowerCase().trim() || ''
-      const nameMatch = stockName && medName && stockName.includes(medName)
+      const stockGeneric = stock.genericName?.toLowerCase().trim() || ''
+      const stockNames = [stockName, stockGeneric].filter(Boolean)
+      const medNameRaw = medication.name?.toLowerCase().trim() || ''
+      const normalizedMedNames = Array.from(new Set([
+        medNameRaw,
+        medNameRaw.split('(')[0]?.trim() || '',
+        medNameRaw.replace(/\(.*\)/, '').trim()
+      ])).filter(Boolean)
+      const nameMatch = normalizedMedNames.some(name => 
+        stockNames.some(stockValue => stockValue && (stockValue.includes(name) || name.includes(stockValue)))
+      )
       
-      console.log('🔍 Name comparison:', stockName, 'vs', medName, 'match:', nameMatch)
+      console.log('🔍 Name comparison:', stockNames, 'vs', normalizedMedNames, 'match:', nameMatch)
       
       // Check strength match (flexible)
       const stockStrength = stock.strength || ''
@@ -168,16 +184,23 @@
     return { available: false, quantity: 0, stockItem: null }
   }
   
-  // Load stock when component mounts or doctorId changes
-  $: if (doctorId) {
-    loadPharmacyStock()
+  // Determine doctor identifier reactively and load stock
+  $: resolvedDoctorIdentifier = (() => {
+    if (doctorId && doctorId !== 'default-user' && doctorId !== 'unknown') {
+      return doctorId
+    }
+    return selectedPatient?.doctorId ||
+      selectedPatient?.doctor?.id ||
+      currentPrescription?.doctorId ||
+      selectedPatient?.doctorEmail ||
+      currentPrescription?.doctorEmail ||
+      null
+  })()
+  
+  $: if (resolvedDoctorIdentifier) {
+    loadPharmacyStock(resolvedDoctorIdentifier)
   }
   
-  onMount(() => {
-    if (doctorId) {
-      loadPharmacyStock()
-    }
-  })
 </script>
 
 <div class="space-y-4">

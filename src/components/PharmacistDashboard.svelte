@@ -53,6 +53,7 @@
   
   // Track inventory data for each medication
   let medicationInventoryData = new Map() // prescriptionId-medicationId -> inventoryData
+  let cachedInventoryItems = [] // pharmacist inventory snapshot used for matching
   
   // Initialize editable amounts and fetch inventory data when prescription is selected
   // Function to load prescription data when selected
@@ -68,7 +69,11 @@
     // Only clear editable amounts, keep inventory data until new data is loaded
     editableAmounts.clear()
     
-    // Wait for all inventory data to be fetched before continuing
+    // Fetch pharmacist inventory once for matching
+    cachedInventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
+    console.log('📦 Retrieved inventory items for pharmacist:', cachedInventoryItems.length)
+
+    // Process inventory mapping for each medication
     const fetchPromises = []
     
     selectedPrescription.prescriptions.forEach((prescription, presIndex) => {
@@ -85,7 +90,7 @@
           editableAmounts.set(key, calculatedAmount)
           
           // Collect all fetch promises
-          fetchPromises.push(fetchMedicationInventoryData(medication, key))
+          fetchPromises.push(fetchMedicationInventoryData(medication, key, cachedInventoryItems))
         })
       } else {
         console.log(`⚠️ Prescription ${presIndex + 1} has no medications`)
@@ -96,6 +101,7 @@
     
     // Wait for all inventory data to be fetched
     await Promise.all(fetchPromises)
+    console.log('🔑 Medication inventory keys after update:', Array.from(medicationInventoryData.keys()))
     console.log('✅ All inventory data loaded')
   }
   
@@ -105,9 +111,13 @@
   }
   
   // Get editable amount for a medication
-  const getEditableAmount = (prescriptionId, medicationId) => {
-    const key = `${prescriptionId}-${medicationId}`
-    return editableAmounts.get(key) || calculateMedicationAmount({ id: medicationId })
+  const getEditableAmount = (prescriptionId, medication) => {
+    const key = `${prescriptionId}-${medication.id || medication.name}`
+    const storedAmount = editableAmounts.get(key)
+    if (storedAmount !== undefined && storedAmount !== null && storedAmount !== '') {
+      return storedAmount
+    }
+    return calculateMedicationAmount(medication)
   }
   
   // Update editable amount
@@ -117,24 +127,19 @@
     editableAmounts = new Map(editableAmounts) // Trigger reactivity
   }
   
-  // Track if inventory is already being fetched to prevent loops
-  let inventoryFetching = false
-  
   // Fetch inventory data for a medication
-  const fetchMedicationInventoryData = async (medication, key) => {
-    if (inventoryFetching) return // Prevent concurrent fetches
-    
+  const fetchMedicationInventoryData = async (medication, key, inventoryItems = []) => {
     try {
       if (!pharmacist || !pharmacist.id) return
       
-      inventoryFetching = true
+      const itemsToUse = Array.isArray(inventoryItems) && inventoryItems.length > 0
+        ? inventoryItems
+        : cachedInventoryItems
       
-      // Get inventory items
-      const inventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
-      console.log('📦 Retrieved inventory items:', inventoryItems.length, 'items')
+      console.log('📦 Matching medication against inventory set with', itemsToUse.length, 'items')
       
       // Find matching inventory item
-      const matchingItem = findMatchingInventoryItem(medication, inventoryItems)
+      const matchingItem = findMatchingInventoryItem(medication, itemsToUse)
       
       if (matchingItem) {
         console.log('✅ Found matching inventory item for:', medication.name, 'Key:', key)
@@ -176,8 +181,6 @@
         found: false
       })
       medicationInventoryData = new Map(medicationInventoryData)
-    } finally {
-      inventoryFetching = false
     }
   }
   
@@ -932,6 +935,10 @@
 
   // Calculate total amount based on frequency and duration
   const calculateMedicationAmount = (medication) => {
+    if (medication.amount !== undefined && medication.amount !== null && medication.amount !== '') {
+      return medication.amount
+    }
+
     if (!medication.frequency || !medication.duration) {
       return 'N/A'
     }
@@ -1598,7 +1605,7 @@
                                   <input 
                                     type="text" 
                                     class="w-full px-1 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
-                                    value={getEditableAmount(prescription.id, medication.id || medication.name)}
+                                    value={getEditableAmount(prescription.id, medication)}
                                     on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
                                     placeholder="0"
                                   />
@@ -1675,7 +1682,7 @@
                                 <input 
                                   type="text" 
                                   class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
-                                  value={getEditableAmount(prescription.id, medication.id || medication.name)}
+                                  value={getEditableAmount(prescription.id, medication)}
                                   on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
                                   placeholder="0"
                                 />
