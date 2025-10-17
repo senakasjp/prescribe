@@ -1,7 +1,9 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte'
   import drugDatabase from '../services/drugDatabase.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { notifySuccess, notifyInfo } from '../stores/notifications.js'
+  import { MEDICATION_FREQUENCIES } from '../utils/constants.js'
   
   export let visible = true
   export let editingMedication = null
@@ -15,12 +17,38 @@
   let route = ''
   let instructions = ''
   let frequency = ''
+  let prnAmount = '' // Amount for PRN medications
   let duration = ''
   let startDate = ''
   let endDate = ''
   let notes = ''
   let error = ''
   let loading = false
+
+  // Mapping for routes to their full display names
+  const routeDisplayMap = {
+    'IM': 'Intramuscular (IM)',
+    'IV': 'Intravenous (IV)',
+    'SC': 'Subcutaneous (SC)',
+    'PO': 'Oral (PO)',
+    'Topical': 'Topical',
+    'Inhalation': 'Inhalation',
+    'Rectal': 'Rectal',
+    'Vaginal': 'Vaginal',
+    'Otic': 'Ear (Otic)',
+    'Ophthalmic': 'Eye (Ophthalmic)',
+    'Nasal': 'Nasal',
+    'Transdermal': 'Transdermal'
+  }
+
+  // Reactive statement to get the display value for the right input
+  $: routeDisplay = route ? routeDisplayMap[route] || route : ''
+
+  // Autofill suggestions state (inventory + local database)
+  let nameSuggestions = []
+  let showNameSuggestions = false
+  let nameSelectedIndex = -1
+  let nameSearchTimeout = null
   
   // Reset loading state when form is hidden
   $: if (!visible) {
@@ -41,6 +69,7 @@
     route = ''
     instructions = ''
     frequency = ''
+    prnAmount = ''
     duration = ''
     startDate = ''
     endDate = ''
@@ -80,6 +109,7 @@
     route = editingMedication.route || ''
     instructions = editingMedication.instructions || ''
     frequency = editingMedication.frequency || ''
+    prnAmount = editingMedication.prnAmount || ''
     duration = editingMedication.duration || ''
     startDate = editingMedication.startDate || ''
     endDate = editingMedication.endDate || ''
@@ -88,6 +118,105 @@
   }
   
   // No reactive reset - only reset on mount to avoid conflicts
+
+  // Debounced search for brand name suggestions (local + connected pharmacies)
+  const searchNameSuggestions = async () => {
+    const query = (name || '').trim()
+    if (!doctorId || !query || query.length < 2) {
+      nameSuggestions = []
+      showNameSuggestions = false
+      nameSelectedIndex = -1
+      return
+    }
+
+    // Local drugs
+    const local = drugDatabase.searchDrugs(doctorId, query).map(d => ({
+      displayName: d.displayName || d.name || d.brandName || d.genericName,
+      brandName: d.brandName || d.name || '',
+      genericName: d.genericName || '',
+      strength: d.strength || d.dosage || '',
+      source: 'local'
+    }))
+
+    // Inventory drugs
+    const inventory = await pharmacyMedicationService.searchMedicationsFromPharmacies(doctorId, query, 20)
+    const inventoryMapped = inventory.map(d => ({
+      displayName: d.displayName || d.brandName || d.genericName,
+      brandName: d.brandName || '',
+      genericName: d.genericName || '',
+      strength: d.strength || '',
+      source: 'inventory',
+      currentStock: d.currentStock || 0,
+      packUnit: d.packUnit || '',
+      expiryDate: d.expiryDate || ''
+    }))
+
+    // Merge and de-dupe by brand+generic
+    const combined = [...local]
+    inventoryMapped.forEach(item => {
+      const exists = combined.find(x =>
+        (x.brandName || '').toLowerCase() === (item.brandName || '').toLowerCase() &&
+        (x.genericName || '').toLowerCase() === (item.genericName || '').toLowerCase()
+      )
+      if (!exists) combined.push(item)
+    })
+
+    // Sort: exact startsWith first, then local before inventory, then alpha
+    const q = query.toLowerCase()
+    combined.sort((a, b) => {
+      const aExact = (a.brandName || '').toLowerCase().startsWith(q) || (a.genericName || '').toLowerCase().startsWith(q) ? 1 : 0
+      const bExact = (b.brandName || '').toLowerCase().startsWith(q) || (b.genericName || '').toLowerCase().startsWith(q) ? 1 : 0
+      if (aExact !== bExact) return bExact - aExact
+      if (a.source !== b.source) return a.source === 'local' ? -1 : 1
+      return (a.displayName || '').localeCompare(b.displayName || '')
+    })
+
+    nameSuggestions = combined.slice(0, 20)
+    showNameSuggestions = nameSuggestions.length > 0
+    nameSelectedIndex = -1
+  }
+
+  const handleNameInput = () => {
+    clearTimeout(nameSearchTimeout)
+    nameSearchTimeout = setTimeout(searchNameSuggestions, 250)
+  }
+
+  const handleNameKeydown = (event) => {
+    if (!showNameSuggestions || nameSuggestions.length === 0) return
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        nameSelectedIndex = Math.min(nameSelectedIndex + 1, nameSuggestions.length - 1)
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        nameSelectedIndex = Math.max(nameSelectedIndex - 1, -1)
+        break
+      case 'Enter':
+        if (nameSelectedIndex >= 0) {
+          event.preventDefault()
+          selectNameSuggestion(nameSuggestions[nameSelectedIndex])
+        }
+        break
+      case 'Escape':
+        showNameSuggestions = false
+        nameSelectedIndex = -1
+        break
+    }
+  }
+
+  const selectNameSuggestion = (s) => {
+    name = s.brandName || s.displayName || ''
+    // If the suggestion has a numeric strength like "500 mg", try to prefill dosage
+    if (s.strength && !dosage) {
+      const m = String(s.strength).match(/(\d+(?:\.\d+)?)/)
+      if (m) {
+        dosage = m[1]
+      }
+    }
+    showNameSuggestions = false
+    nameSelectedIndex = -1
+  }
   
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -118,6 +247,7 @@
         route: route.trim(),
         instructions: instructions.trim(),
         frequency,
+        prnAmount: frequency.includes('PRN') ? prnAmount.trim() : '', // Include PRN amount if frequency is PRN
         duration: duration.trim(),
         startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
         endDate: endDate || null,
@@ -212,7 +342,39 @@
           required
           disabled={loading}
           placeholder="e.g., Glucophage, Prinivil"
+          on:input={handleNameInput}
+          on:keydown={handleNameKeydown}
+          on:focus={searchNameSuggestions}
         />
+        {#if showNameSuggestions && nameSuggestions.length > 0}
+          <div class="relative">
+            <div class="absolute top-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-56 overflow-y-auto">
+              {#each nameSuggestions as s, idx}
+                <button
+                  type="button"
+                  class="w-full px-3 py-2 text-left text-xs sm:text-sm hover:bg-teal-50 focus:bg-teal-50 border-b last:border-b-0 {nameSelectedIndex === idx ? 'bg-teal-50' : ''}"
+                  on:click={() => selectNameSuggestion(s)}
+                  on:mouseenter={() => nameSelectedIndex = idx}
+                >
+                  <div class="flex items-center justify-between">
+                    <div class="text-gray-900 font-medium truncate">{s.displayName}</div>
+                    <span class="ml-3 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium {s.source === 'local' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}">
+                      <i class="fas {s.source === 'local' ? 'fa-database' : 'fa-store'} mr-1"></i>{s.source === 'local' ? 'Local' : 'Inventory'}
+                    </span>
+                  </div>
+                  {#if s.strength}
+                    <div class="text-[11px] text-gray-500 mt-1">
+                      Strength: {s.strength}
+                      {#if s.source === 'inventory' && s.currentStock !== undefined}
+                        <span class="ml-1 text-blue-600 font-medium">({s.currentStock} {s.packUnit || 'units'})</span>
+                      {/if}
+                    </div>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
       </div>
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
@@ -220,10 +382,12 @@
           <label for="medicationDosage" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dosage <span class="text-red-500">*</span></label>
           <div class="flex">
             <input 
-              type="text" 
+              type="number" 
               class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="medicationDosage" 
               bind:value={dosage}
+              min="0"
+              step="0.1"
               required
               disabled={loading}
               placeholder="500"
@@ -264,16 +428,16 @@
               disabled={loading}
             >
               <option value="">Select route</option>
-              <option value="IM">IM (Intramuscular)</option>
-              <option value="IV">IV (Intravenous)</option>
-              <option value="SC">SC (Subcutaneous)</option>
-              <option value="PO">PO (Oral)</option>
+              <option value="IM">Intramuscular (IM)</option>
+              <option value="IV">Intravenous (IV)</option>
+              <option value="SC">Subcutaneous (SC)</option>
+              <option value="PO">Oral (PO)</option>
               <option value="Topical">Topical</option>
               <option value="Inhalation">Inhalation</option>
               <option value="Rectal">Rectal</option>
               <option value="Vaginal">Vaginal</option>
-              <option value="Otic">Otic (Ear)</option>
-              <option value="Ophthalmic">Ophthalmic (Eye)</option>
+              <option value="Otic">Ear (Otic)</option>
+              <option value="Ophthalmic">Eye (Ophthalmic)</option>
               <option value="Nasal">Nasal</option>
               <option value="Transdermal">Transdermal</option>
             </select>
@@ -281,29 +445,36 @@
               type="text" 
               class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               placeholder="Or enter custom route"
-              bind:value={route}
+              bind:value={routeDisplay}
               disabled={loading}
             >
           </div>
         </div>
         <div>
           <label for="medicationFrequency" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Frequency <span class="text-red-500">*</span></label>
-          <select 
-            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-            id="medicationFrequency" 
-            bind:value={frequency}
-            required
-            disabled={loading}
-          >
-            <option value="">Select frequency</option>
-            <option value="once daily">Once daily</option>
-            <option value="twice daily">Twice daily</option>
-            <option value="three times daily">Three times daily</option>
-            <option value="four times daily">Four times daily</option>
-            <option value="as needed">As needed</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
+          <div class="flex gap-2">
+            <select 
+              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              id="medicationFrequency" 
+              bind:value={frequency}
+              required
+              disabled={loading}
+            >
+              <option value="">Select frequency</option>
+              {#each MEDICATION_FREQUENCIES as freq}
+                <option value={freq}>{freq}</option>
+              {/each}
+            </select>
+            {#if frequency && frequency.includes('PRN')}
+              <input 
+                type="text" 
+                class="w-24 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                placeholder="Amount"
+                bind:value={prnAmount}
+                disabled={loading}
+              >
+            {/if}
+          </div>
         </div>
       </div>
       
@@ -322,14 +493,15 @@
       
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         <div>
-          <label for="medicationDuration" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Duration <span class="text-red-500">*</span></label>
+          <label for="medicationDuration" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Duration in days <span class="text-red-500">*</span></label>
           <input 
-            type="text" 
+            type="number" 
             class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationDuration" 
             bind:value={duration}
+            min="1"
             disabled={loading}
-            placeholder="e.g., 30 days, 3 months"
+            placeholder="e.g., 30"
           >
         </div>
         <div>

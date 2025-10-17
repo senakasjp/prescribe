@@ -1,5 +1,65 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.2.23 - Enhanced Medication Form Fields (January 2025)
+
+### 🔧 **Form Field Improvements**
+- **Duration Field**: 
+  - ✅ Changed to number-only input with minimum value of 1
+  - ✅ Updated label to "Duration in days" for clarity
+  - ✅ Simplified placeholder to "e.g., 30" (removed "days" text)
+- **Dosage Field**: 
+  - ✅ Changed from text to number input for validation
+  - ✅ Added decimal support (step="0.1") for precise dosages
+  - ✅ Added minimum value of 0 to prevent negative entries
+- **Route of Administration**: 
+  - ✅ Updated dropdown options to show "Full Word (Abbreviation)" format
+  - ✅ Right-side input field now displays same format as dropdown
+  - ✅ Added comprehensive mapping for all route types
+  - ✅ Examples: "Oral (PO)", "Intramuscular (IM)", "Intravenous (IV)"
+
+### 🎯 **User Experience Enhancements**
+- **Better Validation**: Number inputs prevent invalid text entries
+- **Consistent Formatting**: All route displays follow medical standards
+- **Improved Clarity**: Clear labels and placeholders guide users
+- **Mobile-Friendly**: Number inputs provide appropriate mobile keyboards
+- **Professional Appearance**: Medical-standard formatting throughout
+
+### 📱 **Technical Implementation**
+- **Input Type Changes**: Text → Number for dosage and duration fields
+- **Reactive Display**: Dynamic route formatting with Svelte reactivity
+- **Validation Rules**: Min/max values and step controls for precise input
+- **Mapping System**: Comprehensive route abbreviation to full name conversion
+
+## Version 2.2.22 - Drug Identification System Update (January 2025)
+
+### 🔑 Enhanced Drug Identification System
+- **New Primary Key**: Updated to Brand Name + Strength + Strength Unit + Expiry Date
+- **Composite Key Benefits**: 
+  - ✅ Unique identification for each drug batch
+  - ✅ Proper FIFO management with expiry date tracking
+  - ✅ Prevents duplicate entries with same drug but different expiry dates
+  - ✅ Better batch tracking and inventory management
+- **Implementation**: Updated inventory service, UI components, and validation logic
+- **Documentation**: Updated all relevant documentation files
+
+### 🏥 Patient Age Input Enhancement
+- **Age Type Selection**: Added dropdown to choose between "Years" and "Days"
+- **Days Support**: Can now enter age in days for very young patients (e.g., "40 days old")
+- **Auto-calculation**: Automatic age calculation from date of birth based on selected type
+- **Display Format**: Smart conversion (e.g., "1 year 50 days" for 415 days)
+
+### 🔥 Firebase Security Rules
+- **Deployed Rules**: Successfully deployed Firebase security rules via CLI
+- **Authentication**: Implemented proper user authentication checks
+- **Data Security**: Maintained HIPAA compliance with proper access controls
+
+### 📅 Date Format Standardization
+- **Consistent Format**: All dates now display in DD/MM/YYYY format across the entire application
+- **Fixed Components**: Updated PharmacistDashboard, SettingsPage, PatientManagement, AdminDashboard, PharmacistManagement, and BatchManagement
+- **Standardized Locale**: All date formatting now uses `en-GB` locale with explicit formatting options
+- **User Experience**: Consistent date display improves user experience and reduces confusion
+- **Technical Implementation**: Replaced inconsistent `en-US` and browser-default formats with standardized `en-GB` format
+
 ## Version 2.2.21 - PDF Formatting Refinements (January 2025)
 
 ### 📄 Prescription PDF Typography Enhancement

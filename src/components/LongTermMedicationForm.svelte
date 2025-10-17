@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte'
   import ThreeDots from './ThreeDots.svelte'
+  import { MEDICATION_FREQUENCIES } from '../utils/constants.js'
   
   export let visible = true
   export let editingMedication = null // Medication data when editing
@@ -10,6 +11,7 @@
   let medicationName = ''
   let dosage = ''
   let frequency = ''
+  let prnAmount = '' // Amount for PRN medications
   let startDate = ''
   let notes = ''
   let error = ''
@@ -25,6 +27,7 @@
     medicationName = editingMedication.medicationName || ''
     dosage = editingMedication.dosage || ''
     frequency = editingMedication.frequency || ''
+    prnAmount = editingMedication.prnAmount || ''
     startDate = editingMedication.startDate || ''
     notes = editingMedication.notes || ''
   }
@@ -34,6 +37,7 @@
     medicationName = ''
     dosage = ''
     frequency = ''
+    prnAmount = ''
     startDate = ''
     notes = ''
     error = ''
@@ -64,6 +68,7 @@
         medicationName: medicationName.trim(),
         dosage: dosage.trim(),
         frequency: frequency.trim(),
+        prnAmount: frequency.includes('PRN') ? prnAmount.trim() : '', // Include PRN amount if frequency is PRN
         startDate: startDate || '',
         notes: notes.trim()
       }
@@ -145,23 +150,30 @@
           <label for="frequency" class="block text-sm font-medium text-gray-700 mb-1">
             <i class="fas fa-clock mr-1"></i>Frequency *
           </label>
-          <select 
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-            id="frequency" 
-            bind:value={frequency}
-            required
-            disabled={loading}
-          >
-            <option value="">Select Frequency</option>
-            <option value="Once daily">Once daily</option>
-            <option value="Twice daily">Twice daily</option>
-            <option value="Three times daily">Three times daily</option>
-            <option value="Four times daily">Four times daily</option>
-            <option value="As needed">As needed</option>
-            <option value="Weekly">Weekly</option>
-            <option value="Monthly">Monthly</option>
-            <option value="Other">Other</option>
-          </select>
+          <div class="flex gap-2">
+            <select 
+              class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              id="frequency" 
+              bind:value={frequency}
+              required
+              disabled={loading}
+            >
+              <option value="">Select Frequency</option>
+              {#each MEDICATION_FREQUENCIES as freq}
+                <option value={freq}>{freq}</option>
+              {/each}
+              <option value="Other">Other</option>
+            </select>
+            {#if frequency && frequency.includes('PRN')}
+              <input 
+                type="text" 
+                class="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                placeholder="Amount"
+                bind:value={prnAmount}
+                disabled={loading}
+              >
+            {/if}
+          </div>
         </div>
         <div class="mb-4">
           <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">

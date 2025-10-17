@@ -308,9 +308,9 @@ const generatePrescriptionPreview = () => {
 **Current Version**: v2.2.21 (January 2025)
 
 #### Page Layout
-- **Page Size**: A4 (210mm x 297mm)
+- **Page Size**: A5 (148mm x 210mm)
 - **Margins**: 20mm (left, right, top, bottom)
-- **Content Width**: 170mm (page width - margins)
+- **Content Width**: 108mm (page width - margins)
 - **Multi-page Support**: Headers and footers on all pages
 
 #### Font Hierarchy
@@ -331,8 +331,8 @@ Footer Disclaimer:     7pt (normal) - Validity statement
   - Image centering with flexbox and margin: auto
   - Scale: 4 for high-quality capture
 - **Uploaded Header**: Image header with aspect ratio preservation
-  - Max dimensions: 250mm x 120mm
-  - Min width: 180mm
+  - Max width: 108mm (page width - margins)
+  - Height: Auto (maintains aspect ratio)
   - Centered horizontally
 - **Printed Letterhead**: Reserved space for pre-printed letterhead
   - Height: Configurable (default 50mm)
@@ -375,9 +375,13 @@ Footer Disclaimer:     7pt (normal) - Validity statement
 ```javascript
 // PDF generation using jsPDF and html2canvas
 const generatePDF = async () => {
-  const doc = new jsPDF('p', 'mm', 'a4')
-  const pageWidth = 210
-  const pageHeight = 297
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a5'
+  })
+  const pageWidth = 148
+  const pageHeight = 210
   const margin = 20
   
   // 1. Capture custom header (if system template)

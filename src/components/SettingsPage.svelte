@@ -172,9 +172,20 @@
         throw new Error('City is required')
       }
       
-      // Update user data
+      // Import firebaseStorage service to get correct doctor ID
+      const firebaseModule = await import('../services/firebaseStorage.js')
+      const firebaseStorage = firebaseModule.default
+      
+      // Get the doctor from Firebase using email to ensure we have the correct ID
+      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor) {
+        console.warn('⚠️ Profile update: Doctor not found in Firebase, using user object directly')
+        doctor = user
+      }
+      
+      // Update user data with correct ID
       const updatedUser = {
-        ...user,
+        ...doctor, // Use doctor data from Firebase
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         country: country.trim(),
@@ -182,7 +193,8 @@
         consultationCharge: String(consultationCharge || '').trim(),
         hospitalCharge: String(hospitalCharge || '').trim(),
         currency: currency,
-        name: `${firstName.trim()} ${lastName.trim()}`
+        name: `${firstName.trim()} ${lastName.trim()}`,
+        id: doctor.id // Ensure we use the correct Firebase ID
       }
       
       // Update in auth service
@@ -362,14 +374,29 @@
   const saveTemplateSettings = async () => {
     isSaving = true
     try {
-      if (!user?.id) {
+      if (!user?.email) {
         notifyError('User not authenticated')
         return
       }
       
+      // Import firebaseStorage service (default export)
+      const firebaseModule = await import('../services/firebaseStorage.js')
+      const firebaseStorage = firebaseModule.default
+      
+      // Get the doctor from Firebase using email to ensure we have the correct ID
+      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor) {
+        console.warn('⚠️ Template settings: Doctor not found in Firebase, using user object directly')
+        if (!user || !user.id) {
+          notifyError('Doctor profile not found. Please try logging in again.')
+          return
+        }
+        doctor = user
+      }
+      
       // Prepare template settings object
       const templateSettings = {
-        doctorId: user.id,
+        doctorId: doctor.id,
         templateType: templateType,
         headerSize: headerSize,
         headerText: headerText || '',
@@ -378,12 +405,8 @@
         updatedAt: new Date().toISOString()
       }
       
-      // Import firebaseStorage service (default export)
-      const firebaseModule = await import('../services/firebaseStorage.js')
-      const firebaseStorage = firebaseModule.default
-      
       // Persist via dedicated API that handles serialization
-      await firebaseStorage.saveDoctorTemplateSettings(user.id, templateSettings)
+      await firebaseStorage.saveDoctorTemplateSettings(doctor.id, templateSettings)
       
       // Update the user object in memory to reflect the new template settings
       if (user) {
@@ -800,7 +823,11 @@
                       <p class="text-sm text-gray-600">DOB: 01/15/1985</p>
                     </div>
                     <div class="text-right">
-                      <p class="text-sm">Date: {new Date().toLocaleDateString()}</p>
+                      <p class="text-sm">Date: {new Date().toLocaleDateString('en-GB', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric'
+                      })}</p>
                       <p class="text-sm">Rx #: 12345</p>
                     </div>
                   </div>

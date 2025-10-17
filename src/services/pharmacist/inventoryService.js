@@ -598,8 +598,8 @@ class InventoryService {
       // Validate required fields including strength
       this.validateInventoryItem(itemData)
       
-      // Check for duplicate primary key (drug name + strength)
-      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength)
+      // Check for duplicate primary key (brand name + strength + strength unit + expiry date)
+      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength, itemData.strengthUnit, itemData.expiryDate)
       
       // Prepare the item data
       const inventoryItem = this.prepareInventoryItemData(pharmacistId, itemData)
@@ -623,11 +623,22 @@ class InventoryService {
     try {
       console.log('📦 Updating inventory item:', itemId, itemData)
       
+      // Validate input parameters
+      if (!itemId) {
+        throw new Error('Item ID is required for update')
+      }
+      if (!pharmacistId) {
+        throw new Error('Pharmacist ID is required for update')
+      }
+      if (!itemData || typeof itemData !== 'object') {
+        throw new Error('Item data is required and must be an object')
+      }
+      
       // Validate required fields including strength
       this.validateInventoryItem(itemData)
       
       // Check for duplicate primary key (excluding current item)
-      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength, itemId)
+      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength, itemData.strengthUnit, itemData.expiryDate, itemId)
       
       // Prepare the update data
       const updateData = {
@@ -635,6 +646,13 @@ class InventoryService {
         pharmacistId,
         lastUpdated: new Date().toISOString(),
         updatedBy: pharmacistId
+      }
+      
+      // Handle stock field mapping for updates
+      if (updateData.initialStock !== undefined) {
+        // Map initialStock to currentStock for database storage
+        updateData.currentStock = parseInt(updateData.initialStock) || 0
+        delete updateData.initialStock // Remove initialStock as it's not stored in DB
       }
       
       // Clean undefined values
@@ -875,6 +893,11 @@ class InventoryService {
    * Validate inventory item data
    */
   validateInventoryItem(itemData) {
+    // Check if itemData is provided and is an object
+    if (!itemData || typeof itemData !== 'object') {
+      throw new Error('Invalid inventory item data: itemData is required and must be an object')
+    }
+
     const required = ['brandName', 'genericName', 'strength', 'strengthUnit', 'initialStock', 'minimumStock', 'sellingPrice', 'expiryDate', 'storageConditions']
     const missing = required.filter(field => {
       const value = itemData[field]
@@ -901,12 +924,12 @@ class InventoryService {
   }
 
   /**
-   * Check if a brand name + strength combination already exists for a pharmacist
-   * This implements the primary key rule: Brand Name + Strength
+   * Check if a brand name + strength + strength unit + expiry date combination already exists for a pharmacist
+   * This implements the primary key rule: Brand Name + Strength + Strength Unit + Expiry Date
    */
-  async checkDuplicatePrimaryKey(pharmacistId, brandName, strength, excludeId = null) {
+  async checkDuplicatePrimaryKey(pharmacistId, brandName, strength, strengthUnit, expiryDate, excludeId = null) {
     try {
-      console.log('🔍 Checking for duplicate primary key:', { pharmacistId, brandName, strength, excludeId })
+      console.log('🔍 Checking for duplicate primary key:', { pharmacistId, brandName, strength, strengthUnit, expiryDate, excludeId })
       
       // Use simple query to avoid composite index requirements
       const stockRef = collection(db, 'drugStock')
@@ -921,8 +944,11 @@ class InventoryService {
         }
         
         const data = doc.data()
-        // Check for duplicate using client-side filtering - brandName is primary
-        if (data.brandName === brandName && data.strength === strength) {
+        // Check for duplicate using client-side filtering - composite key: brandName + strength + strengthUnit + expiryDate
+        if (data.brandName === brandName && 
+            data.strength === strength && 
+            data.strengthUnit === strengthUnit &&
+            data.expiryDate === expiryDate) {
           duplicates.push({
             id: doc.id,
             ...data
@@ -934,7 +960,7 @@ class InventoryService {
       
       if (duplicates.length > 0) {
         const duplicateItem = duplicates[0]
-        throw new Error(`A drug with brand name "${brandName}" and strength "${strength}" already exists. Each brand name + strength combination must be unique.`)
+        throw new Error(`A drug with brand name "${brandName}", strength "${strength} ${strengthUnit}", and expiry date "${expiryDate}" already exists. Each brand name + strength + unit + expiry combination must be unique.`)
       }
       
       return false // No duplicates found

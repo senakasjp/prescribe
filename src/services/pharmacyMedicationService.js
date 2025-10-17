@@ -114,7 +114,10 @@ class PharmacyMedicationService {
           strength: item.strength || '',
           dosageForm: item.dosageForm || '',
           manufacturer: item.manufacturer || '',
-          pharmacyId: pharmacyId
+          pharmacyId: pharmacyId,
+          currentStock: item.currentStock || 0,
+          packUnit: item.packUnit || '',
+          expiryDate: item.expiryDate || ''
         }))
         .filter(med => med.brandName || med.genericName) // Ensure at least one name exists
 

@@ -343,4 +343,72 @@ const status = await aiTokenTracker.getQuotaStatus(doctorId)
 console.log("Quota status:", status)
 ```
 
+## Inventory Service
+
+### Drug Inventory Management
+```javascript
+// Create new inventory item
+async createInventoryItem(pharmacistId, inventoryData)
+// Parameters: pharmacistId (string), inventoryData (object)
+// inventoryData: { brandName, strength, strengthUnit, expiryDate, quantity, costPerUnit, supplier, ... }
+// Returns: { id, ...inventoryData }
+
+// Update inventory item
+async updateInventoryItem(pharmacistId, itemId, updatedData)
+// Parameters: pharmacistId (string), itemId (string), updatedData (object)
+// Returns: boolean (success/failure)
+
+// Get all inventory items for pharmacist
+async getInventoryItems(pharmacistId)
+// Parameters: pharmacistId (string)
+// Returns: Array of inventory item objects
+
+// Delete inventory item
+async deleteInventoryItem(pharmacistId, itemId)
+// Parameters: pharmacistId (string), itemId (string)
+// Returns: boolean (success/failure)
+
+// Check for duplicate primary key
+async checkDuplicatePrimaryKey(pharmacistId, brandName, strength, strengthUnit, expiryDate, excludeId)
+// Parameters: pharmacistId, brandName, strength, strengthUnit, expiryDate, excludeId (optional)
+// Returns: boolean (true if duplicate found, throws error)
+```
+
+### Primary Key System
+**CRITICAL BUSINESS RULE**: The primary key for inventory items is the combination of:
+- **Brand Name + Strength + Strength Unit + Expiry Date**
+
+This ensures:
+- ✅ **Unique Identification**: Items are uniquely identified by brand + strength + unit + expiry
+- ✅ **Duplicate Prevention**: No two items can exist with the same combination
+- ✅ **FIFO Management**: Same drug with different expiry dates are separate inventory items
+- ✅ **Batch Tracking**: Proper tracking of different batches by expiry date
+
+### Example Usage
+```javascript
+import { inventoryService } from './services/pharmacist/inventoryService.js'
+
+// Create inventory item
+const inventoryData = {
+  brandName: "Amoxicillin",
+  strength: "500",
+  strengthUnit: "mg",
+  expiryDate: "2025-12-31",
+  quantity: 100,
+  costPerUnit: 2.50,
+  supplier: "ABC Pharmaceuticals"
+}
+
+const newItem = await inventoryService.createInventoryItem(pharmacistId, inventoryData)
+
+// Check for duplicates before creating
+await inventoryService.checkDuplicatePrimaryKey(
+  pharmacistId, 
+  "Amoxicillin", 
+  "500", 
+  "mg", 
+  "2025-12-31"
+)
+```
+
 

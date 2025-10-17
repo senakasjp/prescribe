@@ -297,7 +297,11 @@
   // Format date
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString()
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
   }
   
   // Refresh data
@@ -936,7 +940,11 @@
                           <tbody class="bg-white divide-y divide-gray-200">
                             {#each aiTokenTracker.getWeeklyUsage() as day}
                               <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(day.date).toLocaleDateString()}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(day.date).toLocaleDateString('en-GB', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric'
+                                })}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{day.requests || 0}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(day.tokens || 0).toLocaleString()}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(day.cost || 0).toFixed(4)}</td>
@@ -1368,7 +1376,11 @@
                       
                       <div class="flex justify-between">
                         <dt class="text-sm font-medium text-gray-500">Last Updated:</dt>
-                        <dd class="text-sm text-gray-900">{new Date().toLocaleDateString()}</dd>
+                        <dd class="text-sm text-gray-900">{new Date().toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        })}</dd>
                       </div>
                       
                       <div class="flex justify-between">

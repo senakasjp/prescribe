@@ -2,6 +2,27 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🔧 Enhanced Medication Form Fields (January 16, 2025) - v2.2.23**
+- **Duration Field Enhancement**: 
+  - ✅ Changed to number-only input with minimum value of 1
+  - ✅ Updated label to "Duration in days" for clarity
+  - ✅ Simplified placeholder to "e.g., 30" (removed "days" text)
+- **Dosage Field Validation**: 
+  - ✅ Changed from text to number input for validation
+  - ✅ Added decimal support (step="0.1") for precise dosages
+  - ✅ Added minimum value of 0 to prevent negative entries
+- **Route of Administration Standardization**: 
+  - ✅ Updated dropdown options to show "Full Word (Abbreviation)" format
+  - ✅ Right-side input field now displays same format as dropdown
+  - ✅ Added comprehensive mapping for all route types
+  - ✅ Examples: "Oral (PO)", "Intramuscular (IM)", "Intravenous (IV)"
+- **User Experience Improvements**:
+  - ✅ Better validation prevents invalid text entries
+  - ✅ Consistent formatting follows medical standards
+  - ✅ Improved clarity with clear labels and placeholders
+  - ✅ Mobile-friendly number inputs provide appropriate keyboards
+  - ✅ Professional appearance with medical-standard formatting
+
 ### **🎨 Prescription Template Header Editor System (January 16, 2025) - v2.2.21**
 - **Professional Header Editor**: Advanced rich text editor for creating custom prescription headers
 - **Template Type Selection**: Three options - Printed Letterheads, Upload Header Image, or System Header
@@ -20,7 +41,7 @@
 - **Multi-page Support**: Headers appear on every page with horizontal separator lines
 - **Professional Typography**: 11pt section headings, 10pt patient details, 9pt medication info
 - **Patient Information**: Includes Name, Date, Age, Prescription #, and Sex/Gender
-- **PDF Layout**: 20mm margins, A4 size, automatic pagination for long prescriptions
+- **PDF Layout**: 20mm margins, A5 size (148mm x 210mm), automatic pagination for long prescriptions
 - **Footer System**: Validity statement (left) and version number (right) on every page
 - **Browser Preview**: PDFs open in new browser window instead of auto-downloading
 
@@ -99,7 +120,7 @@
 - **Initial Quantity Tracking** - System tracks initial stock quantities for accurate low-stock detection
 - **Visual Stock Alerts** - Orange badges for normal stock, red badges for low stock (≤10% of initial)
 - **Real-time Updates** - Automatic color changes based on current vs. initial stock levels
-- **Stock Management** - Comprehensive inventory management for pharmacists
+- **Stock Management** - Comprehensive inventory management for pharmacists with composite primary key system (Brand Name + Strength + Strength Unit + Expiry Date)
 
 ### **🔒 Critical Security Implementation - Doctor Data Isolation**
 - **Doctor Isolation** - Each doctor can ONLY see their own patients (CRITICAL SECURITY FIX)
@@ -163,7 +184,7 @@
 - **Prescription Sharing** - Connected pharmacists can view prescriptions from doctors
 - **Pharmacist Dashboard** - Dedicated interface for viewing and managing prescriptions
 - **Business Information** - Track pharmacy business names and contact information
-- **Drug Stock Management** - Comprehensive inventory management with quantity, strength, and expiry tracking
+- **Drug Stock Management** - Comprehensive inventory management with quantity, strength, and expiry tracking using composite primary key (Brand Name + Strength + Strength Unit + Expiry Date)
 - **Stock Availability Tracking** - Monitor stock levels with visual status indicators
 - **Initial Quantity Recording** - Track initial stock quantities for low-stock alert calculations
 - **Stock Status Monitoring** - Real-time stock level monitoring and alerts

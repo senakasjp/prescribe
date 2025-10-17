@@ -83,7 +83,10 @@
         brandName: drug.brandName || '',
         genericName: drug.genericName || '',
         strength: drug.strength || '',
-        dosageForm: drug.dosageForm || 'Tablet'
+        dosageForm: drug.dosageForm || 'Tablet',
+        currentStock: drug.currentStock || 0,
+        packUnit: drug.packUnit || '',
+        expiryDate: drug.expiryDate || ''
       }))
       
       // Combine results (local drugs first, then pharmacy drugs)
@@ -342,6 +345,9 @@
                 {#if drug.strength}
                   <span class="inline-flex items-center px-2 py-1 rounded bg-gray-100">
                     <i class="fas fa-weight-hanging mr-1"></i>{drug.strength}
+                    {#if drug.source === 'pharmacy' && drug.currentStock !== undefined}
+                      <span class="ml-1 text-blue-600 font-medium">({drug.currentStock} {drug.packUnit || 'units'})</span>
+                    {/if}
                   </span>
                 {/if}
                 {#if drug.dosageForm}

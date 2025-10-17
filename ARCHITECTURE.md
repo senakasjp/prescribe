@@ -122,7 +122,7 @@ The Patient Management System is built using a modern frontend architecture with
   - Display prescriptions from connected doctors
   - Prescription management
   - Business information display
-  - Drug stock management and inventory tracking
+  - Drug stock management and inventory tracking with composite primary key system
 - **Key Features**:
   - Prescription viewing
   - Business stats
@@ -130,6 +130,7 @@ The Patient Management System is built using a modern frontend architecture with
   - Comprehensive drug stock management
   - Stock availability tracking with visual indicators
   - Initial quantity recording for low-stock alerts
+  - **Drug Identification**: Brand Name + Strength + Strength Unit + Expiry Date as composite primary key
 
 #### PharmacistManagement.svelte
 - **Purpose**: Doctor-pharmacist connection management
@@ -489,3 +490,38 @@ async createPatient(patientData) {
 - **API Compatibility** - Keep same interface
 - **Gradual Migration** - Phased approach
 - **Fallback Support** - Local storage backup
+
+## Drug Identification System
+
+### Primary Key Architecture
+The pharmacy portal uses a **composite primary key** system to uniquely identify drugs in the inventory:
+
+**Primary Key Components:**
+- **Brand Name** - The pharmaceutical brand name
+- **Strength** - The drug strength (e.g., "500", "10")
+- **Strength Unit** - The unit of measurement (e.g., "mg", "ml", "units")
+- **Expiry Date** - The expiration date (YYYY-MM-DD format)
+
+### Business Logic
+```javascript
+// Primary Key Format: Brand Name + Strength + Strength Unit + Expiry Date
+const primaryKey = `${brandName}_${strength}_${strengthUnit}_${expiryDate}`
+
+// Examples:
+// "Amoxicillin_500_mg_2025-12-31"
+// "Paracetamol_500_mg_2025-06-15"
+// "Insulin_100_units_2025-03-20"
+```
+
+### Key Benefits
+- ✅ **Unique Identification**: Each drug batch is uniquely identified
+- ✅ **FIFO Management**: Different expiry dates allow proper first-in-first-out tracking
+- ✅ **Batch Tracking**: Same drug with different expiry dates are separate inventory items
+- ✅ **Duplicate Prevention**: Prevents accidental duplicate entries
+- ✅ **Expiry Management**: Easy tracking of expiring medications
+
+### Implementation
+- **Database Level**: Composite key validation in `inventoryService.js`
+- **UI Level**: Primary key fields are disabled during editing to prevent corruption
+- **Validation**: Real-time duplicate checking before creating/updating items
+- **Search**: All inventory operations consider the full composite key

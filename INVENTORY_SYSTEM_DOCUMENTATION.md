@@ -40,24 +40,26 @@ The pharmacist portal has been enhanced with a sophisticated drug inventory mana
 ## Primary Key Logic
 
 ### Inventory Item Identification
-**CRITICAL BUSINESS RULE**: The primary key for inventory items is the combination of **Brand/Drug Name + Strength**.
+**CRITICAL BUSINESS RULE**: The primary key for inventory items is the combination of **Brand Name + Strength + Strength Unit + Expiry Date**.
 
 This means:
-- ✅ **Unique Identification**: Items are uniquely identified by both name AND strength together
-- ✅ **Duplicate Prevention**: No two items can exist with the same name + strength combination
-- ✅ **Search Logic**: All inventory operations must consider both fields as a composite key
+- ✅ **Unique Identification**: Items are uniquely identified by brand name, strength, strength unit, AND expiry date together
+- ✅ **Duplicate Prevention**: No two items can exist with the same brand + strength + unit + expiry combination
+- ✅ **Search Logic**: All inventory operations must consider all four fields as a composite key
 - ✅ **Stock Management**: Quantities are tracked based on this combined identifier
+- ✅ **FIFO Management**: Same drug with different expiry dates are separate inventory items
 
 **Examples**:
-- "Paracetamol 500mg" and "Paracetamol 1000mg" are different items
-- "Aspirin 75mg" and "Aspirin 325mg" are separate inventory entries
-- Same brand name with different strengths = separate inventory items
+- "Paracetamol 500mg exp. 2025-12-31" and "Paracetamol 500mg exp. 2026-06-30" are different items
+- "Aspirin 75mg exp. 2025-03-15" and "Aspirin 75mg exp. 2025-09-15" are separate inventory entries
+- Same brand + strength + unit with different expiry dates = separate inventory items
 
 **Implementation Requirements**:
-- All validation logic must check for duplicates using both fields
-- Search functionality must consider both name and strength
-- Database queries should use composite key logic
-- UI displays should prominently show both fields as the unique identifier
+- All validation logic must check for duplicates using all four fields
+- Search functionality must consider brand name, strength, unit, and expiry date
+- Database queries should use composite key logic with all four fields
+- UI displays should prominently show all four fields as the unique identifier
+- Batch management becomes critical for FIFO operations
 
 ## Technical Architecture
 
@@ -108,7 +110,7 @@ This means:
   barcode: string,
   
   // Basic Information (PRIMARY KEY COMPONENTS)
-  drugName: string,        // Part of composite primary key
+  drugName: string,
   genericName: string,
   brandName: string,       // Part of composite primary key  
   manufacturer: string,
@@ -117,13 +119,13 @@ This means:
   
   // Pharmaceutical Details (PRIMARY KEY COMPONENTS)
   strength: string,        // Part of composite primary key
-  strengthUnit: string,    // mg, g, ml, mcg, units
+  strengthUnit: string,    // Part of composite primary key - mg, g, ml, mcg, units
   dosageForm: string, // tablet, capsule, liquid, injection, cream, ointment
   route: string, // oral, topical, injection
   packSize: number,
   packUnit: string,
   
-  // COMPOSITE PRIMARY KEY: (brandName + strength) OR (drugName + strength)
+  // COMPOSITE PRIMARY KEY: (brandName + strength + strengthUnit + expiryDate)
   
   // Regulatory Information
   ndcNumber: string,

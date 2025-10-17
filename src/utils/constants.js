@@ -57,20 +57,22 @@ export const PRESCRIPTION_STATUS = {
   CANCELLED: 'cancelled'
 }
 
-// Medication frequencies
+// Medication frequencies with standard medical abbreviations
 export const MEDICATION_FREQUENCIES = [
-  'Once daily',
-  'Twice daily',
-  'Three times daily',
-  'Four times daily',
-  'Every 4 hours',
-  'Every 6 hours',
-  'Every 8 hours',
-  'Every 12 hours',
-  'As needed',
-  'Before meals',
-  'After meals',
-  'At bedtime'
+  'Once daily (OD)',
+  'Twice daily (BD)',
+  'Three times daily (TDS)',
+  'Four times daily (QDS)',
+  'Every 4 hours (Q4H)',
+  'Every 6 hours (Q6H)',
+  'Every 8 hours (Q8H)',
+  'Every 12 hours (Q12H)',
+  'As needed (PRN)',
+  'Before meals (AC)',
+  'After meals (PC)',
+  'At bedtime (HS)',
+  'Weekly',
+  'Monthly'
 ]
 
 // Medication durations

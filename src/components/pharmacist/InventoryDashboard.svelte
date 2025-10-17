@@ -114,7 +114,7 @@
           item.genericName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           item.manufacturer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           item.strength?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          `${item.brandName || item.drugName} ${item.strength}`.toLowerCase().includes(searchQuery.toLowerCase())
+          `${item.brandName || item.drugName} ${item.strength} ${item.expiryDate}`.toLowerCase().includes(searchQuery.toLowerCase())
         )
       }
       
@@ -178,7 +178,7 @@
       }
       
       if (!newItemForm.brandName || !newItemForm.genericName || !newItemForm.strength || !newItemForm.strengthUnit || !newItemForm.initialStock || !newItemForm.minimumStock || !newItemForm.sellingPrice || !newItemForm.expiryDate || !newItemForm.storageConditions) {
-        notifyError('Please fill in all required fields including brand name, strength, and strength unit')
+        notifyError('Please fill in all required fields including brand name, strength, strength unit, and expiry date')
         return
       }
       
@@ -227,7 +227,7 @@
       }
       
       if (!editItemForm.brandName || !editItemForm.genericName || !editItemForm.strength || !editItemForm.strengthUnit || !editItemForm.currentStock || !editItemForm.minimumStock || !editItemForm.sellingPrice || !editItemForm.expiryDate || !editItemForm.storageConditions) {
-        notifyError('Please fill in all required fields including brand name, strength, and strength unit')
+        notifyError('Please fill in all required fields including brand name, strength, strength unit, and expiry date')
         return
       }
       
@@ -261,7 +261,7 @@
     
     pendingAction = async () => {
       try {
-        await inventoryService.updateInventoryItem(itemId, { isActive: false })
+        await inventoryService.deleteInventoryItem(itemId)
         await loadDashboardData()
         notifySuccess('Inventory item deleted successfully')
       } catch (error) {
@@ -362,8 +362,17 @@
         return
       }
 
+      // Map selectedItem data to the format expected by validation
+      const itemDataForUpdate = {
+        ...selectedItem,
+        // Map currentStock to initialStock for validation
+        initialStock: selectedItem.currentStock,
+        // Ensure brandName is present (it should be readonly in the form)
+        brandName: selectedItem.brandName || selectedItem.drugName
+      }
+
       // Update the item using the inventory service
-      const updatedItem = await inventoryService.updateInventoryItem(selectedItem.id, selectedItem)
+      const updatedItem = await inventoryService.updateInventoryItem(selectedItem.id, pharmacist.id, itemDataForUpdate)
       
       if (updatedItem) {
         // Update the local inventory items array
@@ -1062,6 +1071,7 @@
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed after creation</p>
               </div>
               
               <div>
@@ -1169,7 +1179,7 @@
                   readonly
                   title="Brand Name cannot be changed (Primary Key)"
                 />
-                <p class="text-xs text-gray-500 mt-1">Brand Name is part of the primary key and cannot be changed</p>
+                <p class="text-xs text-gray-500 mt-1">Brand Name is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
               </div>
               
               <div>
@@ -1201,7 +1211,7 @@
                     disabled
                     title="Strength cannot be changed (Primary Key)"
                   />
-                  <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key and cannot be changed</p>
+                  <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Strength Unit *</label>
@@ -1218,7 +1228,7 @@
                     <option value="units">units</option>
                     <option value="%">%</option>
                   </select>
-                  <p class="text-xs text-gray-500 mt-1">Strength Unit is part of the primary key and cannot be changed</p>
+                  <p class="text-xs text-gray-500 mt-1">Strength Unit is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
                 </div>
               </div>
               
@@ -1355,8 +1365,12 @@
                   type="date"
                   bind:value={selectedItem.expiryDate}
                   required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                  disabled
+                  readonly
+                  title="Expiry Date cannot be changed (Primary Key)"
                 />
+                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
               </div>
               
               <div>

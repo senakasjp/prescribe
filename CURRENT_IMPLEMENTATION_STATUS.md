@@ -186,7 +186,13 @@ src/
 6. **symptoms**: Patient symptoms
 7. **reports**: Medical reports
 8. **diagnoses**: Patient diagnoses
-9. **drugStock**: Pharmacist inventory
+9. **drugStock**: Pharmacist inventory with composite primary key (Brand Name + Strength + Strength Unit + Expiry Date)
+
+### Drug Identification System
+- **Primary Key**: Brand Name + Strength + Strength Unit + Expiry Date
+- **Unique Identification**: Each drug batch is uniquely identified
+- **FIFO Management**: Different expiry dates allow proper tracking
+- **Duplicate Prevention**: Prevents accidental duplicate entries
 
 ### Data Relationships
 - Doctors → Patients (one-to-many)

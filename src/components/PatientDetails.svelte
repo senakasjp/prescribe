@@ -1803,18 +1803,19 @@
           }
           
         } else if (templateSettings.templateType === 'printed') {
-          // For printed letterheads, reserve space
+          // For printed letterheads, reserve space (no text, just space)
           const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
           headerYStart = 5
           
           console.log('🖨️ Printed letterhead space reserved:', headerHeightMm + 'mm')
           
-          // Add a placeholder note for printed letterhead
-          doc.setFontSize(8)
-          doc.setFont('helvetica', 'italic')
-          doc.text('[Printed Letterhead Area - ' + Math.round(headerHeightMm) + 'mm height]', margin, headerYStart + 5)
+          // Store printed header dimensions for multi-page use
+          capturedHeaderImage = 'PRINTED_LETTERHEAD' // Special marker
+          capturedHeaderWidth = 0 // No image width
+          capturedHeaderHeight = headerHeightMm
+          capturedHeaderX = 0 // Not used for printed
           
-          // Add horizontal line after header
+          // Add horizontal line after header space
           const lineY = headerYStart + headerHeightMm + 2
           doc.setLineWidth(0.5)
           doc.line(margin, lineY, pageWidth - margin, lineY)
@@ -2220,7 +2221,7 @@
             // Add version number to PDF for tracking
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.text('M-Prescribe v2.2.21', pageWidth - margin, pageHeight - 5, { align: 'right' })
+            doc.text('M-Prescribe v2.2.23', pageWidth - margin, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')
@@ -2247,7 +2248,7 @@
         // Add version number to PDF for tracking
         doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
-        doc.text('M-Prescribe v2.2.21', pageWidth - margin, pageHeight - 5, { align: 'right' })
+        doc.text('M-Prescribe v2.2.22', pageWidth - margin, pageHeight - 5, { align: 'right' })
         
         // Clinic details
         doc.setFontSize(10)
@@ -2319,16 +2320,25 @@
             
             // Add header to new page if captured
             if (capturedHeaderImage) {
-              doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
-              
-              // Add horizontal line after header
-              const lineY = headerYStart + capturedHeaderHeight + 2
-              doc.setLineWidth(0.5)
-              doc.line(margin, lineY, pageWidth - margin, lineY)
-              
-              yPos = lineY + 5
+              if (capturedHeaderImage === 'PRINTED_LETTERHEAD') {
+                // For printed letterhead, just reserve space and add line
+                const lineY = headerYStart + capturedHeaderHeight + 2
+                doc.setLineWidth(0.5)
+                doc.line(margin, lineY, pageWidth - margin, lineY)
+                yPos = lineY + 5
+              } else {
+                // For image headers, add the image
+                doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+                
+                // Add horizontal line after header
+                const lineY = headerYStart + capturedHeaderHeight + 2
+                doc.setLineWidth(0.5)
+                doc.line(margin, lineY, pageWidth - margin, lineY)
+                
+                yPos = lineY + 5
+              }
             } else {
-            yPos = margin + 10
+              yPos = margin + 10 // Fallback if no captured image
             }
           }
           
@@ -2387,16 +2397,25 @@
           
           // Add header to new page if captured
           if (capturedHeaderImage) {
-            doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
-            
-            // Add horizontal line after header
-            const lineY = headerYStart + capturedHeaderHeight + 2
-            doc.setLineWidth(0.5)
-            doc.line(margin, lineY, pageWidth - margin, lineY)
-            
-            yPos = lineY + 5
+            if (capturedHeaderImage === 'PRINTED_LETTERHEAD') {
+              // For printed letterhead, just reserve space and add line
+              const lineY = headerYStart + capturedHeaderHeight + 2
+              doc.setLineWidth(0.5)
+              doc.line(margin, lineY, pageWidth - margin, lineY)
+              yPos = lineY + 5
+            } else {
+              // For image headers, add the image
+              doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+              
+              // Add horizontal line after header
+              const lineY = headerYStart + capturedHeaderHeight + 2
+              doc.setLineWidth(0.5)
+              doc.line(margin, lineY, pageWidth - margin, lineY)
+              
+              yPos = lineY + 5
+            }
           } else {
-          yPos = margin + 10
+            yPos = margin + 10 // Fallback if no captured image
           }
         }
         

@@ -353,7 +353,11 @@
                       </p>
                       <p class="text-gray-500 text-sm mb-0">
                         <i class="fas fa-calendar mr-1"></i>
-                        Connected: {new Date(pharmacist.createdAt).toLocaleDateString()}
+                        Connected: {new Date(pharmacist.createdAt).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        })}
                       </p>
                     </div>
                   </div>
@@ -421,7 +425,11 @@
                   </p>
                   <p class="text-gray-500 text-sm mb-0">
                     <i class="fas fa-calendar mr-1"></i>
-                    Registered: {new Date(pharmacist.createdAt).toLocaleDateString()}
+                    Registered: {new Date(pharmacist.createdAt).toLocaleDateString('en-GB', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    })}
                   </p>
                 </div>
               </div>

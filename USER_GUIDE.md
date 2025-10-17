@@ -2,6 +2,34 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **🔧 Enhanced Medication Form Fields (January 16, 2025) - v2.2.23**
+- **Duration Field Enhancement**: 
+  - ✅ **Number-Only Input**: Duration field now only accepts numeric values
+  - ✅ **Clear Labeling**: Field labeled as "Duration in days" for clarity
+  - ✅ **Validation**: Minimum value of 1 day prevents invalid entries
+  - ✅ **Simplified Placeholder**: Shows "e.g., 30" instead of "e.g., 30 days"
+- **Dosage Field Validation**: 
+  - ✅ **Numeric Input**: Changed from text to number input for validation
+  - ✅ **Decimal Support**: Allows precise dosages like 2.5mg or 10.5ml
+  - ✅ **Minimum Value**: Prevents negative dosage entries
+  - ✅ **Step Control**: Supports decimal values with 0.1 step increments
+- **Route of Administration Standardization**: 
+  - ✅ **Medical Standard Format**: Shows "Full Word (Abbreviation)" format
+  - ✅ **Consistent Display**: Both dropdown and input field use same format
+  - ✅ **Professional Appearance**: Examples: "Oral (PO)", "Intramuscular (IM)"
+  - ✅ **Comprehensive Mapping**: All route types properly formatted
+- **User Experience Improvements**:
+  - ✅ **Better Validation**: Number inputs prevent invalid text entries
+  - ✅ **Mobile-Friendly**: Number inputs provide appropriate mobile keyboards
+  - ✅ **Clear Guidance**: Improved labels and placeholders guide users
+  - ✅ **Professional Standards**: Medical-standard formatting throughout
+
+### **📅 Date Format Standardization**
+- **Consistent Display**: All dates across the application now display in DD/MM/YYYY format
+- **Improved UX**: Eliminates confusion from mixed date formats (MM/DD/YYYY vs DD/MM/YYYY)
+- **Standardized Components**: Updated all dashboard and management components for consistency
+- **Technical Standard**: All date formatting now uses British locale (en-GB) for uniformity
+
 ### **🧠 Smart Prescription History Logic**
 - **Conditional History Management**: Prescriptions only move to history when saved or printed
 - **Status-Based Workflow**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions

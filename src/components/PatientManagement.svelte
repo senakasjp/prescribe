@@ -584,7 +584,11 @@
           
           dateRange.push({
             dateStr,
-            displayDate: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            displayDate: date.toLocaleDateString('en-GB', { 
+              day: '2-digit', 
+              month: '2-digit', 
+              year: 'numeric' 
+            })
           })
         }
         
@@ -1015,7 +1019,11 @@
     if (!items || !Array.isArray(items)) return []
     
     const grouped = items.reduce((groups, item) => {
-      const date = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'No date'
+      const date = item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }) : 'No date'
       if (!groups[date]) {
         groups[date] = []
       }
@@ -1750,7 +1758,11 @@
             {#if selectedPrescriptionForCard}
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
-                <span><i class="fas fa-calendar mr-1"></i>{new Date(selectedPrescriptionForCard.createdAt).toLocaleDateString()}</span>
+                <span><i class="fas fa-calendar mr-1"></i>{new Date(selectedPrescriptionForCard.createdAt).toLocaleDateString('en-GB', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric'
+                })}</span>
                 <div class="flex items-center gap-2">
                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{selectedPrescriptionForCard.medications.length} drug{selectedPrescriptionForCard.medications.length !== 1 ? 's' : ''}</span>
                 </div>
