@@ -42,7 +42,10 @@
   let resolvedDoctorIdentifier = null
 
   // Load pharmacy stock for availability checking
-  const loadPharmacyStock = async (identifier = null) => {
+  const MAX_STOCK_ATTEMPTS = 5
+  const RETRY_DELAY_MS = 1000
+
+  const loadPharmacyStock = async (identifier = null, attempt = 0) => {
     let resolvedDoctorId = identifier ?? doctorId
 
     // Fallback to patient-linked doctor ID or email when primary doctorId is missing/default
@@ -63,7 +66,18 @@
     
     try {
       stockLoading = true
-      console.log('📦 Loading pharmacy stock for doctor:', resolvedDoctorId)
+      console.log('📦 Loading pharmacy stock for doctor:', resolvedDoctorId, 'attempt', attempt + 1)
+      console.log('🔍 Selected patient doctorId:', selectedPatient?.doctorId, 'doctor email:', selectedPatient?.doctorEmail)
+
+      // Ensure doctor has connected pharmacies before fetching inventory
+      const connectedPharmacies = await pharmacyMedicationService.getConnectedPharmacies(resolvedDoctorId)
+      console.log('🏥 Connected pharmacies for doctor:', resolvedDoctorId, connectedPharmacies)
+
+      if ((!connectedPharmacies || connectedPharmacies.length === 0) && attempt < MAX_STOCK_ATTEMPTS - 1) {
+        console.warn(`⚠️ No connected pharmacies yet (attempt ${attempt + 1}/${MAX_STOCK_ATTEMPTS}). Retrying...`)
+        setTimeout(() => loadPharmacyStock(resolvedDoctorId, attempt + 1), RETRY_DELAY_MS)
+        return
+      }
 
       // Clear cache to ensure we always reflect latest inventory (especially after doctor connection updates)
       pharmacyMedicationService.clearCache(resolvedDoctorId)
@@ -72,6 +86,12 @@
       pharmacyStock = stockData
 
       console.log('📦 Total loaded pharmacy stock:', pharmacyStock.length)
+      if (pharmacyStock.length === 0 && attempt < MAX_STOCK_ATTEMPTS - 1) {
+        console.warn(`⚠️ Pharmacy stock empty, retrying fetch (attempt ${attempt + 1}/${MAX_STOCK_ATTEMPTS})`)
+        setTimeout(() => loadPharmacyStock(resolvedDoctorId, attempt + 1), RETRY_DELAY_MS)
+      } else if (pharmacyStock.length === 0) {
+        console.warn('⚠️ Pharmacy stock remains empty after maximum retries')
+      }
 
     } catch (error) {
       console.error('❌ Error loading pharmacy stock:', error)

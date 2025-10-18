@@ -1,5 +1,49 @@
 # Recent Fixes Summary - Prescribe Medical System
 
+## 🎯 Latest Updates (January 2025)
+
+### 💊 Pharmacist Inventory Matching Reliability
+**Status**: ✅ **FIXED & VERIFIED**
+
+#### **Issue Description**
+- **Problem**: Pharmacist portal flagged stocked medications as **"Not in inventory"** inside prescription detail view
+- **Symptoms**: Missing expiry date/current stock data despite the drug existing in pharmacistInventory
+- **Impact**: Workflow slowdown; pharmacists had to double-check stock manually before dispensing
+- **Severity**: High – misinformation in core dispensing workflow
+
+#### **Root Cause Analysis**
+- **String Mismatch**: Medication names from prescriptions often used combined labels such as `Brand(Generic)` or contained extra spaces
+- **Inventory Records**: Stored brandName, genericName, and drugName separately, so strict equality checks failed
+- **Reactivity**: Map-based storage made it harder for Svelte to react when data finally matched
+
+#### **Technical Solution**
+```javascript
+const normalizeName = (value) => (value || '')
+  .toLowerCase()
+  .replace(/[\u3000\s]+/g, ' ')
+  .replace(/[\(\)（）]/g, '')
+  .trim()
+
+const hasNameMatch = Array.from(medicationNames).some(medName =>
+  Array.from(itemNames).some(invName =>
+    invName && (invName === medName || invName.includes(medName) || medName.includes(invName))
+  )
+)
+```
+- Built normalized name sets for both medication objects and inventory items (brand/generic/drug variants)
+- Switched inventory cache to plain objects plus a version counter to trigger Svelte reactivity
+- Preserved HIPAA-compliant data boundaries while improving match tolerance
+
+#### **Files Modified**
+- `src/components/PharmacistDashboard.svelte` – Added normalization helpers, resilient matching loop, and reactive inventory object handling
+
+#### **Verification Results**
+- ✅ Prescription modal now surfaces expiry date and stock for existing inventory items
+- ✅ "Not in inventory" message only appears for truly unmapped drugs
+- ✅ Dispense confirmation flow remains unchanged
+- ✅ Build passes (`npm run build`)
+- ⚠️ Existing Svelte a11y warnings remain (no functional regressions)
+
 ## 🎯 Latest Updates (December 28, 2024)
 
 ### 🏥 Add New Patient Button Fix

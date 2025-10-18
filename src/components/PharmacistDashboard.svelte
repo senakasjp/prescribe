@@ -52,13 +52,18 @@
   let editableAmounts = new Map() // prescriptionId-medicationId -> amount
   
   // Track inventory data for each medication
-  let medicationInventoryData = new Map() // prescriptionId-medicationId -> inventoryData
+  let medicationInventoryData = {} // prescriptionId-medicationId -> inventoryData snapshot
+  let medicationInventoryVersion = 0 // forces reactivity when inventory data changes
   let cachedInventoryItems = [] // pharmacist inventory snapshot used for matching
   
   // Initialize editable amounts and fetch inventory data when prescription is selected
   // Function to load prescription data when selected
   const loadPrescriptionData = async () => {
     if (!selectedPrescription) return
+    if (!pharmacist || !pharmacist.id) {
+      console.warn('⚠️ Pharmacist data not ready, skipping inventory load')
+      return
+    }
     
     console.log('🔄 Loading prescription data for:', selectedPrescription.id)
     console.log('📋 Prescription structure:', {
@@ -66,8 +71,10 @@
       medications: selectedPrescription.prescriptions?.flatMap(p => p.medications?.length || 0)
     })
     
-    // Only clear editable amounts, keep inventory data until new data is loaded
+    // Reset cached state
     editableAmounts.clear()
+    medicationInventoryData = {}
+    medicationInventoryVersion += 1
     
     // Fetch pharmacist inventory once for matching
     cachedInventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
@@ -101,12 +108,12 @@
     
     // Wait for all inventory data to be fetched
     await Promise.all(fetchPromises)
-    console.log('🔑 Medication inventory keys after update:', Array.from(medicationInventoryData.keys()))
+    console.log('🔑 Medication inventory keys after update:', Object.keys(medicationInventoryData))
     console.log('✅ All inventory data loaded')
   }
   
-  // Watch for prescription changes
-  $: if (selectedPrescription) {
+  // Watch for prescription or pharmacist changes
+  $: if (selectedPrescription && pharmacist?.id) {
     loadPrescriptionData()
   }
   
@@ -143,12 +150,15 @@
       
       if (matchingItem) {
         console.log('✅ Found matching inventory item for:', medication.name, 'Key:', key)
-        medicationInventoryData.set(key, {
-          expiryDate: matchingItem.expiryDate,
-          currentStock: matchingItem.currentStock,
-          packUnit: matchingItem.packUnit,
-          found: true
-        })
+        medicationInventoryData = {
+          ...medicationInventoryData,
+          [key]: {
+            expiryDate: matchingItem.expiryDate,
+            currentStock: matchingItem.currentStock,
+            packUnit: matchingItem.packUnit,
+            found: true
+          }
+        }
         console.log('💾 Stored inventory data with key:', key, 'Data:', {
           expiryDate: matchingItem.expiryDate,
           currentStock: matchingItem.currentStock,
@@ -162,156 +172,136 @@
           genericName: item.genericName,
           expiryDate: item.expiryDate
         })))
-        medicationInventoryData.set(key, {
+        medicationInventoryData = {
+          ...medicationInventoryData,
+          [key]: {
+            expiryDate: null,
+            currentStock: 0,
+            packUnit: '',
+            found: false
+          }
+        }
+      }
+      
+      medicationInventoryVersion += 1
+    } catch (error) {
+      console.error('Error fetching inventory data for medication:', medication.name, error)
+      medicationInventoryData = {
+        ...medicationInventoryData,
+        [key]: {
           expiryDate: null,
           currentStock: 0,
           packUnit: '',
           found: false
-        })
+        }
       }
-      
-      // Trigger reactivity
-      medicationInventoryData = new Map(medicationInventoryData)
-    } catch (error) {
-      console.error('Error fetching inventory data for medication:', medication.name, error)
-      medicationInventoryData.set(key, {
-        expiryDate: null,
-        currentStock: 0,
-        packUnit: '',
-        found: false
-      })
-      medicationInventoryData = new Map(medicationInventoryData)
+      medicationInventoryVersion += 1
     }
   }
   
-  // Find matching inventory item for a medication using composite key
+  // Normalize medication name for reliable comparisons
+  const normalizeName = (value) => {
+    return (value || '')
+      .toLowerCase()
+      .replace(/[\u3000\s]+/g, ' ') // collapse whitespace (including full-width space)
+      .replace(/[\(\)（）]/g, '') // remove parentheses that often wrap generic names
+      .trim()
+  }
+
+  const buildMedicationNameSet = (medication) => {
+    const names = new Set()
+    const medicationName = medication.name || ''
+    const genericName = medication.genericName || ''
+
+    // Raw values
+    names.add(normalizeName(medicationName))
+    names.add(normalizeName(genericName))
+
+    // Extracted brand/generic parts from combined names like "Lexipro(Escitalopram)"
+    const brandFromName = medicationName.split(/[\(（]/)[0]?.trim()
+    const genericFromName = medicationName.includes('(') || medicationName.includes('（')
+      ? medicationName.split(/[\(（]/)[1]?.replace(/[\)）]/, '').trim()
+      : ''
+
+    names.add(normalizeName(brandFromName))
+    names.add(normalizeName(genericFromName))
+
+    // Remove falsy/empty strings
+    names.delete('')
+
+    return names
+  }
+
+  const buildInventoryNameSet = (item) => {
+    const names = new Set()
+
+    const brandName = item.brandName || ''
+    const genericName = item.genericName || ''
+    const drugName = item.drugName || ''
+
+    names.add(normalizeName(brandName))
+    names.add(normalizeName(genericName))
+    names.add(normalizeName(drugName))
+
+    // Handle stored brand names that already contain generic names
+    if (brandName) {
+      names.add(normalizeName(brandName.split(/[\(（]/)[0]))
+    }
+
+    names.delete('')
+
+    return names
+  }
+
+  // Find matching inventory item for a medication using flexible name matching
   const findMatchingInventoryItem = (medication, inventoryItems) => {
     if (!medication || !inventoryItems || inventoryItems.length === 0) {
       console.log('❌ No medication or inventory items:', { medication, inventoryItemsLength: inventoryItems?.length })
       return null
     }
 
-    // Extract brand name and generic name from medication
-    const medicationName = medication.name || ''
-    const medicationGenericName = medication.genericName || ''
-    
-    console.log('🔍 Matching medication:', {
-      medicationName,
-      medicationGenericName,
-      inventoryItemsCount: inventoryItems.length
-    })
-    
-    // Extract brand name from medication name (remove generic name in parentheses)
-    // Handle both "Lexipro(Escitalopram)" and "Lexipro (Escitalopram)" formats
-    const brandNameFromName = medicationName.split(/[\(（]/)[0].trim()
-    
-    console.log('📝 Extracted brand name:', brandNameFromName)
-    
-    // Try to match using composite key: Brand Name + Generic Name + Expiry Date
-    // First try with brand name from medication name
-    let match = inventoryItems.find(item => {
-      const itemBrandName = (item.brandName || '').toLowerCase().trim()
-      const itemGenericName = (item.genericName || '').toLowerCase().trim()
-      const itemExpiryDate = item.expiryDate || ''
-      
-      const medBrandName = brandNameFromName.toLowerCase().trim()
-      const medGenericName = medicationGenericName.toLowerCase().trim()
-      
-      const isMatch = itemBrandName === medBrandName && 
-                     itemGenericName === medGenericName &&
-                     itemExpiryDate // Must have expiry date
-      
-      if (isMatch) {
-        console.log('✅ Found exact match:', {
-          itemBrandName,
-          itemGenericName,
-          itemExpiryDate,
-          medBrandName,
-          medGenericName
-        })
-      }
-      
-      return isMatch
-    })
-    
-    if (match) return match
+    const medicationNames = buildMedicationNameSet(medication)
+    console.log('🔍 Matching medication using names:', Array.from(medicationNames))
 
-    // Try with generic name from medication name (if it exists)
-    if (medicationName.includes('(') || medicationName.includes('（')) {
-      const genericFromName = medicationName.split(/[\(（]/)[1]?.replace(/[\)）]/, '').trim()
-      console.log('📝 Extracted generic from name:', genericFromName)
-      
-      match = inventoryItems.find(item => {
-        const itemBrandName = (item.brandName || '').toLowerCase().trim()
-        const itemGenericName = (item.genericName || '').toLowerCase().trim()
-        const itemExpiryDate = item.expiryDate || ''
-        
-        const medBrandName = brandNameFromName.toLowerCase().trim()
-        const medGenericName = genericFromName.toLowerCase().trim()
-        
-        const isMatch = itemBrandName === medBrandName && 
-                       itemGenericName === medGenericName &&
-                       itemExpiryDate // Must have expiry date
-        
-        if (isMatch) {
-          console.log('✅ Found match with generic from name:', {
-            itemBrandName,
-            itemGenericName,
-            itemExpiryDate,
-            medBrandName,
-            medGenericName
-          })
-        }
-        
-        return isMatch
-      })
-      
-      if (match) return match
+    for (const item of inventoryItems) {
+      const itemNames = buildInventoryNameSet(item)
+
+      const hasNameMatch = Array.from(medicationNames).some(medName => 
+        Array.from(itemNames).some(invName => invName && (invName === medName || invName.includes(medName) || medName.includes(invName)))
+      )
+
+      if (hasNameMatch) {
+        console.log('✅ Found matching inventory item:', {
+          medicationNames: Array.from(medicationNames),
+          inventoryNames: Array.from(itemNames),
+          expiryDate: item.expiryDate
+        })
+        return item
+      }
     }
 
-    // Fallback: try with just brand name match (for medications without generic name)
-    match = inventoryItems.find(item => {
-      const itemBrandName = (item.brandName || '').toLowerCase().trim()
-      const itemExpiryDate = item.expiryDate || ''
-      
-      const medBrandName = brandNameFromName.toLowerCase().trim()
-      
-      const isMatch = itemBrandName === medBrandName && itemExpiryDate
-      
-      if (isMatch) {
-        console.log('✅ Found brand name only match:', {
-          itemBrandName,
-          itemExpiryDate,
-          medBrandName
-        })
-      }
-      
-      return isMatch
-    })
+    console.log('❌ No match found. Inventory items:', inventoryItems.map(item => ({
+      brandName: item.brandName,
+      genericName: item.genericName,
+      drugName: item.drugName,
+      expiryDate: item.expiryDate
+    })))
     
-    if (!match) {
-      console.log('❌ No match found. Inventory items:', inventoryItems.map(item => ({
-        brandName: item.brandName,
-        genericName: item.genericName,
-        expiryDate: item.expiryDate
-      })))
-    }
-    
-    return match || null
+    return null
   }
   
   // Get inventory data for a medication
-  const getMedicationInventoryData = (prescriptionId, medicationId) => {
+  const getMedicationInventoryData = (prescriptionId, medicationId, version) => {
     const key = `${prescriptionId}-${medicationId}`
-    const data = medicationInventoryData.get(key) || {
+    const data = medicationInventoryData[key] || {
       expiryDate: null,
       currentStock: 0,
       packUnit: '',
       found: false
     }
     
-    console.log('🔍 Getting inventory data for:', medicationId, 'Key:', key, 'Data:', data)
-    console.log('🔍 Available keys in medicationInventoryData:', Array.from(medicationInventoryData.keys()))
+    console.log('🔍 Getting inventory data for:', medicationId, 'Key:', key, 'Data:', data, 'version:', version)
+    console.log('🔍 Available keys in medicationInventoryData:', Object.keys(medicationInventoryData))
     return data
   }
   
@@ -935,6 +925,7 @@
 
   // Calculate total amount based on frequency and duration
   const calculateMedicationAmount = (medication) => {
+    console.log('🧮 Calculating amount for medication:', medication)
     if (medication.amount !== undefined && medication.amount !== null && medication.amount !== '') {
       return medication.amount
     }
@@ -1612,10 +1603,10 @@
                                 </td>
                                 <td class="w-24 px-2 py-3 text-sm text-gray-900">
                                   <div class="break-words">
-                                    {#if getMedicationInventoryData(prescription.id, medication.id || medication.name).found}
+                                    {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
                                       <span class="text-green-600 font-medium">
-                                        {getMedicationInventoryData(prescription.id, medication.id || medication.name).expiryDate ? 
-                                          new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 
+                                        {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ? 
+                                          new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 
                                           'N/A'
                                         }
                                       </span>
@@ -1626,9 +1617,9 @@
                                 </td>
                                 <td class="w-20 px-2 py-3 text-sm text-gray-900">
                                   <div class="break-words">
-                                    {#if getMedicationInventoryData(prescription.id, medication.id || medication.name).found}
+                                    {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
                                       <span class="text-blue-600 font-medium">
-                                        {getMedicationInventoryData(prescription.id, medication.id || medication.name).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name).packUnit}
+                                        {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
                                       </span>
                                     {:else}
                                       <span class="text-red-500">0</span>
@@ -1689,10 +1680,10 @@
                               </div>
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Expiry Date:</span>
-                                {#if getMedicationInventoryData(prescription.id, medication.id || medication.name).found}
+                                {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
                                   <span class="text-green-600 font-medium text-xs">
-                                    {getMedicationInventoryData(prescription.id, medication.id || medication.name).expiryDate ? 
-                                      new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 
+                                    {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ? 
+                                      new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 
                                       'N/A'
                                     }
                                   </span>
@@ -1702,9 +1693,9 @@
                               </div>
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Remaining:</span>
-                                {#if getMedicationInventoryData(prescription.id, medication.id || medication.name).found}
+                                {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
                                   <span class="text-blue-600 font-medium text-xs">
-                                    {getMedicationInventoryData(prescription.id, medication.id || medication.name).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name).packUnit}
+                                    {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
                                   </span>
                                 {:else}
                                   <span class="text-red-500 text-xs">0</span>

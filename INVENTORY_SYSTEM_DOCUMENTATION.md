@@ -61,6 +61,11 @@ This means:
 - UI displays should prominently show all four fields as the unique identifier
 - Batch management becomes critical for FIFO operations
 
+### Pharmacist Portal Matching Logic
+- **Normalized Comparisons**: Medication lookups in the pharmacist dashboard normalize brand, generic, and combined labels (e.g., `Brand(Generic)`) by removing parentheses, condensing whitespace, and lowercasing.
+- **Flexible Matching**: The matching layer compares every normalized variant from the prescription against brandName, genericName, and drugName values stored in `pharmacistInventory`, preventing false “Not in inventory” warnings.
+- **Reactive Updates**: Matched inventory snapshots (expiry date, current stock, pack unit) are cached in keyed objects with explicit versioning so UI components refresh immediately when data is found.
+
 ## Technical Architecture
 
 ### Core Components

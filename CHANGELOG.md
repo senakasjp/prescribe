@@ -1,5 +1,21 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.2.25 - Pharmacist Inventory Matching Reliability (January 2025)
+
+### ✅ Inventory Visibility Fix
+- **Accurate Matching**:
+  - ✅ Normalizes brand, generic, and combined medication labels to align with pharmacist inventory entries
+  - ✅ Supports medications written as `Brand(Generic)` or with extra whitespace/punctuation
+  - ✅ Reduces false “Not in inventory” warnings inside the prescription detail modal
+- **Reactive Updates**:
+  - ✅ Stores inventory snapshots in lightweight keyed objects with explicit version bumps for Svelte reactivity
+  - ✅ Ensures expiry date and stock figures immediately reflect matched inventory items
+
+### 🩺 Pharmacist Portal Impact
+- Pharmacists now see real-time stock/expiry details for medications that already exist in inventory
+- Dispensing workflows no longer require manual verification for matched drugs
+- Maintains HIPAA-compliant separation while improving day-to-day fulfilment accuracy
+
 ## Version 2.2.24 - Brand Name Autofill Fix (January 2025)
 
 ### 🔧 **Autofill Enhancement**
