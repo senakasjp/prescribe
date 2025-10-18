@@ -1,5 +1,18 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.2.26 - Pharmacist Drug Charge Accuracy (January 2025)
+
+### 💰 Responsive Drug Charge Calculation
+- **Inventory-Enriched Charges**:
+  - ✅ Passes matched inventory snapshots (selling price, identifiers) from the pharmacist dashboard into the billing service
+  - ✅ Automatically recalculates charges after inventory lookups finish so modal totals stay in sync
+- **Robust Pricing Logic**:
+  - ✅ Charge service revalidates medication amounts, parses unit pricing strings, and multiplies quantity × selling price
+  - ✅ Falls back to dynamic inventory matching when cached data is unavailable
+- **User Impact**:
+  - Pharmacists now see accurate drug totals that mirror the editable “Amount” field
+  - Eliminates “Not available” placeholders for in-stock items and speeds up checkout workflows
+
 ## Version 2.2.25 - Pharmacist Inventory Matching Reliability (January 2025)
 
 ### ✅ Inventory Visibility Fix

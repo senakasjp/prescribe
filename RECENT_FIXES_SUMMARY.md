@@ -2,6 +2,49 @@
 
 ## 🎯 Latest Updates (January 2025)
 
+### 💊 Pharmacist Drug Charge Accuracy
+**Status**: ✅ **FIXED & VERIFIED**
+
+#### **Issue Description**
+- **Problem**: Drug charges in the pharmacist portal always displayed “Not available”, leaving totals at Rs 0.00
+- **Symptoms**: Billing modal ignored the editable Amount field and failed to locate inventory selling prices
+- **Impact**: Pharmacists had to calculate totals manually, slowing fulfillment and increasing risk of pricing errors
+- **Severity**: High – blocked automated checkout workflow
+
+#### **Root Cause Analysis**
+- **Stale Data Flow**: Charge service received a stale prescription snapshot without the latest `Amount` overrides and inventory metadata
+- **Inventory Lookup Gap**: Selling prices were not propagated through the charge request, so unit pricing resolved to null
+- **Timing Issue**: Charges triggered before inventory lookups finished, producing “Not available” placeholders
+
+#### **Technical Solution**
+```javascript
+const prescriptionForCharge = {
+  ...selectedPrescription,
+  prescriptions: selectedPrescription.prescriptions.map((prescription) => ({
+    ...prescription,
+    medications: prescription.medications.map((medication) => ({
+      ...medication,
+      amount: getEditableAmount(...),
+      inventoryMatch: medicationInventoryData[key]
+    }))
+  }))
+}
+```
+- Pass enriched medication records (with selling price, inventory ID, and amount overrides) into `calculatePrescriptionCharge`
+- After `fetchMedicationInventoryData` resolves for all items, automatically rerun charge calculation so totals refresh with up-to-date values
+- Charge service parses numeric values from strings, defaults quantity sensibly, and falls back to on-demand inventory matching when cached data is missing
+
+#### **Files Modified**
+- `src/components/PharmacistDashboard.svelte` – Stores full inventory snapshots per medication, injects them into charge requests, and recalculates charges once lookups complete
+- `src/services/pharmacist/chargeCalculationService.js` – Multiplies parsed quantities by selling prices, resolves inventory items via cached IDs, and handles fallback name matching
+
+#### **Verification Results**
+- ✅ Drug totals now reflect `Amount × sellingPrice` for each medication
+- ✅ “Not available” only appears when inventory truly lacks pricing data
+- ✅ Total charge updates automatically after inventory fetch completes
+- ✅ Build passes (`npm run build`)
+- ⚠️ Pre-existing Svelte a11y warnings remain unchanged
+
 ### 💊 Pharmacist Inventory Matching Reliability
 **Status**: ✅ **FIXED & VERIFIED**
 

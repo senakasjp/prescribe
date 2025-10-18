@@ -64,7 +64,8 @@ This means:
 ### Pharmacist Portal Matching Logic
 - **Normalized Comparisons**: Medication lookups in the pharmacist dashboard normalize brand, generic, and combined labels (e.g., `Brand(Generic)`) by removing parentheses, condensing whitespace, and lowercasing.
 - **Flexible Matching**: The matching layer compares every normalized variant from the prescription against brandName, genericName, and drugName values stored in `pharmacistInventory`, preventing false “Not in inventory” warnings.
-- **Reactive Updates**: Matched inventory snapshots (expiry date, current stock, pack unit) are cached in keyed objects with explicit versioning so UI components refresh immediately when data is found.
+- **Reactive Updates**: Matched inventory snapshots (expiry date, current stock, pack unit, selling price, identifiers) are cached in keyed objects with explicit versioning so UI components refresh immediately when data is found.
+- **Billing Integration**: Cached inventory snapshots are injected into charge calculations so the pharmacist portal multiplies the entered `Amount` by the matched item’s selling price without refetching data.
 
 ## Technical Architecture
 
