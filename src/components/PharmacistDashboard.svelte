@@ -110,6 +110,11 @@
     await Promise.all(fetchPromises)
     console.log('🔑 Medication inventory keys after update:', Object.keys(medicationInventoryData))
     console.log('✅ All inventory data loaded')
+
+    if (showPrescriptionDetails) {
+      console.log('🔄 Recalculating charges after inventory load')
+      await calculatePrescriptionCharges()
+    }
   }
   
   // Watch for prescription or pharmacist changes
@@ -156,6 +161,10 @@
             expiryDate: matchingItem.expiryDate,
             currentStock: matchingItem.currentStock,
             packUnit: matchingItem.packUnit,
+            sellingPrice: matchingItem.sellingPrice,
+            brandName: matchingItem.brandName,
+            genericName: matchingItem.genericName,
+            inventoryItemId: matchingItem.id,
             found: true
           }
         }
@@ -178,6 +187,10 @@
             expiryDate: null,
             currentStock: 0,
             packUnit: '',
+            sellingPrice: null,
+            brandName: null,
+            genericName: null,
+            inventoryItemId: null,
             found: false
           }
         }
@@ -192,6 +205,10 @@
           expiryDate: null,
           currentStock: 0,
           packUnit: '',
+          sellingPrice: null,
+          brandName: null,
+          genericName: null,
+          inventoryItemId: null,
           found: false
         }
       }
@@ -1011,6 +1028,44 @@
   
   
   // Charge calculation functions
+  const buildPrescriptionWithEditableAmounts = () => {
+    if (!selectedPrescription) return null
+
+    const transformMedications = (prescriptionId, medications = []) => {
+      return (medications || []).map(medication => {
+        const key = `${prescriptionId}-${medication.id || medication.name}`
+        const override = editableAmounts.get(key)
+        const amountValue = (override !== undefined && override !== null && override !== '')
+          ? override
+          : medication.amount
+
+        const inventoryData = medicationInventoryData[key]
+
+        return {
+          ...medication,
+          amount: amountValue,
+          inventoryMatch: inventoryData ? {
+            found: inventoryData.found,
+            sellingPrice: inventoryData.sellingPrice,
+            brandName: inventoryData.brandName,
+            genericName: inventoryData.genericName,
+            inventoryItemId: inventoryData.inventoryItemId
+          } : undefined
+        }
+      })
+    }
+
+    const transformedPrescriptions = (selectedPrescription.prescriptions || []).map(prescription => ({
+      ...prescription,
+      medications: transformMedications(prescription.id, prescription.medications)
+    }))
+
+    return {
+      ...selectedPrescription,
+      prescriptions: transformedPrescriptions
+    }
+  }
+
   const calculatePrescriptionCharges = async () => {
     if (!selectedPrescription || !pharmacist) {
       console.warn('⚠️ Cannot calculate charges: missing prescription or pharmacist data')
@@ -1023,7 +1078,8 @@
     
     try {
       console.log('💰 Starting charge calculation for prescription:', selectedPrescription.id)
-      chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(selectedPrescription, pharmacist)
+      const prescriptionForCharge = buildPrescriptionWithEditableAmounts()
+      chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(prescriptionForCharge, pharmacist)
       console.log('✅ Charge calculation completed:', chargeBreakdown)
     } catch (error) {
       console.error('❌ Error calculating prescription charges:', error)
@@ -1738,7 +1794,7 @@
           
           <!-- Charge Calculation Section -->
           <div class="mb-4">
-            <h6 class="font-semibold text-blue-600 text-sm sm:text-base mb-2">
+            <h6 class="font-semibold text-white text-sm sm:text-base mb-2">
               <i class="fas fa-calculator mr-2"></i>
               Prescription Charges
             </h6>

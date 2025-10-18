@@ -110,12 +110,51 @@ class ChargeCalculationService {
           if (presc.medications && presc.medications.length > 0) {
             for (const medication of presc.medications) {
               // Find matching drug in inventory
-              const matchingDrug = this.findMatchingDrug(medication.name, inventoryItems)
-              
-              if (matchingDrug) {
-                // For now, assume 1 unit per medication (can be enhanced later with quantity)
-                const quantity = 1
-                const unitCost = matchingDrug.sellingPrice || 0
+              const parsedQuantity = this.parseMedicationQuantity(medication.amount)
+              const quantity = parsedQuantity !== null ? parsedQuantity : 0
+
+              let unitCost = null
+              let inventoryContext = medication.inventoryMatch && medication.inventoryMatch.found
+                ? medication.inventoryMatch
+                : null
+              let inventoryItemDetails = null
+              let matchedInventoryItem = null
+
+              if (inventoryContext && inventoryContext.inventoryItemId) {
+                matchedInventoryItem = inventoryItems.find(item => item.id === inventoryContext.inventoryItemId) || null
+              }
+
+              if (inventoryContext) {
+                const priceSource = inventoryContext.sellingPrice !== undefined && inventoryContext.sellingPrice !== null
+                  ? inventoryContext.sellingPrice
+                  : matchedInventoryItem?.sellingPrice
+                const parsed = this.parseCurrencyValue(priceSource)
+                if (parsed !== null) {
+                  unitCost = parsed
+                  inventoryItemDetails = {
+                    brandName: inventoryContext.brandName || matchedInventoryItem?.brandName,
+                    genericName: inventoryContext.genericName || matchedInventoryItem?.genericName,
+                    drugName: matchedInventoryItem?.drugName || inventoryContext.brandName || inventoryContext.genericName || medication.name
+                  }
+                }
+              }
+
+              if (unitCost === null) {
+                const fallbackInventoryItem = matchedInventoryItem || this.findMatchingDrug(medication, inventoryItems)
+                if (fallbackInventoryItem) {
+                  const parsed = this.parseCurrencyValue(fallbackInventoryItem.sellingPrice)
+                  if (parsed !== null) {
+                    unitCost = parsed
+                    inventoryItemDetails = {
+                      brandName: fallbackInventoryItem.brandName,
+                      genericName: fallbackInventoryItem.genericName,
+                      drugName: fallbackInventoryItem.drugName
+                    }
+                  }
+                }
+              }
+
+              if (unitCost !== null && quantity > 0) {
                 const totalMedicationCost = quantity * unitCost
                 
                 totalCost += totalMedicationCost
@@ -130,24 +169,19 @@ class ChargeCalculationService {
                   unitCost: unitCost,
                   totalCost: totalMedicationCost,
                   found: true,
-                  inventoryItem: {
-                    brandName: matchingDrug.brandName,
-                    genericName: matchingDrug.genericName,
-                    drugName: matchingDrug.drugName
-                  }
+                  inventoryItem: inventoryItemDetails
                 })
               } else {
-                // Medication not found in inventory
                 medicationBreakdown.push({
                   medicationName: medication.name,
                   dosage: medication.dosage,
                   frequency: medication.frequency,
                   duration: medication.duration,
-                  quantity: 0,
-                  unitCost: 0,
+                  quantity: quantity,
+                  unitCost: unitCost !== null ? unitCost : 0,
                   totalCost: 0,
                   found: false,
-                  note: 'Not available in inventory'
+                  note: unitCost === null ? 'Not available in inventory' : 'No quantity specified'
                 })
               }
             }
@@ -176,42 +210,119 @@ class ChargeCalculationService {
    * @param {Array} inventoryItems - Array of inventory items
    * @returns {Object|null} Matching drug object or null
    */
-  findMatchingDrug(medicationName, inventoryItems) {
-    if (!medicationName || !inventoryItems || inventoryItems.length === 0) {
+  findMatchingDrug(medication, inventoryItems) {
+    if (!medication || !inventoryItems || inventoryItems.length === 0) {
       return null
     }
 
-    const searchName = medicationName.toLowerCase().trim()
-    
-    // First try exact match with brandName
-    let match = inventoryItems.find(item => 
-      item.brandName && item.brandName.toLowerCase().trim() === searchName
-    )
-    
-    if (match) return match
+    const medicationNames = this.buildMedicationNameSet(medication)
 
-    // Then try exact match with drugName
-    match = inventoryItems.find(item => 
-      item.drugName && item.drugName.toLowerCase().trim() === searchName
-    )
-    
-    if (match) return match
+    for (const item of inventoryItems) {
+      const itemNames = this.buildInventoryNameSet(item)
 
-    // Then try generic name match
-    match = inventoryItems.find(item => 
-      item.genericName && item.genericName.toLowerCase().trim() === searchName
-    )
-    
-    if (match) return match
+      const hasMatch = Array.from(medicationNames).some(medName =>
+        Array.from(itemNames).some(invName =>
+          invName &&
+          (
+            invName === medName ||
+            invName.includes(medName) ||
+            medName.includes(invName)
+          )
+        )
+      )
 
-    // Finally try partial match with all name fields
-    match = inventoryItems.find(item => 
-      (item.brandName && item.brandName.toLowerCase().includes(searchName)) ||
-      (item.drugName && item.drugName.toLowerCase().includes(searchName)) ||
-      (item.genericName && item.genericName.toLowerCase().includes(searchName))
-    )
-    
-    return match || null
+      if (hasMatch) {
+        return item
+      }
+    }
+
+    return null
+  }
+
+  normalizeName(value) {
+    return (value || '')
+      .toLowerCase()
+      .replace(/[\u3000\s]+/g, ' ')
+      .replace(/[\(\)（）]/g, '')
+      .trim()
+  }
+
+  buildMedicationNameSet(medication) {
+    const names = new Set()
+    const medicationName = medication.name || ''
+    const genericName = medication.genericName || ''
+
+    names.add(this.normalizeName(medicationName))
+    names.add(this.normalizeName(genericName))
+
+    const brandFromName = medicationName.split(/[\(（]/)[0]?.trim()
+    const genericFromName = medicationName.includes('(') || medicationName.includes('（')
+      ? medicationName.split(/[\(（]/)[1]?.replace(/[\)）]/, '').trim()
+      : ''
+
+    names.add(this.normalizeName(brandFromName))
+    names.add(this.normalizeName(genericFromName))
+
+    names.delete('')
+    return names
+  }
+
+  buildInventoryNameSet(item) {
+    const names = new Set()
+
+    const brandName = item.brandName || ''
+    const genericName = item.genericName || ''
+    const drugName = item.drugName || ''
+
+    names.add(this.normalizeName(brandName))
+    names.add(this.normalizeName(genericName))
+    names.add(this.normalizeName(drugName))
+
+    if (brandName) {
+      names.add(this.normalizeName(brandName.split(/[\(（]/)[0]))
+    }
+
+    names.delete('')
+    return names
+  }
+
+  /**
+   * Parse medication quantity from various prescription amount formats
+   * @param {string|number} amount - Prescription amount value
+   * @returns {number|null} Parsed quantity or null if unavailable
+   */
+  parseMedicationQuantity(amount) {
+    return this.extractNumericValue(amount)
+  }
+
+  /**
+   * Parse currency or numeric string values into numbers
+   * @param {string|number} value
+   * @returns {number|null}
+   */
+  parseCurrencyValue(value) {
+    return this.extractNumericValue(value)
+  }
+
+  extractNumericValue(rawValue) {
+    if (typeof rawValue === 'number') {
+      return Number.isFinite(rawValue) ? rawValue : null
+    }
+
+    if (typeof rawValue === 'string') {
+      const normalized = rawValue.replace(/,/g, '').trim()
+      if (!normalized) {
+        return null
+      }
+
+      const match = normalized.match(/-?\d+(\.\d+)?/)
+      if (match) {
+        const parsed = parseFloat(match[0])
+        return Number.isFinite(parsed) ? parsed : null
+      }
+    }
+
+    return null
   }
 
   /**
