@@ -26,11 +26,22 @@ class ChargeCalculationService {
   async calculatePrescriptionCharge(prescription, pharmacist) {
     try {
       console.log('💰 Calculating prescription charge for:', prescription.id)
-      
+      console.log('💰 Prescription object:', prescription)
+
+      // Get doctor ID from prescription
+      const doctorId = prescription.doctorId || prescription.doctor?.id
+
+      if (!doctorId) {
+        console.error('❌ Doctor ID is missing from prescription:', prescription)
+        throw new Error('Doctor ID is required to calculate charges. Please ensure the prescription has a valid doctor ID.')
+      }
+
+      console.log('💰 Fetching doctor information for ID:', doctorId)
+
       // Get doctor information to fetch consultation and hospital charges
-      const doctor = await this.getDoctorById(prescription.doctorId)
+      const doctor = await this.getDoctorById(doctorId)
       if (!doctor) {
-        throw new Error(`Doctor with ID ${prescription.doctorId} not found`)
+        throw new Error(`Doctor with ID ${doctorId} not found`)
       }
 
       // Calculate doctor charges (consultation + hospital)
@@ -46,8 +57,13 @@ class ChargeCalculationService {
       // Calculate drug charges for dispensed medications
       const drugCharges = await this.calculateDrugCharges(prescription, pharmacist)
 
-      // Calculate total charge
-      const totalCharge = discountedDoctorCharges + drugCharges.totalCost
+      // Calculate total charge before rounding
+      const totalChargeBeforeRounding = discountedDoctorCharges + drugCharges.totalCost
+
+      // Get rounding preference from pharmacist settings (default: 'none')
+      const roundingPreference = pharmacist.roundingPreference || 'none'
+      const roundedTotal = this.roundTotalCharge(totalChargeBeforeRounding, roundingPreference)
+      const roundingAdjustment = roundedTotal - totalChargeBeforeRounding
 
       const chargeBreakdown = {
         doctorCharges: {
@@ -59,7 +75,10 @@ class ChargeCalculationService {
           totalAfterDiscount: discountedDoctorCharges
         },
         drugCharges: drugCharges,
-        totalCharge: totalCharge,
+        totalBeforeRounding: totalChargeBeforeRounding,
+        roundingPreference: roundingPreference,
+        roundingAdjustment: roundingAdjustment,
+        totalCharge: roundedTotal,
         currency: pharmacist.currency || 'USD'
       }
 
@@ -109,79 +128,78 @@ class ChargeCalculationService {
         for (const presc of prescription.prescriptions) {
           if (presc.medications && presc.medications.length > 0) {
             for (const medication of presc.medications) {
-              // Find matching drug in inventory
+              // Only calculate charges for medications that are checked/dispensed
+              if (!medication.isDispensed) {
+                continue
+              }
+
               const parsedQuantity = this.parseMedicationQuantity(medication.amount)
-              const quantity = parsedQuantity !== null ? parsedQuantity : 0
+              const requestedQuantity = parsedQuantity !== null ? parsedQuantity : 0
 
-              let unitCost = null
-              let inventoryContext = medication.inventoryMatch && medication.inventoryMatch.found
-                ? medication.inventoryMatch
-                : null
-              let inventoryItemDetails = null
-              let matchedInventoryItem = null
+              const pricingSources = this.buildInventoryPricingSources(
+                medication,
+                inventoryItems,
+                medication.inventoryMatch && medication.inventoryMatch.found ? medication.inventoryMatch : null
+              )
 
-              if (inventoryContext && inventoryContext.inventoryItemId) {
-                matchedInventoryItem = inventoryItems.find(item => item.id === inventoryContext.inventoryItemId) || null
-              }
+              if (requestedQuantity > 0 && pricingSources.length > 0) {
+                const allocation = this.allocateQuantityAcrossSources(requestedQuantity, pricingSources)
 
-              if (inventoryContext) {
-                const priceSource = inventoryContext.sellingPrice !== undefined && inventoryContext.sellingPrice !== null
-                  ? inventoryContext.sellingPrice
-                  : matchedInventoryItem?.sellingPrice
-                const parsed = this.parseCurrencyValue(priceSource)
-                if (parsed !== null) {
-                  unitCost = parsed
-                  inventoryItemDetails = {
-                    brandName: inventoryContext.brandName || matchedInventoryItem?.brandName,
-                    genericName: inventoryContext.genericName || matchedInventoryItem?.genericName,
-                    drugName: matchedInventoryItem?.drugName || inventoryContext.brandName || inventoryContext.genericName || medication.name
-                  }
+                if (allocation.totalPricedQuantity > 0) {
+                  totalCost += allocation.totalCost
+                  totalMedications++
+
+                  medicationBreakdown.push({
+                    medicationName: medication.name,
+                    dosage: medication.dosage,
+                    frequency: medication.frequency,
+                    duration: medication.duration,
+                    quantity: requestedQuantity,
+                    pricedQuantity: allocation.totalPricedQuantity,
+                    unitCost: allocation.averageUnitCost,
+                    totalCost: allocation.totalCost,
+                    found: allocation.remainingQuantity <= 0,
+                    allocationDetails: allocation.allocations.map(entry => ({
+                      quantity: entry.quantity,
+                      unitCost: entry.unitCost,
+                      lineCost: entry.lineCost,
+                      inventoryItemId: entry.inventoryItemId,
+                      expiryDate: entry.expiryDate,
+                      brandName: entry.brandName,
+                      genericName: entry.genericName
+                    })),
+                    note: allocation.remainingQuantity > 0
+                      ? `Only priced ${allocation.totalPricedQuantity} of ${requestedQuantity}`
+                      : undefined
+                  })
+                } else {
+                  medicationBreakdown.push({
+                    medicationName: medication.name,
+                    dosage: medication.dosage,
+                    frequency: medication.frequency,
+                    duration: medication.duration,
+                    quantity: requestedQuantity,
+                    pricedQuantity: 0,
+                    unitCost: 0,
+                    totalCost: 0,
+                    found: false,
+                    note: 'Unable to allocate stock across available batches'
+                  })
                 }
-              }
-
-              if (unitCost === null) {
-                const fallbackInventoryItem = matchedInventoryItem || this.findMatchingDrug(medication, inventoryItems)
-                if (fallbackInventoryItem) {
-                  const parsed = this.parseCurrencyValue(fallbackInventoryItem.sellingPrice)
-                  if (parsed !== null) {
-                    unitCost = parsed
-                    inventoryItemDetails = {
-                      brandName: fallbackInventoryItem.brandName,
-                      genericName: fallbackInventoryItem.genericName,
-                      drugName: fallbackInventoryItem.drugName
-                    }
-                  }
-                }
-              }
-
-              if (unitCost !== null && quantity > 0) {
-                const totalMedicationCost = quantity * unitCost
-                
-                totalCost += totalMedicationCost
-                totalMedications++
-                
-                medicationBreakdown.push({
-                  medicationName: medication.name,
-                  dosage: medication.dosage,
-                  frequency: medication.frequency,
-                  duration: medication.duration,
-                  quantity: quantity,
-                  unitCost: unitCost,
-                  totalCost: totalMedicationCost,
-                  found: true,
-                  inventoryItem: inventoryItemDetails
-                })
               } else {
                 medicationBreakdown.push({
                   medicationName: medication.name,
                   dosage: medication.dosage,
                   frequency: medication.frequency,
                   duration: medication.duration,
-                  quantity: quantity,
-                  unitCost: unitCost !== null ? unitCost : 0,
+                  quantity: requestedQuantity,
+                  pricedQuantity: 0,
+                  unitCost: 0,
                   totalCost: 0,
                   found: false,
-                  note: unitCost === null ? 'Not available in inventory' : 'No quantity specified'
+                  note: requestedQuantity <= 0
+                    ? 'No quantity specified'
+                    : 'Not available in inventory'
                 })
               }
             }
@@ -210,12 +228,13 @@ class ChargeCalculationService {
    * @param {Array} inventoryItems - Array of inventory items
    * @returns {Object|null} Matching drug object or null
    */
-  findMatchingDrug(medication, inventoryItems) {
+  findMatchingDrugs(medication, inventoryItems) {
     if (!medication || !inventoryItems || inventoryItems.length === 0) {
-      return null
+      return []
     }
 
     const medicationNames = this.buildMedicationNameSet(medication)
+    const matches = []
 
     for (const item of inventoryItems) {
       const itemNames = this.buildInventoryNameSet(item)
@@ -232,11 +251,139 @@ class ChargeCalculationService {
       )
 
       if (hasMatch) {
-        return item
+        matches.push(item)
       }
     }
 
-    return null
+    return matches.sort((a, b) => {
+      const aTime = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity
+      const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity
+      return aTime - bTime
+    })
+  }
+
+  buildInventoryPricingSources(medication, inventoryItems, inventoryContext) {
+    const sources = []
+    const inventoryById = new Map()
+    inventoryItems.forEach(item => inventoryById.set(item.id, item))
+
+    const addSource = (entry) => {
+      if (!entry) return
+
+      if (Array.isArray(entry.batches) && entry.batches.length > 0) {
+        entry.batches
+          .filter(batch => (batch.status || 'active') === 'active')
+          .forEach(batch => addSource({
+            inventoryItemId: entry.id,
+            batchId: batch.id || batch.batchNumber || null,
+            currentStock: batch.quantity ?? batch.currentStock ?? 0,
+            sellingPrice: batch.sellingPrice ?? entry.sellingPrice,
+            expiryDate: batch.expiryDate ?? entry.expiryDate,
+            brandName: entry.brandName,
+            genericName: entry.genericName,
+            packUnit: batch.packUnit ?? entry.packUnit
+          }))
+        return
+      }
+
+      const available = this.extractNumericValue(entry.currentStock ?? entry.available ?? entry.quantity ?? 0)
+      const unitCost = this.parseCurrencyValue(entry.sellingPrice ?? entry.unitCost ?? entry.costPrice)
+      if (!available || available <= 0) return
+      if (unitCost === null) return
+
+      sources.push({
+        inventoryItemId: entry.inventoryItemId ?? entry.id ?? entry.itemId ?? null,
+        batchId: entry.batchId ?? null,
+        packUnit: entry.packUnit ?? null,
+        available,
+        unitCost,
+        expiryDate: entry.expiryDate || null,
+        brandName: entry.brandName || null,
+        genericName: entry.genericName || null
+      })
+    }
+
+    if (inventoryContext && Array.isArray(inventoryContext.matches) && inventoryContext.matches.length > 0) {
+      inventoryContext.matches.forEach(match => {
+        const resolved = match.inventoryItemId ? inventoryById.get(match.inventoryItemId) : null
+        if (resolved && (!resolved.batches || resolved.batches.length === 0)) {
+          addSource(resolved)
+        }
+        addSource({
+          inventoryItemId: match.inventoryItemId || resolved?.id || null,
+          batchId: match.batchId || null,
+          currentStock: match.currentStock ?? resolved?.currentStock,
+          sellingPrice: match.sellingPrice ?? resolved?.sellingPrice,
+          expiryDate: match.expiryDate ?? resolved?.expiryDate,
+          brandName: match.brandName ?? resolved?.brandName,
+          genericName: match.genericName ?? resolved?.genericName,
+          packUnit: match.packUnit ?? resolved?.packUnit,
+          batches: match.batches
+        })
+      })
+    }
+
+    if (sources.length === 0 && inventoryContext?.inventoryItemId) {
+      const resolved = inventoryById.get(inventoryContext.inventoryItemId)
+      if (resolved) {
+        addSource(resolved)
+      }
+    }
+
+    if (sources.length === 0) {
+      const fallbackMatches = this.findMatchingDrugs(medication, inventoryItems)
+      fallbackMatches.forEach(addSource)
+    }
+
+    return sources.sort((a, b) => {
+      const aTime = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity
+      const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity
+      return aTime - bTime
+    })
+  }
+
+  allocateQuantityAcrossSources(requestedQuantity, sources) {
+    let remaining = requestedQuantity
+    const allocations = []
+    let totalCost = 0
+    let totalPricedQuantity = 0
+
+    for (const source of sources) {
+      if (remaining <= 0) break
+      const available = source.available || 0
+      if (available <= 0) continue
+
+      const quantityFromSource = Math.min(remaining, available)
+      if (quantityFromSource <= 0) continue
+
+      const lineCost = quantityFromSource * source.unitCost
+
+      allocations.push({
+        inventoryItemId: source.inventoryItemId,
+        batchId: source.batchId || null,
+        quantity: quantityFromSource,
+        unitCost: source.unitCost,
+        lineCost,
+        expiryDate: source.expiryDate,
+        brandName: source.brandName,
+        genericName: source.genericName,
+        packUnit: source.packUnit || null
+      })
+
+      totalCost += lineCost
+      totalPricedQuantity += quantityFromSource
+      remaining -= quantityFromSource
+    }
+
+    const averageUnitCost = totalPricedQuantity > 0 ? totalCost / totalPricedQuantity : 0
+
+    return {
+      allocations,
+      totalCost,
+      totalPricedQuantity,
+      remainingQuantity: remaining,
+      averageUnitCost
+    }
   }
 
   normalizeName(value) {
@@ -323,6 +470,33 @@ class ChargeCalculationService {
     }
 
     return null
+  }
+
+  /**
+   * Round total charge to nearest 50 or 100 based on preference
+   * @param {number} amount - Amount to round
+   * @param {string} roundingPreference - 'none', 'nearest50', or 'nearest100'
+   * @returns {number} Rounded amount
+   */
+  roundTotalCharge(amount, roundingPreference = 'none') {
+    if (!amount || amount <= 0) {
+      return amount
+    }
+
+    switch (roundingPreference) {
+      case 'nearest50':
+        // Round to nearest 50
+        return Math.round(amount / 50) * 50
+
+      case 'nearest100':
+        // Round to nearest 100
+        return Math.round(amount / 100) * 100
+
+      case 'none':
+      default:
+        // No rounding
+        return amount
+    }
   }
 
   /**

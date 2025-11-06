@@ -301,6 +301,20 @@ class InventoryService {
     }
   }
 
+  async getInventoryItemById(itemId) {
+    try {
+      const itemRef = doc(db, this.collections.inventory, itemId)
+      const itemDoc = await getDoc(itemRef)
+      if (!itemDoc.exists()) {
+        return null
+      }
+      return { id: itemDoc.id, ...itemDoc.data() }
+    } catch (error) {
+      console.error('❌ InventoryService: Error getting inventory item by id:', error)
+      throw error
+    }
+  }
+
   /**
    * Update inventory item
    */

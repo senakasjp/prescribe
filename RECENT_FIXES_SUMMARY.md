@@ -32,7 +32,7 @@ const prescriptionForCharge = {
 ```
 - Pass enriched medication records (with selling price, inventory ID, and amount overrides) into `calculatePrescriptionCharge`
 - After `fetchMedicationInventoryData` resolves for all items, automatically rerun charge calculation so totals refresh with up-to-date values
-- Charge service parses numeric values from strings, defaults quantity sensibly, and falls back to on-demand inventory matching when cached data is missing
+- Charge service parses numeric values from strings, defaults quantity sensibly, allocates requested quantities across sequential batches, and falls back to on-demand inventory matching when cached data is missing
 
 #### **Files Modified**
 - `src/components/PharmacistDashboard.svelte` – Stores full inventory snapshots per medication, injects them into charge requests, and recalculates charges once lookups complete

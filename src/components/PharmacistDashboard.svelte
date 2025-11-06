@@ -47,6 +47,7 @@
   let calculatingCharges = false
   let chargeCalculationError = null
   let showProfileSettings = false
+  let chargeRecalculationTimeout = null
   
   // Track editable amounts for each medication
   let editableAmounts = new Map() // prescriptionId-medicationId -> amount
@@ -55,6 +56,8 @@
   let medicationInventoryData = {} // prescriptionId-medicationId -> inventoryData snapshot
   let medicationInventoryVersion = 0 // forces reactivity when inventory data changes
   let cachedInventoryItems = [] // pharmacist inventory snapshot used for matching
+  let medicationAllocationPreviews = {} // prescriptionId-medicationId -> allocation preview data
+  let allocationVersion = 0 // trigger reactivity for allocation previews
   
   // Initialize editable amounts and fetch inventory data when prescription is selected
   // Function to load prescription data when selected
@@ -75,6 +78,7 @@
     editableAmounts.clear()
     medicationInventoryData = {}
     medicationInventoryVersion += 1
+    medicationAllocationPreviews = {}
     
     // Fetch pharmacist inventory once for matching
     cachedInventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
@@ -129,6 +133,13 @@
     if (storedAmount !== undefined && storedAmount !== null && storedAmount !== '') {
       return storedAmount
     }
+    const inventoryData = medicationInventoryData[key]
+    if (inventoryData?.found) {
+      const remaining = parseFloat(inventoryData.currentStock)
+      if (Number.isFinite(remaining) && remaining > 0) {
+        return remaining.toString()
+      }
+    }
     return calculateMedicationAmount(medication)
   }
   
@@ -137,6 +148,8 @@
     const key = `${prescriptionId}-${medicationId}`
     editableAmounts.set(key, newAmount)
     editableAmounts = new Map(editableAmounts) // Trigger reactivity
+    refreshAllocationPreview(prescriptionId, medicationId)
+    scheduleChargeRecalculation()
   }
   
   // Fetch inventory data for a medication
@@ -150,30 +163,112 @@
       
       console.log('📦 Matching medication against inventory set with', itemsToUse.length, 'items')
       
-      // Find matching inventory item
-      const matchingItem = findMatchingInventoryItem(medication, itemsToUse)
+      // Find matching inventory items
+      const matchingItems = findMatchingInventoryItems(medication, itemsToUse)
+      console.log('📦 Matching results for', medication.name, matchingItems)
       
-      if (matchingItem) {
-        console.log('✅ Found matching inventory item for:', medication.name, 'Key:', key)
+      if (matchingItems.length > 0) {
+        console.log('✅ Found matching inventory items for:', medication.name, 'Key:', key, 'Matches:', matchingItems.length)
+
+        const batchEntries = []
+
+        const pushBatchEntry = (item, batch = null) => {
+          const quantityRaw = batch ? (batch.quantity ?? batch.currentStock) : item.currentStock
+          const quantity = parseFloat(quantityRaw)
+          if (!Number.isFinite(quantity)) return
+
+          batchEntries.push({
+            id: batch?.id ? `${item.id}|${batch.id}` : item.id,
+            inventoryItemId: item.id,
+            batchId: batch?.id || null,
+            batchNumber: batch?.batchNumber || '',
+            currentStock: quantity,
+            sellingPrice: (batch?.sellingPrice ?? item.sellingPrice),
+            expiryDate: batch?.expiryDate ?? item.expiryDate,
+            packUnit: batch?.packUnit ?? item.packUnit ?? item.unit ?? '',
+            brandName: item.brandName,
+            genericName: item.genericName
+          })
+        }
+
+        for (const item of matchingItems) {
+          let enrichedItem = item
+          if ((!item.batches || item.batches.length === 0) && item.id) {
+            try {
+              const detailed = await inventoryService.getInventoryItemById(item.id)
+              if (detailed) {
+                enrichedItem = { ...item, ...detailed }
+              }
+            } catch (error) {
+              console.error('❌ Error fetching detailed inventory item:', item.id, error)
+            }
+          }
+
+          if (Array.isArray(enrichedItem.batches) && enrichedItem.batches.length > 0) {
+            const activeBatches = enrichedItem.batches.filter(batch => (batch.status || 'active') === 'active')
+            if (activeBatches.length > 0) {
+              activeBatches.forEach(batch => pushBatchEntry(enrichedItem, batch))
+              continue
+            }
+          }
+          pushBatchEntry(enrichedItem)
+        }
+
+        const sortedEntries = batchEntries
+          .map(entry => ({
+            ...entry,
+            expiryTime: entry.expiryDate ? new Date(entry.expiryDate).getTime() : Infinity
+          }))
+          .sort((a, b) => a.expiryTime - b.expiryTime)
+          .map(({ expiryTime, ...rest }) => rest)
+
+        const aggregatedStock = sortedEntries.reduce((sum, entry) => {
+          return sum + (Number.isFinite(entry.currentStock) ? entry.currentStock : 0)
+        }, 0)
+
+        const earliestEntry = sortedEntries[0] || {}
+        const earliestExpiry = earliestEntry.expiryDate || null
+        const packUnit = earliestEntry.packUnit || ''
+
         medicationInventoryData = {
           ...medicationInventoryData,
           [key]: {
-            expiryDate: matchingItem.expiryDate,
-            currentStock: matchingItem.currentStock,
-            packUnit: matchingItem.packUnit,
-            sellingPrice: matchingItem.sellingPrice,
-            brandName: matchingItem.brandName,
-            genericName: matchingItem.genericName,
-            inventoryItemId: matchingItem.id,
+            expiryDate: earliestExpiry,
+            currentStock: aggregatedStock,
+            packUnit,
+            sellingPrice: earliestEntry.sellingPrice,
+            brandName: earliestEntry.brandName,
+            genericName: earliestEntry.genericName,
+            inventoryItemId: earliestEntry.inventoryItemId || null,
+            matches: sortedEntries,
             found: true
           }
         }
+
+        const existingAmountValue = editableAmounts.get(key)
+        const existingNumeric = parseFloat(existingAmountValue)
+        const requestedAmount = Number.isFinite(existingNumeric) && existingNumeric > 0 ? existingNumeric : aggregatedStock
+
+        const allocation = determineDefaultAllocationAmount(sortedEntries, aggregatedStock, requestedAmount)
+        if (allocation !== null) {
+          const shouldOverride = (
+            existingAmountValue === undefined || existingAmountValue === null || existingAmountValue === '' ||
+            (!Number.isFinite(existingNumeric)) || existingNumeric > aggregatedStock
+          )
+          if (shouldOverride) {
+            editableAmounts.set(key, allocation)
+            editableAmounts = new Map(editableAmounts)
+            refreshAllocationPreview(prescriptionIdFromKey(key), medicationIdFromKey(key))
+          }
+        }
         console.log('💾 Stored inventory data with key:', key, 'Data:', {
-          expiryDate: matchingItem.expiryDate,
-          currentStock: matchingItem.currentStock,
-          packUnit: matchingItem.packUnit,
-          found: true
+          expiryDate: earliestExpiry,
+          currentStock: aggregatedStock,
+          packUnit,
+          found: true,
+          matches: sortedEntries
         })
+        refreshAllocationPreview(prescriptionIdFromKey(key), medicationIdFromKey(key), sortedEntries)
       } else {
         console.log('❌ No matching inventory item for:', medication.name, 'Key:', key)
         console.log('🔍 Available inventory items for comparison:', inventoryItems.map(item => ({
@@ -191,9 +286,11 @@
             brandName: null,
             genericName: null,
             inventoryItemId: null,
+            matches: [],
             found: false
           }
         }
+        delete medicationAllocationPreviews[key]
       }
       
       medicationInventoryVersion += 1
@@ -209,6 +306,7 @@
           brandName: null,
           genericName: null,
           inventoryItemId: null,
+          matches: [],
           found: false
         }
       }
@@ -270,15 +368,17 @@
     return names
   }
 
-  // Find matching inventory item for a medication using flexible name matching
-  const findMatchingInventoryItem = (medication, inventoryItems) => {
+  // Find matching inventory items for a medication using flexible name matching
+  const findMatchingInventoryItems = (medication, inventoryItems) => {
     if (!medication || !inventoryItems || inventoryItems.length === 0) {
       console.log('❌ No medication or inventory items:', { medication, inventoryItemsLength: inventoryItems?.length })
-      return null
+      return []
     }
 
     const medicationNames = buildMedicationNameSet(medication)
     console.log('🔍 Matching medication using names:', Array.from(medicationNames))
+
+    const matches = []
 
     for (const item of inventoryItems) {
       const itemNames = buildInventoryNameSet(item)
@@ -293,18 +393,107 @@
           inventoryNames: Array.from(itemNames),
           expiryDate: item.expiryDate
         })
-        return item
+        matches.push(item)
       }
     }
 
-    console.log('❌ No match found. Inventory items:', inventoryItems.map(item => ({
-      brandName: item.brandName,
-      genericName: item.genericName,
-      drugName: item.drugName,
-      expiryDate: item.expiryDate
-    })))
+    if (matches.length === 0) {
+      console.log('❌ No match found. Inventory items:', inventoryItems.map(item => ({
+        brandName: item.brandName,
+        genericName: item.genericName,
+        drugName: item.drugName,
+        expiryDate: item.expiryDate
+      })))
+    }
     
-    return null
+    return matches.sort((a, b) => {
+      const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity
+      const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity
+      return dateA - dateB
+    })
+  }
+
+  const determineDefaultAllocationAmount = (matchingItems, aggregatedStock, requestedAmount) => {
+    if (!matchingItems || matchingItems.length === 0) return null
+
+    const sortedByExpiry = matchingItems
+      .map(item => ({
+        item,
+        expiry: item.expiryDate ? new Date(item.expiryDate).getTime() : Infinity
+      }))
+      .sort((a, b) => a.expiry - b.expiry)
+
+    for (const { item } of sortedByExpiry) {
+      const stock = parseFloat(item.currentStock)
+      if (Number.isFinite(stock) && stock > 0) {
+        const target = Number.isFinite(requestedAmount) && requestedAmount > 0 ? requestedAmount : aggregatedStock
+        const capped = Number.isFinite(target) ? Math.min(stock, target) : stock
+        return capped.toString()
+      }
+    }
+
+    const fallback = Number.isFinite(requestedAmount) && requestedAmount > 0
+      ? Math.min(requestedAmount, aggregatedStock)
+      : aggregatedStock
+    return Number.isFinite(fallback) && fallback > 0 ? fallback.toString() : null
+  }
+
+  const getInventoryMatches = (prescriptionId, medicationId) => {
+    const key = `${prescriptionId}-${medicationId}`
+    return medicationInventoryData[key]?.matches || []
+  }
+
+  const prescriptionIdFromKey = (key) => key.split('-')[0]
+  const medicationIdFromKey = (key) => key.substring(key.indexOf('-') + 1)
+
+  const refreshAllocationPreview = (prescriptionId, medicationId, matchesOverride = null) => {
+    const key = `${prescriptionId}-${medicationId}`
+    const matches = matchesOverride || getInventoryMatches(prescriptionId, medicationId)
+    if (!matches || matches.length === 0) {
+      delete medicationAllocationPreviews[key]
+      allocationVersion += 1
+      return
+    }
+
+    const matcher = matches
+      .map(match => ({
+        ...match,
+        available: parseFloat(match.currentStock) || 0,
+        expiryTime: match.expiryDate ? new Date(match.expiryDate).getTime() : Infinity
+      }))
+      .sort((a, b) => a.expiryTime - b.expiryTime)
+
+    const requestedValue = parseFloat(editableAmounts.get(key))
+    const requested = Number.isFinite(requestedValue) && requestedValue > 0 ? requestedValue : 0
+    let remaining = requested
+
+    const allocations = matcher.map(match => {
+      const quantity = remaining > 0 ? Math.min(remaining, Math.max(match.available, 0)) : 0
+      remaining = Math.max(remaining - quantity, 0)
+      return {
+        ...match,
+        allocated: quantity
+      }
+    })
+
+    medicationAllocationPreviews = {
+      ...medicationAllocationPreviews,
+      [key]: {
+        orderedMatches: allocations,
+        requested,
+        remaining
+      }
+    }
+    allocationVersion += 1
+  }
+
+  const getAllocationPreview = (prescriptionId, medication) => {
+    const key = `${prescriptionId}-${medication.id || medication.name}`
+    return medicationAllocationPreviews[key] || { orderedMatches: [], requested: 0, remaining: 0 }
+  }
+
+  $: if (selectedPrescription && medicationInventoryVersion) {
+    // Trigger reactivity for allocation previews when amount changes
   }
   
   // Get inventory data for a medication
@@ -314,6 +503,11 @@
       expiryDate: null,
       currentStock: 0,
       packUnit: '',
+      sellingPrice: null,
+      brandName: null,
+      genericName: null,
+      inventoryItemId: null,
+      matches: [],
       found: false
     }
     
@@ -361,7 +555,7 @@
     if (isMedicationAlreadyDispensed(prescriptionId, medicationId)) {
       return
     }
-    
+
     const key = `${prescriptionId}-${medicationId}`
     if (dispensedMedications.has(key)) {
       dispensedMedications.delete(key)
@@ -369,6 +563,9 @@
       dispensedMedications.add(key)
     }
     dispensedMedications = new Set(dispensedMedications) // Trigger reactivity
+
+    // Recalculate charges when medication selection changes
+    scheduleChargeRecalculation()
   }
   
   function isMedicationDispensed(prescriptionId, medicationId) {
@@ -860,6 +1057,10 @@
   
   // Close prescription details
   const closePrescriptionDetails = () => {
+    if (chargeRecalculationTimeout) {
+      clearTimeout(chargeRecalculationTimeout)
+      chargeRecalculationTimeout = null
+    }
     showPrescriptionDetails = false
     selectedPrescription = null
     dispensedMedications.clear()
@@ -1041,15 +1242,20 @@
 
         const inventoryData = medicationInventoryData[key]
 
+        // Check if medication is selected/dispensed
+        const isDispensed = dispensedMedications.has(key) || permanentlyDispensedMedications.has(key)
+
         return {
           ...medication,
           amount: amountValue,
+          isDispensed: isDispensed, // Add dispensed status
           inventoryMatch: inventoryData ? {
             found: inventoryData.found,
             sellingPrice: inventoryData.sellingPrice,
             brandName: inventoryData.brandName,
             genericName: inventoryData.genericName,
-            inventoryItemId: inventoryData.inventoryItemId
+            inventoryItemId: inventoryData.inventoryItemId,
+            matches: inventoryData.matches || []
           } : undefined
         }
       })
@@ -1088,6 +1294,17 @@
     } finally {
       calculatingCharges = false
     }
+  }
+
+  const scheduleChargeRecalculation = () => {
+    if (!showPrescriptionDetails) return
+    if (chargeRecalculationTimeout) {
+      clearTimeout(chargeRecalculationTimeout)
+    }
+    chargeRecalculationTimeout = setTimeout(async () => {
+      chargeRecalculationTimeout = null
+      await calculatePrescriptionCharges()
+    }, 300)
   }
   
   // Format currency for display
@@ -1576,12 +1793,17 @@
             <div class="bg-gray-50 rounded-lg p-3 sm:p-4">
               <h6 class="font-semibold text-blue-600 text-sm sm:text-base mb-2">Patient Information</h6>
               <div class="space-y-1 text-xs sm:text-sm">
-              <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
-              <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
-              {#if selectedPrescription.patientAge}
-                <p><strong>Age:</strong> {selectedPrescription.patientAge}</p>
-              {/if}
-            </div>
+                <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
+                <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
+                <div class="flex gap-4">
+                  {#if selectedPrescription.patientAge}
+                    <p><strong>Age:</strong> {selectedPrescription.patientAge}</p>
+                  {/if}
+                  {#if selectedPrescription.patientSex || selectedPrescription.patientGender}
+                    <p><strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender}</p>
+                  {/if}
+                </div>
+              </div>
             </div>
             <div class="bg-gray-50 rounded-lg p-3 sm:p-4">
               <h6 class="font-semibold text-blue-600 text-sm sm:text-base mb-2">Prescription Information</h6>
@@ -1605,95 +1827,151 @@
                   <div class="p-3 sm:p-4">
                     <!-- Medications for this prescription -->
                     {#if prescription.medications && prescription.medications.length > 0}
-                      <!-- Desktop Table View -->
+                      <!-- Desktop Multiline View -->
                       <div class="hidden sm:block overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200 table-fixed">
-                          <thead class="bg-gray-50">
-                            <tr>
-                              <th class="w-12 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dispensed</th>
-                              <th class="w-32 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Medication</th>
-                              <th class="w-20 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dosage</th>
-                              <th class="w-24 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Frequency</th>
-                              <th class="w-20 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
-                              <th class="w-16 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                              <th class="w-24 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiry Date</th>
-                              <th class="w-20 px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
-                              <th class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Instructions</th>
-                            </tr>
-                          </thead>
-                          <tbody class="bg-white divide-y divide-gray-200">
-                            {#each prescription.medications as medication}
-                              <tr class="hover:bg-gray-50">
-                                <td class="w-12 px-2 py-3 text-center">
-                                  <input 
-                                    type="checkbox" 
-                                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        <div class="space-y-6">
+                          {#each prescription.medications as medication}
+                            {@const inventoryMatches = getInventoryMatches(prescription.id, medication.id || medication.name)}
+                            {@const allocationPreview = getAllocationPreview(prescription.id, medication)}
+
+                            <!-- Medication Card -->
+                            <div class="border border-gray-300 rounded-lg overflow-hidden bg-white">
+                              <!-- Header Row with checkbox and medication name -->
+                              <div class="bg-gray-50 px-4 py-3 border-b border-gray-300">
+                                <div class="flex items-center gap-3">
+                                  <input
+                                    type="checkbox"
+                                    class="w-5 h-5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                     checked={isMedicationDispensed(prescription.id, medication.id || medication.name) || isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
                                     disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
                                     on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
                                   />
-                                </td>
-                                <td class="w-32 px-2 py-3 text-sm font-semibold text-gray-900">
-                                  <div class="break-words">
-                                    <span>{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</span>
+                                  <span class="text-base font-semibold text-gray-900">
+                                    {medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <!-- Main Info Grid -->
+                              <div class="p-4">
+                                <div class="grid grid-cols-8 gap-4 text-sm">
+                                  <!-- Column Headers -->
+                                  <div class="col-span-1">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Dosage</div>
+                                    <div class="text-gray-900">{medication.dosage}</div>
                                   </div>
-                                </td>
-                                <td class="w-20 px-2 py-3 text-sm text-gray-900">
-                                  <div class="break-words">{medication.dosage}</div>
-                                </td>
-                                <td class="w-24 px-2 py-3 text-sm text-gray-900">
-                                  <div class="break-words">{medication.frequency}</div>
-                                </td>
-                                <td class="w-20 px-2 py-3 text-sm text-gray-900">
-                                  <div class="break-words">{medication.duration}</div>
-                                </td>
-                                <td class="w-16 px-2 py-3 text-sm text-gray-900">
-                                  <!-- All medications - show as editable input -->
-                                  <input 
-                                    type="text" 
-                                    class="w-full px-1 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
-                                    value={getEditableAmount(prescription.id, medication)}
-                                    on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
-                                    placeholder="0"
-                                  />
-                                </td>
-                                <td class="w-24 px-2 py-3 text-sm text-gray-900">
-                                  <div class="break-words">
-                                    {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
-                                      <span class="text-green-600 font-medium">
-                                        {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ? 
-                                          new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 
-                                          'N/A'
-                                        }
-                                      </span>
+
+                                  <div class="col-span-1">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Frequency</div>
+                                    <div class="text-gray-900">{medication.frequency}</div>
+                                  </div>
+
+                                  <div class="col-span-1">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Duration</div>
+                                    <div class="text-gray-900">{medication.duration}</div>
+                                  </div>
+
+                                  <div class="col-span-1">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Amount</div>
+                                    <input
+                                      type="text"
+                                      class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
+                                      value={getEditableAmount(prescription.id, medication)}
+                                      on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
+                                      placeholder="0"
+                                    />
+                                  </div>
+
+                                  <div class="col-span-1">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Expiry Date</div>
+                                    <div>
+                                      {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
+                                        <span class="text-green-600 font-medium">
+                                          {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ?
+                                            new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) :
+                                            'N/A'
+                                          }
+                                        </span>
+                                      {:else}
+                                        <span class="text-red-500 text-xs">Not in inventory</span>
+                                      {/if}
+                                    </div>
+                                  </div>
+
+                                  <div class="col-span-2">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Remaining</div>
+                                    {#if inventoryMatches.length > 0}
+                                      <div class="space-y-2">
+                                        {#each allocationPreview.orderedMatches as batch, index}
+                                          <div class="border border-gray-200 rounded px-2 py-1.5 bg-gray-50 text-xs">
+                                            <div class="flex justify-between items-center mb-1">
+                                              <span class="font-medium text-gray-700">Batch {index + 1}</span>
+                                              <span class="text-gray-900">{batch.available} {batch.packUnit || 'tablets'}</span>
+                                            </div>
+                                            <div class="text-gray-500 text-xs mb-1">
+                                              {batch.expiryDate ? formatDate(batch.expiryDate) : 'Expiry N/A'}
+                                            </div>
+                                            {#if batch.allocated > 0}
+                                              <div class="text-teal-600 font-semibold text-xs">
+                                                Alloc {batch.allocated}
+                                              </div>
+                                            {/if}
+                                          </div>
+                                        {/each}
+                                        {#if allocationPreview.remaining > 0}
+                                          <div class="text-xs text-red-500 mt-1">Short {allocationPreview.remaining} units</div>
+                                        {/if}
+                                      </div>
                                     {:else}
-                                      <span class="text-red-500">Not in inventory</span>
+                                      <div>
+                                        {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
+                                          <span class="text-blue-600 font-medium">
+                                            {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
+                                          </span>
+                                        {:else}
+                                          <span class="text-red-500">0</span>
+                                        {/if}
+                                      </div>
                                     {/if}
                                   </div>
-                                </td>
-                                <td class="w-20 px-2 py-3 text-sm text-gray-900">
-                                  <div class="break-words">
-                                    {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
-                                      <span class="text-blue-600 font-medium">
-                                        {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
-                                      </span>
-                                    {:else}
-                                      <span class="text-red-500">0</span>
-                                    {/if}
+
+                                  <div class="col-span-1">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Instructions</div>
+                                    <div class="text-gray-900">{medication.instructions}</div>
                                   </div>
-                                </td>
-                                <td class="px-2 py-3 text-sm text-gray-900">
-                                  <div class="break-words">{medication.instructions}</div>
-                                </td>
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
+                                </div>
+                              </div>
+
+                              <!-- Allocation Summary Footer -->
+                              {#if inventoryMatches.length > 0 && allocationPreview.orderedMatches.length > 0}
+                                <div class="bg-gray-50 px-4 py-3 border-t border-gray-200">
+                                  <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-600">
+                                    {#each allocationPreview.orderedMatches as batch, index}
+                                      <div class="flex items-center gap-2">
+                                        <span class="font-medium text-gray-700">Batch {index + 1}</span>
+                                        <span class="text-gray-500">{batch.expiryDate ? formatDate(batch.expiryDate) : 'Expiry N/A'}</span>
+                                        <span class="text-gray-700">{batch.available} {batch.packUnit || 'tablets'} available</span>
+                                        {#if batch.allocated > 0}
+                                          <span class="text-teal-600 font-semibold">Allocating {batch.allocated}</span>
+                                        {/if}
+                                      </div>
+                                    {/each}
+                                  </div>
+                                  {#if allocationPreview.remaining > 0}
+                                    <div class="mt-2 text-xs text-red-500">Short {allocationPreview.remaining} units with current inventory.</div>
+                                  {/if}
+                                </div>
+                              {/if}
+                            </div>
+                          {/each}
+                        </div>
                       </div>
 
                       <!-- Mobile Card View -->
                       <div class="sm:hidden space-y-3">
                         {#each prescription.medications as medication}
+                          {@const inventoryMatchesMobile = getInventoryMatches(prescription.id, medication.id || medication.name)}
+                          {@const allocationPreviewMobile = getAllocationPreview(prescription.id, medication)}
                           <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
                             <div class="flex items-center justify-between mb-2">
                               <div class="flex items-center gap-2">
@@ -1749,7 +2027,12 @@
                               </div>
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Remaining:</span>
-                                {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
+                                {#if inventoryMatchesMobile.length > 0}
+                                  <span class="text-blue-600 font-medium text-xs">
+                                    {allocationPreviewMobile.orderedMatches[0]?.available || getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock}
+                                    {allocationPreviewMobile.orderedMatches[0]?.packUnit || getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
+                                  </span>
+                                {:else if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
                                   <span class="text-blue-600 font-medium text-xs">
                                     {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
                                   </span>
@@ -1757,6 +2040,25 @@
                                   <span class="text-red-500 text-xs">0</span>
                                 {/if}
                               </div>
+                              {#if inventoryMatchesMobile.length > 0}
+                                <div class="pt-2 mt-2 border-t border-gray-200 space-y-1">
+                                  <div class="text-[10px] uppercase text-gray-400 tracking-wide">Inventory Batches</div>
+                                  {#each allocationPreviewMobile.orderedMatches as batch, index}
+                                    <div class="flex justify-between text-xs text-gray-600">
+                                      <span>Batch {index + 1}{#if batch.expiryDate} · {formatDate(batch.expiryDate)}{/if}</span>
+                                      <span class="text-gray-700">
+                                        {batch.available} {batch.packUnit || 'units'}
+                                        {#if batch.allocated > 0}
+                                          <span class="text-teal-600 font-semibold ml-1">→ {batch.allocated}</span>
+                                        {/if}
+                                      </span>
+                                    </div>
+                                  {/each}
+                                  {#if allocationPreviewMobile.remaining > 0}
+                                    <div class="text-xs text-red-500">Short {allocationPreviewMobile.remaining} units with current inventory.</div>
+                                  {/if}
+                                </div>
+                              {/if}
                               <div class="mt-2">
                                 <span class="text-gray-600 text-xs">Instructions:</span>
                                 <p class="text-gray-900 text-xs mt-1">{medication.instructions}</p>
@@ -1912,7 +2214,42 @@
                     </div>
                   </div>
                 </div>
-                
+
+                <!-- Rounding Section -->
+                {#if chargeBreakdown.roundingAdjustment !== 0}
+                  <div class="mb-3">
+                    <div class="space-y-1 text-xs sm:text-sm">
+                      <div class="flex justify-between">
+                        <span class="text-gray-600">Subtotal (Before Rounding):</span>
+                        <span class="text-gray-900">
+                          {#if pharmacist.currency === 'LKR'}
+                            Rs {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, pharmacist.currency)}
+                          {:else}
+                            {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, pharmacist.currency)}
+                          {/if}
+                        </span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span class="text-gray-600">
+                          Rounding
+                          {#if chargeBreakdown.roundingPreference === 'nearest50'}
+                            (to nearest 50)
+                          {:else if chargeBreakdown.roundingPreference === 'nearest100'}
+                            (to nearest 100)
+                          {/if}:
+                        </span>
+                        <span class="{chargeBreakdown.roundingAdjustment >= 0 ? 'text-blue-600' : 'text-red-600'}">
+                          {chargeBreakdown.roundingAdjustment >= 0 ? '+' : ''}{#if pharmacist.currency === 'LKR'}
+                            Rs {formatCurrencyDisplay(Math.abs(chargeBreakdown.roundingAdjustment), pharmacist.currency)}
+                          {:else}
+                            {formatCurrencyDisplay(chargeBreakdown.roundingAdjustment, pharmacist.currency)}
+                          {/if}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+
                 <!-- Total Charge -->
                 <div class="border-t pt-3">
                   <div class="flex justify-between items-center">

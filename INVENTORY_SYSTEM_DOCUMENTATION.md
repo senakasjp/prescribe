@@ -65,7 +65,8 @@ This means:
 - **Normalized Comparisons**: Medication lookups in the pharmacist dashboard normalize brand, generic, and combined labels (e.g., `Brand(Generic)`) by removing parentheses, condensing whitespace, and lowercasing.
 - **Flexible Matching**: The matching layer compares every normalized variant from the prescription against brandName, genericName, and drugName values stored in `pharmacistInventory`, preventing false “Not in inventory” warnings.
 - **Reactive Updates**: Matched inventory snapshots (expiry date, current stock, pack unit, selling price, identifiers) are cached in keyed objects with explicit versioning so UI components refresh immediately when data is found.
-- **Billing Integration**: Cached inventory snapshots are injected into charge calculations so the pharmacist portal multiplies the entered `Amount` by the matched item’s selling price without refetching data.
+- **Billing Integration**: Cached inventory snapshots are injected into charge calculations so the pharmacist portal multiplies the entered `Amount` by the matched item’s selling price (allocating across multiple batches when necessary) without refetching data.
+- **Batch Identification**: Multiple batches of the same drug are treated as distinct entries only when the composite key differs; matching requires brand name, strength value, and strength unit to be identical, with expiry date distinguishing individual batches. New batches sharing those first three fields but with different expiry/price are appended to the FIFO allocation list for the same drug.
 
 ## Technical Architecture
 

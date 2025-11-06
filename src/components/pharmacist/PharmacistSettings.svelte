@@ -15,6 +15,7 @@
   let country = ''
   let city = ''
   let currency = 'USD' // Default currency
+  let roundingPreference = 'none' // Default rounding preference
   let loading = false
   let error = ''
   
@@ -61,6 +62,7 @@
       country = pharmacist?.country || ''
       city = pharmacist?.city || ''
       currency = pharmacist?.currency || 'USD'
+      roundingPreference = pharmacist?.roundingPreference || 'none'
     } catch (error) {
       console.error('Error initializing form:', error)
       // Set default values if initialization fails
@@ -69,6 +71,7 @@
       country = ''
       city = ''
       currency = 'USD'
+      roundingPreference = 'none'
     }
   }
   
@@ -122,6 +125,7 @@
         country: country ? country.trim() : '',
         city: city ? city.trim() : '',
         currency: currency || 'USD',
+        roundingPreference: roundingPreference || 'none',
         name: businessName ? businessName.trim() : '',
         // Ensure all required fields are present
         id: pharmacistId, // Use the resolved pharmacist ID
@@ -285,30 +289,53 @@
             </div>
           </div>
           
-          <!-- Currency Selection -->
+          <!-- Currency Settings -->
           <div class="mb-6">
             <h6 class="text-sm font-semibold text-gray-700 mb-4">
               <i class="fas fa-dollar-sign mr-2"></i>
-              Currency Settings
+              Currency & Billing Settings
             </h6>
-            <div class="max-w-md">
-              <label for="currency" class="block text-sm font-medium text-gray-700 mb-2">
-                Default Currency <span class="text-red-600">*</span>
-              </label>
-              <select 
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                id="currency" 
-                bind:value={currency}
-                required
-                disabled={loading}
-              >
-                {#each currencies as currencyOption}
-                  <option value={currencyOption.code}>{currencyOption.symbol} {currencyOption.name} ({currencyOption.code})</option>
-                {/each}
-              </select>
-              <div class="text-xs text-gray-500 mt-1">
-                <i class="fas fa-info-circle mr-1"></i>
-                This currency will be used for pricing and billing in your pharmacy
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label for="currency" class="block text-sm font-medium text-gray-700 mb-2">
+                  Default Currency <span class="text-red-600">*</span>
+                </label>
+                <select
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  id="currency"
+                  bind:value={currency}
+                  required
+                  disabled={loading}
+                >
+                  {#each currencies as currencyOption}
+                    <option value={currencyOption.code}>{currencyOption.symbol} {currencyOption.name} ({currencyOption.code})</option>
+                  {/each}
+                </select>
+                <div class="text-xs text-gray-500 mt-1">
+                  <i class="fas fa-info-circle mr-1"></i>
+                  This currency will be used for pricing and billing
+                </div>
+              </div>
+
+              <div>
+                <label for="roundingPreference" class="block text-sm font-medium text-gray-700 mb-2">
+                  Total Amount Rounding <span class="text-red-600">*</span>
+                </label>
+                <select
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  id="roundingPreference"
+                  bind:value={roundingPreference}
+                  required
+                  disabled={loading}
+                >
+                  <option value="none">No Rounding</option>
+                  <option value="nearest50">Round to Nearest 50</option>
+                  <option value="nearest100">Round to Nearest 100</option>
+                </select>
+                <div class="text-xs text-gray-500 mt-1">
+                  <i class="fas fa-info-circle mr-1"></i>
+                  Automatically round prescription totals for easier billing
+                </div>
               </div>
             </div>
           </div>

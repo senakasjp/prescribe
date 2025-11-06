@@ -6,6 +6,7 @@
 - **Inventory-Enriched Charges**:
   - ✅ Passes matched inventory snapshots (selling price, identifiers) from the pharmacist dashboard into the billing service
   - ✅ Automatically recalculates charges after inventory lookups finish so modal totals stay in sync
+  - ✅ Supports multi-batch fulfilment by allocating requested quantities across sequential inventory batches
 - **Robust Pricing Logic**:
   - ✅ Charge service revalidates medication amounts, parses unit pricing strings, and multiplies quantity × selling price
   - ✅ Falls back to dynamic inventory matching when cached data is unavailable
