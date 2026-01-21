@@ -14,6 +14,7 @@
   import ThreeDots from './ThreeDots.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import prescriptionStatusService from '../services/doctor/prescriptionStatusService.js'
+  import backupService from '../services/backupService.js'
   
   const dispatch = createEventDispatcher()
   export let user
@@ -99,6 +100,7 @@
   let chartInstance = null
   let loading = true
   let chartLoading = false
+  let lastUserEmail = null
   let searchQuery = ''
   let filteredPatients = []
   let showAllLastPrescriptionMeds = false // Track if last prescription medications are expanded
@@ -111,6 +113,16 @@
   // Dispensed status tracking
   let prescriptionDispensedStatus = {}
   let checkingDispensedStatus = false
+
+  // Backup/restore state
+  let backupLoading = false
+  let backupError = ''
+  let backupSuccess = ''
+  let restoreLoading = false
+  let restoreError = ''
+  let restoreSuccess = ''
+  let restoreFile = null
+  let restoreSummary = null
   
   // Reactive prescription selection for Last Prescription card
   $: selectedPrescriptionForCard = (() => {
@@ -212,6 +224,92 @@
     pendingAction = null
     showConfirmationModal = false
   }
+
+  const downloadJsonFile = (data, filename) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleDoctorBackupDownload = async () => {
+    try {
+      backupLoading = true
+      backupError = ''
+      backupSuccess = ''
+
+      const resolvedDoctorId = doctorData?.id || doctorId
+      if (!resolvedDoctorId) {
+        throw new Error('Doctor ID is not available for backup')
+      }
+
+      const backup = await backupService.exportDoctorBackup(resolvedDoctorId)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      downloadJsonFile(backup, `doctor-backup-${resolvedDoctorId}-${timestamp}.json`)
+
+      backupSuccess = 'Backup downloaded successfully.'
+    } catch (error) {
+      backupError = error.message || 'Failed to create backup.'
+    } finally {
+      backupLoading = false
+    }
+  }
+
+  const handleDoctorRestoreFile = (event) => {
+    restoreFile = event.target.files?.[0] || null
+    restoreError = ''
+    restoreSuccess = ''
+    restoreSummary = null
+  }
+
+  const performDoctorRestore = async () => {
+    if (!restoreFile) {
+      restoreError = 'Please select a backup file to restore.'
+      return
+    }
+
+    try {
+      restoreLoading = true
+      restoreError = ''
+      restoreSuccess = ''
+      restoreSummary = null
+
+      const resolvedDoctorId = doctorData?.id || doctorId
+      if (!resolvedDoctorId) {
+        throw new Error('Doctor ID is not available for restore')
+      }
+
+      const fileText = await restoreFile.text()
+      const backup = JSON.parse(fileText)
+      if (backup.type !== 'doctor') {
+        throw new Error('Selected backup file is not a doctor backup.')
+      }
+
+      const summary = await backupService.restoreDoctorBackup(resolvedDoctorId, backup)
+      restoreSummary = summary
+      restoreSuccess = 'Backup restored successfully.'
+    } catch (error) {
+      restoreError = error.message || 'Failed to restore backup.'
+    } finally {
+      restoreLoading = false
+    }
+  }
+
+  const confirmDoctorRestore = () => {
+    pendingAction = performDoctorRestore
+    showConfirmation(
+      'Restore Backup',
+      'This will merge backup data into your account and may overwrite records with the same IDs. Continue?',
+      'Restore',
+      'Cancel',
+      'warning'
+    )
+  }
   
   // Profile editing state removed - now using tabbed modal
   
@@ -251,6 +349,10 @@
   // Load patients from storage
   const loadPatients = async () => {
     try {
+      if (!user?.email) {
+        loading = false
+        return
+      }
       loading = true
       
       // Always get the doctor from Firebase to ensure we have the correct ID
@@ -376,11 +478,20 @@
       
       const newPatient = await firebaseStorage.createPatient(patientToCreate)
       console.log('✅ PatientManagement: Patient created successfully:', newPatient)
-      
-      // Reload patients to ensure we get the latest data
-      console.log('🔍 PatientManagement: Reloading patients after creation...')
-      await loadPatients()
-      
+
+      // Add the new patient to the local state immediately (optimistic update)
+      // This ensures the patient appears in the list right away
+      patients = [newPatient, ...patients]
+      filteredPatients = [...patients]
+      console.log('✅ PatientManagement: Added new patient to local state, total patients:', patients.length)
+
+      // Reload patients after a short delay to ensure Firestore consistency
+      // This helps catch any edge cases where the optimistic update might differ from server state
+      setTimeout(async () => {
+        console.log('🔍 PatientManagement: Reloading patients after creation (background sync)...')
+        await loadPatients()
+      }, 1000)
+
       showPatientForm = false
       console.log('✅ PatientManagement: Patient creation process completed')
     } catch (error) {
@@ -411,6 +522,17 @@
   const handleDataUpdated = async (event) => {
     const { type, data } = event.detail
     console.log('🔄 Data updated in PatientDetails:', type, data)
+
+    if (type === 'patient-deleted') {
+      patients = patients.filter(patient => patient.id !== data?.patientId)
+      selectedPatient = null
+      illnesses = []
+      prescriptions = []
+      symptoms = []
+      currentView = 'patients'
+      await loadPatients()
+      return
+    }
     
     // Refresh medical data to update MedicalSummary
     if (selectedPatient) {
@@ -1374,6 +1496,11 @@
       window.removeEventListener('prescriptionSaved', handlePrescriptionSaved)
     }
   })
+
+  $: if (user?.email && user.email !== lastUserEmail) {
+    lastUserEmail = user.email
+    loadPatients()
+  }
   
   // Cleanup chart instance when component is destroyed
   onDestroy(() => {
@@ -2079,6 +2206,21 @@
                     Prescription Template
                   </button>
                 </li>
+                <li class="flex-1" role="presentation">
+                  <button 
+                    class="inline-block w-full p-4 border-b-2 rounded-t-lg {activeTab === 'backup-restore' ? 'text-teal-600 border-teal-600 active' : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'}" 
+                    id="backup-restore-tab" 
+                    data-tabs-target="#backup-restore" 
+                    type="button" 
+                    role="tab" 
+                    aria-controls="backup-restore" 
+                    aria-selected={activeTab === 'backup-restore'}
+                    on:click={() => switchTab('backup-restore')}
+                  >
+                    <i class="fas fa-database mr-2 fa-sm"></i>
+                    Backup & Restore
+                  </button>
+                </li>
               </ul>
             </div>
               
@@ -2557,6 +2699,78 @@
                       <i class="fas fa-save mr-1 fa-sm"></i>
                       Save Template Settings
                     </button>
+                  </div>
+                </div>
+                {/if}
+                
+                <!-- Backup & Restore Tab -->
+                {#if activeTab === 'backup-restore'}
+              <div class="p-4 rounded-lg bg-white" id="backup-restore" role="tabpanel" aria-labelledby="backup-restore-tab">
+                  <div class="mb-4">
+                    <h6 class="fw-bold mb-2">
+                      <i class="fas fa-database mr-2"></i>
+                      Backup & Restore
+                    </h6>
+                    <p class="text-gray-600 dark:text-gray-300 small mb-4">
+                      Download a full backup of your patients and prescriptions, then restore it if data is deleted.
+                    </p>
+                  </div>
+
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
+                      <p class="text-xs text-gray-500 mb-3">
+                        Exports patients, prescriptions, symptoms, illnesses, and long-term medications.
+                      </p>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        on:click={handleDoctorBackupDownload}
+                        disabled={backupLoading}
+                      >
+                        <i class="fas fa-download mr-2"></i>
+                        {backupLoading ? 'Preparing...' : 'Download Backup'}
+                      </button>
+                      {#if backupError}
+                        <div class="mt-3 text-xs text-red-600">{backupError}</div>
+                      {/if}
+                      {#if backupSuccess}
+                        <div class="mt-3 text-xs text-green-600">{backupSuccess}</div>
+                      {/if}
+                    </div>
+
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h6 class="text-sm font-semibold text-gray-800 mb-2">Restore Backup</h6>
+                      <p class="text-xs text-gray-500 mb-3">
+                        Upload a backup file to restore missing data. Existing records with the same IDs will be updated.
+                      </p>
+                      <input
+                        type="file"
+                        accept="application/json"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        on:change={handleDoctorRestoreFile}
+                      />
+                      <button
+                        type="button"
+                        class="mt-3 inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        on:click={confirmDoctorRestore}
+                        disabled={restoreLoading || !restoreFile}
+                      >
+                        <i class="fas fa-upload mr-2"></i>
+                        {restoreLoading ? 'Restoring...' : 'Restore Backup'}
+                      </button>
+                      {#if restoreError}
+                        <div class="mt-3 text-xs text-red-600">{restoreError}</div>
+                      {/if}
+                      {#if restoreSuccess}
+                        <div class="mt-3 text-xs text-green-600">{restoreSuccess}</div>
+                      {/if}
+                      {#if restoreSummary}
+                        <div class="mt-3 text-xs text-gray-600">
+                          Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms.
+                        </div>
+                      {/if}
+                    </div>
                   </div>
                 </div>
                 {/if}

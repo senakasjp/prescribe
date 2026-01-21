@@ -9,6 +9,8 @@
   export let selectedPatient = null
   export let editingMedication = null
   export let doctorId = null
+  export let allowNonPharmacyDrugs = true
+  export let excludePharmacyDrugs = false
   export let onIllnessAdded
   export let onSymptomsAdded
   export let onMedicationAdded
@@ -40,6 +42,8 @@
     {selectedPatient}
     {editingMedication}
     {doctorId}
+    {allowNonPharmacyDrugs}
+    {excludePharmacyDrugs}
     visible={showMedicationForm}
     on:medication-added={onMedicationAdded}
     on:cancel={onCancelMedication}

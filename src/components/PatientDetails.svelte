@@ -28,6 +28,58 @@
   let symptoms = []
   let currentPrescription = null // Current prescription being worked on
   
+  const getRecentPrescriptionsSummary = (limit = 3) => {
+    if (!prescriptions || prescriptions.length === 0) {
+      return []
+    }
+
+    const sortedPrescriptions = [...prescriptions]
+      .filter(prescription => prescription?.medications && prescription.medications.length > 0)
+      .sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.updatedAt || a.date || 0).getTime()
+        const dateB = new Date(b.createdAt || b.updatedAt || b.date || 0).getTime()
+        return dateB - dateA
+      })
+
+    return sortedPrescriptions.slice(0, limit).map(prescription => ({
+      id: prescription.id,
+      date: prescription.createdAt || prescription.updatedAt || prescription.date || null,
+      medications: Array.isArray(prescription.medications)
+        ? prescription.medications.map(medication => ({
+            name: medication.name,
+            dosage: medication.dosage,
+            frequency: medication.frequency,
+            duration: medication.duration
+          }))
+        : []
+    }))
+  }
+
+  const getRecentReportsSummary = (limit = 3) => {
+    if (!reports || reports.length === 0) {
+      return []
+    }
+
+    const sortedReports = [...reports]
+      .filter(report => report && report.title)
+      .sort((a, b) => {
+        const dateA = new Date(a.date || a.createdAt || 0).getTime()
+        const dateB = new Date(b.date || b.createdAt || 0).getTime()
+        return dateB - dateA
+      })
+
+    return sortedReports.slice(0, limit).map(report => ({
+      id: report.id,
+      title: report.title,
+      type: report.type,
+      date: report.date || report.createdAt || null,
+      content: report.type === 'text' ? report.content : null,
+      filename: report.files?.[0]?.name || null,
+      previewUrl: report.type === 'image' ? report.previewUrl || report.dataUrl : null,
+      dataUrl: report.type === 'image' ? report.dataUrl : null
+    }))
+  }
+  
   // Pagination for symptoms
   let currentSymptomsPage = 1
   let symptomsPerPage = 25
@@ -165,7 +217,8 @@
   }
   let currentMedications = [] // Current medications in the working prescription (for display)
   let activeTab = initialTab
-  let enabledTabs = [initialTab] // Progressive workflow: start with initialTab enabled
+  const allTabs = ['overview', 'symptoms', 'reports', 'diagnoses', 'prescriptions']
+  let enabledTabs = [...allTabs]
   let isNewPrescriptionSession = false
   
   // Reactive statement to ensure PatientTabs gets updated enabledTabs
@@ -176,7 +229,7 @@
   $: if (selectedPatient) {
     console.log('🔄 New patient selected, navigating to initial tab:', initialTab)
     activeTab = initialTab
-    enabledTabs = [initialTab] // Reset to only initialTab enabled for new patient
+    enabledTabs = [...allTabs]
   }
   
   // Track AI diagnostics state
@@ -251,6 +304,7 @@
   }
   let editError = ''
   let savingPatient = false
+  let deletingPatient = false
   let editLongTermMedications = null // For editing long-term medications in overview
   
   // AI analysis state
@@ -262,6 +316,11 @@
   // Full AI Analysis
   let fullAIAnalysis = null
   let loadingFullAnalysis = false
+
+  // Patient Management Summary
+  let patientSummary = null
+  let loadingPatientSummary = false
+  let showPatientSummary = false
   let showFullAnalysis = false
   let fullAnalysisError = ''
   
@@ -412,6 +471,11 @@
       const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
       console.log('🔍 Doctor info for analysis:', doctor)
       
+      const reportAnalyses = await openaiService.analyzeReportImages(getRecentReportsSummary(), {
+        patientCountry: selectedPatient?.country || 'Not specified',
+        doctorCountry: doctor?.country || 'Not specified'
+      })
+
       // Prepare comprehensive data for analysis
       const patientData = {
         // Basic Patient Information
@@ -436,6 +500,9 @@
         medications: currentMedications,
         symptoms: symptoms,
         illnesses: illnesses,
+        recentPrescriptions: getRecentPrescriptionsSummary(),
+        recentReports: getRecentReportsSummary(),
+        reportAnalyses: reportAnalyses,
         
         // Location Information
         patientAddress: selectedPatient.address,
@@ -478,8 +545,80 @@
     fullAIAnalysis = null
     fullAnalysisError = ''
   }
-  
-  
+
+  // Generate AI Patient Summary
+  const generatePatientSummary = async () => {
+    try {
+      loadingPatientSummary = true
+      showPatientSummary = false
+
+      console.log('🤖 Starting AI patient summary generation...')
+      console.log('🔍 Patient:', selectedPatient.firstName, selectedPatient.lastName)
+
+      // Get doctor information
+      const firebaseUser = currentUser || authService.getCurrentUser()
+      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      const doctorId = doctor?.id || firebaseUser?.id || firebaseUser?.uid || 'default-user'
+
+      const reportAnalyses = await openaiService.analyzeReportImages(getRecentReportsSummary(), {
+        patientCountry: selectedPatient?.country || 'Not specified',
+        doctorCountry: currentUser?.country || 'Not specified'
+      })
+
+      // Prepare comprehensive patient data
+      const patientData = {
+        name: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
+        firstName: selectedPatient.firstName,
+        lastName: selectedPatient.lastName,
+        age: selectedPatient.age,
+        weight: selectedPatient.weight,
+        bloodGroup: selectedPatient.bloodGroup,
+        gender: selectedPatient.gender,
+        dateOfBirth: selectedPatient.dateOfBirth,
+        allergies: selectedPatient.allergies,
+        longTermMedications: selectedPatient.longTermMedications,
+        medicalHistory: selectedPatient.medicalHistory,
+        symptoms: symptoms || [],
+        illnesses: illnesses || [],
+        prescriptions: prescriptions || [],
+        recentReports: getRecentReportsSummary(),
+        reportAnalyses: reportAnalyses
+      }
+
+      // Generate patient summary using OpenAI
+      const result = await openaiService.generatePatientSummary(patientData, doctorId)
+
+      patientSummary = result.summary
+      showPatientSummary = true
+
+      console.log('✅ Patient summary generated successfully')
+
+      // Dispatch event for token tracking
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'patientSummary'
+      })
+
+    } catch (error) {
+      console.error('❌ Error generating patient summary:', error)
+      patientSummary = `<div class="text-red-600">
+        <p><strong>Error generating patient summary:</strong></p>
+        <p>${error.message}</p>
+        <p class="text-sm text-gray-500 mt-2">Please check your OpenAI API configuration and try again.</p>
+      </div>`
+      showPatientSummary = true
+    } finally {
+      loadingPatientSummary = false
+    }
+  }
+
+  // Close patient summary
+  const closePatientSummary = () => {
+    showPatientSummary = false
+    patientSummary = null
+  }
+
+
   
   // Reactive statement to filter current prescriptions when prescriptions change
   $: if (prescriptions) {
@@ -921,6 +1060,11 @@
       console.log('🔍 Calculated patient age:', patientAge)
       console.log('🔍 Patient country:', selectedPatient?.country)
 
+      const reportAnalyses = await openaiService.analyzeReportImages(getRecentReportsSummary(), {
+        patientCountry: selectedPatient?.country || 'Not specified',
+        doctorCountry: currentUser?.country || 'Not specified'
+      })
+
       const suggestions = await openaiService.generateAIDrugSuggestions(
         symptoms,
         currentMedications,
@@ -932,6 +1076,9 @@
           patientGender: selectedPatient?.gender || 'Not specified',
           longTermMedications: selectedPatient?.longTermMedications || 'None',
           currentActiveMedications: getCurrentMedications(),
+          recentPrescriptions: getRecentPrescriptionsSummary(),
+          recentReports: getRecentReportsSummary(),
+          reportAnalyses: reportAnalyses,
           doctorCountry: currentUser?.country || 'Not specified'
         }
       )
@@ -1143,6 +1290,24 @@
       console.error('❌ Error printing prescriptions:', error)
     }
   }
+
+  const printExternalPrescriptions = async (externalMedications = []) => {
+    try {
+      if (!Array.isArray(externalMedications) || externalMedications.length === 0) {
+        console.warn('⚠️ No external medications to print')
+        return
+      }
+
+      console.log('🖨️ Printing external prescription PDF')
+
+      await saveCurrentPrescriptions()
+      await generatePrescriptionPDF(externalMedications)
+
+      console.log('🎉 External prescription printed successfully')
+    } catch (error) {
+      console.error('❌ Error printing external prescription:', error)
+    }
+  }
   
   // State for pharmacy selection modal
   let showPharmacyModal = false
@@ -1157,6 +1322,9 @@
   let reportTitle = ''
   let reportDate = new Date().toISOString().split('T')[0]
   let reports = []
+  let reportFilePreview = null
+  let reportFileDataUrl = null
+  let reportError = ''
   
   // Diagnostic data functionality
   let showDiagnosticForm = false
@@ -1170,9 +1338,10 @@
   // Report functions
   const addReport = () => {
     if (!reportTitle.trim()) {
+      reportError = 'Report title is required.'
       return
     }
-    
+
     if (reportType === 'text' && !reportText.trim()) {
       return
     }
@@ -1183,11 +1352,13 @@
     
     const newReport = {
       id: Date.now().toString(),
-      title: reportTitle,
+      title: reportTitle.trim(),
       type: reportType,
       date: reportDate,
       content: reportType === 'text' ? reportText : null,
       files: reportType !== 'text' ? reportFiles : [],
+      previewUrl: reportType === 'image' ? reportFilePreview : null,
+      dataUrl: reportType === 'image' ? reportFileDataUrl : null,
       createdAt: new Date().toISOString()
     }
     
@@ -1199,17 +1370,53 @@
     reportFiles = []
     reportType = 'text'
     reportDate = new Date().toISOString().split('T')[0]
+    reportFilePreview = null
+    reportFileDataUrl = null
+    reportError = ''
     showReportForm = false
     
+  }
+
+  const setReportFilePreview = (nextUrl) => {
+    if (reportFilePreview && reportFilePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(reportFilePreview)
+    }
+    reportFilePreview = nextUrl
   }
   
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files)
     reportFiles = files
+    if (reportType === 'image' && files.length > 0) {
+      setReportFilePreview(URL.createObjectURL(files[0]))
+      const reader = new FileReader()
+      reader.onload = () => {
+        reportFileDataUrl = reader.result
+      }
+      reader.readAsDataURL(files[0])
+    } else {
+      setReportFilePreview(null)
+      reportFileDataUrl = null
+    }
   }
   
   const removeReport = (reportId) => {
+    const reportToRemove = reports.find(r => r.id === reportId)
+    if (reportToRemove?.previewUrl && reportToRemove.previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(reportToRemove.previewUrl)
+    }
     reports = reports.filter(r => r.id !== reportId)
+  }
+
+  $: if (reportType !== 'image' && reportFilePreview) {
+    setReportFilePreview(null)
+  }
+  $: if (reportType !== 'image' && reportFileDataUrl) {
+    reportFileDataUrl = null
+  }
+
+  $: if (reportError && reportTitle.trim()) {
+    reportError = ''
   }
 
   // Diagnostic functions
@@ -1499,9 +1706,12 @@
   }
 
   // Generate prescription PDF directly
-  const generatePrescriptionPDF = async () => {
+  const generatePrescriptionPDF = async (medicationsOverride = null) => {
     try {
       console.log('🔄 Starting PDF generation... [UPDATE v2.1.6]')
+      const medicationsToPrint = Array.isArray(medicationsOverride)
+        ? medicationsOverride
+        : currentMedications
       
       // Load template settings
       let templateSettings = null
@@ -1564,7 +1774,7 @@
       
       console.log('📄 Creating A5 PDF content...')
       console.log('Patient:', selectedPatient.firstName, selectedPatient.lastName)
-      console.log('Current medications:', currentMedications.length)
+      console.log('Current medications:', medicationsToPrint.length)
       
       // A5 dimensions: 148mm width, 210mm height
       const pageWidth = 148
@@ -1585,80 +1795,7 @@
       if (templateSettings) {
         console.log('🎨 Applying template settings:', templateSettings.templateType)
         
-        // NEW APPROACH: Try to capture the exact preview header first
-        console.log('📸 Attempting to capture header from preview element...')
-        try {
-          // Determine which preview element to capture based on template type
-          let previewElementId = null
-          if (templateSettings.templateType === 'printed') {
-            previewElementId = 'prescription-header-preview-printed'
-          } else if (templateSettings.templateType === 'upload') {
-            previewElementId = 'prescription-header-preview-upload'
-          } else if (templateSettings.templateType === 'system') {
-            previewElementId = 'prescription-header-preview-system'
-          }
-          
-          if (previewElementId) {
-            const previewElement = document.getElementById(previewElementId)
-            
-            if (previewElement) {
-              console.log('✅ Found preview element:', previewElementId)
-              
-              // Import html2canvas dynamically
-              const html2canvasModule = await import('html2canvas')
-              const html2canvas = html2canvasModule.default
-              
-              // Capture the preview element as-is
-              const canvas = await html2canvas(previewElement, {
-                backgroundColor: 'white',
-                scale: 3, // High quality
-                useCORS: true,
-                allowTaint: true,
-                logging: false
-              })
-              
-              // Convert to image data
-              capturedHeaderImage = canvas.toDataURL('image/png')
-              
-              // Calculate dimensions for PDF (convert pixels to mm)
-              const maxHeaderWidthMm = pageWidth - (margin * 2)
-              const aspectRatio = canvas.width / canvas.height
-              let headerWidthMm = maxHeaderWidthMm
-              let headerHeightMm = headerWidthMm / aspectRatio
-              
-              // If height is too large, scale down
-              const maxHeaderHeightMm = 60 // Maximum 60mm height
-              if (headerHeightMm > maxHeaderHeightMm) {
-                headerHeightMm = maxHeaderHeightMm
-                headerWidthMm = headerHeightMm * aspectRatio
-              }
-              
-          capturedHeaderWidth = headerWidthMm
-          capturedHeaderHeight = headerHeightMm
-          capturedHeaderX = (pageWidth - headerWidthMm) / 2 // Store X position for multi-page use
-          
-          console.log('✅ Successfully captured preview header:', canvas.width + 'x' + canvas.height + 'px')
-          console.log('✅ PDF dimensions:', headerWidthMm.toFixed(2) + 'mm x ' + headerHeightMm.toFixed(2) + 'mm')
-            } else {
-              console.log('⚠️ Preview element not found:', previewElementId)
-            }
-          }
-        } catch (captureError) {
-          console.error('❌ Error capturing preview header:', captureError)
-          // Fall back to original method
-        }
-        
-        // If we successfully captured the header, use it for all pages
-        if (capturedHeaderImage) {
-          console.log('✅ Using captured preview header for PDF')
-          headerYStart = 5
-          contentYStart = headerYStart + capturedHeaderHeight + 5
-          
-          // Add the captured header to the first page
-          doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
-          
-          console.log('✅ Captured header added to first page')
-        } else if (templateSettings.templateType === 'upload' && templateSettings.uploadedHeader) {
+        if (templateSettings.templateType === 'upload' && templateSettings.uploadedHeader) {
           // Fall back to original upload logic if capture failed
           // For uploaded header image, embed the actual image
           console.log('🖼️ Embedding uploaded header image')
@@ -1846,7 +1983,7 @@
             headerContainer.style.width = `${pageWidth - (margin * 2)}mm`
             headerContainer.style.minWidth = `${pageWidth - (margin * 2)}mm`
             headerContainer.style.backgroundColor = 'white'
-            headerContainer.style.padding = '10px'
+            headerContainer.style.padding = '16px'
             headerContainer.style.fontFamily = 'Arial, sans-serif'
             headerContainer.style.lineHeight = '1.4'
             headerContainer.style.color = '#000000'
@@ -1857,115 +1994,71 @@
             const style = document.createElement('style')
             style.textContent = `
               .header-capture-container {
-                text-align: center !important; /* Ensure the container itself is centered for html2canvas */
+                text-align: center !important;
                 display: flex !important;
                 flex-direction: column !important;
                 align-items: center !important;
                 justify-content: center !important;
                 width: 100% !important;
                 position: relative !important;
-                /* Additional centering reinforcement */
                 margin: 0 auto !important;
-                left: 0 !important;
-                right: 0 !important;
+              }
+              .header-capture-container .ql-editor {
+                width: 100% !important;
+                padding: 0 !important;
+                font-size: 21.33px !important;
+                line-height: 1.4 !important;
+                font-family: inherit !important;
+              }
+              .header-capture-container .ql-size-small {
+                font-size: 0.75em !important;
+              }
+              .header-capture-container .ql-size-large {
+                font-size: 1.5em !important;
+              }
+              .header-capture-container .ql-size-huge {
+                font-size: 2.5em !important;
               }
               .header-capture-container * {
                 box-sizing: border-box !important;
-                margin: 0 !important;
-                padding: 0 !important;
                 outline: none !important;
                 border: none !important;
                 box-shadow: none !important;
                 text-decoration: none !important;
               }
-              .header-capture-container p, .header-capture-container div, .header-capture-container span {
-                display: block !important;
-                text-align: center !important; /* Default to center for html2canvas */
-                width: 100% !important;
-              }
-              .header-capture-container .ql-editor, .header-capture-container [contenteditable] {
-                outline: none !important;
-                border: none !important;
-                box-shadow: none !important;
+              .header-capture-container > * {
                 width: 100% !important;
               }
               .header-capture-container p,
               .header-capture-container div,
               .header-capture-container span {
-                font-size: 20px !important;
-                line-height: 1.4 !important;
-                color: #000000 !important;
+                display: block !important;
+                width: 100% !important;
               }
-              .header-capture-container h1,
-              .header-capture-container h2,
-              .header-capture-container h3,
-              .header-capture-container h4,
-              .header-capture-container h5,
-              .header-capture-container h6 {
-                font-size: 28px !important;
-                line-height: 1.3 !important;
-                color: #000000 !important;
-                font-weight: bold !important;
+              .header-capture-container .ql-editor,
+              .header-capture-container [contenteditable] {
+                outline: none !important;
+                border: none !important;
+                box-shadow: none !important;
+                width: 100% !important;
               }
               .header-capture-container img {
-                width: 300px !important;
-                height: 200px !important;
-                max-width: 300px !important;
-                max-height: 200px !important;
                 display: block !important;
                 margin: 0 auto !important;
+                max-width: 100% !important;
+                height: auto !important;
                 object-fit: contain !important;
-                align-self: center !important;
-                /* Simplified centering - remove conflicting position/transform */
-                float: none !important;
-                clear: both !important;
               }
               .header-capture-container .resize-handle,
               .header-capture-container .quill-resize-handle {
                 display: none !important;
               }
-              /* Ensure centering works properly */
-              .header-capture-container [style*="text-align: center"],
-              .header-capture-container [style*="text-align:center"],
-              .header-capture-container .text-center,
-              .header-capture-container [align="center"] {
-                text-align: center !important;
-                display: block !important;
-                width: 100% !important;
-              }
-              
-              /* Force all images to be centered and sized consistently */
-              .header-capture-container img {
-                margin-left: auto !important;
-                margin-right: auto !important;
-                margin-top: 0 !important;
-                margin-bottom: 0 !important;
-                width: 300px !important;
-                height: 200px !important;
-                max-width: 300px !important;
-                max-height: 200px !important;
-                object-fit: contain !important;
-                display: block !important;
-                float: none !important;
-                clear: both !important;
-              }
-              
-              /* Force center alignment for all content by default */
-              .header-capture-container {
-                text-align: center !important;
-              }
-              
-              /* Override specific alignment when needed */
               .header-capture-container [style*="text-align: left"],
               .header-capture-container [style*="text-align:left"],
               .header-capture-container .text-left,
               .header-capture-container [align="left"] {
                 text-align: left !important;
-                display: block !important;
-                width: 100% !important;
               }
-              
-              /* Handle Quill.js specific centering */
               .header-capture-container .ql-align-center {
                 text-align: center !important;
               }
@@ -1975,23 +2068,14 @@
               .header-capture-container .ql-align-left {
                 text-align: left !important;
               }
-              /* Ensure images respect alignment and maintain consistent sizing */
-              .header-capture-container .ql-align-center img,
-              .header-capture-container [style*="text-align: center"] img,
-              .header-capture-container [style*="text-align:center"] img {
-                display: block !important;
-                margin: 0 auto !important;
-                max-width: 400px !important;
-                max-height: 250px !important;
-                width: auto !important;
-                height: auto !important;
-                object-fit: contain !important;
-              }
             `
             document.head.appendChild(style)
             headerContainer.className = 'header-capture-container'
             
             // Clean the header content to remove editing artifacts while preserving alignment
+            const pxPerMm = 3.7795275591
+            const baseWidthPx = Math.round((pageWidth - (margin * 2)) * pxPerMm)
+            const captureScale = 2
             let cleanHeaderContent = headerContent
               .replace(/style="[^"]*outline[^"]*"/gi, '') // Remove outline styles
               .replace(/style="[^"]*border[^"]*dotted[^"]*"/gi, '') // Remove dotted borders
@@ -2022,7 +2106,9 @@
                 return cleanStyles ? `style="${cleanStyles}"` : ''
               })
             
-            headerContainer.innerHTML = cleanHeaderContent
+            headerContainer.style.width = `${baseWidthPx}px`
+            headerContainer.style.minWidth = `${baseWidthPx}px`
+            headerContainer.innerHTML = `<div class="ql-editor">${cleanHeaderContent}</div>`
             
             // Add to DOM temporarily
             document.body.appendChild(headerContainer)
@@ -2037,75 +2123,10 @@
               
               console.log('📸 Capturing header as image... [UPDATE v2.1.6]')
               
-              // Ensure the container has proper dimensions for capture
-              headerContainer.style.width = '800px'
-              headerContainer.style.height = 'auto'
-              headerContainer.style.padding = '20px'
-              headerContainer.style.backgroundColor = 'white'
-              
-              // Force all images to be the correct size and centered before capture
-              const images = headerContainer.querySelectorAll('img')
-              images.forEach(img => {
-                img.style.width = '400px'  // Larger size for better quality when scaled up
-                img.style.height = '250px' // Larger size for better quality when scaled up
-                img.style.objectFit = 'contain'
-                img.style.display = 'block'
-                img.style.margin = '0 auto'  // Center horizontally
-                img.style.marginTop = '0'
-                img.style.marginBottom = '0'
-                img.style.maxWidth = '400px'
-                img.style.maxHeight = '250px'
-                img.style.float = 'none'     // Prevent floating
-                img.style.clear = 'both'     // Clear any floating
-                img.style.position = 'static' // Remove any positioning
-                img.style.left = 'auto'      // Reset positioning
-                img.style.transform = 'none' // Remove transforms
-              })
-              
-              // Ensure all text has proper sizing and is larger for PDF readability
-              const textElements = headerContainer.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6')
-              textElements.forEach(el => {
-                // Check if this is a heading element
-                const isHeading = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(el.tagName)
-                
-                // Force larger font sizes for better PDF readability
-                const currentFontSize = el.style.fontSize || window.getComputedStyle(el).fontSize
-                const numericSize = parseFloat(currentFontSize)
-                
-                if (isHeading) {
-                  // Special handling for headings - make them much larger
-                  if (el.tagName === 'H1') {
-                    el.style.fontSize = '56px'  // Very large for main headings
-                  } else if (el.tagName === 'H2') {
-                    el.style.fontSize = '48px'  // Large for sub-headings
-                  } else if (el.tagName === 'H3') {
-                    el.style.fontSize = '44px'  // Medium-large for sub-sub-headings
-                  } else {
-                    el.style.fontSize = '40px'  // Large for other headings
-                  }
-                } else {
-                  // Regular text scaling (more aggressive scaling)
-                  if (numericSize < 18) {
-                    el.style.fontSize = '36px'  // Much larger minimum size for PDF
-                  } else if (numericSize < 24) {
-                    el.style.fontSize = '42px'  // Larger body text size
-                  } else {
-                    el.style.fontSize = `${Math.max(numericSize * 2.0, 40)}px`  // More aggressive scaling for larger text
-                  }
-                }
-                
-                el.style.lineHeight = '1.4'
-                el.style.color = '#000000'
-                el.style.fontWeight = el.style.fontWeight || 'normal'
-              })
-              
-              // Small delay to ensure styles are applied
-              await new Promise(resolve => setTimeout(resolve, 100))
-              
               // Capture the header as an image
               const canvas = await html2canvas(headerContainer, {
                 backgroundColor: 'white',
-                scale: 4, // Even higher quality for better font clarity
+                scale: captureScale,
                 useCORS: true,
                 allowTaint: true,
                 width: headerContainer.offsetWidth,
@@ -2117,7 +2138,6 @@
                   // Ignore resize handles and editing elements
                   return element.classList.contains('resize-handle') ||
                          element.classList.contains('quill-resize-handle') ||
-                         element.classList.contains('ql-editor') ||
                          element.style.outline ||
                          element.style.border?.includes('dotted')
                 }
@@ -2128,26 +2148,32 @@
               console.log('📸 Header captured successfully [UPDATE v2.1.6]:', headerImageData.substring(0, 50) + '...')
               
               // Calculate proper dimensions maintaining aspect ratio
-              const maxHeaderWidthMm = 250 // Maximum width in mm (increased for larger header)
-              const maxHeaderHeightMm = 120  // Maximum height in mm (increased for larger header)
+              const maxHeaderWidthMm = pageWidth - (margin * 2)
+              const maxHeaderHeightMm = pageHeight - (margin * 2)
+              const rawHeaderWidthMm = (canvas.width / captureScale) / pxPerMm
+              const rawHeaderHeightMm = (canvas.height / captureScale) / pxPerMm
               
               // Calculate aspect ratio from canvas dimensions
               const aspectRatio = canvas.width / canvas.height
               
               // Calculate dimensions maintaining aspect ratio within limits
-              let headerImageWidthMm = maxHeaderWidthMm
-              let headerImageHeightMm = headerImageWidthMm / aspectRatio
+              let headerImageWidthMm = rawHeaderWidthMm
+              let headerImageHeightMm = rawHeaderHeightMm
+
+              if (headerImageWidthMm < maxHeaderWidthMm) {
+                headerImageWidthMm = maxHeaderWidthMm
+                headerImageHeightMm = headerImageWidthMm / aspectRatio
+              }
               
               // If height exceeds limit, scale down based on height
+              if (headerImageWidthMm > maxHeaderWidthMm) {
+                headerImageWidthMm = maxHeaderWidthMm
+                headerImageHeightMm = headerImageWidthMm / aspectRatio
+              }
+
               if (headerImageHeightMm > maxHeaderHeightMm) {
                 headerImageHeightMm = maxHeaderHeightMm
                 headerImageWidthMm = headerImageHeightMm * aspectRatio
-              }
-              
-              // Ensure minimum size for readability
-              if (headerImageWidthMm < 180) {
-                headerImageWidthMm = 180
-                headerImageHeightMm = headerImageWidthMm / aspectRatio
               }
               
               console.log('📸 Header image dimensions for PDF [UPDATE v2.1.6]:', `${headerImageWidthMm.toFixed(1)}mm x ${headerImageHeightMm.toFixed(1)}mm (aspect ratio: ${aspectRatio.toFixed(2)})`)
@@ -2221,7 +2247,7 @@
             // Add version number to PDF for tracking
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.text('M-Prescribe v2.2.23', pageWidth - margin, pageHeight - 5, { align: 'right' })
+            doc.text('M-Prescribe v2.2.24', pageWidth - margin, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')
@@ -2305,7 +2331,7 @@
       // Prescription medications section
       let yPos = contentYStart + 31
       
-      if (currentMedications && currentMedications.length > 0) {
+      if (medicationsToPrint && medicationsToPrint.length > 0) {
         doc.setFontSize(11)
         doc.setFont('helvetica', 'bold')
         doc.text('PRESCRIPTION MEDICATIONS', margin, yPos)
@@ -2314,7 +2340,7 @@
         doc.setFontSize(9)
         doc.setFont('helvetica', 'normal')
         
-        currentMedications.forEach((medication, index) => {
+        medicationsToPrint.forEach((medication, index) => {
           if (yPos > pageHeight - 30) {
             doc.addPage()
             
@@ -2604,6 +2630,30 @@
       console.error('❌ Error updating patient:', error)
     } finally {
       savingPatient = false
+    }
+  }
+
+  const handleDeletePatient = async () => {
+    if (!selectedPatient?.id || deletingPatient) return
+
+    const patientName = `${selectedPatient.firstName || ''} ${selectedPatient.lastName || ''}`.trim() || 'this patient'
+    const confirmed = window.confirm(
+      `Delete ${patientName}? This will remove the patient and all related records. This action cannot be undone.`
+    )
+    if (!confirmed) return
+
+    deletingPatient = true
+    editError = ''
+
+    try {
+      await firebaseStorage.deletePatient(selectedPatient.id)
+      isEditingPatient = false
+      dispatch('dataUpdated', { type: 'patient-deleted', data: { patientId: selectedPatient.id } })
+    } catch (error) {
+      console.error('❌ Error deleting patient:', error)
+      editError = 'Failed to delete patient. Please try again.'
+    } finally {
+      deletingPatient = false
     }
   }
 
@@ -3480,10 +3530,10 @@
                   {/if}
                   
                   <div class="flex flex-col sm:flex-row gap-3">
-              <button 
+                    <button 
                       type="submit" 
                       class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200" 
-                      disabled={savingPatient}
+                      disabled={savingPatient || deletingPatient}
                     >
                       {#if savingPatient}
                         <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -3497,11 +3547,30 @@
                       type="button" 
                       class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors duration-200" 
                       on:click={cancelEditingPatient}
-                      disabled={savingPatient}
+                      disabled={savingPatient || deletingPatient}
                     >
                       <i class="fas fa-times mr-1"></i>Cancel
               </button>
             </div>
+                  <div class="mt-4 border-t border-gray-200 pt-4">
+                    <p class="text-xs text-gray-500 mb-2">Danger zone</p>
+                    <button
+                      type="button"
+                      class="w-full inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:bg-red-300 disabled:cursor-not-allowed transition-colors duration-200"
+                      on:click={handleDeletePatient}
+                      disabled={savingPatient || deletingPatient}
+                    >
+                      {#if deletingPatient}
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Deleting...
+                      {:else}
+                        <i class="fas fa-trash mr-1"></i>Delete Patient
+                      {/if}
+                    </button>
+                  </div>
                 </form>
               {:else}
                 <!-- Display Patient Information -->
@@ -3672,10 +3741,88 @@
                     </div>
                   </div>
                 {/if}
-                
+
+                <!-- AI Patient Management Summary -->
+                <div class="mt-4">
+                  <div class="bg-gradient-to-r from-teal-50 to-emerald-50 border-2 border-teal-200 rounded-lg shadow-sm">
+                    <div class="bg-gradient-to-r from-teal-600 to-emerald-600 px-4 py-3 rounded-t-lg flex justify-between items-center">
+                      <h6 class="text-base font-semibold text-white mb-0 flex items-center">
+                        <i class="fas fa-robot mr-2"></i>
+                        AI Patient Management Summary
+                      </h6>
+                      {#if !showPatientSummary}
+                        <button
+                          class="inline-flex items-center px-3 py-1.5 bg-white text-teal-600 hover:bg-teal-50 text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 transition-colors duration-200 shadow-sm"
+                          on:click={generatePatientSummary}
+                          disabled={loadingPatientSummary}
+                          title="Generate AI-powered patient management summary"
+                        >
+                          {#if loadingPatientSummary}
+                            <svg class="animate-spin h-4 w-4 mr-1.5 text-teal-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Generating...
+                          {:else}
+                            <i class="fas fa-sparkles mr-1.5"></i>
+                            Generate Summary
+                          {/if}
+                        </button>
+                      {:else}
+                        <button
+                          class="inline-flex items-center px-2 py-1 text-white hover:bg-teal-700 text-xs rounded transition-colors duration-200"
+                          on:click={closePatientSummary}
+                          title="Close summary"
+                        >
+                          <i class="fas fa-times"></i>
+                        </button>
+                      {/if}
+                    </div>
+
+                    <div class="p-4">
+                      {#if loadingPatientSummary}
+                        <div class="flex flex-col items-center justify-center py-8">
+                          <svg class="animate-spin h-10 w-10 text-teal-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <p class="text-teal-700 font-medium">Analyzing patient data with AI...</p>
+                          <p class="text-sm text-gray-600 mt-1">This may take a few moments</p>
+                        </div>
+                      {:else if showPatientSummary && patientSummary}
+                        <div class="bg-white rounded-lg p-4 shadow-inner">
+                          <div class="prose prose-sm max-w-none">
+                            {@html patientSummary}
+                          </div>
+                          <div class="mt-4 pt-3 border-t border-gray-200 text-xs text-gray-500 flex items-center">
+                            <i class="fas fa-info-circle mr-1.5"></i>
+                            This summary is AI-generated and should be reviewed by the healthcare provider.
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="text-center py-6">
+                          <div class="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full mb-3">
+                            <i class="fas fa-robot text-2xl text-teal-600"></i>
+                          </div>
+                          <p class="text-gray-700 mb-2 font-medium">Get AI-Powered Patient Insights</p>
+                          <p class="text-sm text-gray-500 mb-4">Generate a comprehensive management summary including health concerns, treatment plans, and monitoring recommendations.</p>
+                          <button
+                            class="inline-flex items-center px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-all duration-200 shadow-md hover:shadow-lg"
+                            on:click={generatePatientSummary}
+                            disabled={loadingPatientSummary}
+                          >
+                            <i class="fas fa-sparkles mr-2"></i>
+                            Generate Patient Summary
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Next Button -->
                 <div class="mt-4 text-center">
-                    <button 
+                    <button
                     class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
                       on:click={goToNextTab}
                       title="Continue to Symptoms tab"
@@ -4004,6 +4151,11 @@
                       bind:value={reportTitle}
                       placeholder="e.g., Blood Test Results, X-Ray Report"
                     />
+                    {#if reportError}
+                      <div class="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+                        {reportError}
+                      </div>
+                    {/if}
                 </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Report Date</label>
@@ -4101,6 +4253,8 @@
                       reportFiles = []
                       reportType = 'text'
                       reportDate = new Date().toISOString().split('T')[0]
+                      reportFilePreview = null
+                      reportError = ''
                     }}
                   >
                     <i class="fas fa-times mr-1"></i>Cancel
@@ -4143,14 +4297,18 @@
                           year: 'numeric'
                         })}
                       </p>
-                      {#if report.type === 'text'}
-                        <div class="report-content">
-                        <p class="text-sm text-gray-700 mb-0">{report.content}</p>
-                        </div>
-                      {:else}
-                        <div class="wave-file-view">
-                        <div class="wave-container flex items-end space-x-1 mb-3">
-                          <div class="w-1 bg-blue-500 h-4 rounded"></div>
+                    {#if report.type === 'text'}
+                      <div class="report-content">
+                      <p class="text-sm text-gray-700 mb-0">{report.content}</p>
+                      </div>
+                    {:else if report.type === 'image' && (report.previewUrl || report.dataUrl)}
+                      <div class="rounded-lg border border-gray-200 overflow-hidden">
+                        <img src={report.previewUrl || report.dataUrl} alt="Report image" class="w-full h-auto" />
+                      </div>
+                    {:else}
+                      <div class="wave-file-view">
+                      <div class="wave-container flex items-end space-x-1 mb-3">
+                        <div class="w-1 bg-blue-500 h-4 rounded"></div>
                           <div class="w-1 bg-blue-500 h-6 rounded"></div>
                           <div class="w-1 bg-blue-500 h-3 rounded"></div>
                           <div class="w-1 bg-blue-500 h-8 rounded"></div>
@@ -4486,6 +4644,8 @@
         patientData={{
           ...selectedPatient,
           currentActiveMedications: getCurrentMedications(),
+          recentPrescriptions: getRecentPrescriptionsSummary(),
+          recentReports: getRecentReportsSummary(),
           doctorCountry: currentUser?.country || 'Not specified'
         }}
             bind:isShowingAIDiagnostics
@@ -4524,6 +4684,8 @@
           {showMedicationForm}
           {editingMedication}
           {doctorId}
+          allowNonPharmacyDrugs={true}
+          excludePharmacyDrugs={currentUser?.templateSettings?.excludePharmacyDrugs ?? false}
           {currentMedications}
           {prescriptionsFinalized}
           {showAIDrugSuggestions}
@@ -4534,6 +4696,7 @@
           {openaiService}
           bind:prescriptionNotes
           bind:prescriptionDiscount
+          currentUserEmail={currentUser?.email}
           onMedicationAdded={handleMedicationAdded}
           onCancelMedication={handleCancelMedication}
           onEditPrescription={handleEditPrescription}
@@ -4639,6 +4802,7 @@
             editingMedication = null;
           }}
           onPrintPrescriptions={printPrescriptions}
+          onPrintExternalPrescriptions={printExternalPrescriptions}
           />
         </div>
       {/if}

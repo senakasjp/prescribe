@@ -20,6 +20,8 @@
   let prescriptions = []
   let drugStock = []
   let connectedDoctors = []
+  let pharmacyId = null
+  $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
   
   onMount(async () => {
     try {
@@ -46,16 +48,16 @@
   
   async function loadPharmacistData() {
     try {
-      if (!pharmacist?.id) return
+      if (!pharmacyId) return
       
       // Load prescriptions for this pharmacist only
-      prescriptions = await pharmacistStorageService.getPrescriptionsByPharmacistId(pharmacist.id)
+      prescriptions = await pharmacistStorageService.getPrescriptionsByPharmacistId(pharmacyId)
       
       // Load drug stock for this pharmacist only
-      drugStock = await pharmacistStorageService.getDrugStockByPharmacistId(pharmacist.id)
+      drugStock = await pharmacistStorageService.getDrugStockByPharmacistId(pharmacyId)
       
       // Load connected doctors for this pharmacist only
-      connectedDoctors = await pharmacistStorageService.getConnectedDoctors(pharmacist.id)
+      connectedDoctors = await pharmacistStorageService.getConnectedDoctors(pharmacyId)
       
       console.log('PharmacistModuleRouter: Loaded pharmacist data:', {
         prescriptionsCount: prescriptions.length,

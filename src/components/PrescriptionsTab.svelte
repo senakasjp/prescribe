@@ -6,6 +6,8 @@
   export let showMedicationForm
   export let editingMedication
   export let doctorId
+  export let allowNonPharmacyDrugs = true
+  export let excludePharmacyDrugs = false
   export let currentMedications
   export let prescriptionsFinalized
   export let showAIDrugSuggestions
@@ -28,8 +30,10 @@
   export let onNewPrescription
   export let onAddDrug
   export let onPrintPrescriptions
+  export let onPrintExternalPrescriptions
   export let prescriptionNotes = ''
   export let prescriptionDiscount = 0 // New discount field
+  export let currentUserEmail = null
   
   // Debug AI suggestions
   $: console.log('🔍 PrescriptionsTab - showAIDrugSuggestions:', showAIDrugSuggestions)
@@ -40,6 +44,8 @@
   let pharmacyStock = []
   let stockLoading = false
   let resolvedDoctorIdentifier = null
+  let connectedPharmacyIds = []
+  let hasConnectedPharmacies = false
 
   // Load pharmacy stock for availability checking
   const MAX_STOCK_ATTEMPTS = 5
@@ -71,9 +77,11 @@
 
       // Ensure doctor has connected pharmacies before fetching inventory
       const connectedPharmacies = await pharmacyMedicationService.getConnectedPharmacies(resolvedDoctorId)
+      connectedPharmacyIds = Array.isArray(connectedPharmacies) ? connectedPharmacies : []
+      hasConnectedPharmacies = connectedPharmacyIds.length > 0
       console.log('🏥 Connected pharmacies for doctor:', resolvedDoctorId, connectedPharmacies)
 
-      if ((!connectedPharmacies || connectedPharmacies.length === 0) && attempt < MAX_STOCK_ATTEMPTS - 1) {
+      if (!hasConnectedPharmacies && attempt < MAX_STOCK_ATTEMPTS - 1) {
         console.warn(`⚠️ No connected pharmacies yet (attempt ${attempt + 1}/${MAX_STOCK_ATTEMPTS}). Retrying...`)
         setTimeout(() => loadPharmacyStock(resolvedDoctorId, attempt + 1), RETRY_DELAY_MS)
         return
@@ -203,6 +211,17 @@
     console.log('❌ No matching stock found for:', medication.name)
     return { available: false, quantity: 0, stockItem: null }
   }
+
+  const getUnavailableMedications = () => {
+    if (!currentMedications || currentMedications.length === 0) {
+      return []
+    }
+
+    return currentMedications.filter(medication => {
+      const availability = isMedicationAvailable(medication)
+      return availability?.available === false
+    })
+  }
   
   // Determine doctor identifier reactively and load stock
   $: resolvedDoctorIdentifier = (() => {
@@ -214,11 +233,16 @@
       currentPrescription?.doctorId ||
       selectedPatient?.doctorEmail ||
       currentPrescription?.doctorEmail ||
+      currentUserEmail ||
       null
   })()
   
   $: if (resolvedDoctorIdentifier) {
     loadPharmacyStock(resolvedDoctorIdentifier)
+  } else {
+    connectedPharmacyIds = []
+    hasConnectedPharmacies = false
+    pharmacyStock = []
   }
   
 </script>
@@ -278,6 +302,8 @@
             {selectedPatient}
             {editingMedication}
             {doctorId}
+            {allowNonPharmacyDrugs}
+            {excludePharmacyDrugs}
             onMedicationAdded={onMedicationAdded}
             onCancelMedication={onCancelMedication}
           />
@@ -483,15 +509,26 @@
                 </button>
               {/if}
               
-              <!-- Print/PDF Button - Only available after finalizing -->
+              <!-- Print Buttons - Only available after finalizing -->
               {#if prescriptionsFinalized && currentMedications.length > 0}
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                   on:click={onPrintPrescriptions}
-                  title="Generate and download prescription PDF"
+                  title="Generate and download full prescription PDF"
                 >
-                  <i class="fas fa-file-pdf mr-1"></i>Print PDF
+                  <i class="fas fa-file-pdf mr-1"></i>Print (Full)
                 </button>
+                {#if hasConnectedPharmacies}
+                  {@const unavailableMedications = getUnavailableMedications()}
+                  <button 
+                    class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    on:click={() => onPrintExternalPrescriptions && onPrintExternalPrescriptions(unavailableMedications)}
+                    disabled={unavailableMedications.length === 0}
+                    title={unavailableMedications.length === 0 ? 'All medications are available in connected pharmacies' : 'Generate PDF for external pharmacy'}
+                  >
+                    <i class="fas fa-print mr-1"></i>Print (External)
+                  </button>
+                {/if}
               {/if}
             </div>
           {:else}

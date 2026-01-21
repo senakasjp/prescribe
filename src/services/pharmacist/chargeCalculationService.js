@@ -115,12 +115,17 @@ class ChargeCalculationService {
     try {
       console.log('💊 Calculating drug charges for prescription:', prescription.id)
       
+      const pharmacyId = pharmacist?.pharmacyId || pharmacist?.id
+      if (!pharmacyId) {
+        throw new Error('Pharmacy information not available for drug charge calculation')
+      }
+
       let totalCost = 0
       let medicationBreakdown = []
       let totalMedications = 0
 
       // Get pharmacist's inventory using the new inventory service
-      const inventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
+      const inventoryItems = await inventoryService.getInventoryItems(pharmacyId)
       console.log('💊 Retrieved inventory items:', inventoryItems.length, 'items')
       
       // Process each prescription in the prescription object

@@ -13,6 +13,7 @@
   import PrescriptionList from './components/PrescriptionList.svelte'
   import AdminPanel from './components/AdminPanel.svelte'
   import SettingsPage from './components/SettingsPage.svelte'
+  import ReportsDashboard from './components/ReportsDashboard.svelte'
   import NotificationContainer from './components/NotificationContainer.svelte'
   import LoadingSpinner from './components/LoadingSpinner.svelte'
   import PrivacyPolicyModal from './components/PrivacyPolicyModal.svelte'
@@ -25,7 +26,7 @@
   let refreshInterval = null
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
-  let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'settings'
+  let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'reports', 'settings'
   let prescriptions = [] // All prescriptions for the doctor
   
   // Handle menu navigation
@@ -66,9 +67,9 @@
   
   // Force cache refresh for v2.2.7 with timestamp
   if (typeof window !== 'undefined') {
-    window.appVersion = '2.2.23'
+    window.appVersion = '2.2.24'
     window.buildTime = new Date().toISOString()
-        console.log('🚀 M-Prescribe v2.2.23 loaded with doctor profile save fix!')
+        console.log('🚀 M-Prescribe v2.2.24 loaded with doctor profile save fix!')
     console.log('📅 Build Time:', window.buildTime)
     console.log('🔄 Cache bust timestamp:', Date.now())
   }
@@ -588,7 +589,7 @@
     <LoadingSpinner 
       size="large" 
       color="teal" 
-        text="Loading M-Prescribe v2.2.23..."
+        text="Loading M-Prescribe v2.2.24..."
       fullScreen={true}
     />
   {:else if user}
@@ -601,7 +602,7 @@
       <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4">
         <a href="/" class="flex items-center space-x-3 rtl:space-x-reverse">
           <i class="fas fa-user-md text-white text-xl"></i>
-          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.23</span></span>
+          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.24</span></span>
         </a>
           
           <!-- Mobile Toggle Button -->
@@ -739,6 +740,17 @@
               <li>
                 <button 
                   type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'reports' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                  on:click={() => handleMenuNavigation('reports')}
+                >
+                  <i class="fas fa-chart-bar mr-1 sm:mr-2"></i>
+                  <span class="hidden sm:inline">Reports</span>
+                  <span class="sm:hidden hidden xs:inline">Reports</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  type="button"
                   class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
                   on:click={handleSettingsClick}
                 >
@@ -790,6 +802,10 @@
             <PrescriptionList {prescriptions} />
           {/if}
         </div>
+      {:else if currentView === 'reports'}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <ReportsDashboard {user} />
+        </div>
       {:else}
         <PatientManagement 
             {user} 
@@ -816,7 +832,7 @@
                   <i class="fas fa-stethoscope text-teal-600 text-xl"></i>
                 </div>
               </div>
-               <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.23</span> <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-1">{new Date().toLocaleTimeString()}</span></h1>
+               <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.24</span> <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-1">{new Date().toLocaleTimeString()}</span></h1>
               <p class="text-gray-600 text-sm hidden sm:block">AI-Powered Medical Prescription System</p>
               <p class="text-gray-600 text-xs sm:hidden">AI-Powered Medical System</p>
                 </div>

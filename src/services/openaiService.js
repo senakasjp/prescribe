@@ -17,6 +17,11 @@ class OpenAIService {
     this.apiKey = import.meta.env.VITE_OPENAI_API_KEY
     this.baseURL = 'https://api.openai.com/v1'
     this.client = null
+    this.responseCache = new Map()
+    this.cacheTtlMs = 5 * 60 * 1000
+    this.maxCacheEntries = 200
+    this.imageAnalysisCache = new Map()
+    this.imageAnalysisTtlMs = 24 * 60 * 60 * 1000
     this.initializeClient()
   }
 
@@ -139,6 +144,15 @@ class OpenAIService {
       console.log('🚀 Request body:', requestBody)
       console.log('🚀 Prompt type:', promptType)
       console.log('🚀 Additional context:', additionalContext)
+
+      const cacheKey = this.getCacheKey(endpoint, requestBody)
+      if (this.shouldUseCache(endpoint, requestBody, additionalContext)) {
+        const cachedResponse = this.getCachedResponse(cacheKey)
+        if (cachedResponse) {
+          console.log('🧠 OpenAI cache hit:', endpoint, 'Cache Key:', cacheKey)
+          return cachedResponse
+        }
+      }
       
       // Log the request BEFORE making the call
       console.log('📝 About to log AI prompt to Firebase...')
@@ -187,6 +201,10 @@ class OpenAIService {
       }
 
       const data = await response.json()
+
+      if (this.shouldUseCache(endpoint, requestBody, additionalContext)) {
+        this.setCachedResponse(cacheKey, data)
+      }
       
       // Log the successful response
       await this.logAIPrompt(promptType, {
@@ -228,6 +246,78 @@ class OpenAIService {
       
       throw error
     }
+  }
+
+  shouldUseCache(endpoint, requestBody, additionalContext = {}) {
+    if (additionalContext?.disableCache) {
+      return false
+    }
+
+    if (requestBody?.stream) {
+      return false
+    }
+
+    return endpoint === 'chat/completions'
+  }
+
+  getCacheKey(endpoint, requestBody) {
+    const payload = { endpoint, requestBody }
+    const serialized = this.stableStringify(payload)
+    const hash = this.hashString(serialized)
+    return `${endpoint}:${hash}`
+  }
+
+  getCachedResponse(cacheKey) {
+    const entry = this.responseCache.get(cacheKey)
+    if (!entry) {
+      return null
+    }
+
+    if (Date.now() - entry.timestamp > this.cacheTtlMs) {
+      this.responseCache.delete(cacheKey)
+      return null
+    }
+
+    return { ...entry.data, __fromCache: true }
+  }
+
+  setCachedResponse(cacheKey, data) {
+    this.pruneCache()
+    this.responseCache.set(cacheKey, { data, timestamp: Date.now() })
+  }
+
+  pruneCache() {
+    if (this.responseCache.size < this.maxCacheEntries) {
+      return
+    }
+
+    const entries = Array.from(this.responseCache.entries())
+    entries.sort((a, b) => a[1].timestamp - b[1].timestamp)
+    const excess = entries.length - this.maxCacheEntries + 1
+    entries.slice(0, excess).forEach(([key]) => this.responseCache.delete(key))
+  }
+
+  stableStringify(value) {
+    if (value === null || typeof value !== 'object') {
+      return JSON.stringify(value)
+    }
+
+    if (Array.isArray(value)) {
+      return `[${value.map(item => this.stableStringify(item)).join(',')}]`
+    }
+
+    const keys = Object.keys(value).sort()
+    const props = keys.map(key => `${JSON.stringify(key)}:${this.stableStringify(value[key])}`)
+    return `{${props.join(',')}}`
+  }
+
+  hashString(value) {
+    let hash = 5381
+    for (let i = 0; i < value.length; i++) {
+      hash = ((hash << 5) + hash) + value.charCodeAt(i)
+      hash = hash & 0xffffffff
+    }
+    return Math.abs(hash).toString(36)
   }
 
   // Get last 50 AI prompts for admin panel
@@ -471,6 +561,200 @@ class OpenAIService {
     return text
   }
 
+  formatRecentPrescriptions(recentPrescriptions) {
+    if (!Array.isArray(recentPrescriptions) || recentPrescriptions.length === 0) {
+      return 'None'
+    }
+
+    return recentPrescriptions.map((prescription, index) => {
+      if (typeof prescription === 'string') {
+        return `${index + 1}) ${prescription}`
+      }
+
+      const date =
+        prescription?.date ||
+        prescription?.createdAt ||
+        prescription?.updatedAt ||
+        'Unknown date'
+      const medications = Array.isArray(prescription?.medications)
+        ? prescription.medications.map(med => {
+            if (!med) {
+              return ''
+            }
+
+            const details = [
+              med.name,
+              med.dosage,
+              med.frequency,
+              med.duration
+            ].filter(Boolean)
+
+            return details.join(' ')
+          }).filter(Boolean).join('; ')
+        : ''
+
+      return `${index + 1}) ${date}: ${medications || 'No medications listed'}`
+    }).join('\n')
+  }
+
+  formatRecentReports(recentReports) {
+    if (!Array.isArray(recentReports) || recentReports.length === 0) {
+      return 'None'
+    }
+
+    return recentReports.map((report, index) => {
+      if (typeof report === 'string') {
+        return `${index + 1}) ${report}`
+      }
+
+      const date = report?.date || report?.createdAt || 'Unknown date'
+      const type = report?.type || 'unknown'
+      const title = report?.title || 'Untitled report'
+      const filename = report?.filename ? `File: ${report.filename}` : ''
+      const content = report?.content ? `Notes: ${report.content}` : ''
+      const details = [title, filename, content].filter(Boolean).join(' | ')
+
+      return `${index + 1}) ${date} (${type}): ${details || 'No details'}`
+    }).join('\n')
+  }
+
+  formatReportAnalyses(reportAnalyses) {
+    if (!Array.isArray(reportAnalyses) || reportAnalyses.length === 0) {
+      return 'None'
+    }
+
+    return reportAnalyses.map((report, index) => {
+      const title = report?.title || 'Untitled report'
+      const date = report?.date || report?.createdAt || 'Unknown date'
+      const analysis = report?.analysis || 'No analysis'
+      return `${index + 1}) ${date} - ${title}: ${analysis}`
+    }).join('\n')
+  }
+
+  getImageAnalysisCache(key) {
+    const entry = this.imageAnalysisCache.get(key)
+    if (!entry) {
+      return null
+    }
+
+    if (Date.now() - entry.timestamp > this.imageAnalysisTtlMs) {
+      this.imageAnalysisCache.delete(key)
+      return null
+    }
+
+    return entry.analysis
+  }
+
+  setImageAnalysisCache(key, analysis) {
+    this.imageAnalysisCache.set(key, { analysis, timestamp: Date.now() })
+  }
+
+  async getReportImageDataUrl(report) {
+    if (!report) {
+      return null
+    }
+
+    const url = report.previewUrl || report.dataUrl || null
+    if (!url) {
+      return null
+    }
+
+    if (url.startsWith('data:')) {
+      return url
+    }
+
+    if (url.startsWith('blob:')) {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    }
+
+    return url
+  }
+
+  async analyzeReportImages(recentReports = [], context = {}) {
+    const imageReports = Array.isArray(recentReports)
+      ? recentReports.filter(report => report?.type === 'image' && (report.previewUrl || report.dataUrl))
+      : []
+
+    if (imageReports.length === 0) {
+      return []
+    }
+
+    const analyses = []
+
+    for (const report of imageReports) {
+      const dataUrl = await this.getReportImageDataUrl(report)
+      if (!dataUrl) {
+        continue
+      }
+
+      const cacheKey = this.hashString(dataUrl)
+      const cached = this.getImageAnalysisCache(cacheKey)
+      if (cached) {
+        analyses.push({
+          id: report.id,
+          title: report.title,
+          date: report.date || report.createdAt || null,
+          type: report.type,
+          analysis: cached
+        })
+        continue
+      }
+
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a medical imaging assistant. Summarize clinically relevant findings from the report image. Focus on key observations and possible impressions. If the image is unreadable, say so.'
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Analyze this medical report image (X-ray, ECG, etc.) and provide a concise clinical summary.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: dataUrl,
+                  detail: 'low'
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 400,
+        temperature: 0.1
+      }
+
+      const data = await this.makeOpenAIRequest('chat/completions', requestBody, 'reportImageAnalysis', {
+        reportId: report.id,
+        reportTitle: report.title,
+        ...context
+      })
+
+      const analysis = data.choices[0]?.message?.content?.trim() || 'No analysis available.'
+      this.setImageAnalysisCache(cacheKey, analysis)
+      analyses.push({
+        id: report.id,
+        title: report.title,
+        date: report.date || report.createdAt || null,
+        type: report.type,
+        analysis
+      })
+    }
+
+    return analyses
+  }
+
 
   // Generate comprehensive prescription analysis
   async generateComprehensivePrescriptionAnalysis(patientData, doctorId = null) {
@@ -493,6 +777,9 @@ class OpenAIService {
       const illnessesText = patientData.illnesses.map(illness => 
         `${illness.condition} (Diagnosed: ${illness.diagnosisDate})`
       ).join(', ')
+      const recentPrescriptionsText = this.formatRecentPrescriptions(patientData.recentPrescriptions)
+      const recentReportsText = this.formatRecentReports(patientData.recentReports)
+      const reportAnalysesText = this.formatReportAnalyses(patientData.reportAnalyses)
 
         const prompt = `Analyze prescription case as second opinion support for qualified doctor. Provide structured JSON response.
 
@@ -507,6 +794,9 @@ class OpenAIService {
         Medical History: ${patientData.medicalHistory || 'None'}
         Current Medications: ${patientData.currentMedications || 'None'}
         Long-term Medications: ${patientData.longTermMedications || 'None'}
+        Recent Prescriptions (last 3): ${recentPrescriptionsText}
+        Recent Reports (last 3): ${recentReportsText}
+        Report Analyses (last 3): ${reportAnalysesText}
         Emergency Contact: ${patientData.emergencyContact || 'Not specified'}
 
         LOCATION INFORMATION:
@@ -527,6 +817,9 @@ class OpenAIService {
         Medications: ${medicationsText}
         Symptoms: ${symptomsText || 'None'}
         Conditions: ${illnessesText || 'None'}
+        Recent Prescriptions (last 3): ${recentPrescriptionsText}
+        Recent Reports (last 3): ${recentReportsText}
+        Report Analyses (last 3): ${reportAnalysesText}
         Prescription Date: ${patientData.prescriptionDate || 'Current'}
 
         Provide analysis in the following JSON structure:
@@ -630,7 +923,9 @@ class OpenAIService {
         doctorId,
         currentMedications: patientData.medications,
         symptoms: patientData.symptoms,
-        illnesses: patientData.illnesses
+        illnesses: patientData.illnesses,
+        recentPrescriptions: patientData.recentPrescriptions,
+        recentReports: patientData.recentReports
       })
       
       let analysis = data.choices[0]?.message?.content || 'Unable to generate comprehensive analysis.'
@@ -648,7 +943,7 @@ class OpenAIService {
       }
 
       // Track token usage
-      if (data.usage) {
+      if (data.usage && !data.__fromCache) {
         aiTokenTracker.trackUsage(
           'generateComprehensivePrescriptionAnalysis',
           data.usage.prompt_tokens,
@@ -687,6 +982,9 @@ class OpenAIService {
       const longTermMedications = additionalContext?.longTermMedications || 'None'
       const patientCountry = additionalContext?.patientCountry || 'Not specified'
       const doctorCountry = additionalContext?.doctorCountry || 'Not specified'
+      const recentPrescriptionsText = this.formatRecentPrescriptions(additionalContext?.recentPrescriptions)
+      const recentReportsText = this.formatRecentReports(additionalContext?.recentReports)
+      const reportAnalysesText = this.formatReportAnalyses(additionalContext?.reportAnalyses)
 
       // Use patient's country if specified, otherwise use doctor's country
       const effectivePatientCountry = patientCountry && patientCountry !== 'Not specified' ? patientCountry : doctorCountry
@@ -700,6 +998,9 @@ class OpenAIService {
       const prompt = `Patient: ${ageText}${genderText}${allergiesText}${longTermMedsText}
 Symptoms: ${symptomsText}
 ${currentMedsText}
+Recent prescriptions (last 3): ${recentPrescriptionsText}
+Recent reports (last 3): ${recentReportsText}
+Report analyses (last 3): ${reportAnalysesText}
 Patient Country: ${effectivePatientCountry}
 
 Suggest 3-5 specific medications (both prescription and OTC) with dosages for qualified medical doctor to prescribe or recommend. Return as JSON object with "suggestions" array:
@@ -755,7 +1056,9 @@ IMPORTANT: MEDICATION SUGGESTIONS:
           patientAge,
           patientAllergies,
           doctorId,
-          patientCountry: patientCountry
+          patientCountry: patientCountry,
+          recentPrescriptions: additionalContext?.recentPrescriptions,
+          recentReports: additionalContext?.recentReports
         }
       )
 
@@ -784,7 +1087,7 @@ IMPORTANT: MEDICATION SUGGESTIONS:
       }
 
       // Track token usage
-      if (data.usage) {
+      if (data.usage && !data.__fromCache) {
         aiTokenTracker.trackUsage(
           'generateAIDrugSuggestions',
           data.usage.prompt_tokens,
@@ -823,6 +1126,9 @@ IMPORTANT: MEDICATION SUGGESTIONS:
       // Get patient country and doctor country from additional context
       const patientCountry = additionalContext?.patientCountry || 'Not specified'
       const doctorCountry = additionalContext?.doctorCountry || 'Not specified'
+      const recentPrescriptionsText = this.formatRecentPrescriptions(additionalContext?.recentPrescriptions)
+      const recentReportsText = this.formatRecentReports(additionalContext?.recentReports)
+      const reportAnalysesText = this.formatReportAnalyses(additionalContext?.reportAnalyses)
 
       // Use patient's country if specified, otherwise use doctor's country
       const effectivePatientCountry = patientCountry && patientCountry !== 'Not specified' ? patientCountry : doctorCountry
@@ -837,6 +1143,9 @@ IMPORTANT: MEDICATION SUGGESTIONS:
       const prompt = `Patient: ${ageText}${genderText}${allergiesText}${longTermMedsText}
 Symptoms: ${symptomsText}
 ${currentMedsText}
+Recent prescriptions (last 3): ${recentPrescriptionsText}
+Recent reports (last 3): ${recentReportsText}
+Report analyses (last 3): ${reportAnalysesText}
 Patient Country: ${effectivePatientCountry}
 
 Brief analysis:
@@ -922,7 +1231,9 @@ Concise medical info only.`
           currentMedications: currentMedsText,
           patientAge,
           patientAllergies,
-          doctorId
+          doctorId,
+          recentPrescriptions: additionalContext?.recentPrescriptions,
+          recentReports: additionalContext?.recentReports
         }
       )
       console.log('✅ makeOpenAIRequest completed, data received:', data)
@@ -938,7 +1249,7 @@ Concise medical info only.`
       }
 
       // Track token usage
-      if (data.usage) {
+      if (data.usage && !data.__fromCache) {
         aiTokenTracker.trackUsage(
           'generateCombinedAnalysis',
           data.usage.prompt_tokens,
@@ -958,6 +1269,209 @@ Concise medical info only.`
 
     } catch (error) {
       console.error('❌ Error generating combined analysis:', error)
+      throw error
+    }
+  }
+
+  // Generate patient management summary
+  async generatePatientSummary(patientData, doctorId = null) {
+    if (!this.isConfigured()) {
+      throw new Error('OpenAI API key not configured.')
+    }
+
+    try {
+      console.log('🤖 Generating patient management summary...')
+
+      const userId = doctorId || 'default-user'
+
+      // Prepare patient context
+      const patientContext = `
+Patient: ${patientData.name || `${patientData.firstName} ${patientData.lastName}`}
+Age: ${patientData.age || 'Not specified'}
+Gender: ${patientData.gender || 'Not specified'}
+Weight: ${patientData.weight ? `${patientData.weight} kg` : 'Not specified'}
+Blood Group: ${patientData.bloodGroup || 'Not specified'}
+
+Medical History:
+${patientData.medicalHistory || 'No medical history recorded'}
+
+Allergies: ${patientData.allergies || 'None recorded'}
+
+Long-term Medications: ${patientData.longTermMedications || 'None'}
+
+Recent Symptoms (last recorded):
+${patientData.symptoms && patientData.symptoms.length > 0
+  ? patientData.symptoms.slice(0, 5).map(s => `- ${s.symptom || s.description} (${s.severity || 'N/A'})`).join('\n')
+  : 'No recent symptoms recorded'}
+
+Recent Diagnoses:
+${patientData.illnesses && patientData.illnesses.length > 0
+  ? patientData.illnesses.slice(0, 3).map(i => `- ${i.illness || i.diagnosis}`).join('\n')
+  : 'No recent diagnoses recorded'}
+
+Current Prescriptions:
+${patientData.prescriptions && patientData.prescriptions.length > 0
+  ? patientData.prescriptions.slice(0, 3).map(p =>
+      p.medications ? p.medications.map(m => `- ${m.name} (${m.dosage}, ${m.frequency})`).join('\n') : ''
+    ).join('\n')
+  : 'No active prescriptions'}
+
+Recent Reports:
+${patientData.recentReports && patientData.recentReports.length > 0
+  ? patientData.recentReports.map((report, index) => `- ${index + 1}) ${report.date || 'Unknown date'} (${report.type || 'unknown'}): ${report.title || 'Untitled'}${report.filename ? ` [${report.filename}]` : ''}${report.content ? ` - ${report.content}` : ''}`).join('\n')
+  : 'No recent reports'}
+
+Report Analyses:
+${patientData.reportAnalyses && patientData.reportAnalyses.length > 0
+  ? patientData.reportAnalyses.map((report, index) => `- ${index + 1}) ${report.date || 'Unknown date'}: ${report.title || 'Untitled'} - ${report.analysis || 'No analysis'}`).join('\n')
+  : 'No report analyses'}
+`
+
+      const systemMessage = `You are an AI medical assistant helping doctors manage patient care. Generate a concise, professional patient management summary that includes:
+
+1. Patient Overview (2-3 sentences about demographics and general health status)
+2. Key Health Concerns (bullet points of main issues based on symptoms and diagnoses)
+3. Current Treatment Plan (summary of active medications and their purpose)
+4. Recommendations for Monitoring (what to watch for, follow-up timing)
+5. Risk Factors (if any, based on age, conditions, medications)
+
+IMPORTANT FORMATTING RULES:
+- DO NOT wrap the response in markdown code blocks (no \`\`\`html tags)
+- Return ONLY the HTML content directly
+- Use proper HTML tags: <h3>, <h4>, <p>, <ul>, <li>, <strong>
+- Use Tailwind CSS classes for styling:
+  * Headings: class="text-lg font-semibold text-gray-900 mb-2"
+  * Subheadings: class="text-base font-semibold text-gray-800 mb-2 mt-3"
+  * Paragraphs: class="text-sm text-gray-700 mb-2"
+  * Lists: <ul class="list-disc list-inside text-sm text-gray-700 space-y-1 mb-3">
+  * List items: class="ml-2"
+- Keep it concise but informative - aim for 200-300 words total
+- Use a professional, clinical tone`
+
+      const userMessage = `Generate a patient management summary for:\n\n${patientContext}`
+
+      // Prepare request body
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: userMessage }
+        ],
+        temperature: 0.7,
+        max_tokens: 800
+      }
+
+      // Make OpenAI API request
+      const data = await this.makeOpenAIRequest('chat/completions', requestBody, 'patientSummary', {
+        patientData: {
+          name: patientData.name,
+          age: patientData.age,
+          gender: patientData.gender
+        },
+        doctorId
+      })
+
+      let summary = data.choices[0]?.message?.content || 'Unable to generate summary.'
+      const tokensUsed = data.__fromCache ? 0 : (data.usage?.total_tokens || 0)
+
+      // Clean up the summary - remove markdown code blocks if present
+      summary = summary.trim()
+
+      // Remove ```html and ``` if present
+      if (summary.startsWith('```html')) {
+        summary = summary.replace(/^```html\s*\n?/, '')
+      }
+      if (summary.startsWith('```')) {
+        summary = summary.replace(/^```\s*\n?/, '')
+      }
+      if (summary.endsWith('```')) {
+        summary = summary.replace(/\n?```\s*$/, '')
+      }
+
+      summary = summary.trim()
+
+      console.log('✅ Patient summary generated, tokens used:', tokensUsed)
+
+      // Track token usage
+      if (doctorId && !data.__fromCache) {
+        await aiTokenTracker.trackUsage(userId, tokensUsed, 'patientSummary')
+      }
+
+      return {
+        summary,
+        tokensUsed
+      }
+
+    } catch (error) {
+      console.error('❌ Error generating patient summary:', error)
+      throw error
+    }
+  }
+
+  // Improve text spelling only (strict spelling correction)
+  async improveText(text, doctorId = null) {
+    if (!this.isConfigured()) {
+      throw new Error('OpenAI API key not configured.')
+    }
+
+    try {
+      console.log('🤖 Correcting spelling errors...')
+
+      const systemMessage = `You are a medical spelling correction assistant. Your ONLY job is to fix spelling errors.
+
+STRICT RULES:
+1. ONLY fix spelling mistakes - correct misspelled words
+2. DO NOT change grammar or sentence structure
+3. DO NOT rephrase or reword anything
+4. DO NOT add punctuation or capitalization changes (unless it's part of a spelling correction)
+5. DO NOT improve clarity or readability
+6. Keep the exact same word order and sentence structure
+7. Maintain all medical terminology accurately
+8. Return ONLY the corrected text with spelling fixes, nothing else
+9. If there are no spelling errors, return the exact same text unchanged
+
+Example:
+Input: "patient has chest paing and shortnes of breth"
+Output: "patient has chest pain and shortness of breath"
+(Only spelling fixed, grammar and structure unchanged)`
+
+      const userMessage = `Fix ONLY the spelling errors in this text:\n\n${text}`
+
+      // Prepare request body
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: userMessage }
+        ],
+        temperature: 0.3, // Lower temperature for more consistent corrections
+        max_tokens: 500
+      }
+
+      // Make OpenAI API request
+      const data = await this.makeOpenAIRequest('chat/completions', requestBody, 'improveText', {
+        originalText: text.substring(0, 100) + '...',
+        doctorId
+      })
+
+      const improvedText = data.choices[0]?.message?.content || text
+      const tokensUsed = data.__fromCache ? 0 : (data.usage?.total_tokens || 0)
+
+      console.log('✅ Text improved, tokens used:', tokensUsed)
+
+      // Track token usage
+      if (doctorId && !data.__fromCache) {
+        const userId = doctorId
+        await aiTokenTracker.trackUsage(userId, tokensUsed, 'improveText')
+      }
+
+      return {
+        improvedText: improvedText.trim(),
+        tokensUsed
+      }
+
+    } catch (error) {
+      console.error('❌ Error improving text:', error)
       throw error
     }
   }

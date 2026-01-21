@@ -2,6 +2,8 @@
   import { createEventDispatcher, onMount } from 'svelte'
   import authService from '../services/authService.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
+  import backupService from '../services/backupService.js'
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
   import ThreeDots from './ThreeDots.svelte'
@@ -20,6 +22,16 @@
   let currency = 'USD'
   let loading = false
   let error = ''
+
+  // Backup/restore state
+  let backupLoading = false
+  let backupError = ''
+  let backupSuccess = ''
+  let restoreLoading = false
+  let restoreError = ''
+  let restoreSuccess = ''
+  let restoreFile = null
+  let restoreSummary = null
   
   // Currency options
   const currencies = [
@@ -271,6 +283,100 @@
       notifyError('Failed to save template settings')
     }
   }
+
+  const downloadJsonFile = (data, filename) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const resolveDoctorId = async () => {
+    const resolvedEmail = user?.email
+    if (!resolvedEmail) {
+      return user?.id || user?.uid || null
+    }
+
+    try {
+      const doctor = await firebaseStorage.getDoctorByEmail(resolvedEmail)
+      return doctor?.id || user?.id || user?.uid || resolvedEmail
+    } catch (error) {
+      console.warn('⚠️ Failed to resolve doctor ID for backup:', error)
+      return user?.id || user?.uid || resolvedEmail
+    }
+  }
+
+  const handleDoctorBackupDownload = async () => {
+    try {
+      backupLoading = true
+      backupError = ''
+      backupSuccess = ''
+
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Doctor ID is not available for backup')
+      }
+
+      const backup = await backupService.exportDoctorBackup(doctorId)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      downloadJsonFile(backup, `doctor-backup-${doctorId}-${timestamp}.json`)
+
+      backupSuccess = 'Backup downloaded successfully.'
+    } catch (error) {
+      backupError = error.message || 'Failed to create backup.'
+    } finally {
+      backupLoading = false
+    }
+  }
+
+  const handleDoctorRestoreFile = (event) => {
+    restoreFile = event.target.files?.[0] || null
+    restoreError = ''
+    restoreSuccess = ''
+    restoreSummary = null
+  }
+
+  const handleDoctorRestore = async () => {
+    if (!restoreFile) {
+      restoreError = 'Please select a backup file to restore.'
+      return
+    }
+
+    if (!confirm('Restore backup? This will merge backup data and may overwrite records with the same IDs.')) {
+      return
+    }
+
+    try {
+      restoreLoading = true
+      restoreError = ''
+      restoreSuccess = ''
+      restoreSummary = null
+
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Doctor ID is not available for restore')
+      }
+
+      const fileText = await restoreFile.text()
+      const backup = JSON.parse(fileText)
+      if (backup.type !== 'doctor') {
+        throw new Error('Selected backup file is not a doctor backup.')
+      }
+
+      const summary = await backupService.restoreDoctorBackup(doctorId, backup)
+      restoreSummary = summary
+      restoreSuccess = 'Backup restored successfully.'
+    } catch (error) {
+      restoreError = error.message || 'Failed to restore backup.'
+    } finally {
+      restoreLoading = false
+    }
+  }
 </script>
 
 <!-- Edit Profile Modal -->
@@ -297,7 +403,7 @@
       <!-- Clean Tab Navigation -->
       <div class="mb-6">
         <div class="flex border-b border-gray-300">
-          <div class="w-1/2">
+          <div class="w-1/3">
             <button 
               class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'edit-profile' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
               on:click={() => switchTab('edit-profile')}
@@ -306,13 +412,22 @@
               Edit Profile
             </button>
           </div>
-          <div class="w-1/2">
+          <div class="w-1/3">
             <button 
               class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'prescription-template' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
               on:click={() => switchTab('prescription-template')}
             >
               <i class="fas fa-file-medical mr-2"></i>
               Prescription Template
+            </button>
+          </div>
+          <div class="w-1/3">
+            <button 
+              class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'backup-restore' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
+              on:click={() => switchTab('backup-restore')}
+            >
+              <i class="fas fa-database mr-2"></i>
+              Backup
             </button>
           </div>
         </div>
@@ -670,6 +785,77 @@
             </div>
             
             <!-- Template settings will be saved via modal footer -->
+          </div>
+          {/if}
+          
+          {#if activeTab === 'backup-restore'}
+          <div class="p-6 bg-white" id="backup-restore" role="tabpanel" aria-labelledby="backup-restore-tab">
+            <div class="mb-4">
+              <h6 class="fw-bold mb-2">
+                <i class="fas fa-database mr-2"></i>
+                Backup & Restore
+              </h6>
+              <p class="text-gray-600 dark:text-gray-300 small">
+                Download a backup of your patients and prescriptions, then restore it if data is deleted.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
+                <p class="text-xs text-gray-500 mb-3">
+                  Exports patients, prescriptions, symptoms, and long-term medications.
+                </p>
+                <button
+                  type="button"
+                  class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  on:click={handleDoctorBackupDownload}
+                  disabled={backupLoading}
+                >
+                  <i class="fas fa-download mr-2"></i>
+                  {backupLoading ? 'Preparing...' : 'Download Backup'}
+                </button>
+                {#if backupError}
+                  <div class="mt-3 text-xs text-red-600">{backupError}</div>
+                {/if}
+                {#if backupSuccess}
+                  <div class="mt-3 text-xs text-green-600">{backupSuccess}</div>
+                {/if}
+              </div>
+
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h6 class="text-sm font-semibold text-gray-800 mb-2">Restore Backup</h6>
+                <p class="text-xs text-gray-500 mb-3">
+                  Upload a backup file to restore missing data. Existing records with the same IDs will be updated.
+                </p>
+                <input
+                  type="file"
+                  accept="application/json"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  on:change={handleDoctorRestoreFile}
+                />
+                <button
+                  type="button"
+                  class="mt-3 inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  on:click={handleDoctorRestore}
+                  disabled={restoreLoading || !restoreFile}
+                >
+                  <i class="fas fa-upload mr-2"></i>
+                  {restoreLoading ? 'Restoring...' : 'Restore Backup'}
+                </button>
+                {#if restoreError}
+                  <div class="mt-3 text-xs text-red-600">{restoreError}</div>
+                {/if}
+                {#if restoreSuccess}
+                  <div class="mt-3 text-xs text-green-600">{restoreSuccess}</div>
+                {/if}
+                {#if restoreSummary}
+                  <div class="mt-3 text-xs text-gray-600">
+                    Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms.
+                  </div>
+                {/if}
+              </div>
+            </div>
           </div>
           {/if}
       </div>

@@ -1,6 +1,8 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte'
   import jsPDF from 'jspdf'
+  import firebaseStorage from '../services/firebaseStorage.js'
+  import doctorAuthService from '../services/doctor/doctorAuthService.js'
   
   const dispatch = createEventDispatcher()
   
@@ -16,108 +18,381 @@
     loading = true
     
     try {
-      const doc = new jsPDF()
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a5'
+      })
       const currentDate = new Date().toLocaleDateString('en-GB', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
       })
       
-      // Header
-      doc.setFontSize(20)
-      doc.text('PRESCRIPTION', 20, 30)
+      const pageWidth = 148
+      const pageHeight = 210
+      const margin = 20
+      const contentWidth = pageWidth - (margin * 2)
       
-      // Doctor info
-      doc.setFontSize(12)
-      doc.text('Dr. [Doctor Name]', 20, 50)
-      doc.text('Medical License: [License Number]', 20, 60)
-      doc.text(`Date: ${currentDate}`, 20, 70)
-      
-      // Prescription ID (if available)
-      if (prescriptions && prescriptions.length > 0 && prescriptions[0].id) {
-        doc.text(`Prescription ID: ${prescriptions[0].id}`, 20, 80)
+      // Load template settings for header rendering
+      let templateSettings = null
+      try {
+        const currentDoctor = doctorAuthService.getCurrentDoctor()
+        if (currentDoctor?.email) {
+          const doctor = await firebaseStorage.getDoctorByEmail(currentDoctor.email)
+          if (doctor?.id) {
+            templateSettings = await firebaseStorage.getDoctorTemplateSettings(doctor.id)
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not load template settings:', error)
       }
       
-      // Patient info
-      doc.text('Patient Information:', 20, 100)
-      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, 20, 110)
-      doc.text(`ID: ${selectedPatient.idNumber}`, 20, 120)
-      doc.text(`DOB: ${selectedPatient.dateOfBirth}`, 20, 130)
+      let headerYStart = 5
+      let contentYStart = 35
+      let capturedHeaderImage = null
+      let capturedHeaderWidth = 0
+      let capturedHeaderHeight = 0
+      let capturedHeaderX = 0
       
-      // Current Illnesses
-      if (illnesses.length > 0) {
-        doc.text('Current Illnesses:', 20, 150)
-        let yPos = 160
-        illnesses.forEach((illness, index) => {
-          if (yPos > 250) {
-            doc.addPage()
-            yPos = 20
+      if (templateSettings) {
+        if (templateSettings.templateType === 'upload' && templateSettings.uploadedHeader) {
+          const maxHeaderHeightMm = (templateSettings.headerSize || 300) * 0.264583
+          const maxHeaderWidthMm = pageWidth - (margin * 2)
+          headerYStart = 5
+          
+          let imageFormat = 'JPEG'
+          if (templateSettings.uploadedHeader.includes('data:image/png')) {
+            imageFormat = 'PNG'
+          } else if (templateSettings.uploadedHeader.includes('data:image/jpeg') || templateSettings.uploadedHeader.includes('data:image/jpg')) {
+            imageFormat = 'JPEG'
+          } else if (templateSettings.uploadedHeader.includes('data:image/gif')) {
+            imageFormat = 'GIF'
           }
-          doc.text(`${index + 1}. ${illness.name} (${illness.status})`, 25, yPos)
-          if (illness.description) {
-            doc.text(`   ${illness.description}`, 25, yPos + 10)
-            yPos += 20
-          } else {
-            yPos += 15
+          
+          const embedImageWithAspectRatio = () => {
+            return new Promise((resolve, reject) => {
+              const img = new Image()
+              img.onload = () => {
+                try {
+                  const aspectRatio = img.width / img.height
+                  let actualWidthMm = maxHeaderWidthMm
+                  let actualHeightMm = maxHeaderWidthMm / aspectRatio
+                  
+                  if (actualHeightMm > maxHeaderHeightMm) {
+                    actualHeightMm = maxHeaderHeightMm
+                    actualWidthMm = maxHeaderHeightMm * aspectRatio
+                  }
+                  
+                  const lineY = headerYStart + actualHeightMm + 2
+                  doc.setLineWidth(0.5)
+                  doc.line(margin, lineY, pageWidth - margin, lineY)
+                  
+                  contentYStart = lineY + 5
+                  doc.addImage(
+                    templateSettings.uploadedHeader,
+                    imageFormat,
+                    margin,
+                    headerYStart,
+                    actualWidthMm,
+                    actualHeightMm,
+                    undefined,
+                    'FAST'
+                  )
+                  
+                  capturedHeaderImage = templateSettings.uploadedHeader
+                  capturedHeaderWidth = actualWidthMm
+                  capturedHeaderHeight = actualHeightMm
+                  capturedHeaderX = margin
+                  resolve()
+                } catch (error) {
+                  reject(error)
+                }
+              }
+              
+              img.onerror = () => {
+                reject(new Error('Failed to load header image'))
+              }
+              
+              img.src = templateSettings.uploadedHeader
+            })
           }
-        })
+          
+          await embedImageWithAspectRatio()
+        } else if (templateSettings.templateType === 'printed') {
+          const headerHeightMm = (templateSettings.headerSize || 300) * 0.264583
+          headerYStart = 5
+          
+          capturedHeaderImage = 'PRINTED_LETTERHEAD'
+          capturedHeaderWidth = 0
+          capturedHeaderHeight = headerHeightMm
+          capturedHeaderX = 0
+          
+          const lineY = headerYStart + headerHeightMm + 2
+          doc.setLineWidth(0.5)
+          doc.line(margin, lineY, pageWidth - margin, lineY)
+          
+          contentYStart = lineY + 5
+        } else if (templateSettings.templateType === 'system') {
+          const headerContent = templateSettings.templatePreview?.formattedHeader || templateSettings.headerText
+          if (headerContent) {
+            const headerContainer = document.createElement('div')
+            const style = document.createElement('style')
+            headerContainer.style.position = 'absolute'
+            headerContainer.style.left = '-9999px'
+            headerContainer.style.top = '0'
+            const pxPerMm = 3.7795275591
+            const baseWidthPx = Math.round((pageWidth - (margin * 2)) * pxPerMm)
+            const captureScale = 2
+            headerContainer.style.width = `${baseWidthPx}px`
+            headerContainer.style.minWidth = `${baseWidthPx}px`
+            headerContainer.style.backgroundColor = 'white'
+            headerContainer.style.padding = '16px'
+            headerContainer.style.fontFamily = 'Arial, sans-serif'
+            headerContainer.style.lineHeight = '1.4'
+            headerContainer.style.color = '#000000'
+            headerContainer.style.textAlign = 'center'
+            headerContainer.className = 'header-capture-container'
+            
+            style.textContent = `
+              .header-capture-container {
+                text-align: center !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: 100% !important;
+                position: relative !important;
+                margin: 0 auto !important;
+              }
+              .header-capture-container .ql-editor {
+                width: 100% !important;
+                padding: 0 !important;
+                font-size: 21.33px !important;
+                line-height: 1.4 !important;
+                font-family: inherit !important;
+              }
+              .header-capture-container .ql-size-small {
+                font-size: 0.75em !important;
+              }
+              .header-capture-container .ql-size-large {
+                font-size: 1.5em !important;
+              }
+              .header-capture-container .ql-size-huge {
+                font-size: 2.5em !important;
+              }
+              .header-capture-container * {
+                box-sizing: border-box !important;
+                text-align: center !important;
+              }
+              .header-capture-container > * {
+                width: 100% !important;
+              }
+              .header-capture-container img {
+                display: block !important;
+                margin: 0 auto !important;
+                max-width: 100% !important;
+                object-fit: contain !important;
+              }
+            `
+            
+            document.head.appendChild(style)
+            headerContainer.innerHTML = `<div class="ql-editor">${headerContent}</div>`
+            document.body.appendChild(headerContainer)
+            
+            await new Promise(resolve => setTimeout(resolve, 100))
+            
+            try {
+              const html2canvasModule = await import('html2canvas')
+              const html2canvas = html2canvasModule.default
+              const canvas = await html2canvas(headerContainer, {
+                backgroundColor: 'white',
+                scale: captureScale,
+                useCORS: true,
+                allowTaint: true,
+                width: headerContainer.offsetWidth,
+                height: headerContainer.offsetHeight,
+                logging: false
+              })
+              
+              const headerImageData = canvas.toDataURL('image/png')
+              const maxHeaderWidthMm = pageWidth - (margin * 2)
+              const maxHeaderHeightMm = pageHeight - (margin * 2)
+              const rawHeaderWidthMm = (canvas.width / captureScale) / pxPerMm
+              const rawHeaderHeightMm = (canvas.height / captureScale) / pxPerMm
+              const aspectRatio = canvas.width / canvas.height
+              
+              let headerImageWidthMm = rawHeaderWidthMm
+              let headerImageHeightMm = rawHeaderHeightMm
+
+              if (headerImageWidthMm < maxHeaderWidthMm) {
+                headerImageWidthMm = maxHeaderWidthMm
+                headerImageHeightMm = headerImageWidthMm / aspectRatio
+              }
+              if (headerImageHeightMm > maxHeaderHeightMm) {
+                headerImageHeightMm = maxHeaderHeightMm
+                headerImageWidthMm = headerImageHeightMm * aspectRatio
+              }
+
+              if (headerImageWidthMm > maxHeaderWidthMm) {
+                headerImageWidthMm = maxHeaderWidthMm
+                headerImageHeightMm = headerImageWidthMm / aspectRatio
+              }
+              
+              const headerImageX = (pageWidth - headerImageWidthMm) / 2
+              doc.addImage(headerImageData, 'PNG', headerImageX, headerYStart, headerImageWidthMm, headerImageHeightMm)
+              
+              capturedHeaderImage = headerImageData
+              capturedHeaderWidth = headerImageWidthMm
+              capturedHeaderHeight = headerImageHeightMm
+              capturedHeaderX = headerImageX
+              
+              const lineY = headerYStart + headerImageHeightMm + 2
+              doc.setLineWidth(0.5)
+              doc.line(margin, lineY, pageWidth - margin, lineY)
+              contentYStart = lineY + 5
+            } finally {
+              if (document.body.contains(headerContainer)) {
+                document.body.removeChild(headerContainer)
+              }
+              if (style && document.head.contains(style)) {
+                document.head.removeChild(style)
+              }
+            }
+          }
+        }
       }
       
-      // Current Symptoms
-      if (symptoms.length > 0) {
-        doc.text('Current Symptoms:', 20, yPos + 10)
-        yPos += 20
-        symptoms.forEach((symptom, index) => {
-          if (yPos > 250) {
-            doc.addPage()
-            yPos = 20
-          }
-          doc.text(`${index + 1}. ${symptom.description}`, 25, yPos)
-          doc.text(`   Severity: ${symptom.severity}`, 25, yPos + 10)
-          if (symptom.duration) {
-            doc.text(`   Duration: ${symptom.duration}`, 25, yPos + 20)
-            yPos += 30
-          } else {
-            yPos += 20
-          }
-        })
-      }
-      
-      // Prescribed Prescriptions
-      if (prescriptions.length > 0) {
-        doc.text('Prescribed Prescriptions:', 20, yPos + 10)
-        yPos += 20
-        prescriptions.forEach((medication, index) => {
-          if (yPos > 250) {
-            doc.addPage()
-            yPos = 20
-          }
-          doc.text(`${index + 1}. ${medication.name}`, 25, yPos)
-          doc.text(`   Dosage: ${medication.dosage}`, 25, yPos + 10)
-          doc.text(`   Frequency: ${medication.frequency}`, 25, yPos + 20)
-          if (medication.instructions) {
-            doc.text(`   Instructions: ${medication.instructions}`, 25, yPos + 30)
-            yPos += 40
-          } else {
-            yPos += 30
-          }
-        })
-      }
-      
-      // Footer
-      const pageCount = doc.internal.getNumberOfPages()
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i)
+      if (!templateSettings) {
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.text('MEDICAL PRESCRIPTION', margin, headerYStart)
+        
+        doc.setFontSize(8)
+        doc.setFont('helvetica', 'normal')
+        doc.text('M-Prescribe v2.2.24', pageWidth - margin, pageHeight - 5, { align: 'right' })
+        
         doc.setFontSize(10)
-        doc.text(`Page ${i} of ${pageCount}`, 20, doc.internal.pageSize.height - 10)
-        doc.text('Generated by M-Prescribe Patient Management System', 100, doc.internal.pageSize.height - 10)
+        doc.setFont('helvetica', 'normal')
+        doc.text('Your Medical Clinic', margin, headerYStart + 7)
+        doc.text('123 Medical Street, City', margin, headerYStart + 12)
+        doc.text('Phone: (555) 123-4567', margin, headerYStart + 17)
+        
+        const lineY = headerYStart + 22
+        doc.setLineWidth(0.5)
+        doc.line(margin, lineY, pageWidth - margin, lineY)
+        contentYStart = lineY + 5
       }
+      
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'bold')
+      doc.text('PATIENT INFORMATION', margin, contentYStart)
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      
+      let patientAge = 'Not specified'
+      if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+        patientAge = selectedPatient.age + ' years'
+      } else if (selectedPatient.dateOfBirth) {
+        const birthDate = new Date(selectedPatient.dateOfBirth)
+        if (!isNaN(birthDate.getTime())) {
+          const today = new Date()
+          const age = today.getFullYear() - birthDate.getFullYear()
+          const monthDiff = today.getMonth() - birthDate.getMonth()
+          const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+          patientAge = calculatedAge + ' years'
+        }
+      }
+      
+      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, margin, contentYStart + 7)
+      doc.text(`Date: ${currentDate}`, pageWidth - margin, contentYStart + 7, { align: 'right' })
+      
+      doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
+      const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
+      doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
+      
+      const patientSex = selectedPatient.gender || selectedPatient.sex || 'Not specified'
+      doc.text(`Sex: ${patientSex}`, margin, contentYStart + 19)
+      
+      let yPos = contentYStart + 31
+      
+      if (prescriptions && prescriptions.length > 0) {
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.text('PRESCRIPTION MEDICATIONS', margin, yPos)
+        yPos += 6
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        
+        prescriptions.forEach((medication, index) => {
+          if (yPos > pageHeight - 30) {
+            doc.addPage()
+            
+            if (capturedHeaderImage) {
+              if (capturedHeaderImage === 'PRINTED_LETTERHEAD') {
+                const lineY = headerYStart + capturedHeaderHeight + 2
+                doc.setLineWidth(0.5)
+                doc.line(margin, lineY, pageWidth - margin, lineY)
+                yPos = lineY + 5
+              } else {
+                doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+                const lineY = headerYStart + capturedHeaderHeight + 2
+                doc.setLineWidth(0.5)
+                doc.line(margin, lineY, pageWidth - margin, lineY)
+                yPos = lineY + 5
+              }
+            } else {
+              yPos = margin + 10
+            }
+          }
+          
+          doc.setFontSize(10)
+          doc.setFont('helvetica', 'bold')
+          doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
+          doc.text(`${medication.dosage}`, pageWidth - margin, yPos, { align: 'right' })
+          
+          doc.setFontSize(9)
+          doc.setFont('helvetica', 'normal')
+          
+          let medicationDetails = `Frequency: ${medication.frequency}`
+          if (medication.duration) {
+            medicationDetails += ` | Duration: ${medication.duration}`
+          }
+          
+          yPos += 4
+          const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
+          doc.text(detailsLines, margin, yPos)
+          yPos += detailsLines.length * 3
+          
+          if (medication.instructions) {
+            yPos += 2
+            const instructionText = `Instructions: ${medication.instructions}`
+            const instructionLines = doc.splitTextToSize(instructionText, contentWidth)
+            doc.text(instructionLines, margin, yPos)
+            yPos += instructionLines.length * 3
+          }
+          
+          yPos += 4
+        })
+      } else {
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'normal')
+        doc.text('No medications prescribed.', margin, yPos)
+        yPos += 10
+      }
+      
+      doc.setFontSize(7)
+      doc.text('This prescription is valid for 30 days from the date of issue.', margin, pageHeight - 5)
+      doc.text('Keep this prescription in a safe place.', margin + 75, pageHeight - 5)
       
       // Generate filename with capital letter as per user preference
       const filename = `Prescription_${selectedPatient.firstName}_${selectedPatient.lastName}_${currentDate.replace(/\//g, '-')}.pdf`
       
-      // Save the PDF
-      doc.save(filename)
+      const pdfBlob = doc.output('blob')
+      const pdfUrl = URL.createObjectURL(pdfBlob)
+      window.open(pdfUrl, '_blank')
       
       console.log('PDF generated successfully')
       

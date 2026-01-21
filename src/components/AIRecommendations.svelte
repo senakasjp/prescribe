@@ -23,6 +23,7 @@
   let showMedicationSuggestions = false
   let showRecommendationsInline = false
   let showCombinedAnalysis = false
+  let reportAnalyses = []
   
   // Chatbot variables
   let chatMessage = ''
@@ -51,10 +52,18 @@
       console.log('🤖 Doctor ID:', doctorId)
       console.log('🤖 OpenAI configured:', openaiService.isConfigured())
       
+      reportAnalyses = await openaiService.analyzeReportImages(patientData?.recentReports || [], {
+        patientCountry: patientData?.country || 'Not specified',
+        doctorCountry: patientData?.doctorCountry || 'Not specified'
+      })
+
       // Use single API call for both recommendations and medication suggestions
       const combinedResult = await openaiService.generateCombinedAnalysis(symptoms, currentMedications, patientAge, doctorId, patientAllergies, patientData?.gender, patientData?.longTermMedications, {
         patientCountry: patientData?.country || 'Not specified',
         currentActiveMedications: patientData?.currentActiveMedications || [],
+        recentPrescriptions: patientData?.recentPrescriptions || [],
+        recentReports: patientData?.recentReports || [],
+        reportAnalyses: reportAnalyses,
         doctorCountry: patientData?.doctorCountry || 'Not specified'
       })
       
@@ -184,14 +193,48 @@
       const symptomsText = symptoms && symptoms.length > 0 ? symptoms.map(s => s.symptom).join(', ') : 'No symptoms recorded'
       const analysisSummary = recommendations && recommendations.length > 0 ? recommendations.substring(0, 500) : 'No previous analysis available'
       const patientGender = patientData?.gender ? `Patient gender: ${patientData.gender}` : ''
+      const allergiesText = patientAllergies ? `Patient allergies: ${patientAllergies}` : 'Patient allergies: None'
+      const recentPrescriptions = Array.isArray(patientData?.recentPrescriptions) && patientData.recentPrescriptions.length > 0
+        ? patientData.recentPrescriptions.map((prescription, index) => {
+            if (typeof prescription === 'string') {
+              return `${index + 1}) ${prescription}`
+            }
+            const date = prescription?.date || prescription?.createdAt || prescription?.updatedAt || 'Unknown date'
+            const medications = Array.isArray(prescription?.medications)
+              ? prescription.medications.map(med => [med?.name, med?.dosage, med?.frequency, med?.duration].filter(Boolean).join(' ')).filter(Boolean).join('; ')
+              : ''
+            return `${index + 1}) ${date}: ${medications || 'No medications listed'}`
+          }).join('\n')
+        : 'None'
+      const recentReports = Array.isArray(patientData?.recentReports) && patientData.recentReports.length > 0
+        ? patientData.recentReports.map((report, index) => {
+            if (typeof report === 'string') {
+              return `${index + 1}) ${report}`
+            }
+            const date = report?.date || report?.createdAt || 'Unknown date'
+            const title = report?.title || 'Untitled report'
+            const type = report?.type || 'unknown'
+            const filename = report?.filename ? `File: ${report.filename}` : ''
+            const notes = report?.content ? `Notes: ${report.content}` : ''
+            const details = [title, filename, notes].filter(Boolean).join(' | ')
+            return `${index + 1}) ${date} (${type}): ${details || 'No details'}`
+          }).join('\n')
+        : 'None'
+      const reportAnalysesText = Array.isArray(reportAnalyses) && reportAnalyses.length > 0
+        ? reportAnalyses.map((report, index) => `${index + 1}) ${report.date || 'Unknown date'}: ${report.title || 'Untitled'} - ${report.analysis || 'No analysis'}`).join('\n')
+        : 'None'
       
       const chatPrompt = `You are a medical AI assistant. Answer this question concisely and professionally: "${userMessage}". 
 
 Context: Patient symptoms: ${symptomsText}
 ${patientGender}
+${allergiesText}
+Recent prescriptions (last 3): ${recentPrescriptions}
+Recent reports (last 3): ${recentReports}
+Report analyses (last 3): ${reportAnalysesText}
 Previous analysis summary: ${analysisSummary}
 
-Provide a brief, focused answer (max 200 words) with clear medical guidance. Use proper formatting with headers, bullet points, and structured sections when appropriate. Consider patient gender in your recommendations when medically relevant.`
+Provide a brief, focused answer (max 200 words) with clear medical guidance. Use proper formatting with headers, bullet points, and structured sections when appropriate. Consider patient gender and allergies in your recommendations when medically relevant.`
 
       console.log('🤖 Chat request:', { userMessage, symptomsText, analysisSummary })
 
@@ -200,7 +243,7 @@ model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: 'You are a medical AI assistant. Provide concise, professional medical guidance. Keep responses brief and focused (under 200 words). ALWAYS use proper formatting with **bold headers**, bullet points (- or •), and structured sections when appropriate. Format your responses with clear headings and organized information for better readability. Consider patient gender when providing medically relevant recommendations and consider gender-specific medication effects and contraindications.'
+            content: 'You are a medical AI assistant. Provide concise, professional medical guidance. Keep responses brief and focused (under 200 words). ALWAYS use proper formatting with **bold headers**, bullet points (- or •), and structured sections when appropriate. Format your responses with clear headings and organized information for better readability. Consider patient gender, allergies, and recent prescription history when providing medically relevant recommendations and consider gender-specific medication effects and contraindications.'
           },
           {
             role: 'user',
@@ -212,11 +255,15 @@ model: 'gpt-4o-mini',
       }, 'chatbotResponse', {
         symptoms: symptomsText,
         question: userMessage,
-        doctorId: doctorId
+        doctorId: doctorId,
+        patientAllergies: patientAllergies,
+        recentPrescriptions: patientData?.recentPrescriptions || [],
+        recentReports: patientData?.recentReports || [],
+        reportAnalyses: reportAnalyses
       })
 
       // Track token usage for chat
-      if (response.usage) {
+      if (response.usage && !response.__fromCache) {
         aiTokenTracker.trackUsage(
           'chatbotResponse',
           response.usage.prompt_tokens,

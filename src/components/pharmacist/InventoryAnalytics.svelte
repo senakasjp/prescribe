@@ -7,6 +7,8 @@
   import { notifyError } from '../../stores/notifications.js'
   
   export let pharmacist
+  let pharmacyId = null
+  $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
   
   // State management
   let loading = true
@@ -32,8 +34,11 @@
   const loadAnalytics = async () => {
     try {
       loading = true
-      analytics = await inventoryService.getInventoryAnalytics(pharmacist.id, selectedPeriod)
-      inventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
+      if (!pharmacyId) {
+        throw new Error('Pharmacy information not available')
+      }
+      analytics = await inventoryService.getInventoryAnalytics(pharmacyId, selectedPeriod)
+      inventoryItems = await inventoryService.getInventoryItems(pharmacyId)
       
       // Process chart data
       processChartData()

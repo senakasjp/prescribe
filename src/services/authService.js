@@ -290,8 +290,12 @@ class AuthService {
     try {
       // Check if pharmacist already exists in Firebase
       const existingPharmacist = await firebaseStorage.getPharmacistByEmail(pharmacistData.email)
+      const existingPharmacyUser = await firebaseStorage.getPharmacyUserByEmail(pharmacistData.email)
       if (existingPharmacist) {
         throw new Error('Pharmacist with this email already exists')
+      }
+      if (existingPharmacyUser) {
+        throw new Error('User with this email already exists')
       }
 
       // Create new pharmacist in Firebase
@@ -321,7 +325,31 @@ class AuthService {
       console.log('🔍 AuthService: All pharmacist fields:', Object.keys(pharmacist || {}))
       
       if (!pharmacist) {
-        return { success: false, message: 'Pharmacist not found' }
+        const pharmacyUser = await firebaseStorage.getPharmacyUserByEmail(email)
+        if (!pharmacyUser) {
+          return { success: false, message: 'Pharmacist not found' }
+        }
+        if (pharmacyUser.password !== password) {
+          return { success: false, message: 'Invalid password' }
+        }
+
+        const parentPharmacy = await firebaseStorage.getPharmacistById(pharmacyUser.pharmacyId)
+        if (!parentPharmacy) {
+          return { success: false, message: 'Parent pharmacy not found' }
+        }
+
+        const resolvedPharmacist = {
+          ...pharmacyUser,
+          role: 'pharmacist',
+          pharmacyId: pharmacyUser.pharmacyId,
+          businessName: parentPharmacy.businessName || pharmacyUser.pharmacyName || '',
+          pharmacistNumber: parentPharmacy.pharmacistNumber || pharmacyUser.pharmacistNumber || '',
+          connectedDoctors: parentPharmacy.connectedDoctors || [],
+          isPharmacyUser: true
+        }
+
+        this.saveCurrentUser(resolvedPharmacist)
+        return { success: true, pharmacist: resolvedPharmacist }
       }
 
       if (pharmacist.password !== password) {
@@ -379,4 +407,3 @@ class AuthService {
 const authService = new AuthService()
 
 export default authService
-

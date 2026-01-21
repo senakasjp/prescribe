@@ -8,6 +8,8 @@
   import ConfirmationModal from '../ConfirmationModal.svelte'
   
   export let pharmacist
+  let pharmacyId = null
+  $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
   
   // State management
   let loading = true
@@ -37,6 +39,7 @@
   let selectedItem = null
   let confirmationConfig = {}
   let pendingAction = null
+  let lastPharmacistId = null
   
   // Form data
   let newItemForm = {
@@ -64,7 +67,10 @@
   
   // Load data on mount
   onMount(async () => {
-    await loadDashboardData()
+    if (pharmacyId) {
+      lastPharmacistId = pharmacyId
+      await loadDashboardData()
+    }
   })
   
   // Load all dashboard data
@@ -88,9 +94,9 @@
   // Load inventory items
   const loadInventoryItems = async () => {
     try {
-      console.log('📦 Loading inventory items for pharmacist:', pharmacist?.id)
+      console.log('📦 Loading inventory items for pharmacy:', pharmacyId)
       
-      if (!pharmacist?.id) {
+      if (!pharmacyId) {
         console.error('❌ No pharmacist ID available')
         notifyError('Pharmacist information not available')
         return
@@ -103,7 +109,7 @@
         sortOrder
       }
       
-      inventoryItems = await inventoryService.getInventoryItems(pharmacist.id, filters)
+      inventoryItems = await inventoryService.getInventoryItems(pharmacyId, filters)
       
       console.log('📦 Loaded inventory items:', inventoryItems.length)
       
@@ -136,8 +142,8 @@
   // Load analytics
   const loadAnalytics = async () => {
     try {
-      if (!pharmacist?.id) return
-      analytics = await inventoryService.getInventoryAnalytics(pharmacist.id)
+      if (!pharmacyId) return
+      analytics = await inventoryService.getInventoryAnalytics(pharmacyId)
     } catch (error) {
       console.error('Error loading analytics:', error)
       // Don't show error for analytics as it's not critical
@@ -148,7 +154,7 @@
   // Load alerts
   const loadAlerts = async () => {
     try {
-      if (!pharmacist?.id) return
+      if (!pharmacyId) return
       // This would be implemented in the inventory service
       alerts = []
     } catch (error) {
@@ -160,7 +166,7 @@
   // Load suppliers
   const loadSuppliers = async () => {
     try {
-      if (!pharmacist?.id) return
+      if (!pharmacyId) return
       // This would be implemented in the inventory service
       suppliers = []
     } catch (error) {
@@ -172,7 +178,7 @@
   // Add new inventory item
   const addInventoryItem = async () => {
     try {
-      if (!pharmacist?.id) {
+      if (!pharmacyId) {
         notifyError('Pharmacist information not available')
         return
       }
@@ -182,7 +188,7 @@
         return
       }
       
-      await inventoryService.createInventoryItem(pharmacist.id, newItemForm)
+      await inventoryService.createInventoryItem(pharmacyId, newItemForm)
       
       notifySuccess('Inventory item added successfully!')
       
@@ -231,7 +237,7 @@
         return
       }
       
-      await inventoryService.updateInventoryItem(editingItem.id, pharmacist.id, editItemForm)
+      await inventoryService.updateInventoryItem(editingItem.id, pharmacyId, editItemForm)
       
       notifySuccess('Inventory item updated successfully!')
       
@@ -357,7 +363,7 @@
   // Handle edit item
   const handleEditItem = async () => {
     try {
-      if (!selectedItem || !pharmacist?.id) {
+      if (!selectedItem || !pharmacyId) {
         notifyError('Unable to update item: Missing data')
         return
       }
@@ -372,7 +378,7 @@
       }
 
       // Update the item using the inventory service
-      const updatedItem = await inventoryService.updateInventoryItem(selectedItem.id, pharmacist.id, itemDataForUpdate)
+      const updatedItem = await inventoryService.updateInventoryItem(selectedItem.id, pharmacyId, itemDataForUpdate)
       
       if (updatedItem) {
         // Update the local inventory items array
@@ -395,8 +401,12 @@
   
   // Reactive statements
   $: filteredItems = inventoryItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-  $: if (searchQuery || categoryFilter || statusFilter || sortBy || sortOrder) {
+  $: if (pharmacyId && (searchQuery || categoryFilter || statusFilter || sortBy || sortOrder)) {
     loadInventoryItems()
+  }
+  $: if (pharmacyId && pharmacyId !== lastPharmacistId) {
+    lastPharmacistId = pharmacyId
+    loadDashboardData()
   }
 </script>
 

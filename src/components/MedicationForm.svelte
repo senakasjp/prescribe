@@ -4,13 +4,17 @@
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { notifySuccess, notifyInfo } from '../stores/notifications.js'
   import { MEDICATION_FREQUENCIES } from '../utils/constants.js'
-  
+  import openaiService from '../services/openaiService.js'
+  import authService from '../services/doctor/doctorAuthService.js'
+
   export let visible = true
   export let editingMedication = null
   export let doctorId = null
-  
+  export let allowNonPharmacyDrugs = true
+  export let excludePharmacyDrugs = false
+
   const dispatch = createEventDispatcher()
-  
+
   let name = ''
   let genericName = '' // Generic name for display
   let dosage = ''
@@ -25,6 +29,9 @@
   let notes = ''
   let error = ''
   let loading = false
+  let improvingBrandName = false
+  let brandNameImproved = false
+  let lastImprovedName = ''
 
   // Mapping for routes to their full display names
   const routeDisplayMap = {
@@ -54,6 +61,13 @@
   // Reset loading state when form is hidden
   $: if (!visible) {
     loading = false
+    improvingBrandName = false
+    brandNameImproved = false
+  }
+
+  // Reset improved state only when the user edits after a successful correction
+  $: if (!improvingBrandName && brandNameImproved && name !== lastImprovedName) {
+    brandNameImproved = false
   }
   
   // Track if form has been initialized for editing
@@ -246,6 +260,62 @@
       if (!name || !dosage || !instructions || !frequency || !duration) {
         throw new Error('Please fill in all required fields')
       }
+
+      const enforcePharmacyOnly = !allowNonPharmacyDrugs
+      const enforceNonPharmacyOnly = excludePharmacyDrugs
+
+      if (enforcePharmacyOnly || enforceNonPharmacyOnly) {
+        if (!doctorId) {
+          throw new Error('Doctor information is missing. Update prescription settings to continue.')
+        }
+
+        const pharmacyStock = await pharmacyMedicationService.getPharmacyStock(doctorId)
+        if (!pharmacyStock || pharmacyStock.length === 0) {
+          throw new Error('No connected pharmacy inventory found. Update prescription settings to continue.')
+        }
+
+        const normalizedMedName = String(name ?? '').toLowerCase().trim()
+        const normalizedMedNames = Array.from(new Set([
+          normalizedMedName,
+          normalizedMedName.split('(')[0]?.trim() || '',
+          normalizedMedName.replace(/\(.*\)/, '').trim()
+        ])).filter(Boolean)
+
+        const dosageText = String(dosage ?? '').trim() + String(dosageUnit ?? '').trim()
+        const dosageMatch = dosageText.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
+
+        const matchingStock = pharmacyStock.find(stock => {
+          const stockName = stock.drugName?.toLowerCase().trim() || ''
+          const stockGeneric = stock.genericName?.toLowerCase().trim() || ''
+          const stockNames = [stockName, stockGeneric].filter(Boolean)
+
+          const nameMatch = normalizedMedNames.some(medName =>
+            stockNames.some(stockValue => stockValue && (stockValue.includes(medName) || medName.includes(stockValue)))
+          )
+
+          if (!dosageMatch) {
+            return nameMatch
+          }
+
+          const [, strength, unit] = dosageMatch
+          const stockStrength = String(stock.strength || '')
+          const stockUnit = String(stock.strengthUnit || '')
+          const strengthMatch = stockStrength === strength || stockStrength.includes(strength)
+          const unitMatch = !stockUnit || stockUnit === unit || stockUnit.includes(unit)
+
+          return nameMatch && strengthMatch && unitMatch
+        })
+
+        const isAvailable = !!(matchingStock && (parseInt(matchingStock.quantity || 0, 10) > 0))
+
+        if (enforcePharmacyOnly && !isAvailable) {
+          throw new Error('This drug is not available in connected pharmacy inventory. Update prescription settings to continue.')
+        }
+
+        if (enforceNonPharmacyOnly && isAvailable) {
+          throw new Error('This drug is available in connected pharmacy inventory. Uncheck "Exclude own pharmacy drugs" to continue.')
+        }
+      }
       
       // Validate dates
       const startDateObj = startDate ? new Date(startDate) : new Date() // Default to today if no start date
@@ -333,7 +403,51 @@
   const handleCancel = () => {
     dispatch('cancel')
   }
-  
+
+  // Improve brand name with AI
+  const improveBrandName = async () => {
+    if (!name || !name.trim()) {
+      error = 'Please enter a brand name to improve'
+      return
+    }
+
+    try {
+      improvingBrandName = true
+      error = ''
+      const originalName = name
+
+      // Get doctor information for token tracking
+      const currentDoctor = authService.getCurrentDoctor()
+      const doctorId = currentDoctor?.id || currentDoctor?.uid || 'default-user'
+
+      // Call OpenAI service to improve text
+      const result = await openaiService.improveText(name, doctorId)
+
+      // Update the brand name with improved text
+      name = result.improvedText
+
+      // Mark as improved to show visual feedback
+      const normalizedOriginal = String(originalName ?? '').trim()
+      const normalizedImproved = String(name ?? '').trim()
+      brandNameImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedName = brandNameImproved ? normalizedImproved : ''
+
+      // Dispatch event for token tracking
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+
+      console.log('✅ Brand name improved successfully')
+
+    } catch (err) {
+      console.error('❌ Error improving brand name:', err)
+      error = err.message || 'Failed to improve brand name. Please try again.'
+    } finally {
+      improvingBrandName = false
+    }
+  }
+
   // Reset form when component mounts if not editing
   onMount(() => {
     console.log('🚀 MedicationForm mounted - checking if reset needed')
@@ -355,19 +469,47 @@
   <div class="p-3 sm:p-4">
     <form on:submit={handleSubmit} class="space-y-3 sm:space-y-4">
       <div>
-        <label for="brandName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Brand Name <span class="text-red-500">*</span></label>
-        <input 
-          type="text" 
-          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-          id="brandName" 
-          bind:value={name}
-          required
-          disabled={loading}
-          placeholder="e.g., Glucophage, Prinivil"
-          on:input={handleNameInput}
-          on:keydown={handleNameKeydown}
-          on:focus={searchNameSuggestions}
-        />
+        <label for="brandName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          Brand Name <span class="text-red-500">*</span>
+          {#if brandNameImproved}
+            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+              <i class="fas fa-check-circle mr-1"></i>
+              AI Corrected
+            </span>
+          {/if}
+        </label>
+        <div class="relative">
+          <input
+            type="text"
+            class="w-full px-2 sm:px-3 py-2 pr-28 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:cursor-not-allowed transition-all duration-300 {brandNameImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingBrandName ? 'bg-gray-100' : ''}"
+            id="brandName"
+            bind:value={name}
+            required
+            disabled={loading || improvingBrandName}
+            placeholder="e.g., Glucophage, Prinivil"
+            on:input={handleNameInput}
+            on:keydown={handleNameKeydown}
+            on:focus={searchNameSuggestions}
+          />
+          <button
+            type="button"
+            class="absolute top-1.5 right-1.5 inline-flex items-center px-2 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={improveBrandName}
+            disabled={loading || improvingBrandName || !name}
+            title="Correct spelling with AI"
+          >
+            {#if improvingBrandName}
+              <svg class="animate-spin h-3 w-3 mr-1 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Fixing...
+            {:else}
+              <i class="fas fa-sparkles mr-1"></i>
+              Fix Spelling
+            {/if}
+          </button>
+        </div>
         {#if showNameSuggestions && nameSuggestions.length > 0}
           <div class="relative">
             <div class="absolute top-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-56 overflow-y-auto">

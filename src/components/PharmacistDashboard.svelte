@@ -12,6 +12,8 @@
   import inventoryService from '../services/pharmacist/inventoryService.js'
   
   export let pharmacist
+  let pharmacyId = null
+  $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
   
   let prescriptions = []
   let connectedDoctors = []
@@ -63,7 +65,7 @@
   // Function to load prescription data when selected
   const loadPrescriptionData = async () => {
     if (!selectedPrescription) return
-    if (!pharmacist || !pharmacist.id) {
+    if (!pharmacyId) {
       console.warn('⚠️ Pharmacist data not ready, skipping inventory load')
       return
     }
@@ -81,7 +83,7 @@
     medicationAllocationPreviews = {}
     
     // Fetch pharmacist inventory once for matching
-    cachedInventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
+    cachedInventoryItems = await inventoryService.getInventoryItems(pharmacyId)
     console.log('📦 Retrieved inventory items for pharmacist:', cachedInventoryItems.length)
 
     // Process inventory mapping for each medication
@@ -122,7 +124,7 @@
   }
   
   // Watch for prescription or pharmacist changes
-  $: if (selectedPrescription && pharmacist?.id) {
+  $: if (selectedPrescription && pharmacyId) {
     loadPrescriptionData()
   }
   
@@ -155,7 +157,7 @@
   // Fetch inventory data for a medication
   const fetchMedicationInventoryData = async (medication, key, inventoryItems = []) => {
     try {
-      if (!pharmacist || !pharmacist.id) return
+      if (!pharmacyId) return
       
       const itemsToUse = Array.isArray(inventoryItems) && inventoryItems.length > 0
         ? inventoryItems
@@ -646,13 +648,13 @@
     console.log('🔍 dispensedMedications:', dispensedMedications)
     
     try {
-      if (!pharmacist?.id) {
-        console.log('❌ No pharmacist ID available')
+      if (!pharmacyId) {
+        console.log('❌ No pharmacy ID available')
         notifyError('Pharmacist information not available')
         return
       }
       
-      console.log('✅ Pharmacist ID available:', pharmacist.id)
+      console.log('✅ Pharmacy ID available:', pharmacyId)
       
       let inventoryReductions = []
       let inventoryErrors = []
@@ -679,7 +681,7 @@
         
         try {
           // Find the inventory item by drug name
-          const inventoryItems = await inventoryService.getInventoryItems(pharmacist.id)
+          const inventoryItems = await inventoryService.getInventoryItems(pharmacyId)
           console.log('🔍 Available inventory items:', inventoryItems.map(item => ({
             id: item.id,
             drugName: item.drugName,
@@ -729,7 +731,7 @@
             // Verify the document exists before trying to update
             try {
               // Create stock movement for dispatch
-              await inventoryService.createStockMovement(pharmacist.id, {
+              await inventoryService.createStockMovement(pharmacyId, {
                 itemId: inventoryItem.id, // This should be the Firestore document ID
                 type: 'dispatch', // Using 'dispatch' for dispensed medications
                 quantity: -Math.abs(quantity), // Negative quantity for reduction
@@ -759,7 +761,7 @@
             // Try to create a basic inventory item for this medication
             console.log(`⚠️ Inventory item not found for: ${medication.name}, attempting to create basic record`)
             try {
-              const newInventoryItem = await inventoryService.createInventoryItem(pharmacist.id, {
+              const newInventoryItem = await inventoryService.createInventoryItem(pharmacyId, {
                 drugName: medication.name,
                 genericName: medication.name,
                 brandName: medication.name,
@@ -788,7 +790,7 @@
               
               // Try to create stock movement, but don't fail if inventory item doesn't exist
               try {
-                await inventoryService.createStockMovement(pharmacist.id, {
+                await inventoryService.createStockMovement(pharmacyId, {
                   itemId: newInventoryItem.id,
                   type: 'dispatch',
                   quantity: -Math.abs(quantity),
@@ -924,13 +926,13 @@
   // Mark prescription as dispensed in pharmacist records
   async function markPrescriptionAsDispensed() {
     try {
-      if (!selectedPrescription || !pharmacist?.id) {
+      if (!selectedPrescription || !pharmacyId) {
         throw new Error('Missing prescription or pharmacist data')
       }
       
       console.log('🔍 Attempting to mark prescription as dispensed:', {
         prescriptionId: selectedPrescription.id,
-        pharmacistId: pharmacist.id,
+        pharmacistId: pharmacyId,
         dispensedMedications: Array.from(dispensedMedications)
       })
       
@@ -944,7 +946,7 @@
         // Create a new prescription record with all fields properly defined
         const newPrescriptionData = {
           id: selectedPrescription.id || '',
-          pharmacistId: pharmacist.id || '',
+          pharmacistId: pharmacyId || '',
           doctorId: selectedPrescription.doctorId || '',
           patientId: selectedPrescription.patientId || '',
           patientName: selectedPrescription.patientName || 'Unknown Patient',
@@ -993,18 +995,18 @@
       
       console.log('🔍 PharmacistDashboard: Starting loadPharmacistData')
       console.log('🔍 PharmacistDashboard: pharmacist object:', pharmacist)
-      console.log('🔍 PharmacistDashboard: pharmacist.id:', pharmacist?.id)
+      console.log('🔍 PharmacistDashboard: pharmacyId:', pharmacyId)
       console.log('🔍 PharmacistDashboard: pharmacist.connectedDoctors:', pharmacist?.connectedDoctors)
       
       // Check if pharmacist data is valid
-      if (!pharmacist || !pharmacist.id) {
+      if (!pharmacyId) {
         console.error('❌ PharmacistDashboard: Invalid pharmacist data - missing ID')
         notifyError('Invalid pharmacist data. Please log in again.')
         return
       }
       
       // Get prescriptions from connected doctors using Firebase
-      prescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacist.id)
+      prescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacyId)
       
       console.log('🔍 PharmacistDashboard: Loaded prescriptions:', prescriptions.length)
       console.log('🔍 PharmacistDashboard: Prescription data:', prescriptions)
@@ -1106,7 +1108,7 @@
   const clearAllPrescriptions = async () => {
     pendingAction = async () => {
       try {
-        await firebaseStorage.clearPharmacistPrescriptions(pharmacist.id)
+        await firebaseStorage.clearPharmacistPrescriptions(pharmacyId)
         notifySuccess('All prescriptions cleared successfully')
         // Reload the data
         await loadPharmacistData()
@@ -1346,7 +1348,7 @@
         <div class="flex items-center min-w-0 flex-1">
           <i class="fas fa-pills text-blue-600 mr-2 text-lg"></i>
           <div class="min-w-0 flex-1">
-            <h1 class="text-sm sm:text-base font-bold text-blue-600 truncate">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1">v2.2.23</span></h1>
+            <h1 class="text-sm sm:text-base font-bold text-blue-600 truncate">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1">v2.2.24</span></h1>
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
       </div>
         </div>
@@ -1446,7 +1448,7 @@
           </div>
           <div class="mb-3">
             <label class="block text-sm font-medium text-gray-700 mb-1">Pharmacist ID:</label>
-            <p class="text-blue-600 font-semibold">{pharmacist.pharmacistNumber || pharmacist.id || 'Not specified'}</p>
+            <p class="text-blue-600 font-semibold">{pharmacist.pharmacistNumber || pharmacyId || pharmacist.id || 'Not specified'}</p>
           </div>
           <div class="mb-3">
             <label class="block text-sm font-medium text-gray-700 mb-1">Connected Doctors:</label>
@@ -2252,6 +2254,20 @@
 
                 <!-- Total Charge -->
                 <div class="border-t pt-3">
+                  {#if chargeBreakdown.doctorCharges.discountPercentage > 0}
+                    <div class="flex justify-between items-center text-xs sm:text-sm mb-1">
+                      <span class="text-gray-600">
+                        Doctor Discount ({chargeBreakdown.doctorCharges.discountPercentage}%):
+                      </span>
+                      <span class="text-green-600 font-medium">
+                        -{#if pharmacist.currency === 'LKR'}
+                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
+                        {:else}
+                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
+                        {/if}
+                      </span>
+                    </div>
+                  {/if}
                   <div class="flex justify-between items-center">
                     <span class="font-bold text-gray-900 text-sm sm:text-base">Total Charge:</span>
                     <span class="font-bold text-blue-600 text-sm sm:text-base">

@@ -87,8 +87,12 @@ class PharmacistAuthService {
 
       // Check if pharmacist already exists
       const existingPharmacist = await firebaseStorage.getPharmacistByEmail(pharmacistData.email)
+      const existingPharmacyUser = await firebaseStorage.getPharmacyUserByEmail(pharmacistData.email)
       if (existingPharmacist) {
         throw new Error('Pharmacist with this email already exists')
+      }
+      if (existingPharmacyUser) {
+        throw new Error('User with this email already exists')
       }
 
       // Create pharmacist in Firebase
@@ -116,7 +120,32 @@ class PharmacistAuthService {
       // Get pharmacist from Firebase
       const pharmacist = await firebaseStorage.getPharmacistByEmail(email)
       if (!pharmacist) {
-        throw new Error('Pharmacist not found')
+        const pharmacyUser = await firebaseStorage.getPharmacyUserByEmail(email)
+        if (!pharmacyUser) {
+          throw new Error('Pharmacist not found')
+        }
+        if (pharmacyUser.password !== password) {
+          throw new Error('Invalid password')
+        }
+
+        const parentPharmacy = await firebaseStorage.getPharmacistById(pharmacyUser.pharmacyId)
+        if (!parentPharmacy) {
+          throw new Error('Parent pharmacy not found')
+        }
+
+        const resolvedPharmacist = {
+          ...pharmacyUser,
+          role: 'pharmacist',
+          pharmacyId: pharmacyUser.pharmacyId,
+          businessName: parentPharmacy.businessName || pharmacyUser.pharmacyName || '',
+          pharmacistNumber: parentPharmacy.pharmacistNumber || pharmacyUser.pharmacistNumber || '',
+          connectedDoctors: parentPharmacy.connectedDoctors || [],
+          isPharmacyUser: true
+        }
+
+        this.saveCurrentPharmacist(resolvedPharmacist)
+        console.log('PharmacistAuthService: Pharmacy user signed in successfully:', resolvedPharmacist)
+        return resolvedPharmacist
       }
 
       // Simple password check (in production, use proper hashing)

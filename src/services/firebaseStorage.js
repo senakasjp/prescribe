@@ -27,7 +27,9 @@ class FirebaseStorageService {
       symptoms: 'symptoms',
       longTermMedications: 'longTermMedications',
       drugDatabase: 'drugDatabase',
-      pharmacists: 'pharmacists'
+      pharmacists: 'pharmacists',
+      pharmacyUsers: 'pharmacyUsers',
+      doctorReports: 'doctorReports'
     }
   }
 
@@ -387,6 +389,105 @@ class FirebaseStorageService {
     }
   }
 
+  // Pharmacy user operations (additional users for a pharmacy account)
+  async createPharmacyUser(pharmacyUserData) {
+    try {
+      console.log('🏥 Creating pharmacy user with Firebase:', pharmacyUserData)
+
+      if (!pharmacyUserData?.pharmacyId) {
+        throw new Error('Pharmacy ID is required to create a pharmacy user')
+      }
+      if (!pharmacyUserData?.email || !pharmacyUserData?.password) {
+        throw new Error('Email and password are required to create a pharmacy user')
+      }
+
+      const existingPharmacist = await this.getPharmacistByEmail(pharmacyUserData.email)
+      if (existingPharmacist) {
+        throw new Error('User with this email already exists')
+      }
+      const existingPharmacyUser = await this.getPharmacyUserByEmail(pharmacyUserData.email)
+      if (existingPharmacyUser) {
+        throw new Error('User with this email already exists')
+      }
+
+      const pharmacyUser = {
+        email: pharmacyUserData.email,
+        password: pharmacyUserData.password,
+        firstName: pharmacyUserData.firstName || '',
+        lastName: pharmacyUserData.lastName || '',
+        role: 'pharmacist',
+        pharmacyId: pharmacyUserData.pharmacyId,
+        pharmacyName: pharmacyUserData.pharmacyName || '',
+        pharmacistNumber: pharmacyUserData.pharmacistNumber || '',
+        status: pharmacyUserData.status || 'active',
+        createdBy: pharmacyUserData.createdBy || '',
+        createdAt: new Date().toISOString(),
+        isPharmacyUser: true
+      }
+
+      const docRef = await addDoc(collection(db, this.collections.pharmacyUsers), pharmacyUser)
+      const createdPharmacyUser = { id: docRef.id, ...pharmacyUser }
+
+      console.log('🏥 Created pharmacy user in Firebase:', createdPharmacyUser)
+      return createdPharmacyUser
+    } catch (error) {
+      console.error('Error creating pharmacy user:', error)
+      throw error
+    }
+  }
+
+  async getPharmacyUserByEmail(email) {
+    try {
+      const q = query(collection(db, this.collections.pharmacyUsers), where('email', '==', email))
+      const querySnapshot = await getDocs(q)
+
+      if (querySnapshot.empty) {
+        return null
+      }
+
+      const doc = querySnapshot.docs[0]
+      return { id: doc.id, ...doc.data() }
+    } catch (error) {
+      console.error('Error getting pharmacy user by email:', error)
+      throw error
+    }
+  }
+
+  async getPharmacyUsersByPharmacyId(pharmacyId) {
+    try {
+      const q = query(
+        collection(db, this.collections.pharmacyUsers),
+        where('pharmacyId', '==', pharmacyId)
+      )
+      const querySnapshot = await getDocs(q)
+
+      const users = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+
+      users.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      return users
+    } catch (error) {
+      console.error('Error getting pharmacy users by pharmacy ID:', error)
+      throw error
+    }
+  }
+
+  async updatePharmacyUser(pharmacyUserId, updateData) {
+    try {
+      const docRef = doc(db, this.collections.pharmacyUsers, pharmacyUserId)
+      await updateDoc(docRef, {
+        ...updateData,
+        updatedAt: new Date().toISOString()
+      })
+      console.log('Pharmacy user updated successfully')
+    } catch (error) {
+      console.error('Error updating pharmacy user:', error)
+      throw error
+    }
+  }
+
   async updatePharmacist(updatedPharmacist) {
     try {
       console.log('Firebase: Starting pharmacist update for ID:', updatedPharmacist.id)
@@ -510,6 +611,39 @@ class FirebaseStorageService {
       return { id: patientId, ...capitalizedPatientData }
     } catch (error) {
       console.error('Error updating patient:', error)
+      throw error
+    }
+  }
+
+  async deletePatient(patientId) {
+    try {
+      console.log('🗑️ Firebase: Deleting patient and related data:', patientId)
+
+      const prescriptions = await this.getPrescriptionsByPatientId(patientId)
+      for (const prescription of prescriptions) {
+        await this.deleteMedication(prescription.id)
+      }
+
+      const symptoms = await this.getSymptomsByPatientId(patientId)
+      for (const symptom of symptoms) {
+        await deleteDoc(doc(db, this.collections.symptoms, symptom.id))
+      }
+
+      const illnesses = await this.getIllnessesByPatientId(patientId)
+      for (const illness of illnesses) {
+        await deleteDoc(doc(db, this.collections.illnesses, illness.id))
+      }
+
+      const longTermMedications = await this.getLongTermMedicationsByPatientId(patientId)
+      for (const medication of longTermMedications) {
+        await deleteDoc(doc(db, this.collections.longTermMedications, medication.id))
+      }
+
+      await deleteDoc(doc(db, this.collections.patients, patientId))
+      console.log('✅ Firebase: Patient deleted successfully:', patientId)
+      return true
+    } catch (error) {
+      console.error('❌ Firebase: Error deleting patient:', error)
       throw error
     }
   }
@@ -1240,6 +1374,42 @@ class FirebaseStorageService {
       })
     } catch (error) {
       console.error('Error getting all prescriptions:', error)
+      throw error
+    }
+  }
+
+  // Doctor reports caching
+  async getDoctorReport(doctorId) {
+    try {
+      if (!doctorId) {
+        throw new Error('Doctor ID is required to load reports')
+      }
+      const docRef = doc(db, this.collections.doctorReports, doctorId)
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return { id: docSnap.id, ...docSnap.data() }
+    } catch (error) {
+      console.error('Error getting doctor report:', error)
+      throw error
+    }
+  }
+
+  async saveDoctorReport(doctorId, reportData) {
+    try {
+      if (!doctorId) {
+        throw new Error('Doctor ID is required to save reports')
+      }
+      const docRef = doc(db, this.collections.doctorReports, doctorId)
+      const payload = {
+        ...reportData,
+        updatedAt: new Date().toISOString()
+      }
+      await setDoc(docRef, payload, { merge: true })
+      return true
+    } catch (error) {
+      console.error('Error saving doctor report:', error)
       throw error
     }
   }

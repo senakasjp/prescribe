@@ -8,6 +8,7 @@
   import ThreeDots from './ThreeDots.svelte'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import HeaderEditor from './HeaderEditor.svelte'
+  import backupService from '../services/backupService.js'
 
   const dispatch = createEventDispatcher()
   export let user
@@ -22,6 +23,14 @@
   let currency = 'USD' // New state variable
   let loading = false
   let error = ''
+  let backupLoading = false
+  let backupError = ''
+  let backupSuccess = ''
+  let restoreLoading = false
+  let restoreError = ''
+  let restoreSuccess = ''
+  let restoreFile = null
+  let restoreSummary = null
 
   // Prescription template variables
   let templateType = '' // Will be set from user.templateSettings
@@ -31,6 +40,7 @@
   let headerText = ''
   let previewElement = null
   let isSaving = false
+  let excludePharmacyDrugs = false
 
   // Tab management
   let activeTab = 'edit-profile'
@@ -110,8 +120,109 @@
       headerText = user.templateSettings.headerText || ''
       templatePreview = user.templateSettings.templatePreview || null
       uploadedHeader = user.templateSettings.uploadedHeader || null
+      excludePharmacyDrugs = user.templateSettings.excludePharmacyDrugs ?? false
     } else {
       templateType = 'printed'
+      excludePharmacyDrugs = false
+    }
+  }
+
+  const downloadJsonFile = (data, filename) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const resolveDoctorId = async () => {
+    if (!user?.email) {
+      return user?.id || user?.uid || null
+    }
+
+    try {
+      const firebaseModule = await import('../services/firebaseStorage.js')
+      const firebaseStorage = firebaseModule.default
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      return doctor?.id || user?.id || user?.uid || user.email
+    } catch (error) {
+      console.warn('⚠️ Failed to resolve doctor ID for backup:', error)
+      return user?.id || user?.uid || user?.email || null
+    }
+  }
+
+  const handleDoctorBackupDownload = async () => {
+    try {
+      backupLoading = true
+      backupError = ''
+      backupSuccess = ''
+
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Doctor ID is not available for backup')
+      }
+
+      const backup = await backupService.exportDoctorBackup(doctorId)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      downloadJsonFile(backup, `doctor-backup-${doctorId}-${timestamp}.json`)
+
+      backupSuccess = 'Backup downloaded successfully.'
+    } catch (error) {
+      backupError = error.message || 'Failed to create backup.'
+      notifyError(backupError)
+    } finally {
+      backupLoading = false
+    }
+  }
+
+  const handleDoctorRestoreFile = (event) => {
+    restoreFile = event.target.files?.[0] || null
+    restoreError = ''
+    restoreSuccess = ''
+    restoreSummary = null
+  }
+
+  const handleDoctorRestore = async () => {
+    if (!restoreFile) {
+      restoreError = 'Please select a backup file to restore.'
+      notifyError(restoreError)
+      return
+    }
+
+    if (!confirm('Restore backup? This will merge backup data and may overwrite records with the same IDs.')) {
+      return
+    }
+
+    try {
+      restoreLoading = true
+      restoreError = ''
+      restoreSuccess = ''
+      restoreSummary = null
+
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Doctor ID is not available for restore')
+      }
+
+      const fileText = await restoreFile.text()
+      const backup = JSON.parse(fileText)
+      if (backup.type !== 'doctor') {
+        throw new Error('Selected backup file is not a doctor backup.')
+      }
+
+      const summary = await backupService.restoreDoctorBackup(doctorId, backup)
+      restoreSummary = summary
+      restoreSuccess = 'Backup restored successfully.'
+      notifySuccess(restoreSuccess)
+    } catch (error) {
+      restoreError = error.message || 'Failed to restore backup.'
+      notifyError(restoreError)
+    } finally {
+      restoreLoading = false
     }
   }
 
@@ -394,14 +505,20 @@
         doctor = user
       }
       
+      const previewWidthPx = templateType === 'system' ? previewElement?.offsetWidth || null : null
+      const templatePreviewSnapshot = templatePreview
+        ? { ...templatePreview, previewWidthPx }
+        : templatePreview
+
       // Prepare template settings object
       const templateSettings = {
         doctorId: doctor.id,
         templateType: templateType,
         headerSize: headerSize,
         headerText: headerText || '',
-        templatePreview: templatePreview,
+        templatePreview: templatePreviewSnapshot,
         uploadedHeader: uploadedHeader,
+        excludePharmacyDrugs: excludePharmacyDrugs,
         updatedAt: new Date().toISOString()
       }
       
@@ -474,6 +591,13 @@
           >
             <i class="fas fa-file-medical mr-2"></i>
             Prescription Template
+          </button>
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'backup-restore' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('backup-restore')}
+          >
+            <i class="fas fa-database mr-2"></i>
+            Backup
           </button>
         </nav>
       </div>
@@ -773,12 +897,41 @@
                       onSave={handleHeaderSave}
                     />
                   </div>
+        </div>
+        {/if}
+
+      </div>
+    </div>
+  </div>
+          
+          <!-- Prescription Rules -->
+          <div class="mt-8 border-t border-gray-200 pt-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">Prescription Rules</h3>
+            <p class="text-gray-600 mb-4">
+              Control how prescriptions behave when pharmacy inventory is missing.
+            </p>
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div>
+                  <p class="text-sm font-medium text-gray-900">Exclude own pharmacy drugs</p>
+                  <p class="text-sm text-gray-500">
+                    When enabled, only medications not found in connected pharmacy inventory can be added.
+                  </p>
                 </div>
-                {/if}
+                <label class="inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    class="sr-only peer"
+                    bind:checked={excludePharmacyDrugs}
+                  />
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:bg-teal-600 relative">
+                    <div class="absolute top-0.5 left-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                </label>
               </div>
             </div>
           </div>
-          
+
           <!-- Prescription Preview Section -->
           {#if templateType && templatePreview}
           <div class="mt-8">
@@ -815,65 +968,76 @@
                   </div>
                 {/if}
                 
-                <!-- Sample Prescription Content -->
-                <div class="space-y-4">
-                  <div class="flex justify-between items-center">
-                    <div>
-                      <p class="font-semibold">Patient: John Doe</p>
-                      <p class="text-sm text-gray-600">DOB: 01/15/1985</p>
-                    </div>
-                    <div class="text-right">
-                      <p class="text-sm">Date: {new Date().toLocaleDateString('en-GB', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric'
-                      })}</p>
-                      <p class="text-sm">Rx #: 12345</p>
-                    </div>
-                  </div>
-                  
-                  <div class="border-t pt-4">
-                    <div class="mb-3">
-                      <p class="font-semibold">Medication:</p>
-                      <p>Amoxicillin 500mg</p>
-                    </div>
-                    <div class="mb-3">
-                      <p class="font-semibold">Dosage:</p>
-                      <p>Take 1 capsule by mouth every 8 hours for 7 days</p>
-                    </div>
-                    <div class="mb-3">
-                      <p class="font-semibold">Quantity:</p>
-                      <p>21 capsules</p>
-                    </div>
-                    <div class="mb-3">
-                      <p class="font-semibold">Refills:</p>
-                      <p>0</p>
-                    </div>
-                  </div>
-                  
-                  <div class="border-t pt-4">
-                    <p class="font-semibold mb-2">Instructions:</p>
-                    <p class="text-sm">Take with food to reduce stomach upset. Complete the full course of treatment even if you feel better.</p>
-                  </div>
-                  
-                  <div class="border-t pt-4">
-                    <div class="flex justify-between items-end">
-                      <div>
-                        <p class="font-semibold">Doctor Signature:</p>
-                        <div class="mt-8 border-b border-gray-400 w-32"></div>
-                        <p class="text-sm mt-1">{templatePreview.doctorName}</p>
-                      </div>
-                      <div class="text-right">
-                        <p class="text-sm">License #: MD12345</p>
-                        <p class="text-sm">DEA #: AB1234567</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
           {/if}
+        </div>
+        {/if}
+
+        {#if activeTab === 'backup-restore'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Backup & Restore</h2>
+          <p class="text-sm text-gray-600 mb-6">
+            Download a backup of your patients and prescriptions, then restore it if data is deleted.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
+              <p class="text-xs text-gray-500 mb-3">
+                Exports patients, prescriptions, symptoms, and long-term medications.
+              </p>
+              <button
+                type="button"
+                class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                on:click={handleDoctorBackupDownload}
+                disabled={backupLoading}
+              >
+                <i class="fas fa-download mr-2"></i>
+                {backupLoading ? 'Preparing...' : 'Download Backup'}
+              </button>
+              {#if backupError}
+                <div class="mt-3 text-xs text-red-600">{backupError}</div>
+              {/if}
+              {#if backupSuccess}
+                <div class="mt-3 text-xs text-green-600">{backupSuccess}</div>
+              {/if}
+            </div>
+
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <h6 class="text-sm font-semibold text-gray-800 mb-2">Restore Backup</h6>
+              <p class="text-xs text-gray-500 mb-3">
+                Upload a backup file to restore missing data. Existing records with the same IDs will be updated.
+              </p>
+              <input
+                type="file"
+                accept="application/json"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                on:change={handleDoctorRestoreFile}
+              />
+              <button
+                type="button"
+                class="mt-3 inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                on:click={handleDoctorRestore}
+                disabled={restoreLoading || !restoreFile}
+              >
+                <i class="fas fa-upload mr-2"></i>
+                {restoreLoading ? 'Restoring...' : 'Restore Backup'}
+              </button>
+              {#if restoreError}
+                <div class="mt-3 text-xs text-red-600">{restoreError}</div>
+              {/if}
+              {#if restoreSuccess}
+                <div class="mt-3 text-xs text-green-600">{restoreSuccess}</div>
+              {/if}
+              {#if restoreSummary}
+                <div class="mt-3 text-xs text-gray-600">
+                  Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms.
+                </div>
+              {/if}
+            </div>
+          </div>
         </div>
         {/if}
       </div>
