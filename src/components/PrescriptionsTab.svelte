@@ -38,6 +38,7 @@
   export let prescriptionProcedures = []
   export let excludeConsultationCharge = false
   export let currentUserEmail = null
+  export let doctorProfileFallback = null
   
   // Debug AI suggestions
   $: console.log('🔍 PrescriptionsTab - showAIDrugSuggestions:', showAIDrugSuggestions)
@@ -53,6 +54,9 @@
   let doctorProfile = null
   let doctorCurrency = 'USD'
   let expectedPrice = null
+  let expectedPriceLoading = false
+  let expectedPharmacist = null
+  let expectedPriceRequestId = 0
 
   const procedureOptions = [
     'C&D- type -A',
@@ -151,12 +155,39 @@
         doctorData = await firebaseStorage.getDoctorByEmail(currentUserEmail)
       }
 
+      const fallbackHasCharges = doctorProfileFallback &&
+        (doctorProfileFallback.consultationCharge || doctorProfileFallback.hospitalCharge)
+
+      if (!doctorData && currentUserEmail) {
+        doctorData = await firebaseStorage.getDoctorByEmail(currentUserEmail)
+      }
+
+      if (!doctorData && doctorProfileFallback && fallbackHasCharges) {
+        doctorData = doctorProfileFallback
+      }
+
       doctorProfile = doctorData
-      doctorCurrency = doctorData?.currency || 'USD'
+      doctorCurrency = doctorData?.currency || doctorProfileFallback?.currency || 'USD'
     } catch (error) {
       console.error('❌ Error loading doctor profile for expected price:', error)
-      doctorProfile = null
-      doctorCurrency = 'USD'
+      doctorProfile = doctorProfileFallback
+      doctorCurrency = doctorProfileFallback?.currency || 'USD'
+    }
+  }
+
+  const loadExpectedPharmacist = async () => {
+    try {
+      if (!connectedPharmacyIds || connectedPharmacyIds.length === 0) {
+        expectedPharmacist = null
+        return
+      }
+
+      const pharmacistId = connectedPharmacyIds[0]
+      const pharmacistData = await firebaseStorage.getPharmacistById(pharmacistId)
+      expectedPharmacist = pharmacistData || null
+    } catch (error) {
+      console.error('❌ Error loading pharmacist for expected price:', error)
+      expectedPharmacist = null
     }
   }
   
@@ -313,91 +344,87 @@
     return totalAmount > 0 ? totalAmount : 0
   }
 
-  const buildExpectedInventoryItems = () => {
-    return (pharmacyStock || []).map(item => {
-      const rawItem = item.rawItem || {}
-      return {
-        id: rawItem.id || item.inventoryItemId || item.id || null,
-        brandName: rawItem.brandName || item.drugName || '',
-        genericName: rawItem.genericName || item.genericName || '',
-        drugName: rawItem.drugName || item.drugName || '',
-        currentStock: rawItem.currentStock ?? item.quantity ?? 0,
-        sellingPrice: rawItem.sellingPrice ?? rawItem.costPrice ?? rawItem.unitCost ?? null,
-        expiryDate: rawItem.expiryDate || item.expiryDate || '',
-        packUnit: rawItem.packUnit || item.packUnit || '',
-        batches: rawItem.batches || []
-      }
-    })
-  }
-
-  const calculateExpectedPrice = () => {
+  const buildExpectedPrescriptionForCharge = () => {
     if (!currentPrescription || !currentMedications || currentMedications.length === 0) {
       return null
     }
 
-    if (!doctorProfile) {
-      return null
-    }
-
-    const consultationCharge = excludeConsultationCharge ? 0 : parseFloat(doctorProfile?.consultationCharge || 0)
-    const hospitalCharge = parseFloat(doctorProfile?.hospitalCharge || 0)
-
-    const procedurePricingList = doctorProfile?.templateSettings?.procedurePricing || []
-    const procedurePricingMap = {}
-    if (Array.isArray(procedurePricingList)) {
-      procedurePricingList.forEach(item => {
-        if (item?.name) {
-          const parsed = Number(item.price)
-          procedurePricingMap[item.name] = Number.isFinite(parsed) ? parsed : 0
-        }
-      })
-    }
-
-    const selectedProcedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
-    const procedureTotal = selectedProcedures.reduce((sum, name) => sum + (procedurePricingMap[name] || 0), 0)
-
-    const doctorCharges = consultationCharge + hospitalCharge + procedureTotal
     const resolvedDiscount = Number.isFinite(Number(prescriptionDiscount))
       ? Number(prescriptionDiscount)
       : Number.isFinite(Number(currentPrescription?.discount))
         ? Number(currentPrescription.discount)
         : 0
-    const discountPercentage = resolvedDiscount
-    const discountMultiplier = 1 - (discountPercentage / 100)
-    const discountedDoctorCharges = doctorCharges * discountMultiplier
 
-    const inventoryItems = buildExpectedInventoryItems()
-    let drugTotal = 0
+    const medicationsForCharge = currentMedications.map(medication => ({
+      ...medication,
+      amount: calculateMedicationQuantity(medication),
+      isDispensed: true
+    }))
 
-    currentMedications.forEach(medication => {
-      const quantity = calculateMedicationQuantity(medication)
-      if (!quantity || quantity <= 0) {
+    const doctorIdentifier = currentPrescription?.doctorId || doctorProfile?.id || doctorId || null
+    const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+
+    return {
+      id: currentPrescription.id,
+      doctorId: doctorIdentifier,
+      discount: resolvedDiscount,
+      procedures: procedures,
+      excludeConsultationCharge: !!excludeConsultationCharge,
+      prescriptions: [
+        {
+          id: currentPrescription.id,
+          medications: medicationsForCharge,
+          procedures: procedures,
+          discount: resolvedDiscount,
+          excludeConsultationCharge: !!excludeConsultationCharge
+        }
+      ]
+    }
+  }
+
+  const recomputeExpectedPrice = async () => {
+    const requestId = ++expectedPriceRequestId
+    expectedPriceLoading = true
+
+    try {
+      if (!expectedPharmacist) {
+        expectedPrice = null
         return
       }
 
-      const sources = chargeCalculationService.buildInventoryPricingSources(medication, inventoryItems, null)
-      if (!sources || sources.length === 0) {
+      const prescriptionForCharge = buildExpectedPrescriptionForCharge()
+      if (!prescriptionForCharge) {
+        expectedPrice = null
         return
       }
 
-      const allocation = chargeCalculationService.allocateQuantityAcrossSources(quantity, sources)
-      if (allocation?.totalCost) {
-        drugTotal += allocation.totalCost
+      const chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(prescriptionForCharge, expectedPharmacist)
+      if (requestId !== expectedPriceRequestId) {
+        return
       }
-    })
-
-    return discountedDoctorCharges + drugTotal
+      expectedPrice = chargeBreakdown?.totalCharge ?? null
+    } catch (error) {
+      console.error('❌ Error calculating expected price:', error)
+      if (requestId === expectedPriceRequestId) {
+        expectedPrice = null
+      }
+    } finally {
+      if (requestId === expectedPriceRequestId) {
+        expectedPriceLoading = false
+      }
+    }
   }
 
   const formatExpectedPrice = (amount) => {
     if (!Number.isFinite(amount)) {
       return '--'
     }
-    if (doctorCurrency === 'LKR') {
+    const currency = expectedPharmacist?.currency || doctorCurrency || 'USD'
+    if (currency === 'LKR') {
       return `Rs ${amount.toFixed(2)}`
     }
     try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: doctorCurrency || 'USD' }).format(amount)
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
     } catch (error) {
       return amount.toFixed(2)
     }
@@ -439,7 +466,21 @@
     doctorCurrency = 'USD'
   }
 
-  $: expectedPrice = calculateExpectedPrice()
+  $: if (!doctorProfile && currentUserEmail) {
+    loadDoctorProfile(currentUserEmail)
+  }
+
+  $: if (connectedPharmacyIds && connectedPharmacyIds.length > 0) {
+    loadExpectedPharmacist()
+  } else {
+    expectedPharmacist = null
+  }
+
+  $: if (prescriptionsFinalized && currentMedications && currentMedications.length > 0) {
+    recomputeExpectedPrice()
+  } else {
+    expectedPrice = null
+  }
   
 </script>
 
@@ -774,7 +815,7 @@
               <!-- Expected Price -->
               <div class="mt-4 text-center">
                 <span class="text-sm font-semibold text-green-600">
-                  Expected Price: {formatExpectedPrice(expectedPrice)}
+                  Expected Price: {expectedPriceLoading ? 'Calculating...' : formatExpectedPrice(expectedPrice)}
                 </span>
               </div>
             {/if}

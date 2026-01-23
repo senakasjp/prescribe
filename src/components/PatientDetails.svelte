@@ -4860,6 +4860,7 @@
           bind:prescriptionProcedures
           bind:excludeConsultationCharge
           currentUserEmail={currentUser?.email}
+          doctorProfileFallback={currentUser}
           onMedicationAdded={handleMedicationAdded}
           onCancelMedication={handleCancelMedication}
           onEditPrescription={handleEditPrescription}
