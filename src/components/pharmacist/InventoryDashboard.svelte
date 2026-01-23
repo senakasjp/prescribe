@@ -183,8 +183,8 @@
         return
       }
       
-      if (!newItemForm.brandName || !newItemForm.genericName || !newItemForm.strength || !newItemForm.strengthUnit || !newItemForm.initialStock || !newItemForm.minimumStock || !newItemForm.sellingPrice || !newItemForm.expiryDate || !newItemForm.storageConditions) {
-        notifyError('Please fill in all required fields including brand name, strength, strength unit, and expiry date')
+      if (!newItemForm.brandName || !newItemForm.genericName || !newItemForm.strength || !newItemForm.strengthUnit || !newItemForm.dosageForm || !newItemForm.initialStock || !newItemForm.minimumStock || !newItemForm.sellingPrice || !newItemForm.expiryDate || !newItemForm.storageConditions) {
+        notifyError('Please fill in all required fields including dosage form')
         return
       }
       
@@ -365,6 +365,11 @@
     try {
       if (!selectedItem || !pharmacyId) {
         notifyError('Unable to update item: Missing data')
+        return
+      }
+
+      if (!selectedItem.strength || !selectedItem.strengthUnit) {
+        notifyError('Strength and strength unit are required')
         return
       }
 
@@ -984,10 +989,11 @@
             <!-- Pharmaceutical Details -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Strength</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Strength *</label>
                 <input 
                   type="text" 
                   bind:value={newItemForm.strength}
+                  required
                   placeholder="e.g., 500"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1011,6 +1017,7 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">Dosage Form</label>
                 <select 
                   bind:value={newItemForm.dosageForm}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="tablet">Tablet</option>
@@ -1019,6 +1026,7 @@
                   <option value="injection">Injection</option>
                   <option value="cream">Cream</option>
                   <option value="ointment">Ointment</option>
+                  <option value="suppository">Suppository</option>
                 </select>
               </div>
             </div>
@@ -1246,6 +1254,7 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
                 <select 
                   bind:value={selectedItem.dosageForm}
+                  required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="tablet">Tablet</option>
@@ -1256,6 +1265,7 @@
                   <option value="gel">Gel</option>
                   <option value="drops">Drops</option>
                   <option value="spray">Spray</option>
+                  <option value="suppository">Suppository</option>
                 </select>
               </div>
             </div>

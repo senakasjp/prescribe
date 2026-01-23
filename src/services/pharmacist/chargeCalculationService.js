@@ -44,21 +44,54 @@ class ChargeCalculationService {
         throw new Error(`Doctor with ID ${doctorId} not found`)
       }
 
-      // Calculate doctor charges (consultation + hospital)
-      const consultationCharge = parseFloat(doctor.consultationCharge || 0)
+      // Calculate doctor charges (consultation + hospital + procedures)
+      const baseConsultationCharge = parseFloat(doctor.consultationCharge || 0)
+      const excludeConsultationCharge = !!prescription.excludeConsultationCharge
+      const consultationCharge = excludeConsultationCharge ? 0 : baseConsultationCharge
       const hospitalCharge = parseFloat(doctor.hospitalCharge || 0)
-      const totalDoctorCharges = consultationCharge + hospitalCharge
+
+      const procedurePricingList = doctor?.templateSettings?.procedurePricing || []
+      const procedurePricingMap = {}
+      if (Array.isArray(procedurePricingList)) {
+        procedurePricingList.forEach((item) => {
+          if (item && item.name) {
+            const parsed = Number(item.price)
+            procedurePricingMap[item.name] = Number.isFinite(parsed) ? parsed : 0
+          }
+        })
+      }
+
+      let selectedProcedures = Array.isArray(prescription.procedures) ? prescription.procedures : []
+      if ((!selectedProcedures || selectedProcedures.length === 0) && Array.isArray(prescription.prescriptions)) {
+        const nestedProcedures = prescription.prescriptions
+          .map((entry) => entry?.procedures || [])
+          .flat()
+          .filter(Boolean)
+        selectedProcedures = Array.from(new Set(nestedProcedures))
+      }
+
+      const procedureChargesBreakdown = selectedProcedures.map((name) => {
+        const price = procedurePricingMap[name] ?? 0
+        return {
+          name,
+          price: Number.isFinite(price) ? price : 0
+        }
+      })
+      const totalProcedureCharges = procedureChargesBreakdown.reduce((sum, item) => sum + (item.price || 0), 0)
+
+      const totalDoctorCharges = consultationCharge + hospitalCharge + totalProcedureCharges
 
       // Get discount percentage from prescription
       const discountPercentage = prescription.discount || 0
       const discountMultiplier = 1 - (discountPercentage / 100)
       const discountedDoctorCharges = totalDoctorCharges * discountMultiplier
+      const discountAmount = totalDoctorCharges - discountedDoctorCharges
 
       // Calculate drug charges for dispensed medications
       const drugCharges = await this.calculateDrugCharges(prescription, pharmacist)
 
       // Calculate total charge before rounding
-      const totalChargeBeforeRounding = discountedDoctorCharges + drugCharges.totalCost
+      const totalChargeBeforeRounding = (totalDoctorCharges - discountAmount) + drugCharges.totalCost
 
       // Get rounding preference from pharmacist settings (default: 'none')
       const roundingPreference = pharmacist.roundingPreference || 'none'
@@ -67,11 +100,17 @@ class ChargeCalculationService {
 
       const chargeBreakdown = {
         doctorCharges: {
+          baseConsultationCharge: baseConsultationCharge,
           consultationCharge: consultationCharge,
+          excludeConsultationCharge: excludeConsultationCharge,
           hospitalCharge: hospitalCharge,
+          procedureCharges: {
+            total: totalProcedureCharges,
+            breakdown: procedureChargesBreakdown
+          },
           totalBeforeDiscount: totalDoctorCharges,
           discountPercentage: discountPercentage,
-          discountAmount: totalDoctorCharges - discountedDoctorCharges,
+          discountAmount: discountAmount,
           totalAfterDiscount: discountedDoctorCharges
         },
         drugCharges: drugCharges,
@@ -239,10 +278,14 @@ class ChargeCalculationService {
     }
 
     const medicationNames = this.buildMedicationNameSet(medication)
+    const medicationKey = this.buildMedicationKey(medication)
     const matches = []
 
     for (const item of inventoryItems) {
       const itemNames = this.buildInventoryNameSet(item)
+      const itemKey = this.buildInventoryKey(item)
+
+      const keyMatch = medicationKey && itemKey && itemKey === medicationKey
 
       const hasMatch = Array.from(medicationNames).some(medName =>
         Array.from(itemNames).some(invName =>
@@ -255,7 +298,7 @@ class ChargeCalculationService {
         )
       )
 
-      if (hasMatch) {
+      if (keyMatch || hasMatch) {
         matches.push(item)
       }
     }
@@ -397,6 +440,66 @@ class ChargeCalculationService {
       .replace(/[\u3000\s]+/g, ' ')
       .replace(/[\(\)（）]/g, '')
       .trim()
+  }
+
+  normalizeKeyPart(value) {
+    return (value || '')
+      .toString()
+      .toLowerCase()
+      .replace(/[\u3000\s]+/g, ' ')
+      .replace(/[^\w\s]/g, '')
+      .trim()
+  }
+
+  parseStrength(value, fallbackUnit = '') {
+    if (!value) {
+      return { strength: '', unit: '' }
+    }
+
+    if (typeof value === 'number') {
+      return { strength: String(value), unit: fallbackUnit || '' }
+    }
+
+    const normalized = String(value).trim()
+    const match = normalized.match(/^(\d+(?:\.\d+)?)([a-zA-Z%]+)?$/)
+    if (match) {
+      return { strength: match[1], unit: match[2] || fallbackUnit || '' }
+    }
+
+    return { strength: normalized, unit: fallbackUnit || '' }
+  }
+
+  buildMedicationKey(medication) {
+    if (!medication) return ''
+
+    const name = medication.name || ''
+    const genericName = medication.genericName || ''
+    const dosageForm = medication.dosageForm || medication.form || ''
+    const { strength, unit } = this.parseStrength(medication.dosage, medication.dosageUnit || '')
+
+    const parts = [
+      this.normalizeKeyPart(name),
+      this.normalizeKeyPart(genericName),
+      this.normalizeKeyPart(strength),
+      this.normalizeKeyPart(unit),
+      this.normalizeKeyPart(dosageForm)
+    ].filter(Boolean)
+
+    return parts.join('|')
+  }
+
+  buildInventoryKey(item) {
+    if (!item) return ''
+
+    const parts = [
+      this.normalizeKeyPart(item.brandName || item.drugName || ''),
+      this.normalizeKeyPart(item.genericName || ''),
+      this.normalizeKeyPart(item.strength || ''),
+      this.normalizeKeyPart(item.strengthUnit || ''),
+      this.normalizeKeyPart(item.dosageForm || '')
+    ].filter(Boolean)
+
+    return parts.join('|')
   }
 
   buildMedicationNameSet(medication) {

@@ -1038,7 +1038,7 @@
       }
       
       // Sort prescriptions by date (newest first)
-      prescriptions.sort((a, b) => new Date(b.createdAt || b.dateCreated) - new Date(a.createdAt || a.dateCreated))
+      prescriptions.sort((a, b) => getPrescriptionDateTime(b) - getPrescriptionDateTime(a))
       
       console.log('✅ PharmacistDashboard: Data loaded successfully')
       
@@ -1127,13 +1127,95 @@
     )
   }
   
+  const toDate = (value) => {
+    if (!value) return null
+    if (value instanceof Date) return value
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value)
+      return isNaN(parsed) ? null : parsed
+    }
+    if (typeof value === 'object') {
+      if (typeof value.toDate === 'function') {
+        const parsed = value.toDate()
+        return isNaN(parsed) ? null : parsed
+      }
+      if (typeof value.seconds === 'number') {
+        const parsed = new Date(value.seconds * 1000)
+        return isNaN(parsed) ? null : parsed
+      }
+    }
+    return null
+  }
+
+  const countryTimeZoneMap = {
+    'Sri Lanka': 'Asia/Colombo',
+    'India': 'Asia/Kolkata',
+    'United States': 'America/New_York',
+    'United States of America': 'America/New_York',
+    'USA': 'America/New_York',
+    'United Kingdom': 'Europe/London',
+    'Ireland': 'Europe/Dublin',
+    'Australia': 'Australia/Sydney',
+    'Canada': 'America/Toronto',
+    'New Zealand': 'Pacific/Auckland',
+    'Singapore': 'Asia/Singapore',
+    'Malaysia': 'Asia/Kuala_Lumpur',
+    'United Arab Emirates': 'Asia/Dubai',
+    'Saudi Arabia': 'Asia/Riyadh',
+    'Qatar': 'Asia/Qatar',
+    'Kuwait': 'Asia/Kuwait',
+    'Bahrain': 'Asia/Bahrain',
+    'Pakistan': 'Asia/Karachi',
+    'Bangladesh': 'Asia/Dhaka',
+    'Nepal': 'Asia/Kathmandu'
+  }
+
+  const getDoctorTimeZone = (prescription) => {
+    const doctorId = prescription?.doctorId
+    if (!doctorId || !connectedDoctors?.length) return null
+    const doctor = connectedDoctors.find(d => d.id === doctorId)
+    const countryName = doctor?.country || doctor?.countryName || ''
+    return countryTimeZoneMap[countryName] || null
+  }
+
+  const resolvePrescriptionDate = (prescription) => {
+    const nested = Array.isArray(prescription?.prescriptions) && prescription.prescriptions.length > 0
+      ? prescription.prescriptions[0]
+      : null
+    return prescription?.sentAt ||
+      prescription?.receivedAt ||
+      nested?.sentAt ||
+      nested?.createdAt ||
+      prescription?.createdAt ||
+      prescription?.dateCreated ||
+      null
+  }
+
+  const getPrescriptionDateTime = (prescription) => {
+    const dateValue = resolvePrescriptionDate(prescription)
+    const parsed = toDate(dateValue)
+    return parsed ? parsed.getTime() : 0
+  }
+
   // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Unknown'
-    return new Date(dateString).toLocaleDateString('en-GB', {
+  const formatDate = (dateValue, timeZone = null) => {
+    const parsed = toDate(dateValue)
+    if (!parsed) return 'Unknown'
+    return parsed.toLocaleDateString('en-GB', {
+      timeZone: timeZone || undefined,
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
+    })
+  }
+
+  const formatTime = (dateValue, timeZone = null) => {
+    const parsed = toDate(dateValue)
+    if (!parsed) return ''
+    return parsed.toLocaleTimeString('en-GB', {
+      timeZone: timeZone || undefined,
+      hour: '2-digit',
+      minute: '2-digit'
     })
   }
   
@@ -1268,8 +1350,11 @@
       medications: transformMedications(prescription.id, prescription.medications)
     }))
 
+    const derivedDiscount = selectedPrescription.discount ?? selectedPrescription.prescriptions?.[0]?.discount ?? 0
+
     return {
       ...selectedPrescription,
+      discount: derivedDiscount,
       prescriptions: transformedPrescriptions
     }
   }
@@ -1584,7 +1669,8 @@
                           </span>
                         </td>
                         <td class="px-3 sm:px-6 py-4 align-top text-xs sm:text-sm text-gray-500" style="white-space: normal; word-wrap: break-word;">
-                          {formatDate(prescription.receivedAt || prescription.sentAt || prescription.createdAt)}
+                          <div>{formatDate(resolvePrescriptionDate(prescription))}</div>
+                          <div class="text-xs text-gray-500">{formatTime(resolvePrescriptionDate(prescription))}</div>
                         </td>
                         <td class="px-3 sm:px-6 py-4 align-top" style="white-space: normal; word-wrap: break-word;">
                           <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -1634,7 +1720,10 @@
                       </div>
                       <div class="flex items-center text-xs">
                         <i class="fas fa-calendar text-blue-600 mr-2 w-3"></i>
-                        <span class="text-gray-600">{formatDate(prescription.receivedAt || prescription.sentAt || prescription.createdAt)}</span>
+                        <div class="text-gray-600">
+                          <div>{formatDate(resolvePrescriptionDate(prescription), getDoctorTimeZone(prescription))}</div>
+                          <div class="text-xs text-gray-500">{formatTime(resolvePrescriptionDate(prescription), getDoctorTimeZone(prescription))}</div>
+                        </div>
                       </div>
                     </div>
                     
@@ -1811,7 +1900,7 @@
               <h6 class="font-semibold text-blue-600 text-sm sm:text-base mb-2">Prescription Information</h6>
               <div class="space-y-1 text-xs sm:text-sm">
               <p><strong>Doctor:</strong> {selectedPrescription.doctorName || getDoctorName(selectedPrescription.doctorId)}</p>
-              <p><strong>Date:</strong> {formatDate(selectedPrescription.receivedAt || selectedPrescription.sentAt || selectedPrescription.createdAt)}</p>
+              <p><strong>Date:</strong> {formatDate(resolvePrescriptionDate(selectedPrescription), getDoctorTimeZone(selectedPrescription))} <span class="text-xs text-gray-500">{formatTime(resolvePrescriptionDate(selectedPrescription), getDoctorTimeZone(selectedPrescription))}</span></p>
                 <p><strong>Status:</strong> <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">{selectedPrescription.status || 'Pending'}</span></p>
               </div>
             </div>
@@ -2139,6 +2228,18 @@
                         {/if}
                       </span>
                     </div>
+                    {#if chargeBreakdown.doctorCharges.excludeConsultationCharge}
+                      <div class="flex justify-between text-xs text-gray-500">
+                        <span>Consultation charge excluded</span>
+                        <span>
+                          {#if pharmacist.currency === 'LKR'}
+                            Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, pharmacist.currency)}
+                          {:else}
+                            {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, pharmacist.currency)}
+                          {/if}
+                        </span>
+                      </div>
+                    {/if}
                     <div class="flex justify-between">
                       <span class="text-gray-600">Hospital Charge:</span>
                       <span class="text-gray-900">
@@ -2149,16 +2250,23 @@
                         {/if}
                       </span>
                     </div>
-                    <div class="flex justify-between border-t pt-1">
-                      <span class="text-gray-600 font-medium">Subtotal:</span>
-                      <span class="text-gray-900 font-medium">
-                        {#if pharmacist.currency === 'LKR'}
-                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalBeforeDiscount, pharmacist.currency)}
-                        {:else}
-                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalBeforeDiscount, pharmacist.currency)}
-                        {/if}
-                      </span>
-                    </div>
+                    {#if chargeBreakdown.doctorCharges.procedureCharges?.breakdown?.length}
+                      <div class="border-t pt-1">
+                        <div class="text-xs font-semibold text-gray-700 mb-1">Procedures</div>
+                        {#each chargeBreakdown.doctorCharges.procedureCharges.breakdown as procedure}
+                          <div class="flex justify-between">
+                            <span class="text-gray-600">{procedure.name}</span>
+                            <span class="text-gray-900">
+                              {#if pharmacist.currency === 'LKR'}
+                                Rs {formatCurrencyDisplay(procedure.price, pharmacist.currency)}
+                              {:else}
+                                {formatCurrencyDisplay(procedure.price, pharmacist.currency)}
+                              {/if}
+                            </span>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
                     {#if chargeBreakdown.doctorCharges.discountPercentage > 0}
                       <div class="flex justify-between">
                         <span class="text-gray-600">Discount ({chargeBreakdown.doctorCharges.discountPercentage}%):</span>
@@ -2222,7 +2330,7 @@
                   <div class="mb-3">
                     <div class="space-y-1 text-xs sm:text-sm">
                       <div class="flex justify-between">
-                        <span class="text-gray-600">Subtotal (Before Rounding):</span>
+                        <span class="text-gray-600">Subtotal (After Discount):</span>
                         <span class="text-gray-900">
                           {#if pharmacist.currency === 'LKR'}
                             Rs {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, pharmacist.currency)}
@@ -2254,20 +2362,6 @@
 
                 <!-- Total Charge -->
                 <div class="border-t pt-3">
-                  {#if chargeBreakdown.doctorCharges.discountPercentage > 0}
-                    <div class="flex justify-between items-center text-xs sm:text-sm mb-1">
-                      <span class="text-gray-600">
-                        Doctor Discount ({chargeBreakdown.doctorCharges.discountPercentage}%):
-                      </span>
-                      <span class="text-green-600 font-medium">
-                        -{#if pharmacist.currency === 'LKR'}
-                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
-                        {:else}
-                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
-                        {/if}
-                      </span>
-                    </div>
-                  {/if}
                   <div class="flex justify-between items-center">
                     <span class="font-bold text-gray-900 text-sm sm:text-base">Total Charge:</span>
                     <span class="font-bold text-blue-600 text-sm sm:text-base">

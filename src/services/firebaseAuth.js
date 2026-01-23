@@ -3,17 +3,40 @@
 
 import { 
   signInWithPopup, 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  onAuthStateChanged as firebaseOnAuthStateChanged
+  onAuthStateChanged as firebaseOnAuthStateChanged,
+  getAuth
 } from 'firebase/auth'
-import { auth, googleProvider } from '../firebase-config.js'
+import { initializeApp, getApps } from 'firebase/app'
+import app, { auth, googleProvider } from '../firebase-config.js'
 import firebaseStorage from './firebaseStorage.js'
 
 class FirebaseAuthService {
   constructor() {
     this.currentUser = null
     this.authStateListeners = []
+    this.secondaryAuth = null
     this.setupAuthStateListener()
+  }
+
+  getProviderMeta(firebaseUser) {
+    const providerId = firebaseUser?.providerData?.[0]?.providerId || 'password'
+    const provider = providerId === 'google.com' ? 'google' : providerId === 'password' ? 'password' : providerId
+    const authProvider = providerId === 'password' ? 'firebase-email' : 'google'
+    return { providerId, provider, authProvider }
+  }
+
+  getSecondaryAuth() {
+    if (this.secondaryAuth) {
+      return this.secondaryAuth
+    }
+
+    const existingApp = getApps().find(existing => existing.name === 'secondary-auth')
+    const secondaryApp = existingApp || initializeApp(app.options, 'secondary-auth')
+    this.secondaryAuth = getAuth(secondaryApp)
+    return this.secondaryAuth
   }
     
   // Setup Firebase auth state listener
@@ -40,15 +63,18 @@ class FirebaseAuthService {
       console.error('❌ Error checking for existing doctor:', error)
     }
 
+    const { provider, authProvider } = this.getProviderMeta(firebaseUser)
+
     if (existingUser) {
       console.log('✅ Updating existing user with Firebase data')
       // Update existing user with Firebase data
       const updatedUser = {
         ...existingUser,
         uid: firebaseUser.uid,
-        displayName: firebaseUser.displayName,
-        photoURL: firebaseUser.photoURL,
-        provider: 'google',
+        displayName: firebaseUser.displayName || existingUser.displayName,
+        photoURL: firebaseUser.photoURL || existingUser.photoURL,
+        provider: provider,
+        authProvider: authProvider,
         isAdmin: isSuperAdmin // Set admin flag for super admin
       }
       
@@ -72,7 +98,8 @@ class FirebaseAuthService {
         uid: firebaseUser.uid,
         displayName: firebaseUser.displayName,
         photoURL: firebaseUser.photoURL,
-        provider: 'google',
+        provider: provider,
+        authProvider: authProvider,
         isAdmin: isSuperAdmin, // Set admin flag for super admin
         createdAt: new Date().toISOString()
       }
@@ -270,6 +297,90 @@ class FirebaseAuthService {
       } else {
         throw new Error(`Google authentication failed: ${error.message}`)
       }
+    }
+  }
+
+  async registerDoctorWithEmailPassword(email, password, doctorData = {}) {
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, password)
+      const firebaseUser = result.user
+
+      const existingDoctor = await firebaseStorage.getDoctorByEmail(email)
+      if (existingDoctor) {
+        const updatedDoctor = {
+          ...existingDoctor,
+          uid: firebaseUser.uid,
+          provider: 'password',
+          authProvider: 'firebase-email'
+        }
+        await firebaseStorage.updateDoctor(updatedDoctor)
+        return updatedDoctor
+      }
+
+      const doctorPayload = {
+        email,
+        firstName: doctorData.firstName || '',
+        lastName: doctorData.lastName || '',
+        name: doctorData.firstName && doctorData.lastName ? `${doctorData.firstName} ${doctorData.lastName}` : '',
+        country: doctorData.country || '',
+        role: 'doctor',
+        uid: firebaseUser.uid,
+        provider: 'password',
+        authProvider: 'firebase-email',
+        createdAt: new Date().toISOString()
+      }
+
+      return await firebaseStorage.createDoctor(doctorPayload)
+    } catch (error) {
+      console.error('Error registering doctor with email/password:', error)
+      throw error
+    }
+  }
+
+  async signInWithEmailPassword(email, password) {
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password)
+      const firebaseUser = result.user
+      return await this.handleUserLogin(firebaseUser)
+    } catch (error) {
+      console.error('Error signing in with email/password:', error)
+      throw error
+    }
+  }
+
+  async createExternalDoctorAccount(email, password, profile = {}) {
+    const secondaryAuth = this.getSecondaryAuth()
+    try {
+      const result = await createUserWithEmailAndPassword(secondaryAuth, email, password)
+      const firebaseUser = result.user
+
+      const doctorPayload = {
+        email,
+        firstName: profile.firstName || '',
+        lastName: profile.lastName || '',
+        name: profile.firstName && profile.lastName ? `${profile.firstName} ${profile.lastName}` : '',
+        phone: profile.phone || '',
+        specialization: profile.specialization || '',
+        country: profile.country || '',
+        city: profile.city || '',
+        role: 'doctor',
+        permissions: profile.permissions || [],
+        accessLevel: profile.accessLevel || 'external_minimal',
+        externalDoctor: true,
+        invitedByDoctorId: profile.invitedByDoctorId || null,
+        uid: firebaseUser.uid,
+        provider: 'password',
+        authProvider: 'firebase-email',
+        connectedPharmacists: [],
+        createdAt: new Date().toISOString()
+      }
+
+      await firebaseStorage.createDoctor(doctorPayload)
+      await firebaseSignOut(secondaryAuth)
+      return doctorPayload
+    } catch (error) {
+      console.error('Error creating external doctor account:', error)
+      throw error
     }
   }
 

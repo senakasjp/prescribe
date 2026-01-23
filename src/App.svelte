@@ -121,7 +121,7 @@
         console.log('🔍 User auth provider:', existingUser.authProvider)
         
         // For email/password users, prioritize local storage and skip Firebase auth listener
-        if (existingUser.authProvider === 'email-password') {
+        if (existingUser.authProvider === 'email-password' && !existingUser.uid) {
           console.log('✅ Email/password user found, using local storage only')
           user = existingUser
           // Load prescriptions for doctor

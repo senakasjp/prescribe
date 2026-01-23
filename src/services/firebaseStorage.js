@@ -29,7 +29,8 @@ class FirebaseStorageService {
       drugDatabase: 'drugDatabase',
       pharmacists: 'pharmacists',
       pharmacyUsers: 'pharmacyUsers',
-      doctorReports: 'doctorReports'
+      doctorReports: 'doctorReports',
+      reports: 'reports'
     }
   }
 
@@ -55,6 +56,12 @@ class FirebaseStorageService {
         role: doctorData.role,
         isAdmin: doctorData.isAdmin,
         permissions: doctorData.permissions,
+        phone: doctorData.phone,
+        specialization: doctorData.specialization,
+        externalDoctor: doctorData.externalDoctor,
+        accessLevel: doctorData.accessLevel,
+        invitedByDoctorId: doctorData.invitedByDoctorId,
+        authProvider: doctorData.authProvider,
         connectedPharmacists: doctorData.connectedPharmacists || [],
         uid: doctorData.uid,
         displayName: doctorData.displayName,
@@ -135,6 +142,12 @@ class FirebaseStorageService {
         role: updatedDoctor.role,
         isAdmin: updatedDoctor.isAdmin,
         permissions: updatedDoctor.permissions,
+        phone: updatedDoctor.phone,
+        specialization: updatedDoctor.specialization,
+        externalDoctor: updatedDoctor.externalDoctor,
+        accessLevel: updatedDoctor.accessLevel,
+        invitedByDoctorId: updatedDoctor.invitedByDoctorId,
+        authProvider: updatedDoctor.authProvider,
         connectedPharmacists: updatedDoctor.connectedPharmacists,
         uid: updatedDoctor.uid,
         displayName: updatedDoctor.displayName,
@@ -1414,6 +1427,57 @@ class FirebaseStorageService {
     }
   }
 
+  async getReportsByPatientId(patientId) {
+    try {
+      if (!patientId) {
+        return []
+      }
+      const q = query(collection(db, this.collections.reports), where('patientId', '==', patientId))
+      const querySnapshot = await getDocs(q)
+      const reports = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+      return reports.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.date || 0)
+        const dateB = new Date(b.createdAt || b.date || 0)
+        return dateB - dateA
+      })
+    } catch (error) {
+      console.error('Error getting reports by patient ID:', error)
+      throw error
+    }
+  }
+
+  async createReport(reportData) {
+    try {
+      if (!reportData?.patientId) {
+        throw new Error('Patient ID is required to create a report')
+      }
+      const payload = {
+        ...reportData,
+        createdAt: reportData.createdAt || new Date().toISOString()
+      }
+      const docRef = await addDoc(collection(db, this.collections.reports), payload)
+      return { id: docRef.id, ...payload }
+    } catch (error) {
+      console.error('Error creating report:', error)
+      throw error
+    }
+  }
+
+  async deleteReport(reportId) {
+    try {
+      if (!reportId) {
+        return
+      }
+      await deleteDoc(doc(db, this.collections.reports, reportId))
+    } catch (error) {
+      console.error('Error deleting report:', error)
+      throw error
+    }
+  }
+
   async savePharmacistPrescriptions(pharmacistId, prescriptions) {
     try {
       console.log('💾 Saving prescriptions for pharmacist:', pharmacistId)
@@ -1440,7 +1504,7 @@ class FirebaseStorageService {
       for (const prescription of prescriptions) {
         const prescriptionData = {
           ...prescription,
-          receivedAt: new Date().toISOString()
+          receivedAt: prescription?.receivedAt || prescription?.sentAt || prescription?.createdAt || new Date().toISOString()
         }
         console.log('💾 Adding prescription:', prescriptionData)
         const docRef = await addDoc(prescriptionsRef, prescriptionData)

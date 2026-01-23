@@ -1,6 +1,8 @@
 <script>
   import PatientForms from './PatientForms.svelte'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   
   export let selectedPatient
   export let showMedicationForm
@@ -33,6 +35,8 @@
   export let onPrintExternalPrescriptions
   export let prescriptionNotes = ''
   export let prescriptionDiscount = 0 // New discount field
+  export let prescriptionProcedures = []
+  export let excludeConsultationCharge = false
   export let currentUserEmail = null
   
   // Debug AI suggestions
@@ -46,6 +50,27 @@
   let resolvedDoctorIdentifier = null
   let connectedPharmacyIds = []
   let hasConnectedPharmacies = false
+  let doctorProfile = null
+  let doctorCurrency = 'USD'
+  let expectedPrice = null
+
+  const procedureOptions = [
+    'C&D- type -A',
+    'C&D-type -B',
+    'C&D-type-C',
+    'C&D-type-D',
+    'Suturing- type-A',
+    'Suturing- type-B',
+    'Suturing- type-C',
+    'Suturing- type-D',
+    'Nebulization - Ipra.0.25ml+N. saline2ml',
+    'Nebulization - sal 0. 5ml+Ipra 0. 5ml+N. Saline 3ml',
+    'Nebulization -sal1ml+Ipra1ml+N. Saline2ml',
+    'Nebulization Ipra1ml+N. Saline3ml',
+    'Nebulization - pulmicort(Budesonide)',
+    'catheterization',
+    'IV drip Saline/Dextrose'
+  ]
 
   // Load pharmacy stock for availability checking
   const MAX_STOCK_ATTEMPTS = 5
@@ -106,6 +131,32 @@
       pharmacyStock = []
     } finally {
       stockLoading = false
+    }
+  }
+
+  const loadDoctorProfile = async (identifier = null) => {
+    try {
+      let resolvedDoctorId = identifier ?? doctorId
+      let doctorData = null
+
+      if (resolvedDoctorId && resolvedDoctorId !== 'default-user' && resolvedDoctorId !== 'unknown') {
+        doctorData = await firebaseStorage.getDoctorById(resolvedDoctorId)
+      }
+
+      if (!doctorData && resolvedDoctorId) {
+        doctorData = await firebaseStorage.getDoctorByEmail(resolvedDoctorId)
+      }
+
+      if (!doctorData && currentUserEmail) {
+        doctorData = await firebaseStorage.getDoctorByEmail(currentUserEmail)
+      }
+
+      doctorProfile = doctorData
+      doctorCurrency = doctorData?.currency || 'USD'
+    } catch (error) {
+      console.error('❌ Error loading doctor profile for expected price:', error)
+      doctorProfile = null
+      doctorCurrency = 'USD'
     }
   }
   
@@ -212,6 +263,146 @@
     return { available: false, quantity: 0, stockItem: null }
   }
 
+  const calculateMedicationQuantity = (medication) => {
+    if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
+      return chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
+    }
+
+    if (!medication?.frequency || !medication?.duration) {
+      return 0
+    }
+
+    const durationMatch = medication.duration.match(/(\d+)\s*days?/i)
+    if (!durationMatch) {
+      return 0
+    }
+    const days = parseInt(durationMatch[1], 10)
+
+    let dailyFrequency = 0
+    const frequency = medication.frequency
+
+    if (frequency.includes('Once daily') || frequency.includes('(OD)')) {
+      dailyFrequency = 1
+    } else if (frequency.includes('Twice daily') || frequency.includes('(BD)')) {
+      dailyFrequency = 2
+    } else if (frequency.includes('Three times daily') || frequency.includes('(TDS)')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('Four times daily') || frequency.includes('(QDS)')) {
+      dailyFrequency = 4
+    } else if (frequency.includes('Every 4 hours') || frequency.includes('(Q4H)')) {
+      dailyFrequency = 6
+    } else if (frequency.includes('Every 6 hours') || frequency.includes('(Q6H)')) {
+      dailyFrequency = 4
+    } else if (frequency.includes('Every 8 hours') || frequency.includes('(Q8H)')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('Every 12 hours') || frequency.includes('(Q12H)')) {
+      dailyFrequency = 2
+    } else if (frequency.includes('Weekly')) {
+      dailyFrequency = 1 / 7
+    } else if (frequency.includes('Monthly')) {
+      dailyFrequency = 1 / 30
+    } else if (frequency.includes('Before meals') || frequency.includes('(AC)')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('After meals') || frequency.includes('(PC)')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('At bedtime') || frequency.includes('(HS)')) {
+      dailyFrequency = 1
+    }
+
+    const totalAmount = Math.ceil(dailyFrequency * days)
+    return totalAmount > 0 ? totalAmount : 0
+  }
+
+  const buildExpectedInventoryItems = () => {
+    return (pharmacyStock || []).map(item => {
+      const rawItem = item.rawItem || {}
+      return {
+        id: rawItem.id || item.inventoryItemId || item.id || null,
+        brandName: rawItem.brandName || item.drugName || '',
+        genericName: rawItem.genericName || item.genericName || '',
+        drugName: rawItem.drugName || item.drugName || '',
+        currentStock: rawItem.currentStock ?? item.quantity ?? 0,
+        sellingPrice: rawItem.sellingPrice ?? rawItem.costPrice ?? rawItem.unitCost ?? null,
+        expiryDate: rawItem.expiryDate || item.expiryDate || '',
+        packUnit: rawItem.packUnit || item.packUnit || '',
+        batches: rawItem.batches || []
+      }
+    })
+  }
+
+  const calculateExpectedPrice = () => {
+    if (!currentPrescription || !currentMedications || currentMedications.length === 0) {
+      return null
+    }
+
+    if (!doctorProfile) {
+      return null
+    }
+
+    const consultationCharge = excludeConsultationCharge ? 0 : parseFloat(doctorProfile?.consultationCharge || 0)
+    const hospitalCharge = parseFloat(doctorProfile?.hospitalCharge || 0)
+
+    const procedurePricingList = doctorProfile?.templateSettings?.procedurePricing || []
+    const procedurePricingMap = {}
+    if (Array.isArray(procedurePricingList)) {
+      procedurePricingList.forEach(item => {
+        if (item?.name) {
+          const parsed = Number(item.price)
+          procedurePricingMap[item.name] = Number.isFinite(parsed) ? parsed : 0
+        }
+      })
+    }
+
+    const selectedProcedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+    const procedureTotal = selectedProcedures.reduce((sum, name) => sum + (procedurePricingMap[name] || 0), 0)
+
+    const doctorCharges = consultationCharge + hospitalCharge + procedureTotal
+    const resolvedDiscount = Number.isFinite(Number(prescriptionDiscount))
+      ? Number(prescriptionDiscount)
+      : Number.isFinite(Number(currentPrescription?.discount))
+        ? Number(currentPrescription.discount)
+        : 0
+    const discountPercentage = resolvedDiscount
+    const discountMultiplier = 1 - (discountPercentage / 100)
+    const discountedDoctorCharges = doctorCharges * discountMultiplier
+
+    const inventoryItems = buildExpectedInventoryItems()
+    let drugTotal = 0
+
+    currentMedications.forEach(medication => {
+      const quantity = calculateMedicationQuantity(medication)
+      if (!quantity || quantity <= 0) {
+        return
+      }
+
+      const sources = chargeCalculationService.buildInventoryPricingSources(medication, inventoryItems, null)
+      if (!sources || sources.length === 0) {
+        return
+      }
+
+      const allocation = chargeCalculationService.allocateQuantityAcrossSources(quantity, sources)
+      if (allocation?.totalCost) {
+        drugTotal += allocation.totalCost
+      }
+    })
+
+    return discountedDoctorCharges + drugTotal
+  }
+
+  const formatExpectedPrice = (amount) => {
+    if (!Number.isFinite(amount)) {
+      return '--'
+    }
+    if (doctorCurrency === 'LKR') {
+      return `Rs ${amount.toFixed(2)}`
+    }
+    try {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: doctorCurrency || 'USD' }).format(amount)
+    } catch (error) {
+      return amount.toFixed(2)
+    }
+  }
+
   const getUnavailableMedications = () => {
     if (!currentMedications || currentMedications.length === 0) {
       return []
@@ -239,11 +430,16 @@
   
   $: if (resolvedDoctorIdentifier) {
     loadPharmacyStock(resolvedDoctorIdentifier)
+    loadDoctorProfile(resolvedDoctorIdentifier)
   } else {
     connectedPharmacyIds = []
     hasConnectedPharmacies = false
     pharmacyStock = []
+    doctorProfile = null
+    doctorCurrency = 'USD'
   }
+
+  $: expectedPrice = calculateExpectedPrice()
   
 </script>
 
@@ -434,7 +630,49 @@
                 </div>
               {/each}
             </div>
-            
+          {/if}
+
+          <!-- Exclude Consultation Charge -->
+          <div class="mt-2">
+            <label class="flex items-center gap-2 text-sm font-medium text-red-600">
+              <input
+                class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                type="checkbox"
+                bind:checked={excludeConsultationCharge}
+                disabled={!currentPrescription}
+              >
+              Exclude consultation charge
+            </label>
+          </div>
+
+          <!-- Procedures / Treatments -->
+          <div class="mt-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              <i class="fas fa-check-square mr-1"></i>Procedures / Treatments
+            </label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {#each procedureOptions as option}
+                <label class="flex items-start gap-2 p-2 border border-gray-200 rounded-lg bg-white">
+                  <input
+                    class="w-4 h-4 mt-0.5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                    type="checkbox"
+                    value={option}
+                    bind:group={prescriptionProcedures}
+                    disabled={!currentPrescription}
+                  >
+                  <span class="text-sm text-gray-700">{option}</span>
+                </label>
+              {/each}
+            </div>
+            {#if !currentPrescription}
+              <div class="text-xs text-gray-500 mt-2">
+                <i class="fas fa-info-circle mr-1"></i>
+                Create a new prescription to select procedures.
+              </div>
+            {/if}
+          </div>
+
+          {#if currentMedications && currentMedications.length > 0}
             <!-- Prescription Notes -->
             <div class="mt-4">
               <label for="prescriptionNotes" class="block text-sm font-medium text-gray-700 mb-2">
@@ -531,6 +769,15 @@
                 {/if}
               {/if}
             </div>
+
+            {#if prescriptionsFinalized && currentMedications.length > 0}
+              <!-- Expected Price -->
+              <div class="mt-4 text-center">
+                <span class="text-sm font-semibold text-green-600">
+                  Expected Price: {formatExpectedPrice(expectedPrice)}
+                </span>
+              </div>
+            {/if}
           {:else}
             <div class="text-center text-gray-500 py-8">
               <i class="fas fa-pills text-4xl mb-3"></i>

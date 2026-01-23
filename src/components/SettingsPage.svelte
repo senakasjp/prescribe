@@ -3,12 +3,14 @@
   
   import { createEventDispatcher, onMount } from 'svelte'
   import authService from '../services/authService.js'
+  import firebaseAuthService from '../services/firebaseAuth.js'
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
   import ThreeDots from './ThreeDots.svelte'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import HeaderEditor from './HeaderEditor.svelte'
   import backupService from '../services/backupService.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
 
   const dispatch = createEventDispatcher()
   export let user
@@ -32,6 +34,21 @@
   let restoreFile = null
   let restoreSummary = null
 
+  // External doctor form
+  let externalFirstName = ''
+  let externalLastName = ''
+  let externalEmail = ''
+  let externalPassword = ''
+  let externalPasswordConfirm = ''
+  let externalPhone = ''
+  let externalSpecialization = ''
+  let externalCountry = ''
+  let externalCity = ''
+  let externalLoading = false
+  let externalError = ''
+  let externalSuccess = ''
+  let externalAvailableCities = []
+
   // Prescription template variables
   let templateType = '' // Will be set from user.templateSettings
   let uploadedHeader = null
@@ -41,6 +58,7 @@
   let previewElement = null
   let isSaving = false
   let excludePharmacyDrugs = false
+  let procedurePricing = []
 
   // Tab management
   let activeTab = 'edit-profile'
@@ -82,6 +100,59 @@
     { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'د.ك' }
   ]
 
+  const procedureOptions = [
+    'C&D- type -A',
+    'C&D-type -B',
+    'C&D-type-C',
+    'C&D-type-D',
+    'Suturing- type-A',
+    'Suturing- type-B',
+    'Suturing- type-C',
+    'Suturing- type-D',
+    'Nebulization - Ipra.0.25ml+N. saline2ml',
+    'Nebulization - sal 0. 5ml+Ipra 0. 5ml+N. Saline 3ml',
+    'Nebulization -sal1ml+Ipra1ml+N. Saline2ml',
+    'Nebulization Ipra1ml+N. Saline3ml',
+    'Nebulization - pulmicort(Budesonide)',
+    'catheterization',
+    'IV drip Saline/Dextrose'
+  ]
+
+  const normalizeProcedurePricing = (savedPricing) => {
+    const pricingMap = {}
+
+    if (Array.isArray(savedPricing)) {
+      savedPricing.forEach((item) => {
+        if (item && item.name) {
+          pricingMap[item.name] = item.price ?? ''
+        }
+      })
+    } else if (savedPricing && typeof savedPricing === 'object') {
+      Object.entries(savedPricing).forEach(([name, price]) => {
+        pricingMap[name] = price
+      })
+    }
+
+    return procedureOptions.map((name) => ({
+      name,
+      price: pricingMap[name] ?? ''
+    }))
+  }
+
+  const normalizeProcedurePricingForSave = (pricingList) => {
+    return (pricingList || []).map((item) => {
+      let priceValue = ''
+      if (item && item.price !== '' && item.price !== null && item.price !== undefined) {
+        const parsed = Number(item.price)
+        priceValue = Number.isFinite(parsed) ? parsed : ''
+      }
+      return {
+        name: item?.name || '',
+        price: priceValue
+      }
+    })
+  }
+
   // Reactive variable for cities based on selected country
   $: {
     try {
@@ -89,6 +160,17 @@
     } catch (error) {
       console.error('❌ SettingsPage: Error in availableCities reactive statement:', error)
       availableCities = []
+    }
+  }
+
+  $: {
+    try {
+      externalAvailableCities = (externalCountry && typeof externalCountry === 'string' && externalCountry.trim())
+        ? getCitiesByCountry(externalCountry.trim())
+        : []
+    } catch (error) {
+      console.error('❌ SettingsPage: Error in externalAvailableCities reactive statement:', error)
+      externalAvailableCities = []
     }
   }
 
@@ -100,6 +182,16 @@
       }
     } catch (error) {
       console.error('❌ SettingsPage: Error in city reset reactive statement:', error)
+    }
+  }
+
+  $: {
+    try {
+      if (externalCountry && externalCity && !externalAvailableCities.find(c => c.name === externalCity)) {
+        externalCity = ''
+      }
+    } catch (error) {
+      console.error('❌ SettingsPage: Error in external city reset reactive statement:', error)
     }
   }
 
@@ -125,6 +217,8 @@
       templateType = 'printed'
       excludePharmacyDrugs = false
     }
+
+    procedurePricing = normalizeProcedurePricing(user?.templateSettings?.procedurePricing)
   }
 
   const downloadJsonFile = (data, filename) => {
@@ -176,6 +270,97 @@
       notifyError(backupError)
     } finally {
       backupLoading = false
+    }
+  }
+
+  const handleCreateExternalDoctor = async () => {
+    externalError = ''
+    externalSuccess = ''
+
+    if (!externalFirstName.trim() || !externalLastName.trim()) {
+      externalError = 'First name and last name are required.'
+      return
+    }
+
+    if (!externalEmail.trim()) {
+      externalError = 'Email address is required.'
+      return
+    }
+
+    if (!externalPassword.trim()) {
+      externalError = 'Password is required.'
+      return
+    }
+
+    if (externalPassword.trim().length < 6) {
+      externalError = 'Password must be at least 6 characters.'
+      return
+    }
+
+    if (externalPassword !== externalPasswordConfirm) {
+      externalError = 'Passwords do not match.'
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(externalEmail.trim())) {
+      externalError = 'Please enter a valid email address.'
+      return
+    }
+
+    externalLoading = true
+
+    try {
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Unable to link external doctor to your account.')
+      }
+
+      const payload = {
+        firstName: externalFirstName.trim(),
+        lastName: externalLastName.trim(),
+        name: `${externalFirstName.trim()} ${externalLastName.trim()}`.trim(),
+        email: externalEmail.trim().toLowerCase(),
+        phone: externalPhone.trim(),
+        specialization: externalSpecialization.trim(),
+        country: externalCountry.trim(),
+        city: externalCity.trim(),
+        role: 'doctor',
+        isAdmin: false,
+        permissions: ['view_patients', 'write_prescriptions'],
+        accessLevel: 'external_minimal',
+        externalDoctor: true,
+        invitedByDoctorId: doctorId,
+        connectedPharmacists: []
+      }
+
+      const existingDoctor = await firebaseStorage.getDoctorByEmail(payload.email)
+      if (existingDoctor) {
+        throw new Error('A doctor with this email already exists.')
+      }
+
+      await firebaseAuthService.createExternalDoctorAccount(payload.email, externalPassword, {
+        ...payload,
+        permissions: ['view_patients', 'write_prescriptions'],
+        accessLevel: 'external_minimal',
+        invitedByDoctorId: doctorId
+      })
+
+      externalSuccess = 'External doctor added. Share the email and password with them for cross-device login.'
+      externalFirstName = ''
+      externalLastName = ''
+      externalEmail = ''
+      externalPassword = ''
+      externalPasswordConfirm = ''
+      externalPhone = ''
+      externalSpecialization = ''
+      externalCountry = ''
+      externalCity = ''
+    } catch (error) {
+      externalError = error.message || 'Failed to add external doctor.'
+      notifyError(externalError)
+    } finally {
+      externalLoading = false
     }
   }
 
@@ -519,6 +704,7 @@
         templatePreview: templatePreviewSnapshot,
         uploadedHeader: uploadedHeader,
         excludePharmacyDrugs: excludePharmacyDrugs,
+        procedurePricing: normalizeProcedurePricingForSave(procedurePricing),
         updatedAt: new Date().toISOString()
       }
       
@@ -591,6 +777,20 @@
           >
             <i class="fas fa-file-medical mr-2"></i>
             Prescription Template
+          </button>
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'external-doctor' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('external-doctor')}
+          >
+            <i class="fas fa-user-md mr-2"></i>
+            External Doctor
+          </button>
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'procedures' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('procedures')}
+          >
+            <i class="fas fa-list-check mr-2"></i>
+            Procedures
           </button>
           <button 
             class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'backup-restore' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
@@ -1033,10 +1233,154 @@
               {/if}
               {#if restoreSummary}
                 <div class="mt-3 text-xs text-gray-600">
-                  Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms.
+                  Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms, {restoreSummary.reports || 0} reports.
                 </div>
               {/if}
             </div>
+          </div>
+        </div>
+        {/if}
+
+        {#if activeTab === 'external-doctor'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">External Doctor Access</h2>
+          <p class="text-sm text-gray-600 mb-6">
+            Add an outside doctor for temporary coverage. This profile is created with minimum access and can log in from any device.
+          </p>
+
+          <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalFirstName}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalLastName}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                <input
+                  type="email"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalEmail}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Password *</label>
+                <input
+                  type="password"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalPassword}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Confirm Password *</label>
+                <input
+                  type="password"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalPasswordConfirm}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalPhone}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Specialization</label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalSpecialization}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                <select
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalCountry}
+                >
+                  <option value="">Select Country</option>
+                  {#each countries as countryOption}
+                    <option value={countryOption.name}>{countryOption.name}</option>
+                  {/each}
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">City</label>
+                <select
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalCity}
+                  disabled={!externalCountry}
+                >
+                  <option value="">Select City</option>
+                  {#each externalAvailableCities as cityOption}
+                    <option value={cityOption.name}>{cityOption.name}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-4 text-xs text-gray-500">
+              Access level: <span class="font-medium text-gray-700">Minimal</span> (view patients, write prescriptions).
+            </div>
+
+            <button
+              type="button"
+              class="mt-4 inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              on:click={handleCreateExternalDoctor}
+              disabled={externalLoading}
+            >
+              <i class="fas fa-user-plus mr-2"></i>
+              {externalLoading ? 'Adding...' : 'Add External Doctor'}
+            </button>
+
+            {#if externalError}
+              <div class="mt-3 text-xs text-red-600">{externalError}</div>
+            {/if}
+            {#if externalSuccess}
+              <div class="mt-3 text-xs text-green-600">{externalSuccess}</div>
+            {/if}
+          </div>
+        </div>
+        {/if}
+
+        {#if activeTab === 'procedures'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Procedures Pricing</h2>
+          <p class="text-sm text-gray-600 mb-6">
+            Set default prices for procedures. These prices will be available when preparing prescriptions.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {#each procedurePricing as item}
+              <div class="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div class="text-sm font-medium text-gray-700">{item.name}</div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500">{currency}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    bind:value={item.price}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            {/each}
           </div>
         </div>
         {/if}
@@ -1077,6 +1421,15 @@
             >
               <i class="fas fa-save mr-1 fa-sm"></i>
               Save Template Settings
+            </button>
+          {:else if activeTab === 'procedures'}
+            <button 
+              type="button" 
+              class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center transition-colors duration-200"
+              on:click={saveTemplateSettings}
+            >
+              <i class="fas fa-save mr-1 fa-sm"></i>
+              Save Procedure Prices
             </button>
           {/if}
         </div>

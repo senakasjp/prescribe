@@ -275,6 +275,8 @@
   let editingMedication = null
   let prescriptionNotes = ''
   let prescriptionDiscount = 0 // New discount field
+  let prescriptionProcedures = []
+  let excludeConsultationCharge = false
   let prescriptionsFinalized = false
   let printButtonClicked = false
   
@@ -349,6 +351,10 @@
       // Load symptoms
       symptoms = await firebaseStorage.getSymptomsByPatientId(selectedPatient.id) || []
       console.log('✅ Loaded symptoms:', symptoms.length)
+
+      // Load reports
+      reports = await firebaseStorage.getReportsByPatientId(selectedPatient.id) || []
+      console.log('✅ Loaded reports:', reports.length)
       
       // Set up current prescription and medications
       setupCurrentPrescription()
@@ -359,6 +365,7 @@
       illnesses = []
       prescriptions = []
       symptoms = []
+      reports = []
     } finally {
       loading = false
     }
@@ -391,12 +398,16 @@
       const medicationsWithIds = ensureMedicationIds(currentPrescription.medications || [])
       currentPrescription.medications = medicationsWithIds
       currentMedications = medicationsWithIds
+      prescriptionProcedures = Array.isArray(currentPrescription.procedures) ? currentPrescription.procedures : []
+      excludeConsultationCharge = !!currentPrescription.excludeConsultationCharge
       
       console.log('📅 Set current medications:', currentMedications.length)
     } else {
       console.log('🔧 No existing prescriptions found - will create new one when needed')
       currentPrescription = null
       currentMedications = []
+      prescriptionProcedures = []
+      excludeConsultationCharge = false
     }
     
     // Clear any existing AI analysis when loading data
@@ -422,6 +433,8 @@
       if (updatedPrescription) {
         // Update currentPrescription with the latest data from Firebase
         currentPrescription = updatedPrescription
+        prescriptionProcedures = Array.isArray(updatedPrescription.procedures) ? updatedPrescription.procedures : []
+        excludeConsultationCharge = !!updatedPrescription.excludeConsultationCharge
         console.log('🔍 Updated currentPrescription with latest data:', currentPrescription.id)
       } else {
         console.log('⚠️ Current prescription not found in prescriptions array - this might cause issues')
@@ -923,6 +936,9 @@
         console.log('⚠️ No current prescription to save')
         return
       }
+
+      currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
       
       // Check if prescription already exists in database
       const existingPrescription = prescriptions.find(p => p.id === currentPrescription.id)
@@ -1335,8 +1351,71 @@
   let diagnosticDate = new Date().toISOString().split('T')[0]
   let diagnoses = []
 
+  const updateReport = (reportId, updates) => {
+    const index = reports.findIndex(report => report.id === reportId)
+    if (index === -1) {
+      return
+    }
+    reports = reports.map(report => (report.id === reportId ? { ...report, ...updates } : report))
+  }
+
+  const isAnalysisUnclear = (analysisText) => {
+    if (!analysisText) {
+      return false
+    }
+    const normalized = analysisText.toLowerCase()
+    const indicators = [
+      'unreadable',
+      'not clear',
+      'unclear',
+      'insufficient',
+      'cannot interpret',
+      'non-diagnostic',
+      'poor quality',
+      'blurry'
+    ]
+    return indicators.some(indicator => normalized.includes(indicator))
+  }
+
+  const analyzeReport = async (report) => {
+    if (!report || report.type !== 'image') {
+      return
+    }
+    if (!openaiService.isConfigured()) {
+      updateReport(report.id, { analysisError: 'AI analysis is not configured.', analysisPending: false })
+      return
+    }
+
+    updateReport(report.id, { analysisPending: true, analysisError: '', analysis: null, analysisUnclear: false })
+
+    try {
+      const analyses = await openaiService.analyzeReportImages([report], {
+        patientCountry: selectedPatient?.country || 'Not specified',
+        doctorCountry: currentUser?.country || 'Not specified'
+      })
+      const analysis = analyses[0]?.analysis || 'No analysis available.'
+      updateReport(report.id, {
+        analysis,
+        analysisPending: false,
+        analysisUnclear: isAnalysisUnclear(analysis)
+      })
+    } catch (error) {
+      updateReport(report.id, {
+        analysisError: error.message || 'Failed to analyze report.',
+        analysisPending: false
+      })
+    }
+  }
+
+  const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+
   // Report functions
-  const addReport = () => {
+  const addReport = async () => {
     if (!reportTitle.trim()) {
       reportError = 'Report title is required.'
       return
@@ -1350,19 +1429,53 @@
       return
     }
     
-    const newReport = {
-      id: Date.now().toString(),
+    let imageDataUrl = reportFileDataUrl
+    if (reportType === 'image' && !imageDataUrl && reportFiles[0]) {
+      try {
+        imageDataUrl = await readFileAsDataUrl(reportFiles[0])
+      } catch (error) {
+        reportError = 'Failed to read image file.'
+        return
+      }
+    }
+
+    const reportFilesMeta = reportType !== 'text'
+      ? reportFiles.map(file => ({ name: file.name, size: file.size, type: file.type }))
+      : []
+
+    const reportPayload = {
       title: reportTitle.trim(),
       type: reportType,
       date: reportDate,
       content: reportType === 'text' ? reportText : null,
-      files: reportType !== 'text' ? reportFiles : [],
-      previewUrl: reportType === 'image' ? reportFilePreview : null,
-      dataUrl: reportType === 'image' ? reportFileDataUrl : null,
+      files: reportFilesMeta,
+      dataUrl: reportType === 'image' ? imageDataUrl : null,
+      patientId: selectedPatient?.id || null,
+      doctorId: doctorId || currentUser?.id || currentUser?.uid || null,
+      analysis: null,
+      analysisPending: false,
+      analysisError: '',
+      analysisUnclear: false,
       createdAt: new Date().toISOString()
     }
-    
+
+    let savedReport = null
+    try {
+      savedReport = await firebaseStorage.createReport(reportPayload)
+    } catch (error) {
+      reportError = error.message || 'Failed to save report.'
+      return
+    }
+    const newReport = {
+      ...savedReport,
+      previewUrl: reportType === 'image' ? reportFilePreview : null
+    }
+
     reports = [...reports, newReport]
+
+    if (newReport.type === 'image') {
+      await analyzeReport(newReport)
+    }
     
     // Reset form
     reportTitle = ''
@@ -1400,10 +1513,15 @@
     }
   }
   
-  const removeReport = (reportId) => {
+  const removeReport = async (reportId) => {
     const reportToRemove = reports.find(r => r.id === reportId)
     if (reportToRemove?.previewUrl && reportToRemove.previewUrl.startsWith('blob:')) {
       URL.revokeObjectURL(reportToRemove.previewUrl)
+    }
+    try {
+      await firebaseStorage.deleteReport(reportId)
+    } catch (error) {
+      console.error('Failed to delete report:', error)
     }
     reports = reports.filter(r => r.id !== reportId)
   }
@@ -1537,6 +1655,8 @@
         doctorId: doctor.id,
         medications: currentMedications,
         notes: prescriptionNotes || '',
+        procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
+        excludeConsultationCharge: !!excludeConsultationCharge,
         discount: prescriptionDiscount || 0, // Include discount for pharmacy
         createdAt: new Date().toISOString(),
         status: 'pending'
@@ -1606,6 +1726,18 @@
       const firebaseUser = currentUser || authService.getCurrentUser()
       const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
       
+      const resolvePharmacyDiscount = (prescriptionList = []) => {
+        if (prescriptionDiscount && !isNaN(prescriptionDiscount)) {
+          return Number(prescriptionDiscount)
+        }
+        const directDiscount = currentPrescription?.discount
+        if (directDiscount && !isNaN(directDiscount)) {
+          return Number(directDiscount)
+        }
+        const listDiscount = prescriptionList.find(p => p?.discount && !isNaN(p.discount))?.discount
+        return listDiscount ? Number(listDiscount) : 0
+      }
+
       // Send only the current prescription, not all prescriptions for the patient
       let prescriptions = []
       if (currentPrescription && currentPrescription.medications && currentPrescription.medications.length > 0) {
@@ -1619,6 +1751,16 @@
           console.log('📤 Sending most recent prescription:', allPrescriptions[0].id, 'with', allPrescriptions[0].medications?.length || 0, 'medications')
         }
       }
+
+      const pharmacyDiscount = resolvePharmacyDiscount(prescriptions)
+      const prescriptionsWithDiscount = prescriptions.map(prescription => ({
+        ...prescription,
+        discount: prescription?.discount ?? pharmacyDiscount,
+        procedures: Array.isArray(prescription?.procedures) ? prescription.procedures : prescriptionProcedures,
+        excludeConsultationCharge: typeof prescription?.excludeConsultationCharge === 'boolean'
+          ? prescription.excludeConsultationCharge
+          : !!excludeConsultationCharge
+      }))
       
       console.log('📤 Total prescriptions to send:', prescriptions.length)
       
@@ -1636,7 +1778,9 @@
             doctorName: `${doctor.firstName} ${doctor.lastName}`,
             patientId: selectedPatient.id,
             patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-            prescriptions: prescriptions,
+            discount: pharmacyDiscount,
+            prescriptions: prescriptionsWithDiscount,
+            createdAt: prescriptionsWithDiscount[0]?.createdAt || currentPrescription?.createdAt || new Date().toISOString(),
             sentAt: new Date().toISOString(),
             status: 'pending'
           }
@@ -2809,12 +2953,16 @@
       // Update prescription status to 'saved' (finalized)
       currentPrescription.status = 'finalized'
       currentPrescription.medications = currentMedications
+      currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
       currentPrescription.finalizedAt = new Date().toISOString()
       
       // Save to Firebase
       await firebaseStorage.updatePrescription(currentPrescription.id, {
         status: 'finalized',
         medications: currentMedications,
+        procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
+        excludeConsultationCharge: !!excludeConsultationCharge,
         finalizedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -4305,6 +4453,19 @@
                       <div class="rounded-lg border border-gray-200 overflow-hidden">
                         <img src={report.previewUrl || report.dataUrl} alt="Report image" class="w-full h-auto" />
                       </div>
+                      {#if report.analysisPending}
+                        <p class="text-xs text-gray-500 mt-2">Analyzing image...</p>
+                      {:else if report.analysisError}
+                        <p class="text-xs text-red-600 mt-2">Analysis failed: {report.analysisError}</p>
+                      {:else if report.analysis}
+                        <div class="mt-2 text-xs text-gray-700">
+                          <p class="font-medium text-gray-800 mb-1">AI prediction</p>
+                          <p>{report.analysis}</p>
+                          {#if report.analysisUnclear}
+                            <p class="text-xs text-amber-600 mt-1">Image is not clear enough to diagnose.</p>
+                          {/if}
+                        </div>
+                      {/if}
                     {:else}
                       <div class="wave-file-view">
                       <div class="wave-container flex items-end space-x-1 mb-3">
@@ -4696,6 +4857,8 @@
           {openaiService}
           bind:prescriptionNotes
           bind:prescriptionDiscount
+          bind:prescriptionProcedures
+          bind:excludeConsultationCharge
           currentUserEmail={currentUser?.email}
           onMedicationAdded={handleMedicationAdded}
           onCancelMedication={handleCancelMedication}
@@ -4776,6 +4939,8 @@
               
               currentPrescription = newPrescription;
               currentMedications = [];
+              prescriptionProcedures = [];
+              excludeConsultationCharge = false;
               prescriptionFinished = false;
               prescriptionsFinalized = false;
               

@@ -2767,7 +2767,7 @@
                       {/if}
                       {#if restoreSummary}
                         <div class="mt-3 text-xs text-gray-600">
-                          Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms.
+                          Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms, {restoreSummary.reports || 0} reports.
                         </div>
                       {/if}
                     </div>

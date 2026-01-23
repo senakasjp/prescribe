@@ -1,6 +1,5 @@
 <script>
   import { createEventDispatcher } from 'svelte'
-  import authService from '../services/authService.js'
   import firebaseAuthService from '../services/firebaseAuth.js'
   import { countries } from '../data/countries.js'
   
@@ -82,14 +81,14 @@
           throw new Error('Password cannot contain repeated characters')
         }
         
-        const user = await authService.registerDoctor(email, password, { firstName, lastName, country })
+        const user = await firebaseAuthService.registerDoctorWithEmailPassword(email, password, { firstName, lastName, country })
         console.log('Doctor registered successfully')
         
         // Dispatch event to parent to refresh user state
         dispatch('user-authenticated', user)
       } else {
         // Sign in existing doctor
-        const user = await authService.signInDoctor(email, password)
+        const user = await firebaseAuthService.signInWithEmailPassword(email, password)
         console.log('Doctor signed in successfully')
         
         // Dispatch event to parent to refresh user state

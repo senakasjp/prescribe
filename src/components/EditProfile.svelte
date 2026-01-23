@@ -70,7 +70,8 @@
   let uploadedHeader = null
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
-  
+  let procedurePricing = []
+
   // Reactive variable for cities based on selected country
   $: {
     console.log('🔍 Debug - Reactive statement triggered:')
@@ -84,6 +85,59 @@
       console.error('❌ Error in reactive statement for cities:', error)
       availableCities = []
     }
+  }
+
+  const procedureOptions = [
+    'C&D- type -A',
+    'C&D-type -B',
+    'C&D-type-C',
+    'C&D-type-D',
+    'Suturing- type-A',
+    'Suturing- type-B',
+    'Suturing- type-C',
+    'Suturing- type-D',
+    'Nebulization - Ipra.0.25ml+N. saline2ml',
+    'Nebulization - sal 0. 5ml+Ipra 0. 5ml+N. Saline 3ml',
+    'Nebulization -sal1ml+Ipra1ml+N. Saline2ml',
+    'Nebulization Ipra1ml+N. Saline3ml',
+    'Nebulization - pulmicort(Budesonide)',
+    'catheterization',
+    'IV drip Saline/Dextrose'
+  ]
+
+  const normalizeProcedurePricing = (savedPricing) => {
+    const pricingMap = {}
+
+    if (Array.isArray(savedPricing)) {
+      savedPricing.forEach((item) => {
+        if (item && item.name) {
+          pricingMap[item.name] = item.price ?? ''
+        }
+      })
+    } else if (savedPricing && typeof savedPricing === 'object') {
+      Object.entries(savedPricing).forEach(([name, price]) => {
+        pricingMap[name] = price
+      })
+    }
+
+    return procedureOptions.map((name) => ({
+      name,
+      price: pricingMap[name] ?? ''
+    }))
+  }
+
+  const normalizeProcedurePricingForSave = (pricingList) => {
+    return (pricingList || []).map((item) => {
+      let priceValue = ''
+      if (item && item.price !== '' && item.price !== null && item.price !== undefined) {
+        const parsed = Number(item.price)
+        priceValue = Number.isFinite(parsed) ? parsed : ''
+      }
+      return {
+        name: item?.name || '',
+        price: priceValue
+      }
+    })
   }
   
   
@@ -111,6 +165,11 @@
       consultationCharge = String(user.consultationCharge || '')
       hospitalCharge = String(user.hospitalCharge || '')
       currency = String(user.currency || 'USD')
+      templateType = String(user?.templateSettings?.templateType || templateType)
+      headerSize = user?.templateSettings?.headerSize || headerSize
+      templatePreview = user?.templateSettings?.templatePreview || templatePreview
+      uploadedHeader = user?.templateSettings?.uploadedHeader || uploadedHeader
+      procedurePricing = normalizeProcedurePricing(user?.templateSettings?.procedurePricing)
       
       console.log('🔍 Debug - Form initialized:')
       console.log('  firstName:', firstName, typeof firstName)
@@ -157,6 +216,7 @@
       consultationCharge = ''
       hospitalCharge = ''
       currency = 'USD'
+      procedurePricing = normalizeProcedurePricing(null)
     }
   }
   
@@ -275,7 +335,29 @@
     try {
       console.log('🔍 Saving template settings...')
       
-      // For now, just show success message
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        notifyError('Doctor profile not found. Please try again.')
+        return
+      }
+
+      const templateSettings = {
+        doctorId: doctorId,
+        templateType: templateType,
+        headerSize: headerSize,
+        templatePreview: templatePreview,
+        uploadedHeader: uploadedHeader,
+        procedurePricing: normalizeProcedurePricingForSave(procedurePricing),
+        updatedAt: new Date().toISOString()
+      }
+
+      await firebaseStorage.saveDoctorTemplateSettings(doctorId, templateSettings)
+
+      if (user) {
+        user.templateSettings = templateSettings
+        dispatch('profile-updated', { doctor: user })
+      }
+
       notifySuccess('Template settings saved successfully!')
       
     } catch (error) {
@@ -403,7 +485,7 @@
       <!-- Clean Tab Navigation -->
       <div class="mb-6">
         <div class="flex border-b border-gray-300">
-          <div class="w-1/3">
+          <div class="flex-1">
             <button 
               class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'edit-profile' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
               on:click={() => switchTab('edit-profile')}
@@ -412,7 +494,7 @@
               Edit Profile
             </button>
           </div>
-          <div class="w-1/3">
+          <div class="flex-1">
             <button 
               class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'prescription-template' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
               on:click={() => switchTab('prescription-template')}
@@ -421,7 +503,16 @@
               Prescription Template
             </button>
           </div>
-          <div class="w-1/3">
+          <div class="flex-1">
+            <button 
+              class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'procedures' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
+              on:click={() => switchTab('procedures')}
+            >
+              <i class="fas fa-list-check mr-2"></i>
+              Procedures
+            </button>
+          </div>
+          <div class="flex-1">
             <button 
               class="w-full py-4 px-6 text-center font-medium text-sm {activeTab === 'backup-restore' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500 hover:text-gray-700'}" 
               on:click={() => switchTab('backup-restore')}
@@ -788,6 +879,33 @@
           </div>
           {/if}
           
+          {#if activeTab === 'procedures'}
+          <div class="p-6 bg-white" id="procedures" role="tabpanel" aria-labelledby="procedures-tab">
+            <h6 class="text-sm font-semibold text-gray-800 mb-2">Procedures Pricing</h6>
+            <p class="text-xs text-gray-500 mb-4">
+              Set default prices for procedures. These prices are used in pharmacy billing.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {#each procedurePricing as item}
+                <div class="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <div class="text-sm font-medium text-gray-700">{item.name}</div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">{currency}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      class="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      bind:value={item.price}
+                      placeholder="0.00"
+                    >
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+          {/if}
+
           {#if activeTab === 'backup-restore'}
           <div class="p-6 bg-white" id="backup-restore" role="tabpanel" aria-labelledby="backup-restore-tab">
             <div class="mb-4">
@@ -851,7 +969,7 @@
                 {/if}
                 {#if restoreSummary}
                   <div class="mt-3 text-xs text-gray-600">
-                    Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms.
+                    Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms, {restoreSummary.reports || 0} reports.
                   </div>
                 {/if}
               </div>
@@ -888,6 +1006,15 @@
           >
             <i class="fas fa-save mr-1 fa-sm"></i>
             Save Template Settings
+          </button>
+        {:else if activeTab === 'procedures'}
+          <button 
+            type="button" 
+            class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center"
+            on:click={saveTemplateSettings}
+          >
+            <i class="fas fa-save mr-1 fa-sm"></i>
+            Save Procedure Prices
           </button>
         {/if}
       </div>

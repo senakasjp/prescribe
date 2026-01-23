@@ -44,6 +44,7 @@ const exportDoctorBackup = async (doctorId) => {
   let illnesses = []
   let prescriptions = []
   let longTermMedications = []
+  let reports = []
 
   for (const patient of patients) {
     const patientId = patient.id
@@ -58,6 +59,9 @@ const exportDoctorBackup = async (doctorId) => {
     illnesses = illnesses.concat(patientIllnesses)
     prescriptions = prescriptions.concat(patientPrescriptions)
     longTermMedications = longTermMedications.concat(patientLongTermMeds)
+
+    const patientReports = await firebaseStorage.getReportsByPatientId(patientId)
+    reports = reports.concat(patientReports)
   }
 
   const doctorReport = await firebaseStorage.getDoctorReport(doctorId)
@@ -71,6 +75,7 @@ const exportDoctorBackup = async (doctorId) => {
     doctorReport: doctorReport || null,
     patients,
     symptoms,
+    reports,
     illnesses,
     prescriptions,
     longTermMedications
@@ -119,6 +124,11 @@ const restoreDoctorBackup = async (doctorId, backup, options = {}) => {
     await writeDoc('symptoms', symptom, { doctorId }, writeOptions)
   }
 
+  const reports = Array.isArray(backup.reports) ? backup.reports : []
+  for (const report of reports) {
+    await writeDoc('reports', report, { doctorId }, writeOptions)
+  }
+
   const illnesses = Array.isArray(backup.illnesses) ? backup.illnesses : []
   for (const illness of illnesses) {
     await writeDoc('illnesses', illness, { doctorId }, writeOptions)
@@ -137,6 +147,7 @@ const restoreDoctorBackup = async (doctorId, backup, options = {}) => {
   return {
     patients: patients.length,
     symptoms: symptoms.length,
+    reports: reports.length,
     illnesses: illnesses.length,
     prescriptions: prescriptions.length,
     longTermMedications: longTermMedications.length
