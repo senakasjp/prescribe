@@ -202,13 +202,17 @@
     message: 'Are you sure you want to proceed?',
     confirmText: 'Confirm',
     cancelText: 'Cancel',
-    type: 'warning'
+    type: 'warning',
+    requireCode: false
   }
   let pendingAction = null
+  let deleteCode = ''
   
   // Confirmation modal helper functions
   function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
-    confirmationConfig = { title, message, confirmText, cancelText, type }
+    const normalizedConfirm = String(confirmText || '').toLowerCase()
+    const isDestructive = type === 'danger' && /delete|clear|remove/.test(normalizedConfirm)
+    confirmationConfig = { title, message, confirmText, cancelText, type, requireCode: isDestructive }
     showConfirmationModal = true
   }
   
@@ -223,6 +227,31 @@
   function handleConfirmationCancel() {
     pendingAction = null
     showConfirmationModal = false
+  }
+
+  const handleDeletePatientFromList = (patient) => {
+    if (!patient?.id) return
+    const patientName = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'this patient'
+    pendingAction = async () => {
+      try {
+        await firebaseStorage.deletePatient(patient.id)
+        patients = patients.filter((p) => p.id !== patient.id)
+        filteredPatients = filteredPatients.filter((p) => p.id !== patient.id)
+        if (selectedPatient?.id === patient.id) {
+          selectedPatient = null
+          currentView = 'patients'
+        }
+      } catch (error) {
+        console.error('❌ Error deleting patient:', error)
+      }
+    }
+    showConfirmation(
+      'Delete Patient',
+      `Are you sure you want to delete ${patientName}? This action cannot be undone.`,
+      'Delete',
+      'Cancel',
+      'danger'
+    )
   }
 
   const downloadJsonFile = (data, filename) => {
@@ -1475,6 +1504,7 @@
   onMount(() => {
     loadPatients()
     loadTemplateSettings() // Load saved template settings
+    loadDeleteCode()
     // Create chart after a short delay to ensure DOM is ready
     setTimeout(() => {
       createPrescriptionsChart()
@@ -1496,6 +1526,21 @@
       window.removeEventListener('prescriptionSaved', handlePrescriptionSaved)
     }
   })
+
+  const loadDeleteCode = async () => {
+    try {
+      if (!user?.email) return
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      deleteCode = doctor?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ Error loading delete code:', error)
+      deleteCode = ''
+    }
+  }
+
+  $: if (user?.email) {
+    loadDeleteCode()
+  }
 
   $: if (user?.email && user.email !== lastUserEmail) {
     lastUserEmail = user.email
@@ -1761,6 +1806,13 @@
                     <i class="fas fa-eye mr-1"></i>
                     View
                   </button>
+                  <button
+                    class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
+                    on:click|stopPropagation={() => handleDeletePatientFromList(patient)}
+                  >
+                    <i class="fas fa-trash mr-1"></i>
+                    Delete
+                  </button>
                 </td>
               </tr>
             {/each}
@@ -1806,16 +1858,25 @@
                   <p class="text-xs sm:text-sm text-gray-500">{patient.gender || 'N/A'}</p>
                 </div>
               </div>
-              <button 
-                class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
-                on:click|stopPropagation={() => {
-                  selectPatient(patient)
-                  currentView = 'prescriptions' // Change view to show sidebar layout
-                }}
-              >
-                <i class="fas fa-eye mr-1"></i>
-                View
-              </button>
+              <div class="flex items-center gap-2">
+                <button 
+                  class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => {
+                    selectPatient(patient)
+                    currentView = 'prescriptions' // Change view to show sidebar layout
+                  }}
+                >
+                  <i class="fas fa-eye mr-1"></i>
+                  View
+                </button>
+                <button
+                  class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => handleDeletePatientFromList(patient)}
+                >
+                  <i class="fas fa-trash mr-1"></i>
+                  Delete
+                </button>
+              </div>
             </div>
             
             <div class="space-y-2">
@@ -2798,6 +2859,10 @@
   confirmText={confirmationConfig.confirmText}
   cancelText={confirmationConfig.cancelText}
   type={confirmationConfig.type}
+  requireCode={confirmationConfig.requireCode}
+  expectedCode={deleteCode}
+  codeLabel="Delete Code"
+  codePlaceholder="Enter 6-digit delete code"
   on:confirm={handleConfirmationConfirm}
   on:cancel={handleConfirmationCancel}
   on:close={handleConfirmationCancel}

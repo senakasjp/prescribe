@@ -21,6 +21,26 @@ class FirebaseAuthService {
     this.setupAuthStateListener()
   }
 
+  getOrCreateDeviceId() {
+    if (typeof localStorage === 'undefined') return ''
+    const key = 'prescribe_device_id'
+    let deviceId = localStorage.getItem(key)
+    if (!deviceId) {
+      deviceId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+      localStorage.setItem(key, deviceId)
+    }
+    return deviceId
+  }
+
+  normalizeExternalLoginIdentifier(identifier) {
+    if (!identifier) return identifier
+    const trimmed = String(identifier).trim().toLowerCase()
+    if (!trimmed.includes('@')) {
+      return `${trimmed}@external.local`
+    }
+    return trimmed
+  }
+
   getProviderMeta(firebaseUser) {
     const providerId = firebaseUser?.providerData?.[0]?.providerId || 'password'
     const provider = providerId === 'google.com' ? 'google' : providerId === 'password' ? 'password' : providerId
@@ -66,6 +86,13 @@ class FirebaseAuthService {
     const { provider, authProvider } = this.getProviderMeta(firebaseUser)
 
     if (existingUser) {
+      if (existingUser.externalDoctor && existingUser.allowedDeviceId) {
+        const localDeviceId = this.getOrCreateDeviceId()
+        if (localDeviceId !== existingUser.allowedDeviceId) {
+          await firebaseSignOut(auth)
+          throw new Error('External doctor login is allowed only from the owner doctor device.')
+        }
+      }
       console.log('✅ Updating existing user with Firebase data')
       // Update existing user with Firebase data
       const updatedUser = {
@@ -339,7 +366,8 @@ class FirebaseAuthService {
 
   async signInWithEmailPassword(email, password) {
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password)
+      const resolvedIdentifier = this.normalizeExternalLoginIdentifier(email)
+      const result = await signInWithEmailAndPassword(auth, resolvedIdentifier, password)
       const firebaseUser = result.user
       return await this.handleUserLogin(firebaseUser)
     } catch (error) {
@@ -368,6 +396,7 @@ class FirebaseAuthService {
         accessLevel: profile.accessLevel || 'external_minimal',
         externalDoctor: true,
         invitedByDoctorId: profile.invitedByDoctorId || null,
+        allowedDeviceId: profile.allowedDeviceId,
         uid: firebaseUser.uid,
         provider: 'password',
         authProvider: 'firebase-email',

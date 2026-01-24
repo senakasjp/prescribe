@@ -7,6 +7,7 @@
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
   import ThreeDots from './ThreeDots.svelte'
+  import ConfirmationModal from './ConfirmationModal.svelte'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import HeaderEditor from './HeaderEditor.svelte'
   import backupService from '../services/backupService.js'
@@ -37,7 +38,7 @@
   // External doctor form
   let externalFirstName = ''
   let externalLastName = ''
-  let externalEmail = ''
+  let externalUsername = ''
   let externalPassword = ''
   let externalPasswordConfirm = ''
   let externalPhone = ''
@@ -48,6 +49,9 @@
   let externalError = ''
   let externalSuccess = ''
   let externalAvailableCities = []
+  let resetExternalDeviceModal = false
+  let resetExternalDeviceLoading = false
+  let resetExternalDeviceMessage = ''
 
   // Prescription template variables
   let templateType = '' // Will be set from user.templateSettings
@@ -59,6 +63,8 @@
   let isSaving = false
   let excludePharmacyDrugs = false
   let procedurePricing = []
+  let deleteCode = ''
+  let renewingDeleteCode = false
 
   // Tab management
   let activeTab = 'edit-profile'
@@ -69,11 +75,38 @@
   // Debug: Log initial state
   onMount(() => {
     // Component mounted
+    loadDeleteCode()
   })
 
   // Add debugging to template type reactive statement
   $: {
     // Template type reactive statement
+  }
+
+  $: if (user?.email) {
+    loadDeleteCode()
+  }
+
+  const handleRenewDeleteCode = async () => {
+    if (renewingDeleteCode) return
+    renewingDeleteCode = true
+    try {
+      if (!user?.email) {
+        throw new Error('Doctor email is not available')
+      }
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor?.id) {
+        throw new Error('Doctor profile not found')
+      }
+      const newDeleteCode = firebaseStorage.generateDeleteCode()
+      await firebaseStorage.updateDoctor({ ...doctor, deleteCode: newDeleteCode })
+      deleteCode = newDeleteCode
+      notifySuccess('Delete code renewed successfully!')
+    } catch (err) {
+      notifyError(err?.message || 'Failed to renew delete code')
+    } finally {
+      renewingDeleteCode = false
+    }
   }
 
   // Currency options
@@ -204,6 +237,7 @@
     consultationCharge = String(user?.consultationCharge || '')
     hospitalCharge = String(user?.hospitalCharge || '')
     currency = user?.currency || 'USD'
+    deleteCode = user?.deleteCode || ''
     
     // Load template settings
     if (user?.templateSettings && user.templateSettings.templateType) {
@@ -219,6 +253,17 @@
     }
 
     procedurePricing = normalizeProcedurePricing(user?.templateSettings?.procedurePricing)
+  }
+
+  const loadDeleteCode = async () => {
+    try {
+      if (!user?.email) return
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      deleteCode = doctor?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ SettingsPage: Error loading delete code:', error)
+      deleteCode = ''
+    }
   }
 
   const downloadJsonFile = (data, filename) => {
@@ -282,8 +327,8 @@
       return
     }
 
-    if (!externalEmail.trim()) {
-      externalError = 'Email address is required.'
+    if (!externalUsername.trim()) {
+      externalError = 'Username is required.'
       return
     }
 
@@ -302,9 +347,9 @@
       return
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(externalEmail.trim())) {
-      externalError = 'Please enter a valid email address.'
+    const username = externalUsername.trim().toLowerCase()
+    if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
+      externalError = 'Username must be 3-30 characters (letters, numbers, dot, underscore, hyphen).'
       return
     }
 
@@ -316,11 +361,14 @@
         throw new Error('Unable to link external doctor to your account.')
       }
 
+      const syntheticEmail = `${username}@external.local`
+      const ownerDeviceId = firebaseAuthService.getOrCreateDeviceId()
       const payload = {
         firstName: externalFirstName.trim(),
         lastName: externalLastName.trim(),
         name: `${externalFirstName.trim()} ${externalLastName.trim()}`.trim(),
-        email: externalEmail.trim().toLowerCase(),
+        email: syntheticEmail,
+        username: username,
         phone: externalPhone.trim(),
         specialization: externalSpecialization.trim(),
         country: externalCountry.trim(),
@@ -331,12 +379,13 @@
         accessLevel: 'external_minimal',
         externalDoctor: true,
         invitedByDoctorId: doctorId,
+        allowedDeviceId: ownerDeviceId,
         connectedPharmacists: []
       }
 
       const existingDoctor = await firebaseStorage.getDoctorByEmail(payload.email)
       if (existingDoctor) {
-        throw new Error('A doctor with this email already exists.')
+        throw new Error('This username is already taken.')
       }
 
       await firebaseAuthService.createExternalDoctorAccount(payload.email, externalPassword, {
@@ -346,10 +395,10 @@
         invitedByDoctorId: doctorId
       })
 
-      externalSuccess = 'External doctor added. Share the email and password with them for cross-device login.'
+      externalSuccess = 'External doctor added. Share the username and password with them for login.'
       externalFirstName = ''
       externalLastName = ''
-      externalEmail = ''
+      externalUsername = ''
       externalPassword = ''
       externalPasswordConfirm = ''
       externalPhone = ''
@@ -361,6 +410,38 @@
       notifyError(externalError)
     } finally {
       externalLoading = false
+    }
+  }
+
+  const handleResetExternalDeviceAccess = async () => {
+    resetExternalDeviceLoading = true
+    resetExternalDeviceMessage = ''
+    try {
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Unable to identify the owner doctor.')
+      }
+      const ownerDeviceId = firebaseAuthService.getOrCreateDeviceId()
+      const externalDoctors = await firebaseStorage.getExternalDoctorsByOwnerId(doctorId)
+      if (!externalDoctors.length) {
+        resetExternalDeviceMessage = 'No external doctors found for this account.'
+        notifyError(resetExternalDeviceMessage)
+        resetExternalDeviceModal = false
+        return
+      }
+      await Promise.all(
+        externalDoctors.map((doctor) =>
+          firebaseStorage.updateDoctor({ ...doctor, allowedDeviceId: ownerDeviceId })
+        )
+      )
+      resetExternalDeviceMessage = 'External doctor access was reset to this device.'
+      notifySuccess(resetExternalDeviceMessage)
+    } catch (error) {
+      resetExternalDeviceMessage = error?.message || 'Failed to reset external device access.'
+      notifyError(resetExternalDeviceMessage)
+    } finally {
+      resetExternalDeviceLoading = false
+      resetExternalDeviceModal = false
     }
   }
 
@@ -876,6 +957,33 @@
                   {/each}
                 </select>
               </div>
+
+              <div>
+                <label for="deleteCode" class="block text-sm font-medium text-red-600 mb-2">Delete Code</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="text"
+                    id="deleteCode"
+                    value={deleteCode || 'Not assigned'}
+                    class="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-red-50 text-red-700"
+                    disabled
+                    readonly
+                  />
+                  <button
+                    type="button"
+                    class="inline-flex items-center px-3 py-2 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs font-medium transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                    on:click={handleRenewDeleteCode}
+                    disabled={renewingDeleteCode}
+                  >
+                    {#if renewingDeleteCode}
+                      Renewing...
+                    {:else}
+                      Renew
+                    {/if}
+                  </button>
+                </div>
+                <div class="text-xs text-red-600 mt-1">Use this code to confirm deletions.</div>
+              </div>
               
               <!-- Currency Selection -->
               <div>
@@ -1241,12 +1349,23 @@
         </div>
         {/if}
 
-        {#if activeTab === 'external-doctor'}
+  {#if activeTab === 'external-doctor'}
         <div>
           <h2 class="text-lg font-semibold text-gray-900 mb-4">External Doctor Access</h2>
-          <p class="text-sm text-gray-600 mb-6">
-            Add an outside doctor for temporary coverage. This profile is created with minimum access and can log in from any device.
+          <p class="text-sm text-gray-600">
+            Add an outside doctor for temporary coverage. This profile is created with minimum access and can log in only from the owner doctor's device.
           </p>
+          <div class="flex flex-wrap items-center gap-2 mt-3 mb-6">
+            <span class="text-xs text-gray-500">Replaced this device?</span>
+            <button
+              type="button"
+              class="inline-flex items-center px-3 py-1.5 border border-teal-500 text-teal-600 hover:bg-teal-50 rounded-lg text-xs font-medium transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              on:click={() => (resetExternalDeviceModal = true)}
+              disabled={resetExternalDeviceLoading}
+            >
+              Reset External Device Access
+            </button>
+          </div>
 
           <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1267,11 +1386,12 @@
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Username *</label>
                 <input
-                  type="email"
+                  type="text"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                  bind:value={externalEmail}
+                  bind:value={externalUsername}
+                  placeholder="e.g., dr.username"
                 />
               </div>
               <div>
@@ -1354,8 +1474,19 @@
               <div class="mt-3 text-xs text-green-600">{externalSuccess}</div>
             {/if}
           </div>
-        </div>
-        {/if}
+  </div>
+  {/if}
+
+  <ConfirmationModal
+    visible={resetExternalDeviceModal}
+    title="Reset External Device Access"
+    message="This will update all external doctors to log in only from this device. Continue?"
+    confirmText="Reset"
+    cancelText="Cancel"
+    type="warning"
+    on:confirm={handleResetExternalDeviceAccess}
+    on:cancel={() => (resetExternalDeviceModal = false)}
+  />
 
         {#if activeTab === 'procedures'}
         <div>

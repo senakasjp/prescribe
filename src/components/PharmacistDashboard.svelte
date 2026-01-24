@@ -37,6 +37,23 @@
       console.error('❌ Error loading permanently dispensed medications:', error)
     }
   })
+
+  const loadDoctorDeleteCode = async () => {
+    try {
+      if (!pharmacist?.email) return
+      const doctorData = await firebaseStorage.getDoctorByEmail(pharmacist.email)
+      isDoctorOwnedPharmacy = !!doctorData
+      doctorDeleteCode = doctorData?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ Error loading doctor delete code:', error)
+      doctorDeleteCode = ''
+      isDoctorOwnedPharmacy = false
+    }
+  }
+
+  $: if (pharmacist?.email) {
+    loadDoctorDeleteCode()
+  }
   
   // Pagination for prescriptions
   let currentPrescriptionPage = 1
@@ -525,13 +542,18 @@
     message: 'Are you sure you want to proceed?',
     confirmText: 'Confirm',
     cancelText: 'Cancel',
-    type: 'warning'
+    type: 'warning',
+    requireCode: false
   }
   let pendingAction = null
+  let doctorDeleteCode = ''
+  let isDoctorOwnedPharmacy = false
   
   // Confirmation modal helper functions
   function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
-    confirmationConfig = { title, message, confirmText, cancelText, type }
+    const normalizedConfirm = String(confirmText || '').toLowerCase()
+    const isDestructive = type === 'danger' && /delete|clear|remove/.test(normalizedConfirm)
+    confirmationConfig = { title, message, confirmText, cancelText, type, requireCode: isDestructive && isDoctorOwnedPharmacy }
     showConfirmationModal = true
   }
   
@@ -1849,6 +1871,10 @@
   confirmText={confirmationConfig.confirmText}
   cancelText={confirmationConfig.cancelText}
   type={confirmationConfig.type}
+  requireCode={confirmationConfig.requireCode}
+  expectedCode={doctorDeleteCode}
+  codeLabel="Delete Code"
+  codePlaceholder="Enter 6-digit delete code"
   on:confirm={handleConfirmationConfirm}
   on:cancel={handleConfirmationCancel}
   on:close={handleConfirmationCancel}

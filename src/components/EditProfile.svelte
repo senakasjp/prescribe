@@ -22,6 +22,7 @@
   let currency = 'USD'
   let loading = false
   let error = ''
+  let deleteCode = ''
 
   // Backup/restore state
   let backupLoading = false
@@ -165,6 +166,7 @@
       consultationCharge = String(user.consultationCharge || '')
       hospitalCharge = String(user.hospitalCharge || '')
       currency = String(user.currency || 'USD')
+      deleteCode = String(user.deleteCode || '')
       templateType = String(user?.templateSettings?.templateType || templateType)
       headerSize = user?.templateSettings?.headerSize || headerSize
       templatePreview = user?.templateSettings?.templatePreview || templatePreview
@@ -178,6 +180,17 @@
       console.log('  city:', city, typeof city)
       console.log('  consultationCharge:', consultationCharge, typeof consultationCharge)
       console.log('  hospitalCharge:', hospitalCharge, typeof hospitalCharge)
+    }
+  }
+
+  const loadDeleteCode = async () => {
+    try {
+      if (!user?.email) return
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      deleteCode = doctor?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ Error loading delete code:', error)
+      deleteCode = ''
     }
   }
   
@@ -198,6 +211,7 @@
     })
     
     initializeForm()
+    loadDeleteCode()
   })
   
   // Initialize form fields when user data changes
@@ -205,6 +219,7 @@
     try {
       console.log('🔍 Debug - User changed, initializing form:', user)
       initializeForm()
+      loadDeleteCode()
     } catch (error) {
       console.error('❌ Error initializing form:', error)
       // Set default values to prevent errors
@@ -216,6 +231,7 @@
       consultationCharge = ''
       hospitalCharge = ''
       currency = 'USD'
+      deleteCode = ''
       procedurePricing = normalizeProcedurePricing(null)
     }
   }
@@ -576,7 +592,7 @@
               Email cannot be changed for security reasons
             </div>
           </div>
-          
+
           <div class="mb-3">
             <label for="editCountry" class="block text-sm font-medium text-gray-700 mb-1">
               Country <span class="text-red-600">*</span>

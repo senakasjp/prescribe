@@ -39,6 +39,10 @@ class FirebaseStorageService {
     return Date.now().toString(36) + Math.random().toString(36).substr(2)
   }
 
+  generateDeleteCode() {
+    return String(Math.floor(100000 + Math.random() * 900000))
+  }
+
   // Doctor operations
   async createDoctor(doctorData) {
     try {
@@ -48,6 +52,7 @@ class FirebaseStorageService {
       // Only include serializable fields to avoid Firebase errors
       const serializableData = {
         email: doctorData.email,
+        username: doctorData.username,
         firstName: doctorData.firstName,
         lastName: doctorData.lastName,
         name: doctorData.name,
@@ -63,10 +68,12 @@ class FirebaseStorageService {
         invitedByDoctorId: doctorData.invitedByDoctorId,
         authProvider: doctorData.authProvider,
         connectedPharmacists: doctorData.connectedPharmacists || [],
+        allowedDeviceId: doctorData.allowedDeviceId,
         uid: doctorData.uid,
         displayName: doctorData.displayName,
         photoURL: doctorData.photoURL,
         provider: doctorData.provider,
+        deleteCode: doctorData.deleteCode || this.generateDeleteCode(),
         createdAt: new Date().toISOString()
       }
       
@@ -102,7 +109,13 @@ class FirebaseStorageService {
       }
       
       const doc = querySnapshot.docs[0]
-      return { id: doc.id, ...doc.data() }
+      const data = doc.data()
+      if (!data.deleteCode) {
+        const deleteCode = this.generateDeleteCode()
+        await updateDoc(doc.ref, { deleteCode })
+        data.deleteCode = deleteCode
+      }
+      return { id: doc.id, ...data }
     } catch (error) {
       console.error('Error getting doctor by email:', error)
       throw error
@@ -115,7 +128,13 @@ class FirebaseStorageService {
       const docSnap = await getDoc(docRef)
       
       if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() }
+        const data = docSnap.data()
+        if (!data.deleteCode) {
+          const deleteCode = this.generateDeleteCode()
+          await updateDoc(docRef, { deleteCode })
+          data.deleteCode = deleteCode
+        }
+        return { id: docSnap.id, ...data }
       }
       return null
     } catch (error) {
@@ -131,6 +150,7 @@ class FirebaseStorageService {
       // Only include serializable fields to avoid Firebase errors
       const serializableData = {
         email: updatedDoctor.email,
+        username: updatedDoctor.username,
         firstName: updatedDoctor.firstName,
         lastName: updatedDoctor.lastName,
         name: updatedDoctor.name,
@@ -149,6 +169,8 @@ class FirebaseStorageService {
         invitedByDoctorId: updatedDoctor.invitedByDoctorId,
         authProvider: updatedDoctor.authProvider,
         connectedPharmacists: updatedDoctor.connectedPharmacists,
+        deleteCode: updatedDoctor.deleteCode,
+        allowedDeviceId: updatedDoctor.allowedDeviceId,
         uid: updatedDoctor.uid,
         displayName: updatedDoctor.displayName,
         photoURL: updatedDoctor.photoURL,
@@ -192,6 +214,24 @@ class FirebaseStorageService {
       return doctors
     } catch (error) {
       console.error('Error getting all doctors:', error)
+      throw error
+    }
+  }
+
+  async getExternalDoctorsByOwnerId(ownerDoctorId) {
+    try {
+      const q = query(
+        collection(db, this.collections.doctors),
+        where('invitedByDoctorId', '==', ownerDoctorId),
+        where('externalDoctor', '==', true)
+      )
+      const querySnapshot = await getDocs(q)
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+    } catch (error) {
+      console.error('Error getting external doctors by owner ID:', error)
       throw error
     }
   }
@@ -318,6 +358,7 @@ class FirebaseStorageService {
         businessName: pharmacistData.businessName,
         pharmacistNumber: pharmacistData.pharmacistNumber,
         connectedDoctors: [], // Array of doctor IDs who have connected with this pharmacist
+        deleteCode: pharmacistData.deleteCode || this.generateDeleteCode(),
         createdAt: new Date().toISOString()
       }
       
@@ -342,7 +383,13 @@ class FirebaseStorageService {
       }
       
       const doc = querySnapshot.docs[0]
-      return { id: doc.id, ...doc.data() }
+      const data = doc.data()
+      if (!data.deleteCode) {
+        const deleteCode = this.generateDeleteCode()
+        await updateDoc(doc.ref, { deleteCode })
+        data.deleteCode = deleteCode
+      }
+      return { id: doc.id, ...data }
     } catch (error) {
       console.error('Error getting pharmacist by email:', error)
       throw error
@@ -355,7 +402,13 @@ class FirebaseStorageService {
       const docSnap = await getDoc(docRef)
       
       if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() }
+        const data = docSnap.data()
+        if (!data.deleteCode) {
+          const deleteCode = this.generateDeleteCode()
+          await updateDoc(docRef, { deleteCode })
+          data.deleteCode = deleteCode
+        }
+        return { id: docSnap.id, ...data }
       }
       return null
     } catch (error) {

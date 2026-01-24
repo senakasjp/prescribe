@@ -268,7 +268,7 @@
               </button>
             </div>
           {:else}
-            <PrescriptionList {prescriptions} />
+            <PrescriptionList {prescriptions} {patients} />
           {/if}
         </div>
       {:else if currentView === 'profile'}

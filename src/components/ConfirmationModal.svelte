@@ -8,10 +8,22 @@
   export let cancelText = 'Cancel'
   export let type = 'warning' // 'warning', 'danger', 'info', 'success'
   export let loading = false
+  export let requireCode = false
+  export let expectedCode = ''
+  export let codeLabel = 'Delete Code'
+  export let codePlaceholder = 'Enter 6-digit code'
   
   const dispatch = createEventDispatcher()
+  let codeInput = ''
   
+  $: if (visible) {
+    codeInput = ''
+  }
+
   function handleConfirm() {
+    if (requireCode && codeInput !== String(expectedCode || '')) {
+      return
+    }
     dispatch('confirm')
   }
   
@@ -37,6 +49,8 @@
     info: 'fas fa-info-circle text-blue-600',
     success: 'fas fa-check-circle text-green-600'
   }[type] || 'fas fa-info-circle text-blue-600'
+
+  $: isCodeValid = !requireCode || (codeInput && codeInput === String(expectedCode || ''))
 </script>
 
 {#if visible}
@@ -82,6 +96,24 @@
           <p class="text-base text-gray-500 dark:text-gray-400 leading-relaxed">
             {message}
           </p>
+          {#if requireCode}
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                {codeLabel}
+              </label>
+              <input
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 {codeInput && !isCodeValid ? 'border-red-500' : 'border-gray-300'}"
+                placeholder={codePlaceholder}
+                bind:value={codeInput}
+              />
+              {#if codeInput && !isCodeValid}
+                <div class="text-xs text-red-600 mt-1">Invalid code.</div>
+              {/if}
+            </div>
+          {/if}
         </div>
         
         <!-- Flowbite Modal Footer -->
@@ -99,7 +131,7 @@
             type="button"
             class="text-white {confirmButtonClass} hover:bg-opacity-90 focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:focus:ring-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             on:click={handleConfirm}
-            disabled={loading}
+            disabled={loading || !isCodeValid}
           >
             {#if loading}
               <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -115,5 +147,4 @@
     </div>
   </div>
 {/if}
-
 

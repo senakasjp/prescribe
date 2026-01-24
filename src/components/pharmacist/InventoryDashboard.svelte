@@ -4,6 +4,7 @@
 <script>
   import { onMount } from 'svelte'
   import inventoryService from '../../services/pharmacist/inventoryService.js'
+  import firebaseStorage from '../../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../../stores/notifications.js'
   import ConfirmationModal from '../ConfirmationModal.svelte'
   
@@ -40,6 +41,8 @@
   let confirmationConfig = {}
   let pendingAction = null
   let lastPharmacistId = null
+  let doctorDeleteCode = ''
+  let isDoctorOwnedPharmacy = false
   
   // Form data
   let newItemForm = {
@@ -71,7 +74,25 @@
       lastPharmacistId = pharmacyId
       await loadDashboardData()
     }
+    loadDoctorDeleteCode()
   })
+
+  const loadDoctorDeleteCode = async () => {
+    try {
+      if (!pharmacist?.email) return
+      const doctorData = await firebaseStorage.getDoctorByEmail(pharmacist.email)
+      isDoctorOwnedPharmacy = !!doctorData
+      doctorDeleteCode = doctorData?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ Error loading doctor delete code:', error)
+      doctorDeleteCode = ''
+      isDoctorOwnedPharmacy = false
+    }
+  }
+
+  $: if (pharmacist?.email) {
+    loadDoctorDeleteCode()
+  }
   
   // Load all dashboard data
   const loadDashboardData = async () => {
@@ -262,7 +283,8 @@
       message: 'Are you sure you want to delete this inventory item? This action cannot be undone.',
       confirmText: 'Delete',
       cancelText: 'Cancel',
-      type: 'danger'
+      type: 'danger',
+      requireCode: isDoctorOwnedPharmacy
     }
     
     pendingAction = async () => {
@@ -1296,6 +1318,7 @@
                     <option value="vial">vial</option>
                     <option value="tube">tube</option>
                     <option value="bottle">bottle</option>
+                    <option value="suppository">suppository</option>
                   </select>
                 </div>
               </div>
@@ -1455,6 +1478,10 @@
   confirmText={confirmationConfig.confirmText}
   cancelText={confirmationConfig.cancelText}
   type={confirmationConfig.type}
+  requireCode={confirmationConfig.requireCode}
+  expectedCode={doctorDeleteCode}
+  codeLabel="Delete Code"
+  codePlaceholder="Enter 6-digit delete code"
   on:confirm={handleConfirmation}
   on:cancel={handleCancellation}
 />

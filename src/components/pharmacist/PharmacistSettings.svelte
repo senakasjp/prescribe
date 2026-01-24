@@ -23,6 +23,8 @@
   let pharmacyId = null
   let isPrimaryPharmacy = false
   let canEditProfile = false
+  let doctorDeleteCode = ''
+  let isDoctorOwnedPharmacy = false
   
   // Tab management
   let activeTab = 'edit-profile'
@@ -68,6 +70,8 @@
       city = pharmacist?.city || ''
       currency = pharmacist?.currency || 'USD'
       roundingPreference = pharmacist?.roundingPreference || 'none'
+      doctorDeleteCode = ''
+      isDoctorOwnedPharmacy = false
     } catch (error) {
       console.error('Error initializing form:', error)
       // Set default values if initialization fails
@@ -77,6 +81,21 @@
       city = ''
       currency = 'USD'
       roundingPreference = 'none'
+      doctorDeleteCode = ''
+      isDoctorOwnedPharmacy = false
+    }
+  }
+
+  const loadDoctorDeleteCode = async () => {
+    try {
+      if (!pharmacist?.email) return
+      const doctorData = await firebaseStorage.getDoctorByEmail(pharmacist.email)
+      isDoctorOwnedPharmacy = !!doctorData
+      doctorDeleteCode = doctorData?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ Error loading doctor delete code:', error)
+      doctorDeleteCode = ''
+      isDoctorOwnedPharmacy = false
     }
   }
 
@@ -108,6 +127,10 @@
   // Initialize form when pharmacist changes
   $: if (pharmacist) {
     initializeForm()
+  }
+
+  $: if (pharmacist?.email) {
+    loadDoctorDeleteCode()
   }
 
   $: if (activeTab === 'team' && pharmacyId && teamLoadedFor !== pharmacyId) {

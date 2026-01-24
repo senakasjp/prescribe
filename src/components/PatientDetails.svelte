@@ -247,13 +247,17 @@
     message: 'Are you sure you want to proceed?',
     confirmText: 'Confirm',
     cancelText: 'Cancel',
-    type: 'warning'
+    type: 'warning',
+    requireCode: false
   }
   let pendingAction = null
+  let deleteCode = ''
   
   // Confirmation modal helper functions
   function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
-    confirmationConfig = { title, message, confirmText, cancelText, type }
+    const normalizedConfirm = String(confirmText || '').toLowerCase()
+    const isDestructive = type === 'danger' && /delete|clear|remove/.test(normalizedConfirm)
+    confirmationConfig = { title, message, confirmText, cancelText, type, requireCode: isDestructive }
     showConfirmationModal = true
   }
   
@@ -926,6 +930,22 @@
   const handleCancelIllness = () => {
     showIllnessForm = false
   }
+
+  const buildPatientSnapshot = () => {
+    if (!selectedPatient) return null
+    return {
+      id: selectedPatient.id || '',
+      firstName: selectedPatient.firstName || '',
+      lastName: selectedPatient.lastName || '',
+      age: selectedPatient.age || '',
+      gender: selectedPatient.gender || '',
+      bloodGroup: selectedPatient.bloodGroup || '',
+      phone: selectedPatient.phone || '',
+      email: selectedPatient.email || '',
+      address: selectedPatient.address || '',
+      idNumber: selectedPatient.idNumber || ''
+    }
+  }
   
   // Save or update current prescription to ensure it is persisted
   const saveCurrentPrescriptions = async () => {
@@ -939,6 +959,7 @@
 
       currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
       currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
+      currentPrescription.patient = buildPatientSnapshot()
       
       // Check if prescription already exists in database
       const existingPrescription = prescriptions.find(p => p.id === currentPrescription.id)
@@ -948,7 +969,8 @@
         const savedPrescription = await firebaseStorage.createPrescription({
           ...currentPrescription,
           patientId: selectedPatient.id,
-          doctorId: doctorId
+          doctorId: doctorId,
+          patient: buildPatientSnapshot()
         })
         console.log('✅ Saved new prescription with', currentPrescription.medications.length, 'medications')
         
@@ -964,7 +986,8 @@
         const updatedPrescription = {
           ...currentPrescription,
           patientId: selectedPatient.id,
-          doctorId: doctorId
+          doctorId: doctorId,
+          patient: buildPatientSnapshot()
         }
         
         await firebaseStorage.updatePrescription(currentPrescription.id, updatedPrescription)
@@ -1653,6 +1676,7 @@
         id: Date.now().toString(),
         patientId: selectedPatient.id,
         doctorId: doctor.id,
+        patient: buildPatientSnapshot(),
         medications: currentMedications,
         notes: prescriptionNotes || '',
         procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
@@ -2951,6 +2975,7 @@
       }
       
       // Update prescription status to 'saved' (finalized)
+      currentPrescription.patient = buildPatientSnapshot()
       currentPrescription.status = 'finalized'
       currentPrescription.medications = currentMedications
       currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
@@ -2963,6 +2988,7 @@
         medications: currentMedications,
         procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
         excludeConsultationCharge: !!excludeConsultationCharge,
+        patient: buildPatientSnapshot(),
         finalizedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -3141,7 +3167,24 @@
     if (selectedPatient) {
       loadPatientData()
     }
+    loadDeleteCode()
   })
+
+  const loadDeleteCode = async () => {
+    try {
+      const firebaseUser = currentUser || authService.getCurrentUser()
+      if (!firebaseUser?.email) return
+      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      deleteCode = doctor?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ Error loading delete code:', error)
+      deleteCode = ''
+    }
+  }
+
+  $: if (currentUser?.email) {
+    loadDeleteCode()
+  }
 </script>
 
 {#if loading}
@@ -4931,12 +4974,18 @@
               }
               
               // Create new prescription
-              const newPrescription = await firebaseStorage.createPrescription(
-                selectedPatient.id,
-                doctorId,
-                'New Prescription',
-                'Prescription created from Prescriptions tab'
-              );
+              const newPrescription = await firebaseStorage.createPrescription({
+                patientId: selectedPatient.id,
+                doctorId: doctorId,
+                patient: buildPatientSnapshot(),
+                name: 'New Prescription',
+                notes: 'Prescription created from Prescriptions tab',
+                medications: [],
+                procedures: [],
+                excludeConsultationCharge: false,
+                status: 'draft',
+                createdAt: new Date().toISOString()
+              })
               
               currentPrescription = newPrescription;
               currentMedications = [];
@@ -4984,6 +5033,7 @@
           
           <PrescriptionList
             {prescriptions}
+            {selectedPatient}
           />
         </div>
       {/if}
@@ -4999,6 +5049,10 @@
   confirmText={confirmationConfig.confirmText}
   cancelText={confirmationConfig.cancelText}
   type={confirmationConfig.type}
+  requireCode={confirmationConfig.requireCode}
+  expectedCode={deleteCode}
+  codeLabel="Delete Code"
+  codePlaceholder="Enter 6-digit delete code"
   on:confirm={handleConfirmationConfirm}
   on:cancel={handleConfirmationCancel}
   on:close={handleConfirmationCancel}

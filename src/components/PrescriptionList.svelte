@@ -1,11 +1,21 @@
 <script>
   import { onMount } from 'svelte'
+  import firebaseStorage from '../services/firebaseStorage.js'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   
   export let prescriptions = []
+  export let selectedPatient = null
+  export let patients = []
   
   // Pagination state
   let currentPage = 1
   let itemsPerPage = 5 // Show 5 prescriptions per page
+  let expectedPharmacist = null
+  let chargeTotals = {}
+  let chargesLoading = false
+  let chargesRequestId = 0
+  let patientCache = {}
+  let patientRequestId = 0
   
   // Helper function to get all prescriptions (including those without medications)
   const getAllPrescriptions = () => {
@@ -20,7 +30,8 @@
     return allPrescriptions
   }
   
-  const allPrescriptions = getAllPrescriptions()
+  let allPrescriptions = []
+  $: allPrescriptions = getAllPrescriptions()
   
   // Pagination calculations
   $: totalPages = Math.ceil(allPrescriptions.length / itemsPerPage)
@@ -41,6 +52,236 @@
       month: '2-digit',
       year: 'numeric'
     })
+  }
+
+  const getPatientIdForPrescription = (prescription) => {
+    return (
+      prescription?.patientId ||
+      prescription?.patientID ||
+      prescription?.patient_id ||
+      prescription?.patient?.id ||
+      null
+    )
+  }
+
+  const resolvePatientForPrescription = (prescription) => {
+    if (selectedPatient) return selectedPatient
+    if (prescription?.patient && typeof prescription.patient === 'object') {
+      return prescription.patient
+    }
+    const patientId = getPatientIdForPrescription(prescription)
+    if (!patientId) return null
+    if (Array.isArray(patients)) {
+      const matched = patients.find((patient) => patient.id === patientId)
+      if (matched) return matched
+    }
+    return patientCache[patientId] || null
+  }
+
+  const loadMissingPatients = async () => {
+    const requestId = ++patientRequestId
+    const ids = Array.from(new Set(
+      allPrescriptions
+        .map((prescription) => getPatientIdForPrescription(prescription))
+        .filter(Boolean)
+    ))
+
+    if (!ids.length) {
+      return
+    }
+
+    const missingIds = ids.filter((id) => {
+      if (patientCache[id]) return false
+      if (Array.isArray(patients) && patients.some((patient) => patient.id === id)) {
+        return false
+      }
+      return true
+    })
+
+    if (!missingIds.length) {
+      return
+    }
+
+    try {
+      const results = await Promise.all(
+        missingIds.map((id) => firebaseStorage.getPatientById(id))
+      )
+      if (requestId !== patientRequestId) return
+      const nextCache = { ...patientCache }
+      results.forEach((patient, index) => {
+        if (patient) {
+          nextCache[missingIds[index]] = patient
+        }
+      })
+      patientCache = nextCache
+    } catch (error) {
+      console.error('❌ Error loading patients for prescriptions:', error)
+    }
+  }
+
+  const calculateMedicationQuantity = (medication) => {
+    const frequency = medication?.frequency || ''
+    const duration = medication?.duration || ''
+    const numericMatch = duration.match(/(\d+)/)
+    if (!numericMatch) return 0
+    const days = parseInt(numericMatch[1], 10)
+    if (Number.isNaN(days) || days <= 0) return 0
+
+    let dailyFrequency = 1
+    if (frequency.includes('Once')) {
+      dailyFrequency = 1
+    } else if (frequency.includes('Twice')) {
+      dailyFrequency = 2
+    } else if (frequency.includes('Three')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('Four')) {
+      dailyFrequency = 4
+    } else if (frequency.includes('Every 6 hours')) {
+      dailyFrequency = 4
+    } else if (frequency.includes('Every 8 hours')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('Every 12 hours')) {
+      dailyFrequency = 2
+    } else if (frequency.includes('Weekly')) {
+      dailyFrequency = 1 / 7
+    } else if (frequency.includes('Monthly')) {
+      dailyFrequency = 1 / 30
+    } else if (frequency.includes('Before meals') || frequency.includes('(AC)')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('After meals') || frequency.includes('(PC)')) {
+      dailyFrequency = 3
+    } else if (frequency.includes('At bedtime') || frequency.includes('(HS)')) {
+      dailyFrequency = 1
+    }
+
+    const totalAmount = Math.ceil(dailyFrequency * days)
+    return totalAmount > 0 ? totalAmount : 0
+  }
+
+  const getProcedureList = (prescription) => {
+    const directProcedures = Array.isArray(prescription?.procedures) ? prescription.procedures : []
+    if (directProcedures.length > 0) {
+      return directProcedures
+    }
+    if (Array.isArray(prescription?.prescriptions)) {
+      const nested = prescription.prescriptions
+        .map((entry) => entry?.procedures || [])
+        .flat()
+        .filter(Boolean)
+      return Array.from(new Set(nested))
+    }
+    return []
+  }
+
+  const formatCurrencyDisplay = (amount, currency = 'USD') => {
+    try {
+      if (currency === 'LKR') {
+        return new Intl.NumberFormat('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(amount)
+      }
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency
+      }).format(amount)
+    } catch (error) {
+      console.error('❌ Error formatting currency:', error)
+      return Number(amount || 0).toFixed(2)
+    }
+  }
+
+  const buildChargePayload = (prescription) => {
+    const medications = Array.isArray(prescription?.medications) ? prescription.medications : []
+    const medicationsForCharge = medications.map((medication) => ({
+      ...medication,
+      amount: medication.amount || calculateMedicationQuantity(medication),
+      isDispensed: true
+    }))
+    const procedures = getProcedureList(prescription)
+    const resolvedDiscount = Number.isFinite(Number(prescription?.discount)) ? Number(prescription.discount) : 0
+    const excludeConsultationCharge = !!prescription?.excludeConsultationCharge
+    const doctorIdentifier = prescription?.doctorId || null
+
+    return {
+      id: prescription?.id,
+      doctorId: doctorIdentifier,
+      discount: resolvedDiscount,
+      procedures: procedures,
+      excludeConsultationCharge: excludeConsultationCharge,
+      prescriptions: [
+        {
+          id: prescription?.id,
+          medications: medicationsForCharge,
+          procedures: procedures,
+          discount: resolvedDiscount,
+          excludeConsultationCharge: excludeConsultationCharge
+        }
+      ]
+    }
+  }
+
+  const loadExpectedPharmacist = async () => {
+    const doctorIdentifier = allPrescriptions.find((item) => item?.doctorId)?.doctorId
+    if (!doctorIdentifier) {
+      expectedPharmacist = null
+      return
+    }
+    const doctor = await firebaseStorage.getDoctorById(doctorIdentifier)
+    if (!doctor) {
+      expectedPharmacist = null
+      return
+    }
+    const allPharmacists = await firebaseStorage.getAllPharmacists()
+    const connectedPharmacists = allPharmacists.filter((pharmacist) => {
+      const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
+      const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
+      return pharmacistHasDoctor || doctorHasPharmacist
+    })
+    expectedPharmacist = connectedPharmacists[0] || null
+  }
+
+  const refreshChargeTotals = async () => {
+    if (!allPrescriptions.length) {
+      chargeTotals = {}
+      return
+    }
+    const requestId = ++chargesRequestId
+    chargesLoading = true
+    try {
+      await loadExpectedPharmacist()
+      if (requestId !== chargesRequestId) return
+      if (!expectedPharmacist) {
+        chargeTotals = {}
+        return
+      }
+      const totals = {}
+      for (const prescription of allPrescriptions) {
+        const payload = buildChargePayload(prescription)
+        if (!payload?.doctorId) {
+          continue
+        }
+        const breakdown = await chargeCalculationService.calculatePrescriptionCharge(payload, expectedPharmacist)
+        totals[prescription.id] = breakdown?.totalCharge ?? null
+      }
+      if (requestId === chargesRequestId) {
+        chargeTotals = totals
+      }
+    } catch (error) {
+      console.error('❌ Error calculating prescription totals:', error)
+    } finally {
+      if (requestId === chargesRequestId) {
+        chargesLoading = false
+      }
+    }
+  }
+
+  $: if (allPrescriptions.length > 0) {
+    refreshChargeTotals()
+  }
+
+  $: if (allPrescriptions.length > 0) {
+    loadMissingPatients()
   }
   
   // Pagination functions
@@ -85,37 +326,113 @@
         
         <!-- Medications List -->
         <div class="divide-y divide-gray-200">
+          <div class="p-4 bg-gray-50 border-b border-gray-200">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm text-gray-700">
+              <div class="lg:col-span-2 bg-white border border-gray-200 rounded-lg p-3">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2">
+                  <i class="fas fa-user"></i>
+                  <span>Patient Details</span>
+                </div>
+                {#if resolvePatientForPrescription(prescription)}
+                  {@const patient = resolvePatientForPrescription(prescription)}
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-600">Name:</span>
+                      <span>{patient.firstName} {patient.lastName}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-600">ID:</span>
+                      <span>{patient.idNumber || 'N/A'}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-600">Gender:</span>
+                      <span>{patient.gender || 'N/A'}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-600">Age:</span>
+                      <span>{patient.age || 'N/A'}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-600">Blood Group:</span>
+                      <span>{patient.bloodGroup || 'N/A'}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-600">Phone:</span>
+                      <span>{patient.phone || 'N/A'}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-gray-600">Email:</span>
+                      <span>{patient.email || 'N/A'}</span>
+                    </div>
+                    <div class="flex items-center gap-2 sm:col-span-2">
+                      <span class="font-medium text-gray-600">Address:</span>
+                      <span>{patient.address || 'N/A'}</span>
+                    </div>
+                  </div>
+                {:else}
+                  <div class="text-gray-500">Patient details not available.</div>
+                {/if}
+              </div>
+
+              <div class="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+                <div>
+                  <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2">
+                    <i class="fas fa-notes-medical"></i>
+                    <span>Procedures</span>
+                  </div>
+                  <div class="text-gray-700">
+                    {getProcedureList(prescription).length > 0 ? getProcedureList(prescription).join(', ') : 'None'}
+                  </div>
+                </div>
+                <div class="border-t border-gray-200 pt-3">
+                  <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2">
+                    <i class="fas fa-receipt"></i>
+                    <span>Total (rounded)</span>
+                  </div>
+                  <div class="text-gray-700 font-medium">
+                    {#if chargesLoading}
+                      Calculating...
+                    {:else if chargeTotals[prescription.id] !== undefined && expectedPharmacist}
+                      {#if expectedPharmacist.currency === 'LKR'}
+                        Rs {formatCurrencyDisplay(chargeTotals[prescription.id], expectedPharmacist.currency)}
+                      {:else}
+                        {formatCurrencyDisplay(chargeTotals[prescription.id], expectedPharmacist.currency)}
+                      {/if}
+                    {:else}
+                      N/A
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           {#if prescription.medications && prescription.medications.length > 0}
             {#each prescription.medications as medication, medicationIndex}
-            <div class="p-4 {medicationIndex === prescription.medications.length - 1 ? '' : 'border-b border-gray-200'}">
+            <div class="p-4 {medicationIndex === prescription.medications.length - 1 ? '' : 'border-b border-gray-200'} text-sm text-gray-700">
               <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="col-span-full">
-                  <h6 class="text-lg font-semibold text-teal-600 mb-2">
+                  <h6 class="text-base font-semibold text-teal-600 mb-2">
                     <i class="fas fa-pills mr-2"></i>
                     {medication.name || 'Unknown Medication'}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}
                   </h6>
                 </div>
                 <div>
                   <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Dosage</div>
-                  <div class="font-semibold text-gray-900">{medication.dosage || 'Not specified'}</div>
+                  <div class="font-medium text-gray-900">{medication.dosage || 'Not specified'}</div>
                 </div>
                 <div>
                   <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</div>
-                  <div class="font-semibold text-gray-900">{medication.duration || 'Not specified'}</div>
+                  <div class="font-medium text-gray-900">{medication.duration || 'Not specified'}</div>
                 </div>
                 <div>
                   <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Frequency</div>
-                  <div class="font-semibold text-gray-900">{medication.frequency || 'Not specified'}</div>
+                  <div class="font-medium text-gray-900">{medication.frequency || 'Not specified'}</div>
                 </div>
                 <div>
                   <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Added</div>
-                  <div class="text-gray-600">
+                  <div class="text-gray-600 font-medium">
                     <i class="fas fa-calendar mr-1"></i>
-                    {medication.createdAt ? new Date(medication.createdAt).toLocaleDateString('en-GB', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric'
-                    }) : 'Unknown date'}
+                    {formatPrescriptionDate(prescription.createdAt)}
                   </div>
                 </div>
                 <div class="col-span-full">
@@ -195,4 +512,3 @@
     <p class="text-gray-500">No prescriptions found for this patient.</p>
   </div>
 {/if}
-

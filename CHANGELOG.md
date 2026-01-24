@@ -1,5 +1,35 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.2 - Workflow & Billing Enhancements (January 24, 2026)
+
+### ✅ Prescriptions: Procedures + Consultation Controls
+- Added a procedures/treatments checklist in the doctor prescription flow
+- Added “Exclude consultation charge” option for doctor prescriptions
+- Procedures + exclusion flags are persisted through finalize and send-to-pharmacy
+
+### 💰 Pharmacist Billing Alignment
+- Procedure pricing is included in pharmacist billing totals
+- Doctor charges respect “exclude consultation charge” when present
+- Pharmacist billing table shows procedures in breakdown
+
+### 🧾 Doctor Expected Price
+- Doctor portal shows “Expected Price” after finalizing
+- Uses the same pharmacist billing logic (rounding, currency, discount) for consistency
+
+### 🗓️ Pharmacist Date/Time Accuracy
+- Prescription list now shows **sent time** (not creation time)
+- Date/time is localized to the doctor’s country timezone
+
+### 🔐 Delete Code Confirmation
+- Each doctor gets a 6‑digit delete code stored in profile
+- Destructive actions require the delete code confirmation
+- Code is shown only in doctor Settings (Edit Profile)
+
+### 👤 External Doctor Username Login
+- External doctor creation now uses a username (not email)
+- External doctors log in with **username + password**
+- Normal doctors continue to use email login
+
 ## Version 2.2.26 - Pharmacist Drug Charge Accuracy (January 2025)
 
 ### 💰 Responsive Drug Charge Calculation
