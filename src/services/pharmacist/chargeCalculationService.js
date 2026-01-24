@@ -70,8 +70,11 @@ class ChargeCalculationService {
         selectedProcedures = Array.from(new Set(nestedProcedures))
       }
 
+      const otherProcedurePrice = Number(prescription?.otherProcedurePrice)
       const procedureChargesBreakdown = selectedProcedures.map((name) => {
-        const price = procedurePricingMap[name] ?? 0
+        const price = name === 'Other' && Number.isFinite(otherProcedurePrice)
+          ? otherProcedurePrice
+          : (procedurePricingMap[name] ?? 0)
         return {
           name,
           price: Number.isFinite(price) ? price : 0
@@ -83,9 +86,12 @@ class ChargeCalculationService {
 
       // Get discount percentage from prescription
       const discountPercentage = prescription.discount || 0
-      const discountMultiplier = 1 - (discountPercentage / 100)
-      const discountedDoctorCharges = totalDoctorCharges * discountMultiplier
-      const discountAmount = totalDoctorCharges - discountedDoctorCharges
+      const discountScope = prescription.discountScope || 'consultation'
+      const discountBase = discountScope === 'consultation_hospital'
+        ? (consultationCharge + hospitalCharge)
+        : consultationCharge
+      const discountAmount = discountBase * (discountPercentage / 100)
+      const discountedDoctorCharges = totalDoctorCharges - discountAmount
 
       // Calculate drug charges for dispensed medications
       const drugCharges = await this.calculateDrugCharges(prescription, pharmacist)
@@ -110,6 +116,7 @@ class ChargeCalculationService {
           },
           totalBeforeDiscount: totalDoctorCharges,
           discountPercentage: discountPercentage,
+          discountScope: discountScope,
           discountAmount: discountAmount,
           totalAfterDiscount: discountedDoctorCharges
         },
@@ -475,7 +482,9 @@ class ChargeCalculationService {
     const name = medication.name || ''
     const genericName = medication.genericName || ''
     const dosageForm = medication.dosageForm || medication.form || ''
-    const { strength, unit } = this.parseStrength(medication.dosage, medication.dosageUnit || '')
+    const strengthValue = medication.strength ?? medication.dosage
+    const strengthUnit = (medication.strengthUnit ?? medication.dosageUnit) || ''
+    const { strength, unit } = this.parseStrength(strengthValue, strengthUnit)
 
     const parts = [
       this.normalizeKeyPart(name),
@@ -491,12 +500,13 @@ class ChargeCalculationService {
   buildInventoryKey(item) {
     if (!item) return ''
 
+    const dosageForm = item.dosageForm || item.packUnit || item.unit || ''
     const parts = [
       this.normalizeKeyPart(item.brandName || item.drugName || ''),
       this.normalizeKeyPart(item.genericName || ''),
       this.normalizeKeyPart(item.strength || ''),
       this.normalizeKeyPart(item.strengthUnit || ''),
-      this.normalizeKeyPart(item.dosageForm || '')
+      this.normalizeKeyPart(dosageForm)
     ].filter(Boolean)
 
     return parts.join('|')

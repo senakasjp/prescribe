@@ -38,7 +38,12 @@
       let templateSettings = null
       try {
         const currentDoctor = doctorAuthService.getCurrentDoctor()
-        if (currentDoctor?.email) {
+        if (currentDoctor?.externalDoctor && currentDoctor?.invitedByDoctorId) {
+          const ownerDoctor = await firebaseStorage.getDoctorById(currentDoctor.invitedByDoctorId)
+          if (ownerDoctor?.id) {
+            templateSettings = await firebaseStorage.getDoctorTemplateSettings(ownerDoctor.id)
+          }
+        } else if (currentDoctor?.email) {
           const doctor = await firebaseStorage.getDoctorByEmail(currentDoctor.email)
           if (doctor?.id) {
             templateSettings = await firebaseStorage.getDoctorTemplateSettings(doctor.id)

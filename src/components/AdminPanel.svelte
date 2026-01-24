@@ -66,6 +66,10 @@
     currentAdmin = null
     console.log('👋 Admin signed out')
   }
+
+  const handleBackToApp = () => {
+    dispatch('back-to-app')
+  }
   
 </script>
 
@@ -79,7 +83,7 @@
     />
   {:else if currentAdmin}
     <!-- Admin Dashboard -->
-    <AdminDashboard {currentAdmin} on:admin-signed-out={handleAdminSignedOut} />
+    <AdminDashboard {currentAdmin} on:admin-signed-out={handleAdminSignedOut} {handleBackToApp} />
   {:else}
     <!-- Admin Login -->
     <AdminLogin on:admin-signed-in={handleAdminSignedIn} />

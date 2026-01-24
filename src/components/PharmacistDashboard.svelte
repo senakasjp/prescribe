@@ -38,22 +38,29 @@
     }
   })
 
+  let doctorOwnerProfile = null
+  let displayCurrency = 'USD'
+
   const loadDoctorDeleteCode = async () => {
     try {
       if (!pharmacist?.email) return
       const doctorData = await firebaseStorage.getDoctorByEmail(pharmacist.email)
       isDoctorOwnedPharmacy = !!doctorData
+      doctorOwnerProfile = doctorData || null
       doctorDeleteCode = doctorData?.deleteCode || ''
     } catch (error) {
       console.error('❌ Error loading doctor delete code:', error)
       doctorDeleteCode = ''
       isDoctorOwnedPharmacy = false
+      doctorOwnerProfile = null
     }
   }
 
   $: if (pharmacist?.email) {
     loadDoctorDeleteCode()
   }
+
+  $: displayCurrency = (isDoctorOwnedPharmacy ? doctorOwnerProfile?.currency : pharmacist?.currency) || pharmacist?.currency || 'USD'
   
   // Pagination for prescriptions
   let currentPrescriptionPage = 1
@@ -78,6 +85,32 @@
   let medicationAllocationPreviews = {} // prescriptionId-medicationId -> allocation preview data
   let allocationVersion = 0 // trigger reactivity for allocation previews
   
+  let inventoryMigrationDone = false
+
+  const migrateLegacyInventoryIfNeeded = async () => {
+    if (!pharmacyId || inventoryMigrationDone) return
+    const migrationKey = `prescribe-migrated-drugStock-${pharmacyId}`
+    if (localStorage.getItem(migrationKey)) {
+      inventoryMigrationDone = true
+      return
+    }
+
+    try {
+      const result = await inventoryService.migrateDrugStockToInventory(pharmacyId)
+      localStorage.setItem(migrationKey, new Date().toISOString())
+      inventoryMigrationDone = true
+      if (result?.migrated) {
+        console.log(`✅ Migrated ${result.migrated} legacy inventory items`)
+      }
+    } catch (error) {
+      console.warn('⚠️ Inventory migration failed:', error)
+    }
+  }
+
+  $: if (pharmacyId) {
+    migrateLegacyInventoryIfNeeded()
+  }
+
   // Initialize editable amounts and fetch inventory data when prescription is selected
   // Function to load prescription data when selected
   const loadPrescriptionData = async () => {
@@ -246,6 +279,8 @@
         }, 0)
 
         const earliestEntry = sortedEntries[0] || {}
+        const effectiveEntries = earliestEntry.id ? [earliestEntry] : []
+        const effectiveStock = Number.isFinite(earliestEntry.currentStock) ? earliestEntry.currentStock : aggregatedStock
         const earliestExpiry = earliestEntry.expiryDate || null
         const packUnit = earliestEntry.packUnit || ''
 
@@ -253,26 +288,26 @@
           ...medicationInventoryData,
           [key]: {
             expiryDate: earliestExpiry,
-            currentStock: aggregatedStock,
+            currentStock: effectiveStock,
             packUnit,
             sellingPrice: earliestEntry.sellingPrice,
             brandName: earliestEntry.brandName,
             genericName: earliestEntry.genericName,
             inventoryItemId: earliestEntry.inventoryItemId || null,
-            matches: sortedEntries,
+            matches: effectiveEntries,
             found: true
           }
         }
 
         const existingAmountValue = editableAmounts.get(key)
         const existingNumeric = parseFloat(existingAmountValue)
-        const requestedAmount = Number.isFinite(existingNumeric) && existingNumeric > 0 ? existingNumeric : aggregatedStock
+        const requestedAmount = Number.isFinite(existingNumeric) && existingNumeric > 0 ? existingNumeric : effectiveStock
 
-        const allocation = determineDefaultAllocationAmount(sortedEntries, aggregatedStock, requestedAmount)
+        const allocation = determineDefaultAllocationAmount(effectiveEntries, effectiveStock, requestedAmount)
         if (allocation !== null) {
           const shouldOverride = (
             existingAmountValue === undefined || existingAmountValue === null || existingAmountValue === '' ||
-            (!Number.isFinite(existingNumeric)) || existingNumeric > aggregatedStock
+            (!Number.isFinite(existingNumeric)) || existingNumeric > effectiveStock
           )
           if (shouldOverride) {
             editableAmounts.set(key, allocation)
@@ -341,6 +376,67 @@
       .replace(/[\(\)（）]/g, '') // remove parentheses that often wrap generic names
       .trim()
   }
+  
+  const normalizeKeyPart = (value) => {
+    return (value || '')
+      .toString()
+      .toLowerCase()
+      .replace(/[\u3000\s]+/g, ' ')
+      .replace(/[^\w\s]/g, '')
+      .trim()
+  }
+
+  const parseStrengthParts = (value, fallbackUnit = '') => {
+    if (!value) {
+      return { strength: '', unit: fallbackUnit || '' }
+    }
+
+    if (typeof value === 'number') {
+      return { strength: String(value), unit: fallbackUnit || '' }
+    }
+
+    const normalized = String(value).trim()
+    const match = normalized.match(/^(\d+(?:\.\d+)?)([a-zA-Z%]+)?$/)
+    if (match) {
+      return { strength: match[1], unit: match[2] || fallbackUnit || '' }
+    }
+
+    return { strength: normalized, unit: fallbackUnit || '' }
+  }
+
+  const buildMedicationKey = (medication) => {
+    if (!medication) return ''
+    const dosageForm = medication.dosageForm || medication.form || ''
+    const { strength, unit } = parseStrengthParts(
+      medication.strength ?? medication.dosage,
+      medication.strengthUnit ?? medication.dosageUnit ?? ''
+    )
+
+    const parts = [
+      normalizeKeyPart(medication.name || ''),
+      normalizeKeyPart(medication.genericName || ''),
+      normalizeKeyPart(strength),
+      normalizeKeyPart(unit),
+      normalizeKeyPart(dosageForm)
+    ].filter(Boolean)
+
+    return parts.join('|')
+  }
+
+  const buildInventoryKey = (item) => {
+    if (!item) return ''
+
+    const dosageForm = item.dosageForm || item.packUnit || item.unit || ''
+    const parts = [
+      normalizeKeyPart(item.brandName || item.drugName || ''),
+      normalizeKeyPart(item.genericName || ''),
+      normalizeKeyPart(item.strength || ''),
+      normalizeKeyPart(item.strengthUnit || ''),
+      normalizeKeyPart(dosageForm)
+    ].filter(Boolean)
+
+    return parts.join('|')
+  }
 
   const buildMedicationNameSet = (medication) => {
     const names = new Set()
@@ -395,20 +491,27 @@
     }
 
     const medicationNames = buildMedicationNameSet(medication)
+    const medicationKey = medication.medicationKey || buildMedicationKey(medication)
     console.log('🔍 Matching medication using names:', Array.from(medicationNames))
 
     const matches = []
 
     for (const item of inventoryItems) {
       const itemNames = buildInventoryNameSet(item)
+      const itemKey = buildInventoryKey(item)
+      const keyMatch = medicationKey && itemKey && medicationKey === itemKey
 
       const hasNameMatch = Array.from(medicationNames).some(medName => 
         Array.from(itemNames).some(invName => invName && (invName === medName || invName.includes(medName) || medName.includes(invName)))
       )
 
-      if (hasNameMatch) {
+      const shouldMatchByName = !medicationKey
+
+      if (keyMatch || (shouldMatchByName && hasNameMatch)) {
         console.log('✅ Found matching inventory item:', {
           medicationNames: Array.from(medicationNames),
+          medicationKey,
+          inventoryKey: itemKey,
           inventoryNames: Array.from(itemNames),
           expiryDate: item.expiryDate
         })
@@ -511,8 +614,12 @@
     return medicationAllocationPreviews[key] || { orderedMatches: [], requested: 0, remaining: 0 }
   }
 
-  $: if (selectedPrescription && medicationInventoryVersion) {
-    // Trigger reactivity for allocation previews when amount changes
+  $: if (showPrescriptionDetails && selectedPrescription) {
+    // Recalculate charges when amounts, inventory, or dispensed selection changes
+    editableAmounts
+    dispensedMedications
+    medicationInventoryVersion
+    scheduleChargeRecalculation()
   }
   
   // Get inventory data for a medication
@@ -711,10 +818,11 @@
             brandName: item.brandName
           })))
           
+          const medicationName = String(medication?.name || '').toLowerCase()
           let inventoryItem = inventoryItems.find(item => 
-            item.drugName.toLowerCase() === medication.name.toLowerCase() ||
-            item.genericName?.toLowerCase() === medication.name.toLowerCase() ||
-            item.brandName?.toLowerCase() === medication.name.toLowerCase()
+            String(item.drugName || '').toLowerCase() === medicationName ||
+            String(item.genericName || '').toLowerCase() === medicationName ||
+            String(item.brandName || '').toLowerCase() === medicationName
           )
           
           // Verify the inventory item exists and has a valid ID
@@ -801,6 +909,7 @@
                 sellingPrice: 0,
                 storageLocation: 'Main Storage',
                 storageConditions: 'room_temperature',
+                expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                 description: `Auto-created for dispensed medication: ${medication.name}`
               })
               
@@ -915,6 +1024,15 @@
       try {
         await markPrescriptionAsDispensed()
         console.log('✅ Prescription marked as dispensed in pharmacist records')
+        if (selectedPrescription) {
+          selectedPrescription.status = 'dispensed'
+          selectedPrescription.dispensedAt = new Date().toISOString()
+        }
+        prescriptions = prescriptions.map((entry) =>
+          entry.id === selectedPrescription?.id
+            ? { ...entry, status: 'dispensed', dispensedAt: selectedPrescription?.dispensedAt }
+            : entry
+        )
       } catch (error) {
         console.error('❌ Error marking prescription as dispensed:', error)
         notifyError('Prescription dispensed but failed to update records: ' + error.message)
@@ -1394,7 +1512,11 @@
     try {
       console.log('💰 Starting charge calculation for prescription:', selectedPrescription.id)
       const prescriptionForCharge = buildPrescriptionWithEditableAmounts()
-      chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(prescriptionForCharge, pharmacist)
+      const effectivePharmacist = {
+        ...pharmacist,
+        currency: displayCurrency
+      }
+      chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(prescriptionForCharge, effectivePharmacist)
       console.log('✅ Charge calculation completed:', chargeBreakdown)
     } catch (error) {
       console.error('❌ Error calculating prescription charges:', error)
@@ -2247,33 +2369,33 @@
                     <div class="flex justify-between">
                       <span class="text-gray-600">Consultation Charge:</span>
                       <span class="text-gray-900">
-                        {#if pharmacist.currency === 'LKR'}
-                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, pharmacist.currency)}
-                        {:else}
-                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, pharmacist.currency)}
-                        {/if}
+                      {#if displayCurrency === 'LKR'}
+                        Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, displayCurrency)}
+                      {:else}
+                        {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, displayCurrency)}
+                      {/if}
                       </span>
                     </div>
                     {#if chargeBreakdown.doctorCharges.excludeConsultationCharge}
                       <div class="flex justify-between text-xs text-gray-500">
                         <span>Consultation charge excluded</span>
                         <span>
-                          {#if pharmacist.currency === 'LKR'}
-                            Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, pharmacist.currency)}
-                          {:else}
-                            {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, pharmacist.currency)}
-                          {/if}
+                        {#if displayCurrency === 'LKR'}
+                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, displayCurrency)}
+                        {:else}
+                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, displayCurrency)}
+                        {/if}
                         </span>
                       </div>
                     {/if}
                     <div class="flex justify-between">
                       <span class="text-gray-600">Hospital Charge:</span>
                       <span class="text-gray-900">
-                        {#if pharmacist.currency === 'LKR'}
-                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, pharmacist.currency)}
-                        {:else}
-                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, pharmacist.currency)}
-                        {/if}
+                      {#if displayCurrency === 'LKR'}
+                        Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, displayCurrency)}
+                      {:else}
+                        {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, displayCurrency)}
+                      {/if}
                       </span>
                     </div>
                     {#if chargeBreakdown.doctorCharges.procedureCharges?.breakdown?.length}
@@ -2283,36 +2405,14 @@
                           <div class="flex justify-between">
                             <span class="text-gray-600">{procedure.name}</span>
                             <span class="text-gray-900">
-                              {#if pharmacist.currency === 'LKR'}
-                                Rs {formatCurrencyDisplay(procedure.price, pharmacist.currency)}
-                              {:else}
-                                {formatCurrencyDisplay(procedure.price, pharmacist.currency)}
-                              {/if}
+                          {#if displayCurrency === 'LKR'}
+                            Rs {formatCurrencyDisplay(procedure.price, displayCurrency)}
+                          {:else}
+                            {formatCurrencyDisplay(procedure.price, displayCurrency)}
+                          {/if}
                             </span>
                           </div>
                         {/each}
-                      </div>
-                    {/if}
-                    {#if chargeBreakdown.doctorCharges.discountPercentage > 0}
-                      <div class="flex justify-between">
-                        <span class="text-gray-600">Discount ({chargeBreakdown.doctorCharges.discountPercentage}%):</span>
-                        <span class="text-green-600">
-                          -{#if pharmacist.currency === 'LKR'}
-                            Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
-                          {:else}
-                            {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, pharmacist.currency)}
-                          {/if}
-                        </span>
-                      </div>
-                      <div class="flex justify-between border-t pt-1">
-                        <span class="text-gray-600 font-medium">After Discount:</span>
-                        <span class="text-gray-900 font-medium">
-                          {#if pharmacist.currency === 'LKR'}
-                            Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalAfterDiscount, pharmacist.currency)}
-                          {:else}
-                            {formatCurrencyDisplay(chargeBreakdown.doctorCharges.totalAfterDiscount, pharmacist.currency)}
-                          {/if}
-                        </span>
                       </div>
                     {/if}
                   </div>
@@ -2327,11 +2427,11 @@
                         <span class="text-gray-600">{medication.medicationName}</span>
                         <span class="text-gray-900">
                           {#if medication.found}
-                            {#if pharmacist.currency === 'LKR'}
-                              Rs {formatCurrencyDisplay(medication.totalCost, pharmacist.currency)}
-                            {:else}
-                              {formatCurrencyDisplay(medication.totalCost, pharmacist.currency)}
-                            {/if}
+                        {#if displayCurrency === 'LKR'}
+                          Rs {formatCurrencyDisplay(medication.totalCost, displayCurrency)}
+                        {:else}
+                          {formatCurrencyDisplay(medication.totalCost, displayCurrency)}
+                        {/if}
                           {:else}
                             <span class="text-gray-400 italic">Not available</span>
                           {/if}
@@ -2341,30 +2441,47 @@
                     <div class="flex justify-between border-t pt-1">
                       <span class="text-gray-600 font-medium">Total Drug Cost:</span>
                       <span class="text-gray-900 font-medium">
-                        {#if pharmacist.currency === 'LKR'}
-                          Rs {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, pharmacist.currency)}
-                        {:else}
-                          {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, pharmacist.currency)}
-                        {/if}
+                      {#if displayCurrency === 'LKR'}
+                        Rs {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, displayCurrency)}
+                      {:else}
+                        {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, displayCurrency)}
+                      {/if}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <!-- Rounding Section -->
-                {#if chargeBreakdown.roundingAdjustment !== 0}
-                  <div class="mb-3">
-                    <div class="space-y-1 text-xs sm:text-sm">
-                      <div class="flex justify-between">
-                        <span class="text-gray-600">Subtotal (After Discount):</span>
-                        <span class="text-gray-900">
-                          {#if pharmacist.currency === 'LKR'}
-                            Rs {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, pharmacist.currency)}
-                          {:else}
-                            {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, pharmacist.currency)}
-                          {/if}
+                <!-- Summary Section -->
+                <div class="mb-3">
+                  <div class="space-y-1 text-xs sm:text-sm">
+                    {#if chargeBreakdown.doctorCharges.discountPercentage > 0}
+                      <div class="flex justify-between items-center">
+                        <span class="text-gray-600">
+                          Discount ({chargeBreakdown.doctorCharges.discountPercentage}%):
+                          <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+                            {chargeBreakdown.doctorCharges.discountScope === 'consultation_hospital' ? 'Consultation + Hospital' : 'Consultation only'}
+                          </span>
+                        </span>
+                        <span class="text-green-600">
+                        -{#if displayCurrency === 'LKR'}
+                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, displayCurrency)}
+                        {:else}
+                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, displayCurrency)}
+                        {/if}
                         </span>
                       </div>
+                    {/if}
+                    <div class="flex justify-between">
+                      <span class="text-gray-600">Subtotal:</span>
+                      <span class="text-gray-900">
+                      {#if displayCurrency === 'LKR'}
+                        Rs {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, displayCurrency)}
+                      {:else}
+                        {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, displayCurrency)}
+                      {/if}
+                      </span>
+                    </div>
+                    {#if chargeBreakdown.roundingAdjustment !== 0}
                       <div class="flex justify-between">
                         <span class="text-gray-600">
                           Rounding
@@ -2375,27 +2492,27 @@
                           {/if}:
                         </span>
                         <span class="{chargeBreakdown.roundingAdjustment >= 0 ? 'text-blue-600' : 'text-red-600'}">
-                          {chargeBreakdown.roundingAdjustment >= 0 ? '+' : ''}{#if pharmacist.currency === 'LKR'}
-                            Rs {formatCurrencyDisplay(Math.abs(chargeBreakdown.roundingAdjustment), pharmacist.currency)}
-                          {:else}
-                            {formatCurrencyDisplay(chargeBreakdown.roundingAdjustment, pharmacist.currency)}
-                          {/if}
+                      {chargeBreakdown.roundingAdjustment >= 0 ? '+' : ''}{#if displayCurrency === 'LKR'}
+                        Rs {formatCurrencyDisplay(Math.abs(chargeBreakdown.roundingAdjustment), displayCurrency)}
+                      {:else}
+                        {formatCurrencyDisplay(chargeBreakdown.roundingAdjustment, displayCurrency)}
+                      {/if}
                         </span>
                       </div>
-                    </div>
+                    {/if}
                   </div>
-                {/if}
+                </div>
 
                 <!-- Total Charge -->
                 <div class="border-t pt-3">
                   <div class="flex justify-between items-center">
                     <span class="font-bold text-gray-900 text-sm sm:text-base">Total Charge:</span>
                     <span class="font-bold text-blue-600 text-sm sm:text-base">
-                      {#if pharmacist.currency === 'LKR'}
-                        Rs {formatCurrencyDisplay(chargeBreakdown.totalCharge, pharmacist.currency)}
-                      {:else}
-                        {formatCurrencyDisplay(chargeBreakdown.totalCharge, pharmacist.currency)}
-                      {/if}
+                    {#if displayCurrency === 'LKR'}
+                      Rs {formatCurrencyDisplay(chargeBreakdown.totalCharge, displayCurrency)}
+                    {:else}
+                      {formatCurrencyDisplay(chargeBreakdown.totalCharge, displayCurrency)}
+                    {/if}
                     </span>
                   </div>
                 </div>

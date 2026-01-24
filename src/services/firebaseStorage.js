@@ -236,9 +236,15 @@ class FirebaseStorageService {
     }
   }
 
-  async deleteDoctor(doctorId) {
+  async deleteDoctor(doctorId, options = {}) {
     try {
       console.log('🗑️ Starting doctor deletion process for:', doctorId)
+
+      if (options.skipPatientCleanup) {
+        await deleteDoc(doc(db, this.collections.doctors, doctorId))
+        console.log('✅ Doctor deleted without patient cleanup:', doctorId)
+        return true
+      }
       
       // First, get all patients belonging to this doctor
       console.log('🗑️ Step 1: Getting patients for doctor...')

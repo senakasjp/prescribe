@@ -5,6 +5,7 @@ import {
   collection, 
   doc, 
   addDoc, 
+  setDoc,
   getDoc, 
   getDocs, 
   updateDoc, 
@@ -63,6 +64,47 @@ class InventoryService {
       OVERSTOCK: 'overstock',
       PRICE_CHANGE: 'price_change',
       SUPPLIER_ISSUE: 'supplier_issue'
+    }
+  }
+
+  // ==================== MIGRATIONS ====================
+
+  /**
+   * One-time migration: copy legacy drugStock items into pharmacistInventory
+   */
+  async migrateDrugStockToInventory(pharmacistId) {
+    try {
+      if (!pharmacistId) return { migrated: 0 }
+
+      const legacyQuery = query(
+        collection(db, 'drugStock'),
+        where('pharmacistId', '==', pharmacistId)
+      )
+      const legacySnapshot = await getDocs(legacyQuery)
+      if (legacySnapshot.empty) {
+        return { migrated: 0 }
+      }
+
+      let migrated = 0
+      const batch = writeBatch(db)
+
+      for (const docSnap of legacySnapshot.docs) {
+        const targetRef = doc(db, this.collections.inventory, docSnap.id)
+        const targetSnap = await getDoc(targetRef)
+        if (!targetSnap.exists()) {
+          batch.set(targetRef, docSnap.data())
+          migrated += 1
+        }
+      }
+
+      if (migrated > 0) {
+        await batch.commit()
+      }
+
+      return { migrated }
+    } catch (error) {
+      console.error('❌ Error migrating drugStock to pharmacistInventory:', error)
+      throw error
     }
   }
 
@@ -619,7 +661,7 @@ class InventoryService {
       const inventoryItem = this.prepareInventoryItemData(pharmacistId, itemData)
       
       // Add to Firestore
-      const docRef = await addDoc(collection(db, 'drugStock'), inventoryItem)
+      const docRef = await addDoc(collection(db, this.collections.inventory), inventoryItem)
       
       console.log('✅ Inventory item created successfully:', docRef.id)
       return { id: docRef.id, ...inventoryItem }
@@ -673,7 +715,7 @@ class InventoryService {
       const cleanedData = this.cleanUndefinedValues(updateData)
       
       // Update in Firestore
-      await updateDoc(doc(db, 'drugStock', itemId), cleanedData)
+      await updateDoc(doc(db, this.collections.inventory, itemId), cleanedData)
       
       console.log('✅ Inventory item updated successfully:', itemId)
       return { id: itemId, ...cleanedData }
@@ -691,7 +733,7 @@ class InventoryService {
     try {
       console.log('🗑️ Deleting inventory item:', itemId)
       
-      await deleteDoc(doc(db, 'drugStock', itemId))
+      await deleteDoc(doc(db, this.collections.inventory, itemId))
       
       console.log('✅ Inventory item deleted successfully:', itemId)
       return true
@@ -711,7 +753,7 @@ class InventoryService {
       
       // Use simple query to avoid composite index requirements
       let q = query(
-        collection(db, 'drugStock'),
+        collection(db, this.collections.inventory),
         where('pharmacistId', '==', pharmacistId)
       )
       
@@ -946,7 +988,7 @@ class InventoryService {
       console.log('🔍 Checking for duplicate primary key:', { pharmacistId, brandName, strength, strengthUnit, expiryDate, excludeId })
       
       // Use simple query to avoid composite index requirements
-      const stockRef = collection(db, 'drugStock')
+      const stockRef = collection(db, this.collections.inventory)
       const q = query(stockRef, where('pharmacistId', '==', pharmacistId))
       
       const querySnapshot = await getDocs(q)

@@ -1417,9 +1417,10 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
+                <label for="inventoryBatchNumber" class="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
                 <input 
                   type="text"
+                  id="inventoryBatchNumber"
                   bind:value={selectedItem.batchNumber}
                   placeholder="e.g., BATCH001"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1427,8 +1428,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label for="inventoryDescription" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea 
+                  id="inventoryDescription"
                   bind:value={selectedItem.description}
                   rows="3"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1437,8 +1439,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <label for="inventoryNotes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea 
+                  id="inventoryNotes"
                   bind:value={selectedItem.notes}
                   rows="2"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"

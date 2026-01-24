@@ -53,6 +53,7 @@ class DrugDatabase {
       // Combined search name for backward compatibility
       searchName: this.generateSearchName(drugData.brandName, drugData.genericName, drugData.name),
       dosage: drugData.dosage || '',
+      dosageForm: drugData.dosageForm || '',
       instructions: drugData.instructions || '',
       frequency: drugData.frequency || '',
       duration: drugData.duration || '',
@@ -237,4 +238,3 @@ class DrugDatabase {
 const drugDatabase = new DrugDatabase()
 
 export default drugDatabase
-

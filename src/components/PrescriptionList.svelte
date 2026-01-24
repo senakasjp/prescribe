@@ -6,6 +6,7 @@
   export let prescriptions = []
   export let selectedPatient = null
   export let patients = []
+  export let currency = 'USD'
   
   // Pagination state
   let currentPage = 1
@@ -173,9 +174,9 @@
     return []
   }
 
-  const formatCurrencyDisplay = (amount, currency = 'USD') => {
+  const formatCurrencyDisplay = (amount, currencyCode = 'USD') => {
     try {
-      if (currency === 'LKR') {
+      if (currencyCode === 'LKR') {
         return new Intl.NumberFormat('en-US', {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2
@@ -183,7 +184,7 @@
       }
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: currency
+        currency: currencyCode
       }).format(amount)
     } catch (error) {
       console.error('❌ Error formatting currency:', error)
@@ -316,6 +317,10 @@
               Prescription #{prescriptionIndex + 1} on {formatPrescriptionDate(prescription.createdAt)}
             </h6>
           </div>
+          <div class="text-sm opacity-90 mt-1">
+            <i class="fas fa-user-md mr-1"></i>
+            {prescription.doctorName || prescription.doctor?.name || 'Doctor'}
+          </div>
           {#if prescription.notes}
             <div class="text-sm opacity-90 mt-1">
               <i class="fas fa-sticky-note mr-1"></i>
@@ -393,10 +398,10 @@
                     {#if chargesLoading}
                       Calculating...
                     {:else if chargeTotals[prescription.id] !== undefined && expectedPharmacist}
-                      {#if expectedPharmacist.currency === 'LKR'}
-                        Rs {formatCurrencyDisplay(chargeTotals[prescription.id], expectedPharmacist.currency)}
+                      {#if currency === 'LKR'}
+                        Rs {formatCurrencyDisplay(chargeTotals[prescription.id], currency)}
                       {:else}
-                        {formatCurrencyDisplay(chargeTotals[prescription.id], expectedPharmacist.currency)}
+                        {formatCurrencyDisplay(chargeTotals[prescription.id], currency)}
                       {/if}
                     {:else}
                       N/A

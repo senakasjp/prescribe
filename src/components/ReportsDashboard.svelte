@@ -5,7 +5,9 @@
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
 
   export let user
-
+  
+  let effectiveDoctor = null
+  
   let loading = true
   let errorMessage = ''
   let missingPriceCount = 0
@@ -19,7 +21,19 @@
     monthly: []
   }
 
-  $: currency = user?.currency || 'USD'
+  const loadEffectiveDoctor = async () => {
+    if (user?.externalDoctor && user?.invitedByDoctorId) {
+      effectiveDoctor = await firebaseStorage.getDoctorById(user.invitedByDoctorId)
+    } else {
+      effectiveDoctor = user
+    }
+  }
+
+  $: if (user) {
+    loadEffectiveDoctor()
+  }
+
+  $: currency = effectiveDoctor?.currency || user?.currency || 'USD'
 
   const formatCurrency = (amount) => {
     const safeAmount = Number.isFinite(amount) ? amount : 0
@@ -192,7 +206,7 @@
     missingQuantityCount = 0
 
     try {
-      const doctorId = user?.id || user?.uid
+      const doctorId = effectiveDoctor?.id || user?.id || user?.uid
       if (!doctorId) {
         throw new Error('Doctor ID is missing. Please sign in again.')
       }
@@ -205,8 +219,8 @@
       const pharmacyStock = await pharmacyMedicationService.getPharmacyStock(doctorId)
       const priceLookup = buildPriceLookup(pharmacyStock)
 
-      const consultationCharge = parseNumber(user?.consultationCharge)
-      const hospitalCharge = parseNumber(user?.hospitalCharge)
+      const consultationCharge = parseNumber(effectiveDoctor?.consultationCharge)
+      const hospitalCharge = parseNumber(effectiveDoctor?.hospitalCharge)
       const baseDoctorCharge = consultationCharge + hospitalCharge
 
       const dailyBuckets = buildDailyBuckets()
@@ -297,7 +311,7 @@
 
   const loadCachedReport = async () => {
     try {
-      const doctorId = user?.id || user?.uid
+      const doctorId = effectiveDoctor?.id || user?.id || user?.uid
       if (!doctorId) return
       const cached = await firebaseStorage.getDoctorReport(doctorId)
       if (cached?.report) {
@@ -507,6 +521,7 @@
   }
 
   onMount(async () => {
+    await loadEffectiveDoctor()
     await loadCachedReport()
     await loadReport()
   })

@@ -11,6 +11,7 @@
   
   // Accept admin data as prop from AdminPanel
   export let currentAdmin = null
+  export let handleBackToApp = null
   let statistics = {
     totalDoctors: 0,
     totalPatients: 0,
@@ -432,35 +433,46 @@
 
   // Delete doctor
   const deleteDoctor = async (doctor) => {
+    const targetDoctor = {
+      id: doctor?.id,
+      email: doctor?.email,
+      name: doctor?.name || `${doctor?.firstName || ''} ${doctor?.lastName || ''}`.trim()
+    }
+
     pendingAction = async () => {
       try {
       // Show loading state
-      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      const deleteButton = document.querySelector(`[data-doctor-id="${targetDoctor.id}"]`)
       if (deleteButton) {
         deleteButton.disabled = true
           deleteButton.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Deleting...'
       }
       
-      console.log('🗑️ Admin: Deleting doctor:', doctor.email)
+      console.log('🗑️ Admin: Deleting doctor:', targetDoctor.email)
       
       // Call the delete function
-      await firebaseStorage.deleteDoctor(doctor.id)
+      try {
+        await firebaseStorage.deleteDoctor(targetDoctor.id)
+      } catch (deleteError) {
+        console.warn('⚠️ Full doctor cleanup failed, retrying without patient cleanup:', deleteError)
+        await firebaseStorage.deleteDoctor(targetDoctor.id, { skipPatientCleanup: true })
+      }
       
       // Remove doctor from local array
-      doctors = doctors.filter(d => d.id !== doctor.id)
+      doctors = doctors.filter(d => d.id !== targetDoctor.id)
       
       // Update statistics
       statistics.totalDoctors = doctors.length
       
-      // Recalculate patient counts
-      await loadDoctorsAndPatients()
+      // Refresh doctors list and stats
+      await loadDoctors()
       
       console.log('✅ Admin: Doctor deleted successfully')
         
         // Show success message
         showConfirmation(
           'Success',
-          `Doctor "${doctor.name || doctor.email}" has been deleted successfully.`,
+          `Doctor "${targetDoctor.name || targetDoctor.email}" has been deleted successfully.`,
           'OK',
           '',
           'success'
@@ -472,14 +484,14 @@
         // Show error message
         showConfirmation(
           'Error',
-          'Error deleting doctor. Please try again.',
+          error?.message || 'Error deleting doctor. Please try again.',
           'OK',
           '',
           'danger'
         )
       
       // Reset button state
-      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      const deleteButton = document.querySelector(`[data-doctor-id="${targetDoctor.id}"]`)
       if (deleteButton) {
         deleteButton.disabled = false
           deleteButton.innerHTML = '<i class="fas fa-trash mr-2"></i>Delete'
@@ -489,7 +501,7 @@
     
     showConfirmation(
       'Delete Doctor',
-      `Are you sure you want to delete doctor "${doctor.name || doctor.email}"?\n\nThis will permanently delete:\n• The doctor account\n• All patients belonging to this doctor\n• All prescriptions, symptoms, and illnesses\n• All drug database entries\n\nThis action cannot be undone!`,
+      `Are you sure you want to delete doctor "${targetDoctor.name || targetDoctor.email}"?\n\nThis will permanently delete:\n• The doctor account\n• All patients belonging to this doctor\n• All prescriptions, symptoms, and illnesses\n• All drug database entries\n\nThis action cannot be undone!`,
       'Delete',
       'Cancel',
       'danger'
@@ -514,7 +526,17 @@
           Admin Panel
         </span>
         
-        <div class="flex items-center">
+        <div class="flex items-center gap-3">
+          {#if handleBackToApp}
+            <button
+              type="button"
+              class="text-white border border-gray-500 hover:bg-gray-800 font-medium rounded-lg text-xs px-3 py-1.5 transition-colors duration-200 flex items-center"
+              on:click={handleBackToApp}
+            >
+              <i class="fas fa-user-md mr-2"></i>
+              Doctor Panel
+            </button>
+          {/if}
           <div class="relative">
             <button 
               class="text-white hover:text-gray-300 border-0 bg-transparent py-1 px-2 text-sm flex items-center transition-colors duration-200" 
@@ -695,7 +717,7 @@
                         </tr>
                       </thead>
                       <tbody class="bg-white divide-y divide-gray-200">
-                        {#each doctors as doctor}
+                        {#each doctors as doctor (doctor.id)}
                           <tr class="hover:bg-gray-50">
                             <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
                               <div class="truncate" title={doctor.email}>{doctor.email}</div>
@@ -755,7 +777,7 @@
                   
                   <!-- Mobile Card View -->
                   <div class="lg:hidden space-y-4">
-                    {#each doctors as doctor}
+                    {#each doctors as doctor (doctor.id)}
                       <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
                         <div class="flex flex-col space-y-3">
                           <!-- Header Row -->

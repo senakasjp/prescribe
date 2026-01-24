@@ -19,6 +19,7 @@
   let genericName = '' // Generic name for display
   let dosage = ''
   let dosageUnit = 'mg'
+  let dosageForm = ''
   let route = 'PO'
   let instructions = ''
   let frequency = ''
@@ -82,6 +83,7 @@
     genericName = ''
     dosage = ''
     dosageUnit = 'mg'
+    dosageForm = ''
     route = 'PO' // Set default route
     instructions = ''
     frequency = ''
@@ -97,7 +99,7 @@
     // Force a small delay to ensure state updates
     setTimeout(() => {
       console.log('✅ MedicationForm reset complete - final state:', {
-        name, genericName, dosage, instructions, frequency, duration, startDate, endDate, notes
+        name, genericName, dosage, dosageForm, instructions, frequency, duration, startDate, endDate, notes
       })
     }, 10)
   }
@@ -106,6 +108,7 @@
   $: if (editingMedication && !formInitialized) {
     name = editingMedication.name || ''
     genericName = editingMedication.genericName || ''
+    dosageForm = editingMedication.dosageForm || editingMedication.form || ''
     
     // Parse dosage if it exists
     if (editingMedication.dosage) {
@@ -149,23 +152,25 @@
 
     // Local drugs
     const local = drugDatabase.searchDrugs(doctorId, query).map(d => ({
-      displayName: d.displayName || d.name || d.brandName || d.genericName,
+      displayName: d.brandName || d.name || d.genericName,
       brandName: d.brandName || d.name || '',
       genericName: d.genericName || '',
       strength: d.strength || d.dosage || '',
+      dosageForm: d.dosageForm || d.form || '',
       source: 'local'
     }))
 
     // Inventory drugs
     const inventory = await pharmacyMedicationService.searchMedicationsFromPharmacies(doctorId, query, 20)
     const inventoryMapped = inventory.map(d => ({
-      displayName: d.displayName || d.brandName || d.genericName,
+      displayName: d.brandName || d.drugName || d.displayName || d.genericName,
       brandName: d.brandName || '',
       genericName: d.genericName || '',
       strength: d.strength || '',
       source: 'inventory',
       currentStock: d.currentStock || 0,
       packUnit: d.packUnit || '',
+      dosageForm: d.dosageForm || '',
       expiryDate: d.expiryDate || ''
     }))
 
@@ -237,7 +242,13 @@
     
     // Set generic name
     genericName = s.genericName || ''
+    dosageForm = s.dosageForm || dosageForm || ''
     
+    // If pharmacy has a dosage form, prefer it
+    if (s.dosageForm && !dosageForm) {
+      dosageForm = s.dosageForm
+    }
+
     // If the suggestion has a numeric strength like "500 mg", try to prefill dosage
     if (s.strength && !dosage) {
       const m = String(s.strength).match(/(\d+(?:\.\d+)?)/)
@@ -332,6 +343,7 @@
         genericName: String(genericName ?? '').trim(),
         dosage: String(dosage ?? '').trim() + dosageUnit,
         dosageUnit: dosageUnit,
+        dosageForm: String(dosageForm ?? '').trim(),
         route: String(route ?? '').trim(),
         instructions: String(instructions ?? '').trim(),
         frequency,
@@ -360,6 +372,7 @@
           genericName: String(genericName ?? '').trim(),
           dosage: String(dosage ?? '').trim() + dosageUnit,
           dosageUnit: dosageUnit,
+          dosageForm: String(dosageForm ?? '').trim(),
           instructions: String(instructions ?? '').trim(),
           frequency,
           duration: String(duration ?? '').trim() + ' days',
@@ -381,6 +394,7 @@
       genericName = ''
       dosage = ''
       dosageUnit = 'mg'
+      dosageForm = ''
       route = 'PO' // Set default route
       instructions = ''
       frequency = ''
@@ -528,7 +542,7 @@
                   </div>
                   {#if s.strength}
                     <div class="text-[11px] text-gray-500 mt-1">
-                      Strength: {s.strength}
+                      Strength: {s.strength}{#if s.dosageForm} • Form: {s.dosageForm}{/if}
                       {#if s.source === 'inventory' && s.currentStock !== undefined}
                         <span class="ml-1 text-blue-600 font-medium">({s.currentStock} {s.packUnit || 'units'})</span>
                       {/if}
@@ -613,6 +627,27 @@
               disabled={loading}
             >
           </div>
+        </div>
+        <div>
+          <label for="medicationDosageForm" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
+          <select
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            id="medicationDosageForm"
+            bind:value={dosageForm}
+            disabled={loading}
+          >
+            <option value="">Select dosage form</option>
+            <option value="Tablet">Tablet</option>
+            <option value="Capsule">Capsule</option>
+            <option value="Liquid">Liquid</option>
+            <option value="Injection">Injection</option>
+            <option value="Cream">Cream</option>
+            <option value="Ointment">Ointment</option>
+            <option value="Suppository">Suppository</option>
+            <option value="Drops">Drops</option>
+            <option value="Inhaler">Inhaler</option>
+            <option value="Spray">Spray</option>
+          </select>
         </div>
         <div>
           <label for="medicationFrequency" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Frequency <span class="text-red-500">*</span></label>

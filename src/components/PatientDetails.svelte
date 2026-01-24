@@ -17,11 +17,112 @@
   export let refreshTrigger = 0
   export let doctorId = null
   export let currentUser = null
+  export let authUser = null
+  export let settingsDoctor = null
   export let initialTab = 'overview' // Allow parent to set initial tab
   
   // Event dispatcher to notify parent of data changes
   import { createEventDispatcher } from 'svelte'
   const dispatch = createEventDispatcher()
+
+  const getDoctorSettingsFallback = () => settingsDoctor || currentUser || {}
+  $: effectiveDoctorSettings = getDoctorSettingsFallback()
+
+  const getDisplayDoctorName = (doctorProfile) => {
+    if (currentUser?.firstName || currentUser?.lastName) {
+      return `${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim()
+    }
+    return currentUser?.name || currentUser?.displayName || doctorProfile?.name || doctorProfile?.email || 'Unknown'
+  }
+
+  const getEffectiveDoctorProfile = async () => {
+    if (settingsDoctor?.id) {
+      return settingsDoctor
+    }
+
+    const firebaseUser = currentUser || authService.getCurrentUser()
+    if (firebaseUser?.externalDoctor && firebaseUser?.invitedByDoctorId) {
+      return await firebaseStorage.getDoctorById(firebaseUser.invitedByDoctorId)
+    }
+
+    if (firebaseUser?.email) {
+      return await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+    }
+
+    return null
+  }
+
+  const getSendingDoctorName = () => {
+    const activeUser = authUser || authService.getCurrentUser()
+    const firstLast = `${activeUser?.firstName || ''} ${activeUser?.lastName || ''}`.trim()
+    if (firstLast) {
+      return firstLast
+    }
+    return activeUser?.name || activeUser?.displayName || ''
+  }
+
+  const normalizeKeyPart = (value) => {
+    return (value || '')
+      .toString()
+      .toLowerCase()
+      .replace(/[\u3000\s]+/g, ' ')
+      .replace(/[^\w\s]/g, '')
+      .trim()
+  }
+
+  const parseStrengthParts = (medication) => {
+    const rawStrength = medication?.strength ?? medication?.dosage ?? ''
+    const rawUnit = medication?.strengthUnit ?? medication?.dosageUnit ?? ''
+
+    if (!rawStrength) {
+      return { strength: '', strengthUnit: rawUnit || '' }
+    }
+
+    if (typeof rawStrength === 'number') {
+      return { strength: String(rawStrength), strengthUnit: rawUnit || '' }
+    }
+
+    const normalized = String(rawStrength).trim()
+    const match = normalized.match(/^(\d+(?:\.\d+)?)([a-zA-Z%]+)?$/)
+    if (match) {
+      return { strength: match[1], strengthUnit: match[2] || rawUnit || '' }
+    }
+
+    return { strength: normalized, strengthUnit: rawUnit || '' }
+  }
+
+  const buildMedicationKeyForPharmacy = (medication) => {
+    if (!medication) return ''
+    const { strength, strengthUnit } = parseStrengthParts(medication)
+    const dosageForm = medication?.dosageForm || medication?.form || ''
+    const parts = [
+      normalizeKeyPart(medication?.name),
+      normalizeKeyPart(medication?.genericName),
+      normalizeKeyPart(strength),
+      normalizeKeyPart(strengthUnit),
+      normalizeKeyPart(dosageForm)
+    ].filter(Boolean)
+    return parts.join('|')
+  }
+
+  const enrichMedicationForPharmacy = (medication) => {
+    const { strength, strengthUnit } = parseStrengthParts(medication)
+    const dosageForm = medication?.dosageForm || medication?.form || ''
+    const medicationKey = buildMedicationKeyForPharmacy({
+      ...medication,
+      strength,
+      strengthUnit,
+      dosageForm
+    })
+
+    return {
+      ...medication,
+      strength,
+      strengthUnit,
+      dosageForm,
+      medicationKey
+    }
+  }
   
   let illnesses = []
   let prescriptions = [] // Array of prescription objects (each containing medications)
@@ -279,7 +380,9 @@
   let editingMedication = null
   let prescriptionNotes = ''
   let prescriptionDiscount = 0 // New discount field
+  let prescriptionDiscountScope = 'consultation'
   let prescriptionProcedures = []
+  let otherProcedurePrice = ''
   let excludeConsultationCharge = false
   let prescriptionsFinalized = false
   let printButtonClicked = false
@@ -403,7 +506,10 @@
       currentPrescription.medications = medicationsWithIds
       currentMedications = medicationsWithIds
       prescriptionProcedures = Array.isArray(currentPrescription.procedures) ? currentPrescription.procedures : []
+      otherProcedurePrice = currentPrescription.otherProcedurePrice || ''
       excludeConsultationCharge = !!currentPrescription.excludeConsultationCharge
+      prescriptionDiscount = Number.isFinite(Number(currentPrescription.discount)) ? Number(currentPrescription.discount) : 0
+      prescriptionDiscountScope = currentPrescription.discountScope || 'consultation'
       
       console.log('📅 Set current medications:', currentMedications.length)
     } else {
@@ -411,7 +517,10 @@
       currentPrescription = null
       currentMedications = []
       prescriptionProcedures = []
+      otherProcedurePrice = ''
       excludeConsultationCharge = false
+      prescriptionDiscount = 0
+      prescriptionDiscountScope = 'consultation'
     }
     
     // Clear any existing AI analysis when loading data
@@ -438,6 +547,7 @@
         // Update currentPrescription with the latest data from Firebase
         currentPrescription = updatedPrescription
         prescriptionProcedures = Array.isArray(updatedPrescription.procedures) ? updatedPrescription.procedures : []
+        otherProcedurePrice = updatedPrescription.otherProcedurePrice || ''
         excludeConsultationCharge = !!updatedPrescription.excludeConsultationCharge
         console.log('🔍 Updated currentPrescription with latest data:', currentPrescription.id)
       } else {
@@ -484,13 +594,12 @@
       console.log('🔍 Illnesses:', illnesses.length)
       
       // Get doctor information including country
-      const firebaseUser = currentUser || authService.getCurrentUser()
-      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      const doctor = await getEffectiveDoctorProfile()
       console.log('🔍 Doctor info for analysis:', doctor)
       
       const reportAnalyses = await openaiService.analyzeReportImages(getRecentReportsSummary(), {
         patientCountry: selectedPatient?.country || 'Not specified',
-        doctorCountry: doctor?.country || 'Not specified'
+        doctorCountry: effectiveDoctorSettings?.country || doctor?.country || 'Not specified'
       })
 
       // Prepare comprehensive data for analysis
@@ -529,9 +638,9 @@
         patientEmail: selectedPatient.email,
         
         // Doctor Information
-        doctorName: doctor ? `${doctor.firstName} ${doctor.lastName}` : 'Unknown',
-        doctorCountry: doctor?.country || 'Not specified',
-        doctorCity: doctor?.city || 'Not specified',
+        doctorName: getDisplayDoctorName(doctor),
+        doctorCountry: effectiveDoctorSettings?.country || doctor?.country || 'Not specified',
+        doctorCity: effectiveDoctorSettings?.city || doctor?.city || 'Not specified',
         doctorSpecialization: doctor?.specialization || 'General Practice',
         doctorLicenseNumber: doctor?.licenseNumber || 'Not specified',
         
@@ -574,12 +683,12 @@
 
       // Get doctor information
       const firebaseUser = currentUser || authService.getCurrentUser()
-      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
-      const doctorId = doctor?.id || firebaseUser?.id || firebaseUser?.uid || 'default-user'
+      const doctor = await getEffectiveDoctorProfile()
+      const resolvedDoctorId = doctor?.id || firebaseUser?.id || firebaseUser?.uid || 'default-user'
 
       const reportAnalyses = await openaiService.analyzeReportImages(getRecentReportsSummary(), {
         patientCountry: selectedPatient?.country || 'Not specified',
-        doctorCountry: currentUser?.country || 'Not specified'
+        doctorCountry: effectiveDoctorSettings?.country || 'Not specified'
       })
 
       // Prepare comprehensive patient data
@@ -603,7 +712,7 @@
       }
 
       // Generate patient summary using OpenAI
-      const result = await openaiService.generatePatientSummary(patientData, doctorId)
+      const result = await openaiService.generatePatientSummary(patientData, resolvedDoctorId)
 
       patientSummary = result.summary
       showPatientSummary = true
@@ -958,7 +1067,9 @@
       }
 
       currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      currentPrescription.otherProcedurePrice = otherProcedurePrice
       currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
+      currentPrescription.discountScope = prescriptionDiscountScope || 'consultation'
       currentPrescription.patient = buildPatientSnapshot()
       
       // Check if prescription already exists in database
@@ -970,6 +1081,8 @@
           ...currentPrescription,
           patientId: selectedPatient.id,
           doctorId: doctorId,
+          otherProcedurePrice: otherProcedurePrice,
+          discountScope: prescriptionDiscountScope || 'consultation',
           patient: buildPatientSnapshot()
         })
         console.log('✅ Saved new prescription with', currentPrescription.medications.length, 'medications')
@@ -987,6 +1100,8 @@
           ...currentPrescription,
           patientId: selectedPatient.id,
           doctorId: doctorId,
+          otherProcedurePrice: otherProcedurePrice,
+          discountScope: prescriptionDiscountScope || 'consultation',
           patient: buildPatientSnapshot()
         }
         
@@ -1101,7 +1216,7 @@
 
       const reportAnalyses = await openaiService.analyzeReportImages(getRecentReportsSummary(), {
         patientCountry: selectedPatient?.country || 'Not specified',
-        doctorCountry: currentUser?.country || 'Not specified'
+        doctorCountry: effectiveDoctorSettings?.country || 'Not specified'
       })
 
       const suggestions = await openaiService.generateAIDrugSuggestions(
@@ -1118,7 +1233,7 @@
           recentPrescriptions: getRecentPrescriptionsSummary(),
           recentReports: getRecentReportsSummary(),
           reportAnalyses: reportAnalyses,
-          doctorCountry: currentUser?.country || 'Not specified'
+          doctorCountry: effectiveDoctorSettings?.country || 'Not specified'
         }
       )
 
@@ -1414,7 +1529,7 @@
     try {
       const analyses = await openaiService.analyzeReportImages([report], {
         patientCountry: selectedPatient?.country || 'Not specified',
-        doctorCountry: currentUser?.country || 'Not specified'
+        doctorCountry: effectiveDoctorSettings?.country || 'Not specified'
       })
       const analysis = analyses[0]?.analysis || 'No analysis available.'
       updateReport(report.id, {
@@ -1625,7 +1740,7 @@
       }
       
       // Get the actual doctor data from Firebase
-      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      const doctor = await getEffectiveDoctorProfile()
       console.log('🔍 Doctor from Firebase:', doctor)
       
       if (!doctor) {
@@ -1672,16 +1787,20 @@
       }
       
       // Create prescription data from current medications for sending to pharmacy
+      const sendingDoctorName = getSendingDoctorName() || getDisplayDoctorName(doctor)
       const prescriptionsToSend = [{
         id: Date.now().toString(),
         patientId: selectedPatient.id,
         doctorId: doctor.id,
+        doctorName: sendingDoctorName,
         patient: buildPatientSnapshot(),
-        medications: currentMedications,
+        medications: currentMedications.map(enrichMedicationForPharmacy),
         notes: prescriptionNotes || '',
         procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
+        otherProcedurePrice: otherProcedurePrice,
         excludeConsultationCharge: !!excludeConsultationCharge,
         discount: prescriptionDiscount || 0, // Include discount for pharmacy
+        discountScope: prescriptionDiscountScope || 'consultation',
         createdAt: new Date().toISOString(),
         status: 'pending'
       }]
@@ -1747,8 +1866,7 @@
     try {
       console.log('📤 Sending prescriptions to selected pharmacies:', selectedPharmacies)
       
-      const firebaseUser = currentUser || authService.getCurrentUser()
-      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      const doctor = await getEffectiveDoctorProfile()
       
       const resolvePharmacyDiscount = (prescriptionList = []) => {
         if (prescriptionDiscount && !isNaN(prescriptionDiscount)) {
@@ -1760,6 +1878,18 @@
         }
         const listDiscount = prescriptionList.find(p => p?.discount && !isNaN(p.discount))?.discount
         return listDiscount ? Number(listDiscount) : 0
+      }
+
+      const resolveDiscountScope = (prescriptionList = []) => {
+        if (prescriptionDiscountScope) {
+          return prescriptionDiscountScope
+        }
+        const directScope = currentPrescription?.discountScope
+        if (directScope) {
+          return directScope
+        }
+        const listScope = prescriptionList.find(p => p?.discountScope)?.discountScope
+        return listScope || 'consultation'
       }
 
       // Send only the current prescription, not all prescriptions for the patient
@@ -1777,13 +1907,19 @@
       }
 
       const pharmacyDiscount = resolvePharmacyDiscount(prescriptions)
+      const pharmacyDiscountScope = resolveDiscountScope(prescriptions)
       const prescriptionsWithDiscount = prescriptions.map(prescription => ({
         ...prescription,
         discount: prescription?.discount ?? pharmacyDiscount,
+        discountScope: prescription?.discountScope || pharmacyDiscountScope,
         procedures: Array.isArray(prescription?.procedures) ? prescription.procedures : prescriptionProcedures,
+        otherProcedurePrice: prescription?.otherProcedurePrice ?? otherProcedurePrice,
         excludeConsultationCharge: typeof prescription?.excludeConsultationCharge === 'boolean'
           ? prescription.excludeConsultationCharge
-          : !!excludeConsultationCharge
+          : !!excludeConsultationCharge,
+        medications: Array.isArray(prescription?.medications)
+          ? prescription.medications.map(enrichMedicationForPharmacy)
+          : []
       }))
       
       console.log('📤 Total prescriptions to send:', prescriptions.length)
@@ -1799,10 +1935,11 @@
           const prescriptionData = {
             id: Date.now().toString() + '_' + pharmacistId,
             doctorId: doctor.id,
-            doctorName: `${doctor.firstName} ${doctor.lastName}`,
+            doctorName: sendingDoctorName,
             patientId: selectedPatient.id,
             patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
             discount: pharmacyDiscount,
+            discountScope: pharmacyDiscountScope,
             prescriptions: prescriptionsWithDiscount,
             createdAt: prescriptionsWithDiscount[0]?.createdAt || currentPrescription?.createdAt || new Date().toISOString(),
             sentAt: new Date().toISOString(),
@@ -1887,22 +2024,17 @@
         console.log('🔍 PDF Generation - doctorId:', doctorId)
         console.log('🔍 PDF Generation - currentUser:', currentUser)
         
-        // Get the doctor from Firebase using email to get the correct ID
-        if (currentUser?.email) {
-          const doctor = await firebaseStorage.getDoctorByEmail(currentUser.email)
-          console.log('🔍 PDF Generation - doctor from Firebase:', doctor)
-          
-          if (doctor?.id) {
-            templateSettings = await firebaseStorage.getDoctorTemplateSettings(doctor.id)
-            console.log('📋 Template settings loaded:', templateSettings)
-            console.log('🔍 Template type:', templateSettings?.templateType)
-            console.log('🔍 Template preview:', templateSettings?.templatePreview)
-            console.log('🔍 Header text:', templateSettings?.headerText)
-          } else {
-            console.warn('⚠️ Doctor not found in Firebase for email:', currentUser.email)
-          }
+        const templateDoctor = await getEffectiveDoctorProfile()
+        console.log('🔍 PDF Generation - doctor from Firebase:', templateDoctor)
+        
+        if (templateDoctor?.id) {
+          templateSettings = await firebaseStorage.getDoctorTemplateSettings(templateDoctor.id)
+          console.log('📋 Template settings loaded:', templateSettings)
+          console.log('🔍 Template type:', templateSettings?.templateType)
+          console.log('🔍 Template preview:', templateSettings?.templatePreview)
+          console.log('🔍 Header text:', templateSettings?.headerText)
         } else {
-          console.warn('⚠️ No user email available for template settings')
+          console.warn('⚠️ Doctor not found in Firebase for template settings')
         }
       } catch (error) {
         console.warn('⚠️ Could not load template settings:', error)
@@ -2979,7 +3111,9 @@
       currentPrescription.status = 'finalized'
       currentPrescription.medications = currentMedications
       currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      currentPrescription.otherProcedurePrice = otherProcedurePrice
       currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
+      currentPrescription.discountScope = prescriptionDiscountScope || 'consultation'
       currentPrescription.finalizedAt = new Date().toISOString()
       
       // Save to Firebase
@@ -2987,8 +3121,10 @@
         status: 'finalized',
         medications: currentMedications,
         procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
+        otherProcedurePrice: otherProcedurePrice,
         excludeConsultationCharge: !!excludeConsultationCharge,
         patient: buildPatientSnapshot(),
+        discountScope: prescriptionDiscountScope || 'consultation',
         finalizedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -3172,9 +3308,8 @@
 
   const loadDeleteCode = async () => {
     try {
-      const firebaseUser = currentUser || authService.getCurrentUser()
-      if (!firebaseUser?.email) return
-      const doctor = await firebaseStorage.getDoctorByEmail(firebaseUser.email)
+      const doctor = await getEffectiveDoctorProfile()
+      if (!doctor) return
       deleteCode = doctor?.deleteCode || ''
     } catch (error) {
       console.error('❌ Error loading delete code:', error)
@@ -3182,7 +3317,7 @@
     }
   }
 
-  $: if (currentUser?.email) {
+  $: if (settingsDoctor?.id || currentUser?.email) {
     loadDeleteCode()
   }
 </script>
@@ -4850,7 +4985,7 @@
           currentActiveMedications: getCurrentMedications(),
           recentPrescriptions: getRecentPrescriptionsSummary(),
           recentReports: getRecentReportsSummary(),
-          doctorCountry: currentUser?.country || 'Not specified'
+          doctorCountry: effectiveDoctorSettings?.country || 'Not specified'
         }}
             bind:isShowingAIDiagnostics
             on:ai-usage-updated={(event) => {
@@ -4889,7 +5024,7 @@
           {editingMedication}
           {doctorId}
           allowNonPharmacyDrugs={true}
-          excludePharmacyDrugs={currentUser?.templateSettings?.excludePharmacyDrugs ?? false}
+          excludePharmacyDrugs={effectiveDoctorSettings?.templateSettings?.excludePharmacyDrugs ?? false}
           {currentMedications}
           {prescriptionsFinalized}
           {showAIDrugSuggestions}
@@ -4901,9 +5036,10 @@
           bind:prescriptionNotes
           bind:prescriptionDiscount
           bind:prescriptionProcedures
+          bind:otherProcedurePrice
           bind:excludeConsultationCharge
-          currentUserEmail={currentUser?.email}
-          doctorProfileFallback={currentUser}
+          currentUserEmail={effectiveDoctorSettings?.email}
+          doctorProfileFallback={effectiveDoctorSettings}
           onMedicationAdded={handleMedicationAdded}
           onCancelMedication={handleCancelMedication}
           onEditPrescription={handleEditPrescription}
@@ -4982,6 +5118,7 @@
                 notes: 'Prescription created from Prescriptions tab',
                 medications: [],
                 procedures: [],
+                otherProcedurePrice: '',
                 excludeConsultationCharge: false,
                 status: 'draft',
                 createdAt: new Date().toISOString()
@@ -4990,6 +5127,7 @@
               currentPrescription = newPrescription;
               currentMedications = [];
               prescriptionProcedures = [];
+              otherProcedurePrice = '';
               excludeConsultationCharge = false;
               prescriptionFinished = false;
               prescriptionsFinalized = false;
@@ -5018,6 +5156,7 @@
           }}
           onPrintPrescriptions={printPrescriptions}
           onPrintExternalPrescriptions={printExternalPrescriptions}
+          bind:prescriptionDiscountScope
           />
         </div>
       {/if}
@@ -5034,6 +5173,7 @@
           <PrescriptionList
             {prescriptions}
             {selectedPatient}
+            currency={effectiveDoctorSettings?.currency || 'USD'}
           />
         </div>
       {/if}

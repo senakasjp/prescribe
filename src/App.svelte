@@ -14,6 +14,7 @@
   import AdminPanel from './components/AdminPanel.svelte'
   import SettingsPage from './components/SettingsPage.svelte'
   import ReportsDashboard from './components/ReportsDashboard.svelte'
+  import DoctorGettingStarted from './components/DoctorGettingStarted.svelte'
   import NotificationContainer from './components/NotificationContainer.svelte'
   import LoadingSpinner from './components/LoadingSpinner.svelte'
   import PrivacyPolicyModal from './components/PrivacyPolicyModal.svelte'
@@ -28,6 +29,40 @@
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
   let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'reports', 'settings'
   let prescriptions = [] // All prescriptions for the doctor
+  let settingsDoctor = null
+  
+  $: isExternalDoctor = user?.role === 'doctor' && user?.externalDoctor && user?.invitedByDoctorId
+  $: effectiveUser = isExternalDoctor && settingsDoctor
+    ? { ...user, country: settingsDoctor?.country, city: settingsDoctor?.city }
+    : user
+
+  const loadSettingsDoctor = async () => {
+    try {
+      if (!user) {
+        settingsDoctor = null
+        return
+      }
+
+      if (isExternalDoctor) {
+        settingsDoctor = await firebaseStorage.getDoctorById(user.invitedByDoctorId)
+        return
+      }
+
+      if (user?.email) {
+        settingsDoctor = await firebaseStorage.getDoctorByEmail(user.email)
+        return
+      }
+
+      settingsDoctor = user
+    } catch (error) {
+      console.warn('⚠️ App.svelte: Failed to load settings doctor:', error)
+      settingsDoctor = user || null
+    }
+  }
+
+  $: if (user?.email) {
+    loadSettingsDoctor()
+  }
   
   // Handle menu navigation
   const handleMenuNavigation = async (view) => {
@@ -43,6 +78,9 @@
   
   // Handle settings click from menubar
   const handleSettingsClick = () => {
+    if (isExternalDoctor) {
+      return
+    }
     currentView = 'settings'
   }
   
@@ -50,9 +88,10 @@
   const loadPrescriptions = async () => {
     if (user && user.role === 'doctor') {
       try {
-        console.log('🔍 App.svelte: Loading prescriptions for doctor:', user.id)
+        const effectiveDoctorId = isExternalDoctor ? user.invitedByDoctorId : user.id
+        console.log('🔍 App.svelte: Loading prescriptions for doctor:', effectiveDoctorId)
         console.log('🔍 App.svelte: User object:', user)
-        prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(user.id)
+        prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(effectiveDoctorId)
         console.log('🔍 App.svelte: Loaded prescriptions:', prescriptions.length)
         console.log('🔍 App.svelte: Prescriptions data:', prescriptions)
       } catch (error) {
@@ -62,6 +101,14 @@
     } else {
       console.log('🔍 App.svelte: Not loading prescriptions - user role:', user?.role)
     }
+  }
+
+  $: if (currentView === 'settings' && isExternalDoctor) {
+    currentView = 'home'
+  }
+
+  $: if (currentView === 'reports' && isExternalDoctor) {
+    currentView = 'home'
   }
   
   
@@ -737,25 +784,40 @@
                   <span class="sm:hidden hidden xs:inline">Pharm</span>
                 </button>
               </li>
+              {#if !isExternalDoctor}
+                <li>
+                  <button 
+                    type="button"
+                    class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'reports' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                    on:click={() => handleMenuNavigation('reports')}
+                  >
+                    <i class="fas fa-chart-bar mr-1 sm:mr-2"></i>
+                    <span class="hidden sm:inline">Reports</span>
+                    <span class="sm:hidden hidden xs:inline">Reports</span>
+                  </button>
+                </li>
+              {/if}
+              {#if !isExternalDoctor}
+                <li>
+                  <button 
+                    type="button"
+                    class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
+                    on:click={handleSettingsClick}
+                  >
+                    <i class="fas fa-user-cog mr-1 sm:mr-2"></i>
+                    <span class="hidden xs:inline">Settings</span>
+                  </button>
+                </li>
+              {/if}
               <li>
                 <button 
                   type="button"
-                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'reports' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
-                  on:click={() => handleMenuNavigation('reports')}
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'help' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                  on:click={() => handleMenuNavigation('help')}
                 >
-                  <i class="fas fa-chart-bar mr-1 sm:mr-2"></i>
-                  <span class="hidden sm:inline">Reports</span>
-                  <span class="sm:hidden hidden xs:inline">Reports</span>
-                </button>
-              </li>
-              <li>
-                <button 
-                  type="button"
-                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
-                  on:click={handleSettingsClick}
-                >
-                  <i class="fas fa-user-cog mr-1 sm:mr-2"></i>
-                  <span class="hidden xs:inline">Settings</span>
+                  <i class="fas fa-question-circle mr-1 sm:mr-2"></i>
+                  <span class="hidden sm:inline">Help</span>
+                  <span class="sm:hidden hidden xs:inline">Help</span>
                 </button>
               </li>
             </ul>
@@ -767,7 +829,7 @@
     <div class="p-4">
       {#if currentView === 'settings'}
         <SettingsPage 
-          {user}
+          user={effectiveUser}
           on:profile-updated={handleProfileUpdate}
           on:user-updated={handleUserUpdate}
           on:back-to-app={() => currentView = 'home'}
@@ -799,18 +861,24 @@
               </button>
             </div>
           {:else}
-            <PrescriptionList {prescriptions} />
+            <PrescriptionList 
+              {prescriptions}
+              currency={settingsDoctor?.currency || user?.currency || 'USD'}
+            />
           {/if}
         </div>
       {:else if currentView === 'reports'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <ReportsDashboard {user} />
+          <ReportsDashboard user={effectiveUser} />
         </div>
+      {:else if currentView === 'help'}
+        <DoctorGettingStarted {user} />
       {:else}
         <PatientManagement 
-            {user} 
+            user={effectiveUser} 
+            authUser={user}
             {currentView}
-            key={user?.firstName && user?.lastName ? `${user.firstName}-${user.lastName}-${user.country}` : user?.email || 'default'} 
+            key={effectiveUser?.firstName && effectiveUser?.lastName ? `${effectiveUser.firstName}-${effectiveUser.lastName}-${effectiveUser.country}` : effectiveUser?.email || 'default'} 
             on:ai-usage-updated={refreshDoctorUsageStats} 
             on:profile-updated={handleProfileUpdate}
             on:view-change={(e) => handleMenuNavigation(e.detail)}

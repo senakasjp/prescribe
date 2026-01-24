@@ -268,7 +268,7 @@
               </button>
             </div>
           {:else}
-            <PrescriptionList {prescriptions} {patients} />
+            <PrescriptionList {prescriptions} {patients} currency={doctor?.currency || 'USD'} />
           {/if}
         </div>
       {:else if currentView === 'profile'}

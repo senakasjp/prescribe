@@ -18,12 +18,13 @@
   
   const dispatch = createEventDispatcher()
   export let user
+  export let authUser = null
   export let currentView = 'patients' // Navigation from menubar: 'home', 'patients', 'prescriptions', 'pharmacies'
   
   export let openSettings = false // Trigger to open settings modal
   
   // Watch for openSettings trigger from menubar
-  $: if (openSettings) {
+  $: if (openSettings && !isExternalDoctor) {
     editingProfile = true
     editFirstName = user?.firstName || ''
     editLastName = user?.lastName || ''
@@ -59,6 +60,9 @@
 
   // Get doctor's data from storage - reactive to user changes
   let doctorData = null
+  let ownerDoctor = null
+  let settingsDoctor = null
+  $: isExternalDoctor = user?.externalDoctor && user?.invitedByDoctorId
   
   // Load doctor data when user changes
   $: if (user?.email) {
@@ -67,21 +71,31 @@
   
   // Reactive doctorId that updates when doctorData changes
   // Use consistent ID logic that matches App.svelte
-  $: doctorId = doctorData?.id || user?.id || user?.uid || user?.email || 'default-user'
+  $: doctorId = settingsDoctor?.id || doctorData?.id || user?.id || user?.uid || user?.email || 'default-user'
   
   const loadDoctorData = async () => {
     try {
+      if (isExternalDoctor && user?.invitedByDoctorId) {
+        ownerDoctor = await firebaseStorage.getDoctorById(user.invitedByDoctorId)
+        doctorData = ownerDoctor
+        settingsDoctor = ownerDoctor || user
+        return
+      }
+      
+      ownerDoctor = null
       doctorData = await firebaseStorage.getDoctorByEmail(user.email)
+      settingsDoctor = doctorData || user
     } catch (error) {
       console.error('Error loading doctor data:', error)
       doctorData = null
+      settingsDoctor = null
     }
   }
   $: doctorName = userProfileData.firstName && userProfileData.lastName ? 
     `${userProfileData.firstName} ${userProfileData.lastName}` : 
     userProfileData.firstName || user?.displayName || user?.name || user?.email || 'Doctor'
-  $: doctorCountry = userProfileData.country || 'Not specified'
-  $: doctorCity = userProfileData.city || 'Not specified'
+  $: doctorCountry = settingsDoctor?.country || userProfileData.country || 'Not specified'
+  $: doctorCity = settingsDoctor?.city || userProfileData.city || 'Not specified'
   
   // Force reactive updates when user properties change
   $: userDisplayName = userProfileData.firstName && userProfileData.lastName ? 
@@ -385,7 +399,7 @@
       loading = true
       
       // Always get the doctor from Firebase to ensure we have the correct ID
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      const doctor = await resolveSettingsDoctor()
       
       if (!doctor) {
         throw new Error('Doctor not found in database')
@@ -482,9 +496,9 @@
       }
       
       // Get the doctor from Firebase to ensure we have the correct ID
-      console.log('🔍 PatientManagement: Getting doctor from Firebase for email:', user.email)
-      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
-      console.log('🔍 PatientManagement: Doctor from Firebase:', doctor)
+      console.log('🔍 PatientManagement: Resolving owner doctor for patient creation')
+      let doctor = await resolveSettingsDoctor()
+      console.log('🔍 PatientManagement: Doctor resolved:', doctor)
       
       // If doctor not found in Firebase, try to use the user object directly
       if (!doctor) {
@@ -1214,6 +1228,9 @@
   
   // Handle edit profile click - show inline tabbed interface
   const handleEditProfile = () => {
+    if (isExternalDoctor) {
+      return
+    }
     editingProfile = true
     // Initialize form fields with current user data
     editFirstName = user?.firstName || ''
@@ -1374,19 +1391,29 @@
       templatePreview.email = contactMatch[2].replace(/<[^>]*>/g, '')
     }
   }
+
+  const resolveSettingsDoctor = async () => {
+    if (settingsDoctor?.id) {
+      return settingsDoctor
+    }
+
+    if (isExternalDoctor && user?.invitedByDoctorId) {
+      return await firebaseStorage.getDoctorById(user.invitedByDoctorId)
+    }
+
+    if (user?.email) {
+      return await firebaseStorage.getDoctorByEmail(user.email)
+    }
+
+    return null
+  }
   
   // Load template settings
   const loadTemplateSettings = async () => {
     try {
-      if (!user?.email) {
-        console.log('⚠️ No user email available for loading template settings')
-        return
-      }
-
-      // Get the doctor from Firebase using email
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      const doctor = await resolveSettingsDoctor()
       if (!doctor) {
-        console.log('⚠️ Doctor not found in Firebase for email:', user.email)
+        console.log('⚠️ Doctor not found in Firebase for template settings')
         return
       }
 
@@ -1420,6 +1447,17 @@
   // Save template settings
   const saveTemplateSettings = async () => {
     try {
+      if (isExternalDoctor) {
+        showConfirmation(
+          'Settings Restricted',
+          'External doctors cannot update template settings.',
+          'OK',
+          '',
+          'warning'
+        )
+        return
+      }
+
       console.log('🔍 saveTemplateSettings: User object:', user)
       console.log('🔍 saveTemplateSettings: User.id:', user?.id)
       console.log('🔍 saveTemplateSettings: User.uid:', user?.uid)
@@ -1439,7 +1477,7 @@
       }
 
       // Get the doctor ID from Firebase using email
-      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      let doctor = await resolveSettingsDoctor()
       if (!doctor) {
         console.warn('⚠️ Template settings: Doctor not found in Firebase, using user object directly')
         if (!user || !user.id) {
@@ -1529,8 +1567,8 @@
 
   const loadDeleteCode = async () => {
     try {
-      if (!user?.email) return
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      const doctor = await resolveSettingsDoctor()
+      if (!doctor) return
       deleteCode = doctor?.deleteCode || ''
     } catch (error) {
       console.error('❌ Error loading delete code:', error)
@@ -2057,7 +2095,9 @@
           {addToPrescription} 
           {refreshTrigger} 
           {doctorId}
+          {settingsDoctor}
           currentUser={user}
+          authUser={authUser}
           on:dataUpdated={handleDataUpdated}
           on:view-patient={handleViewPatient}
         />
@@ -2080,10 +2120,12 @@
                                  Welcome, Dr. {doctorName}!
                                </h4>
                              </div>
-                             <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
-                               <i class="fas fa-cog text-sm text-red-600"></i>
-                               <span class="text-sm font-medium">Settings</span>
+                             {#if !isExternalDoctor}
+                               <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                                 <i class="fas fa-cog text-sm text-red-600"></i>
+                                 <span class="text-sm font-medium">Settings</span>
                                </button>
+                             {/if}
                              </div>
                            
                            <!-- Mobile Layout -->
@@ -2092,10 +2134,12 @@
                                <h4 class="text-lg font-bold text-gray-900 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
                                   Welcome, Dr. {doctorName}!
                                </h4>
-                               <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
-                                 <i class="fas fa-cog text-xs text-red-600"></i>
-                                 <span class="text-xs font-medium">Settings</span>
-                               </button>
+                               {#if !isExternalDoctor}
+                                 <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                                   <i class="fas fa-cog text-xs text-red-600"></i>
+                                   <span class="text-xs font-medium">Settings</span>
+                                 </button>
+                               {/if}
                            </div>
                            </div>
                            <p class="text-gray-600 mb-0">
