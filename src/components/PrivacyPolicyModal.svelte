@@ -24,65 +24,76 @@
   function getDefaultPrivacyContent() {
     return `# Privacy Policy
 
-**Effective Date:** December 19, 2024
+**Last updated:** January 27, 2026
 
-## Introduction
+Tronicgate Hardware and Software Services ("Tronicgate", "we", "our", or "us") operates the M-Prescribe Patient and Pharmacy Management System (the "Service"). This Privacy Policy explains what data we collect, why we collect it, where it is stored, who can access it, how long it is retained, how patients can access or correct their data, and how data breaches are handled.
 
-Prescribe is committed to protecting the privacy and security of your personal information. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our medical prescription management platform.
+The Service is provided to countries worldwide except the European Union/EEA, the United States, the United Kingdom, Australia, Canada, and New Zealand.
 
-## Information We Collect
+## 1. What data we collect
 
-### Personal Information
-- **Doctor Information:** Name, email address, professional credentials, country, city
-- **Patient Information:** Name, age, date of birth, contact information, medical history, symptoms, diagnoses, prescriptions
-- **Authentication Data:** Login credentials, authentication tokens, session data
-- **Usage Data:** AI token usage, feature interactions, system logs
+### Patient data (entered by doctors or pharmacies)
+- Patient identity details (name, date of birth, sex/gender, contact information)
+- Medical information (symptoms, diagnoses, allergies, prescriptions, medication instructions)
+- Visit records and prescription history
+- Notes and attachments (if uploaded)
 
-## How We Use Your Information
+### Provider data (doctors and pharmacies)
+- Name, email address, phone number
+- Practice/pharmacy details (business name, location)
+- Account IDs, role and access permissions
 
-### Primary Purposes
-- **Medical Record Management:** Creating, storing, and managing patient medical records
-- **Prescription Management:** Generating, tracking, and managing prescriptions
-- **AI-Powered Assistance:** Providing AI-generated medical recommendations and drug suggestions
-- **Authentication:** Verifying user identity and managing access to the platform
+### System data
+- Login events, audit logs, and usage logs
+- Device/browser information and IP address
+- Email delivery logs for system notifications
 
-## Data Security
+## 2. Why we collect data
+We collect and use data to:
+- Provide patient record management and prescription workflows
+- Enable pharmacy dispensing and billing
+- Facilitate communication and confirmations
+- Support security, auditing, and fraud prevention
+- Improve performance and reliability
+- Provide optional AI-assisted features when enabled by users
 
-### Security Measures
-- **Encryption:** All data is encrypted in transit and at rest
-- **Access Controls:** Role-based access with strict authentication requirements
-- **Audit Logging:** Comprehensive logging of all data access and modifications
-- **HIPAA Compliance:** Adherence to healthcare data protection standards
+## 3. Where data is stored
+Data is stored in Google Firebase (Google Cloud Platform). This is cloud-hosted infrastructure and may involve data storage outside your country.
 
-### Data Isolation
-- **Doctor Isolation:** Each doctor can only access their own patients' data
-- **Patient Privacy:** No cross-doctor data access is possible
-- **Secure Storage:** Data stored in secure, encrypted databases
+Data is encrypted in transit and at rest by Google Firebase.
 
-## Your Rights and Choices
+## 4. Who can access data
+Access is strictly role-based:
+- Doctors: Access their own patients and prescriptions
+- Pharmacies: Access only patient name, age, sex/gender, and medication list shared by connected doctors
+- System administrators: Access only what is necessary to maintain the Service, provide support, and meet security obligations
 
-### Access and Control
-- **View Your Data:** Access your personal information and medical records
-- **Update Information:** Correct or update your personal details
-- **Data Portability:** Request a copy of your data in a portable format
-- **Account Deletion:** Request deletion of your account and associated data
+## 5. Data retention
+We retain data while an account is active and for one (1) year after account closure or inactivity. After this period, data is deleted or anonymized unless required by law or a valid legal request.
 
-## Contact Information
+## 6. How patients can access or correct their data
+Patients may request access to or correction of their data by contacting the doctor or pharmacy that created the record. If additional assistance is needed, requests may be sent to support@mprescribe.net.
 
-### Privacy Questions
-- **Email:** privacy@prescribe-medical.com
-- **Response Time:** We respond to privacy inquiries within 30 days
+We will facilitate access or corrections where possible, subject to authentication and verification.
 
-## Legal Compliance
+## 7. Data breaches and incident response
+If a data breach is detected, we will:
+- Investigate and secure affected systems
+- Assess the scope and impact
+- Notify affected users and relevant authorities where legally required
+- Document and remediate the incident to prevent recurrence
 
-### Applicable Laws
-- **HIPAA:** Health Insurance Portability and Accountability Act
-- **GDPR:** General Data Protection Regulation (where applicable)
-- **State Laws:** Applicable state healthcare privacy laws
+## 8. International use and restricted regions
+The Service is available globally except in the EU/EEA, USA, UK, Australia, Canada, and New Zealand. Users are responsible for ensuring local compliance in their jurisdiction.
 
-By using Prescribe, you acknowledge that you have read and understood this Privacy Policy and agree to the collection, use, and disclosure of your information as described herein.
+## 9. Changes to this policy
+We may update this Privacy Policy from time to time. Updates will be posted within the Service and will include the "Last updated" date.
 
-**Last Updated:** December 19, 2024`
+## 10. Contact
+For privacy inquiries, data access, or corrections, contact:
+
+Tronicgate Hardware and Software Services
+Email: support@mprescribe.net`
   }
   
   function closeModal() {

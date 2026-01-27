@@ -3,6 +3,9 @@
   import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore'
   import { db } from '../firebase-config.js'
   import authService from '../services/authService.js'
+  import pharmacistAuthService from '../services/pharmacist/pharmacistAuthService.js'
+  import firebaseAuthService from '../services/firebaseAuth.js'
+  import { createEventDispatcher } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
@@ -10,7 +13,7 @@
   import InventoryDashboard from './pharmacist/InventoryDashboard.svelte'
   import PharmacistSettings from './pharmacist/PharmacistSettings.svelte'
   import inventoryService from '../services/pharmacist/inventoryService.js'
-  import { formatDoctorId, formatPrescriptionId } from '../utils/idFormat.js'
+  import { formatDoctorId, formatPrescriptionId, formatPharmacyId } from '../utils/idFormat.js'
   
   export let pharmacist
   let pharmacyId = null
@@ -1441,11 +1444,16 @@
     showProfileSettings = false
   }
 
+  const dispatch = createEventDispatcher()
+
   // Sign out
   const handleSignOut = async () => {
     try {
+      await pharmacistAuthService.signOutPharmacist()
+      await firebaseAuthService.signOut()
       await authService.signOut()
       notifySuccess('Signed out successfully')
+      dispatch('logout')
       // Redirect will be handled by parent component
     } catch (error) {
       notifyError('Sign out failed')
@@ -1678,7 +1686,9 @@
           </div>
           <div class="mb-3">
             <label class="block text-sm font-medium text-gray-700 mb-1">Pharmacist ID:</label>
-            <p class="text-blue-600 font-semibold">{pharmacist.pharmacistNumber || pharmacyId || pharmacist.id || 'Not specified'}</p>
+            <p class="text-blue-600 font-semibold">
+              {pharmacist.pharmacistNumber || formatPharmacyId(pharmacyId || pharmacist.id) || 'Not specified'}
+            </p>
           </div>
           <div class="mb-3">
             <label class="block text-sm font-medium text-gray-700 mb-1">Connected Doctors:</label>

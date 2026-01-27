@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte'
   import authService from '../services/authService.js'
   import firebaseAuthService from '../services/firebaseAuth.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   
   const dispatch = createEventDispatcher()
@@ -45,7 +46,31 @@
         notifySuccess('Login successful!')
         dispatch('pharmacist-login', result.pharmacist)
       } else {
-        error = result.message || 'Login failed'
+        const message = result.message || 'Login failed'
+        if (/pharmacist not found/i.test(message)) {
+          try {
+            const doctor = await firebaseAuthService.signInWithEmailPassword(loginEmail, loginPassword)
+            if (doctor?.role !== 'doctor') {
+              throw new Error('Only active doctor accounts can access the pharmacy portal.')
+            }
+            let pharmacist = await firebaseStorage.getPharmacistByEmail(doctor.email)
+            if (!pharmacist) {
+              pharmacist = await firebaseStorage.createPharmacist({
+                email: doctor.email,
+                password: `doctor-${Date.now()}`,
+                role: 'pharmacist',
+                businessName: doctor.name || doctor.displayName || 'Doctor Pharmacy',
+                pharmacistNumber: generatePharmacistNumber()
+              })
+            }
+            notifySuccess('Doctor access granted to pharmacy portal.')
+            dispatch('pharmacist-login', pharmacist)
+          } catch (doctorError) {
+            error = doctorError.message || message
+          }
+        } else {
+          error = message
+        }
       }
     } catch (err) {
       error = 'Login failed: ' + err.message

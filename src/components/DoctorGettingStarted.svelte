@@ -29,9 +29,12 @@
           <a href="#help-settings" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">2. Doctor Settings</a>
           <a href="#help-add-patient" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">3. Add a Patient</a>
           <a href="#help-create-prescription" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">4. Create Prescription</a>
-          <a href="#help-send-pharmacy" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">5. Send to Pharmacy</a>
-          <a href="#help-inventory" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">6. Inventory</a>
-          <a href="#help-billing" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">7. Billing</a>
+          <a href="#help-add-pharmacy" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">5. Add a Pharmacy</a>
+          <a href="#help-send-pharmacy" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">6. Send to Pharmacy</a>
+          <a href="#help-inventory" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">7. Inventory</a>
+          <a href="#help-billing" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">8. Billing</a>
+          <a href="#help-assistants" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">Pharmacy Assistants</a>
+          <a href="#help-switch-portal" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">Switch Portals</a>
           <a href="#help-tip" class="block px-3 py-2 rounded-lg text-gray-700 hover:bg-white hover:text-teal-700 border border-transparent hover:border-gray-200">Quick Tip</a>
         </nav>
       </div>
@@ -87,36 +90,75 @@
         </ul>
       </section>
 
-      <section id="help-send-pharmacy" class="p-4 border border-gray-200 rounded-lg">
+      <section id="help-add-pharmacy" class="p-4 border border-gray-200 rounded-lg">
         <div class="flex items-center mb-2">
           <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">5</span>
+          <h3 class="text-base font-semibold text-gray-900">Add a Pharmacy</h3>
+        </div>
+        <ul class="text-sm text-gray-600 space-y-1">
+          <li>Open the Pharmacies tab in the doctor portal.</li>
+          <li>Click “Add Pharmacy” and invite a pharmacy by email.</li>
+          <li>If you own a pharmacy, register it in the pharmacy portal, then connect it here.</li>
+        </ul>
+      </section>
+
+      <section id="help-send-pharmacy" class="p-4 border border-gray-200 rounded-lg">
+        <div class="flex items-center mb-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">6</span>
           <h3 class="text-base font-semibold text-gray-900">Send to Pharmacy</h3>
         </div>
         <ul class="text-sm text-gray-600 space-y-1">
           <li>Finalize the prescription.</li>
           <li>Click “Send to Pharmacy” and select a connected pharmacy.</li>
+          <li>If no pharmacy is connected, go to the Pharmacies tab and add one.</li>
         </ul>
       </section>
 
       <section id="help-inventory" class="p-4 border border-gray-200 rounded-lg">
         <div class="flex items-center mb-2">
-          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">6</span>
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">7</span>
           <h3 class="text-base font-semibold text-gray-900">Inventory (Pharmacy)</h3>
         </div>
         <ul class="text-sm text-gray-600 space-y-1">
-          <li>Connect a pharmacy from the Pharmacies tab.</li>
-          <li>Inventory is managed in the pharmacy portal, not here.</li>
+          <li>Open the Pharmacies tab to connect a pharmacy to your doctor portal.</li>
+          <li>Click “Add Pharmacy” and invite an existing pharmacy by email.</li>
+          <li>If you own a pharmacy, register it in the pharmacy portal using the same email, then connect it here.</li>
+          <li>Inventory is managed in the pharmacy portal, not in the doctor portal.</li>
         </ul>
       </section>
 
       <section id="help-billing" class="p-4 border border-gray-200 rounded-lg">
         <div class="flex items-center mb-2">
-          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">7</span>
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">8</span>
           <h3 class="text-base font-semibold text-gray-900">Billing</h3>
         </div>
         <ul class="text-sm text-gray-600 space-y-1">
           <li>Charges are calculated in the pharmacy portal after dispensing.</li>
           <li>Expected price appears after finalizing (if configured).</li>
+        </ul>
+      </section>
+
+      <section id="help-switch-portal" class="p-4 border border-gray-200 rounded-lg">
+        <div class="flex items-center mb-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">9</span>
+          <h3 class="text-base font-semibold text-gray-900">Switch Between Doctor & Pharmacy Portals</h3>
+        </div>
+        <ul class="text-sm text-gray-600 space-y-1">
+          <li>Use the Doctor/Pharmacy toggle on the login screen to switch portals.</li>
+          <li>If you are already signed in, sign out and select the other portal.</li>
+          <li>Doctors with active accounts can access the pharmacy portal using the same email.</li>
+        </ul>
+      </section>
+
+      <section id="help-assistants" class="p-4 border border-gray-200 rounded-lg">
+        <div class="flex items-center mb-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 text-sm font-semibold mr-3">10</span>
+          <h3 class="text-base font-semibold text-gray-900">Add Pharmacy Assistants (Teams)</h3>
+        </div>
+        <ul class="text-sm text-gray-600 space-y-1">
+          <li>Open the pharmacy portal and go to Settings → Team.</li>
+          <li>Click “Add Team Member” and enter the assistant’s name, email, and role.</li>
+          <li>They can log in using the pharmacy portal with their email and password.</li>
         </ul>
       </section>
 
@@ -146,6 +188,10 @@
           <div>
             <p class="font-medium text-gray-800">Can I send to multiple pharmacies?</p>
             <p>Yes. Connect pharmacies in the Pharmacies tab and choose the destination when sending a prescription.</p>
+          </div>
+          <div>
+            <p class="font-medium text-gray-800">How do I add my own pharmacy?</p>
+            <p>Create the pharmacy account in the pharmacy portal (use the same email if you own it), then return to the doctor portal → Pharmacies tab and connect it.</p>
           </div>
           <div>
             <p class="font-medium text-gray-800">Where can I see a patient’s history?</p>

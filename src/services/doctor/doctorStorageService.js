@@ -16,6 +16,7 @@ import {
   onSnapshot
 } from 'firebase/firestore'
 import { db } from '../../firebase-config.js'
+import { resolveCurrencyFromCountry } from '../../utils/currencyByCountry.js'
 import { capitalizePatientNames } from '../../utils/nameUtils.js'
 
 class DoctorStorageService {
@@ -41,13 +42,25 @@ class DoctorStorageService {
       console.log('🔥 DoctorStorage: Creating doctor in collection:', this.collections.doctors)
       console.log('🔥 DoctorStorage: Doctor data to save:', doctorData)
       
+      const normalizedEmail = String(doctorData.email || '').trim().toLowerCase()
+      if (!normalizedEmail) {
+        throw new Error('Email is required')
+      }
+
+      const existing = await this.getDoctorByEmail(normalizedEmail)
+      if (existing) {
+        throw new Error('Doctor with this email already exists')
+      }
+
       const serializableData = {
-        email: doctorData.email,
+        email: normalizedEmail,
+        emailLower: normalizedEmail,
         firstName: doctorData.firstName,
         lastName: doctorData.lastName,
         name: doctorData.name,
         country: doctorData.country,
         city: doctorData.city,
+        currency: doctorData.currency || resolveCurrencyFromCountry(doctorData.country) || 'USD',
         role: doctorData.role,
         isAdmin: doctorData.isAdmin,
         permissions: doctorData.permissions,
@@ -55,6 +68,10 @@ class DoctorStorageService {
         isDisabled: doctorData.isDisabled ?? false,
         isApproved: doctorData.isApproved ?? true,
         accessExpiresAt: doctorData.accessExpiresAt || null,
+        referredByDoctorId: doctorData.referredByDoctorId,
+        referralEligibleAt: doctorData.referralEligibleAt,
+        referralBonusApplied: doctorData.referralBonusApplied,
+        referralBonusAppliedAt: doctorData.referralBonusAppliedAt,
         uid: doctorData.uid,
         displayName: doctorData.displayName,
         photoURL: doctorData.photoURL,
@@ -83,8 +100,33 @@ class DoctorStorageService {
 
   async getDoctorByEmail(email) {
     try {
-      const q = query(collection(db, this.collections.doctors), where('email', '==', email))
-      const querySnapshot = await getDocs(q)
+      const rawEmail = String(email || '').trim()
+      const normalizedEmail = rawEmail.toLowerCase()
+      if (!normalizedEmail) {
+        return null
+      }
+      let querySnapshot = await getDocs(
+        query(
+          collection(db, this.collections.doctors),
+          where('emailLower', '==', normalizedEmail)
+        )
+      )
+      if (querySnapshot.empty) {
+        querySnapshot = await getDocs(
+          query(
+            collection(db, this.collections.doctors),
+            where('email', '==', normalizedEmail)
+          )
+        )
+      }
+      if (querySnapshot.empty && rawEmail && rawEmail !== normalizedEmail) {
+        querySnapshot = await getDocs(
+          query(
+            collection(db, this.collections.doctors),
+            where('email', '==', rawEmail)
+          )
+        )
+      }
       
       if (querySnapshot.empty) {
         return null

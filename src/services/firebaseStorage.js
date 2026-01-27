@@ -12,10 +12,12 @@ import {
   where, 
   orderBy, 
   limit,
+  writeBatch,
   onSnapshot
 } from 'firebase/firestore'
 import { db } from '../firebase-config.js'
 import { capitalizePatientNames } from '../utils/nameUtils.js'
+import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
 
 class FirebaseStorageService {
   constructor() {
@@ -44,21 +46,37 @@ class FirebaseStorageService {
     return String(Math.floor(100000 + Math.random() * 900000))
   }
 
+  normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase()
+  }
+
   // Doctor operations
   async createDoctor(doctorData) {
     try {
       console.log('🔥 Firebase: Creating doctor in collection:', this.collections.doctors)
       console.log('🔥 Firebase: Doctor data to save:', doctorData)
       
+      const normalizedEmail = this.normalizeEmail(doctorData.email)
+      if (!normalizedEmail) {
+        throw new Error('Email is required')
+      }
+
+      const existing = await this.getDoctorByEmail(normalizedEmail)
+      if (existing) {
+        throw new Error('Doctor with this email already exists')
+      }
+
       // Only include serializable fields to avoid Firebase errors
       const serializableData = {
-        email: doctorData.email,
+        email: normalizedEmail,
+        emailLower: normalizedEmail,
         username: doctorData.username,
         firstName: doctorData.firstName,
         lastName: doctorData.lastName,
         name: doctorData.name,
         country: doctorData.country,
         city: doctorData.city,
+        currency: doctorData.currency || resolveCurrencyFromCountry(doctorData.country) || 'USD',
         role: doctorData.role,
         isAdmin: doctorData.isAdmin,
         permissions: doctorData.permissions,
@@ -67,6 +85,10 @@ class FirebaseStorageService {
         externalDoctor: doctorData.externalDoctor,
         accessLevel: doctorData.accessLevel,
         invitedByDoctorId: doctorData.invitedByDoctorId,
+        referredByDoctorId: doctorData.referredByDoctorId,
+        referralEligibleAt: doctorData.referralEligibleAt,
+        referralBonusApplied: doctorData.referralBonusApplied,
+        referralBonusAppliedAt: doctorData.referralBonusAppliedAt,
         authProvider: doctorData.authProvider,
         connectedPharmacists: doctorData.connectedPharmacists || [],
         allowedDeviceId: doctorData.allowedDeviceId,
@@ -105,8 +127,33 @@ class FirebaseStorageService {
 
   async getDoctorByEmail(email) {
     try {
-      const q = query(collection(db, this.collections.doctors), where('email', '==', email))
-      const querySnapshot = await getDocs(q)
+      const rawEmail = String(email || '').trim()
+      const normalizedEmail = this.normalizeEmail(rawEmail)
+      if (!normalizedEmail) {
+        return null
+      }
+      let querySnapshot = await getDocs(
+        query(
+          collection(db, this.collections.doctors),
+          where('emailLower', '==', normalizedEmail)
+        )
+      )
+      if (querySnapshot.empty) {
+        querySnapshot = await getDocs(
+          query(
+            collection(db, this.collections.doctors),
+            where('email', '==', normalizedEmail)
+          )
+        )
+      }
+      if (querySnapshot.empty && rawEmail && rawEmail !== normalizedEmail) {
+        querySnapshot = await getDocs(
+          query(
+            collection(db, this.collections.doctors),
+            where('email', '==', rawEmail)
+          )
+        )
+      }
       
       if (querySnapshot.empty) {
         return null
@@ -118,6 +165,12 @@ class FirebaseStorageService {
         const deleteCode = this.generateDeleteCode()
         await updateDoc(doc.ref, { deleteCode })
         data.deleteCode = deleteCode
+      }
+      if (!data.currency) {
+        const resolvedCurrency = resolveCurrencyFromCountry(data.country)
+        if (resolvedCurrency) {
+          data.currency = resolvedCurrency
+        }
       }
       return { id: doc.id, ...data }
     } catch (error) {
@@ -138,6 +191,12 @@ class FirebaseStorageService {
           await updateDoc(docRef, { deleteCode })
           data.deleteCode = deleteCode
         }
+        if (!data.currency) {
+          const resolvedCurrency = resolveCurrencyFromCountry(data.country)
+          if (resolvedCurrency) {
+            data.currency = resolvedCurrency
+          }
+        }
         return { id: docSnap.id, ...data }
       }
       return null
@@ -154,6 +213,9 @@ class FirebaseStorageService {
       // Only include serializable fields to avoid Firebase errors
       const serializableData = {
         email: updatedDoctor.email,
+        emailLower: updatedDoctor.email ?
+          String(updatedDoctor.email).trim().toLowerCase() :
+          undefined,
         username: updatedDoctor.username,
         firstName: updatedDoctor.firstName,
         lastName: updatedDoctor.lastName,
@@ -178,6 +240,10 @@ class FirebaseStorageService {
         isDisabled: updatedDoctor.isDisabled,
         isApproved: updatedDoctor.isApproved,
         accessExpiresAt: updatedDoctor.accessExpiresAt,
+        referredByDoctorId: updatedDoctor.referredByDoctorId,
+        referralEligibleAt: updatedDoctor.referralEligibleAt,
+        referralBonusApplied: updatedDoctor.referralBonusApplied,
+        referralBonusAppliedAt: updatedDoctor.referralBonusAppliedAt,
         uid: updatedDoctor.uid,
         displayName: updatedDoctor.displayName,
         photoURL: updatedDoctor.photoURL,
@@ -206,10 +272,19 @@ class FirebaseStorageService {
       const q = query(collection(db, this.collections.doctors))
       const querySnapshot = await getDocs(q)
       
-      const doctors = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
+      const doctors = querySnapshot.docs.map(doc => {
+        const data = doc.data()
+        if (!data.currency) {
+          const resolvedCurrency = resolveCurrencyFromCountry(data.country)
+          if (resolvedCurrency) {
+            data.currency = resolvedCurrency
+          }
+        }
+        return {
+          id: doc.id,
+          ...data
+        }
+      })
       
       // Sort in JavaScript instead of Firestore to avoid index requirement
       doctors.sort((a, b) => {
@@ -221,6 +296,47 @@ class FirebaseStorageService {
       return doctors
     } catch (error) {
       console.error('Error getting all doctors:', error)
+      throw error
+    }
+  }
+
+  async addAuthLog(entry = {}) {
+    try {
+      const logsRef = collection(db, 'authLogs')
+      await addDoc(logsRef, {
+        ...entry,
+        createdAt: new Date().toISOString()
+      })
+
+      const allSnapshot = await getDocs(
+        query(logsRef, orderBy('createdAt', 'desc'))
+      )
+      if (allSnapshot.size > 500) {
+        const batch = writeBatch(db)
+        allSnapshot.docs.slice(500).forEach(docSnap => batch.delete(docSnap.ref))
+        await batch.commit()
+      }
+      return true
+    } catch (error) {
+      console.error('❌ Error adding auth log:', error)
+      return false
+    }
+  }
+
+  async getAuthLogs(limitCount = 200) {
+    try {
+      const q = query(
+        collection(db, 'authLogs'),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount)
+      )
+      const querySnapshot = await getDocs(q)
+      return querySnapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }))
+    } catch (error) {
+      console.error('❌ Error getting auth logs:', error)
       throw error
     }
   }
@@ -1767,6 +1883,24 @@ class FirebaseStorageService {
       return true
     } catch (error) {
       console.error('❌ Error saving SMTP settings:', error)
+      throw error
+    }
+  }
+
+  async getEmailLogs(limitCount = 200) {
+    try {
+      const q = query(
+        collection(db, 'emailLogs'),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount)
+      )
+      const querySnapshot = await getDocs(q)
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+    } catch (error) {
+      console.error('❌ Error getting email logs:', error)
       throw error
     }
   }

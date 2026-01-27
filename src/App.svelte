@@ -18,6 +18,7 @@
   import NotificationContainer from './components/NotificationContainer.svelte'
   import LoadingSpinner from './components/LoadingSpinner.svelte'
   import PrivacyPolicyModal from './components/PrivacyPolicyModal.svelte'
+  import PrivacyPolicyPage from './components/PrivacyPolicyPage.svelte'
   
   let user = null
   let loading = true
@@ -27,10 +28,18 @@
   let doctorQuotaStatus = null
   let refreshInterval = null
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
+  let authOnly = false
+  let privacyOnly = false
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
   let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'reports', 'settings'
   let prescriptions = [] // All prescriptions for the doctor
   let settingsDoctor = null
+
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search)
+    authOnly = params.get('register') === '1'
+    privacyOnly = params.get('privacy') === '1'
+  }
   
   $: isExternalDoctor = user?.role === 'doctor' && user?.externalDoctor && user?.invitedByDoctorId
   $: effectiveUser = isExternalDoctor && settingsDoctor
@@ -432,14 +441,23 @@
         await pharmacistAuthService.signOutPharmacist()
       } else {
         // Fallback to original services
-        await firebaseAuthService.signOut()
         await adminAuthService.signOut()
       }
+      // Always sign out of Firebase auth to prevent session restore on refresh
+      await firebaseAuthService.signOut()
+      await adminAuthService.signOut()
       
       user = null
       doctorUsageStats = null
       showAdminPanel = false
       localStorage.removeItem(ADMIN_PANEL_STORAGE_KEY)
+      localStorage.removeItem('prescribe-current-doctor')
+      localStorage.removeItem('prescribe-current-pharmacist')
+      localStorage.removeItem('prescribe-current-user')
+      localStorage.removeItem('prescribe-current-admin')
+      if (typeof window !== 'undefined') {
+        window.location.href = '/'
+      }
     } catch (error) {
       console.error('Error signing out:', error)
     }
@@ -660,7 +678,7 @@
   {:else if user}
     {#if user.role === 'pharmacist'}
       <!-- Pharmacist Dashboard -->
-      <PharmacistDashboard pharmacist={user} />
+      <PharmacistDashboard pharmacist={user} on:logout={handleLogout} />
     {:else}
     <!-- Doctor is logged in - Show patient management -->
     <nav class="bg-teal-600 border-gray-200 dark:bg-gray-900">
@@ -904,69 +922,200 @@
       {/if}
     </div>
     {/if}
+  {:else if privacyOnly}
+    <PrivacyPolicyPage />
   {:else}
-    <!-- User is not logged in - Show Flowbite authentication -->
-    <div class="min-h-screen flex items-start justify-center bg-teal-600 px-4 pt-8">
-      <div class="w-full max-w-md">
-            <!-- Main Auth Card -->
-        <div class="bg-white rounded-lg shadow-xl overflow-hidden">
-              <!-- Card Header -->
-          <div class="bg-white px-6 py-8">
-                <div class="text-center">
-              <div class="mb-4">
-                <div class="inline-flex items-center justify-center w-16 h-16 bg-teal-100 rounded-full">
-                  <i class="fas fa-stethoscope text-teal-600 text-xl"></i>
+    <!-- Landing page + login -->
+    <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#e2f7f2_0%,_#f9fafb_45%,_#f3f4f6_100%)] px-4 py-8">
+      <div class="mx-auto max-w-6xl">
+        {#if authOnly}
+          <div class="flex justify-center">
+            <div class="w-full max-w-md">
+              <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
+                <div class="px-6 py-6 border-b border-gray-200">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <h2 class="text-xl font-semibold text-gray-900 font-landing">Sign in</h2>
+                      <p class="text-xs text-gray-500">Doctor or pharmacy access</p>
+                    </div>
+                    <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-teal-100 text-teal-700">
+                      <i class="fas fa-stethoscope"></i>
+                    </div>
+                  </div>
+                </div>
+                <div class="px-6 py-6">
+                  <div class="mb-5">
+                    <div class="flex rounded-xl border border-gray-200 bg-gray-100 p-1 w-full" role="group" aria-label="Authentication mode">
+                      <button 
+                        type="button" 
+                        class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+                        on:click={handleSwitchToDoctor}
+                      >
+                        <i class="fas fa-user-md mr-2"></i>
+                        <span>Doctor</span>
+                      </button>
+                      <button 
+                        type="button" 
+                        class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+                        on:click={handleSwitchToPharmacist}
+                      >
+                        <i class="fas fa-pills mr-2"></i>
+                        <span>Pharmacy</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl bg-gray-50 p-4">
+                    {#if authMode === 'doctor'}
+                      <div class="text-center mb-4">
+                        <h4 class="text-base font-semibold text-gray-900 mb-0">
+                          <i class="fas fa-user-md text-teal-600 mr-2"></i>
+                          Doctor Portal
+                        </h4>
+                      </div>
+                      <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+                    {:else}
+                      <div class="text-center mb-4">
+                        <h4 class="text-base font-semibold text-gray-900 mb-0">
+                          <i class="fas fa-pills text-teal-600 mr-2"></i>
+                          Pharmacy Portal
+                        </h4>
+                      </div>
+                      <PharmacistAuth 
+                        on:pharmacist-login={handlePharmacistLogin}
+                        on:switch-to-doctor={handleSwitchToDoctor}
+                      />
+                    {/if}
+                  </div>
+                </div>
+                <div class="bg-gray-50 px-6 py-4 text-center text-xs text-gray-500 space-y-2">
+                  <div class="flex flex-wrap justify-center gap-2">
+                    <span class="inline-flex items-center gap-1"><i class="fas fa-shield-alt"></i> Secure</span>
+                    <span class="inline-flex items-center gap-1"><i class="fas fa-brain"></i> AI-Enhanced</span>
+                    <span class="inline-flex items-center gap-1"><i class="fas fa-user-check"></i> Role-based access</span>
+                  </div>
+                  <a
+                    href="/?privacy=1"
+                    class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded inline-flex items-center gap-1"
+                  >
+                    <i class="fas fa-file-shield"></i>
+                    Privacy Policy
+                  </a>
                 </div>
               </div>
-               <h1 class="text-2xl font-bold text-gray-900 mb-2">M-Prescribe <span class="text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.24</span> <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded ml-1">{new Date().toLocaleTimeString()}</span></h1>
-              <p class="text-gray-600 text-sm hidden sm:block">AI-Powered Medical Prescription System</p>
-              <p class="text-gray-600 text-xs sm:hidden">AI-Powered Medical System</p>
+              <footer class="mt-6 text-center text-xs text-gray-500">
+                <a href="/?privacy=1" class="text-blue-600 hover:text-blue-800 underline">Privacy Policy</a>
+              </footer>
+            </div>
+          </div>
+        {:else}
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div class="lg:col-span-7">
+            <div class="rounded-3xl border border-teal-100 bg-white/80 backdrop-blur px-6 py-10 shadow-sm relative overflow-hidden">
+              <div class="absolute -top-24 -right-16 h-48 w-48 rounded-full bg-teal-200/40"></div>
+              <div class="absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-amber-200/40"></div>
+              <div class="relative">
+                <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+                  <i class="fas fa-shield-alt"></i>
+                  HIPAA-ready workflows
+                </div>
+                <h1 class="mt-4 text-3xl sm:text-4xl lg:text-5xl font-semibold text-gray-900 font-hero">
+                  M-Prescribe Patient and Pharmacy Management System
+                </h1>
+                <p class="mt-3 text-base text-gray-600 max-w-xl">
+                  One workspace for doctors and pharmacies to manage patients, prescriptions, inventory, and billing — with AI support and secure audit trails.
+                </p>
+                <div class="mt-5 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                  <span class="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-amber-700 font-semibold">
+                    One month free access for new registrations
+                  </span>
+                  <a
+                    href="/?register=1#signin"
+                    class="inline-flex items-center gap-2 rounded-full bg-teal-600 px-4 py-2 text-white font-semibold shadow-sm hover:bg-teal-700 transition-colors duration-200"
+                  >
+                    <i class="fas fa-user-plus"></i>
+                    Register free trial
+                  </a>
+                </div>
+                <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
+                        <i class="fas fa-notes-medical"></i>
+                      </span>
+                      <div>
+                        <p class="text-sm font-semibold text-gray-900">Doctor Portal</p>
+                        <p class="text-xs text-gray-500">Patients, prescriptions, AI insights</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                        <i class="fas fa-pills"></i>
+                      </span>
+                      <div>
+                        <p class="text-sm font-semibold text-gray-900">Pharmacy Portal</p>
+                        <p class="text-xs text-gray-500">Inventory, billing, team access</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-6 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                  <span class="inline-flex items-center gap-1"><i class="fas fa-lock"></i> Secure access</span>
+                  <span class="inline-flex items-center gap-1"><i class="fas fa-bolt"></i> Fast workflows</span>
+                  <span class="inline-flex items-center gap-1"><i class="fas fa-chart-line"></i> Usage analytics</span>
                 </div>
               </div>
-              
-              <!-- Card Body -->
-          <div class="px-6 pb-6">
-                <!-- Auth Mode Toggle -->
-            <div class="mb-6">
-              <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1 w-full" role="group" aria-label="Authentication mode">
+            </div>
+          </div>
+          <div class="lg:col-span-5">
+            <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
+              <div class="px-6 py-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h2 class="text-xl font-semibold text-gray-900 font-landing">Sign in</h2>
+                    <p class="text-xs text-gray-500">Doctor or pharmacy access</p>
+                  </div>
+                  <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-teal-100 text-teal-700">
+                    <i class="fas fa-stethoscope"></i>
+                  </div>
+                </div>
+              </div>
+              <div class="px-6 py-6">
+                <div class="mb-5">
+                  <div class="flex rounded-xl border border-gray-200 bg-gray-100 p-1 w-full" role="group" aria-label="Authentication mode">
                     <button 
                       type="button" 
-                  class="flex-1 flex items-center justify-center px-6 py-3 text-sm font-medium rounded-md transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+                      class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
                       on:click={handleSwitchToDoctor}
                     >
-                  <i class="fas fa-user-md mr-2"></i>
-                  <span class="hidden sm:inline">Doctor</span>
-                  <span class="sm:hidden">Dr.</span>
+                      <i class="fas fa-user-md mr-2"></i>
+                      <span>Doctor</span>
                     </button>
                     <button 
                       type="button" 
-                  class="flex-1 flex items-center justify-center px-6 py-3 text-sm font-medium rounded-md transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+                      class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
                       on:click={handleSwitchToPharmacist}
                     >
-                  <i class="fas fa-pills mr-2"></i>
-                  <span class="hidden sm:inline">Pharmacist</span>
-                  <span class="sm:hidden">Pharm.</span>
+                      <i class="fas fa-pills mr-2"></i>
+                      <span>Pharmacy</span>
                     </button>
                   </div>
                 </div>
-                
-                <!-- Auth Forms -->
-            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="rounded-2xl bg-gray-50 p-4">
                   {#if authMode === 'doctor'}
-                <div class="text-center mb-4">
-                  <h4 class="text-lg font-semibold text-gray-900 mb-0">
-                    <i class="fas fa-user-md text-teal-600 mr-2"></i>
-                    <span class="hidden sm:inline">Doctor Portal</span>
-                    <span class="sm:hidden">Doctor</span>
+                    <div class="text-center mb-4">
+                      <h4 class="text-base font-semibold text-gray-900 mb-0">
+                        <i class="fas fa-user-md text-teal-600 mr-2"></i>
+                        Doctor Portal
                       </h4>
                     </div>
-            <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+                    <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
                   {:else}
-                <div class="text-center mb-4">
-                  <h4 class="text-lg font-semibold text-gray-900 mb-0">
-                    <i class="fas fa-pills text-teal-600 mr-2"></i>
-                    <span class="hidden sm:inline">Pharmacist Portal</span>
-                    <span class="sm:hidden">Pharmacist</span>
+                    <div class="text-center mb-4">
+                      <h4 class="text-base font-semibold text-gray-900 mb-0">
+                        <i class="fas fa-pills text-teal-600 mr-2"></i>
+                        Pharmacy Portal
                       </h4>
                     </div>
                     <PharmacistAuth 
@@ -976,30 +1125,106 @@
                   {/if}
                 </div>
               </div>
-              
-              <!-- Card Footer -->
-          <div class="bg-gray-50 px-6 py-3">
-            <div class="text-center space-y-2">
-              <small class="text-gray-500">
-                <i class="fas fa-shield-alt mr-1"></i>
-                <span class="hidden sm:inline">Secure • HIPAA Compliant • AI-Enhanced</span>
-                <span class="sm:hidden">Secure • HIPAA • AI</span>
-              </small>
-                <div class="text-center">
-                <button 
-                  type="button"
-                  class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded"
-                  on:click={openPrivacyPolicy}
+              <div class="bg-gray-50 px-6 py-4 text-center text-xs text-gray-500 space-y-2">
+                <div class="flex flex-wrap justify-center gap-2">
+                  <span class="inline-flex items-center gap-1"><i class="fas fa-shield-alt"></i> Secure</span>
+                  <span class="inline-flex items-center gap-1"><i class="fas fa-brain"></i> AI-Enhanced</span>
+                  <span class="inline-flex items-center gap-1"><i class="fas fa-user-check"></i> Role-based access</span>
+                </div>
+                <a
+                  href="/?privacy=1"
+                  class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded inline-flex items-center gap-1"
                 >
-                  <i class="fas fa-file-shield mr-1"></i>
+                  <i class="fas fa-file-shield"></i>
                   Privacy Policy
-                </button>
-              </div>
+                </a>
               </div>
             </div>
           </div>
         </div>
+        <div class="mt-10">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 font-landing">Facilities for doctors and pharmacists</h3>
+            <span class="text-xs text-gray-500">All included in your portal access</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
+                  <i class="fas fa-notes-medical"></i>
+                </span>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">Patient history</p>
+                  <p class="text-xs text-gray-500">Complete records with fast lookup</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                  <i class="fas fa-brain"></i>
+                </span>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">Optional AI based diagnosis</p>
+                  <p class="text-xs text-gray-500">Assistive insights when needed</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                  <i class="fas fa-file-prescription"></i>
+                </span>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">Printing prescription</p>
+                  <p class="text-xs text-gray-500">Quick print with clinic branding</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+                  <i class="fas fa-capsules"></i>
+                </span>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">Maintain drug inventory</p>
+                  <p class="text-xs text-gray-500">Stock, dispensing, and alerts</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                  <i class="fas fa-calculator"></i>
+                </span>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">Charge calculations</p>
+                  <p class="text-xs text-gray-500">Auto totals and discounts</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex items-center gap-3">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                  <i class="fas fa-chart-line"></i>
+                </span>
+                <div>
+                  <p class="text-sm font-semibold text-gray-900">Daily monthly income reports</p>
+                  <p class="text-xs text-gray-500">Track revenue over time</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer class="mt-10 border-t border-gray-200 pt-6 text-sm text-gray-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <span>© Tronicgate Hardware and Software Services</span>
+          <div class="flex items-center gap-4">
+            <a href="/?privacy=1" class="text-blue-600 hover:text-blue-800 underline">Privacy Policy</a>
+          </div>
+        </footer>
+        {/if}
       </div>
+    </div>
   {/if}
   
   
@@ -1016,6 +1241,14 @@
     margin: 0;
     padding: 0;
     font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  :global(.font-landing) {
+    font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  }
+
+  :global(.font-hero) {
+    font-family: 'DM Serif Display', 'Space Grotesk', 'Inter', system-ui, sans-serif;
   }
   
   

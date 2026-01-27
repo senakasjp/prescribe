@@ -4,6 +4,7 @@
 <script>
   import { onMount, createEventDispatcher } from 'svelte'
   import doctorAuthService from '../../services/doctor/doctorAuthService.js'
+  import firebaseAuthService from '../../services/firebaseAuth.js'
   import doctorStorageService from '../../services/doctor/doctorStorageService.js'
   import PatientManagement from '../PatientManagement.svelte'
   import EditProfile from '../EditProfile.svelte'
@@ -95,6 +96,7 @@
   function handleLogout() {
     console.log('DoctorModuleRouter: Logging out doctor')
     doctorAuthService.signOutDoctor()
+    firebaseAuthService.signOut()
     // The parent App.svelte will handle the logout
   }
 

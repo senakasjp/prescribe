@@ -4,6 +4,7 @@
 <script>
   import { onMount } from 'svelte'
   import pharmacistAuthService from '../../services/pharmacist/pharmacistAuthService.js'
+  import firebaseAuthService from '../../services/firebaseAuth.js'
   import pharmacistStorageService from '../../services/pharmacist/pharmacistStorageService.js'
   import PharmacistDashboard from '../PharmacistDashboard.svelte'
   import PharmacistSettings from './PharmacistSettings.svelte'
@@ -78,6 +79,7 @@
   function handleLogout() {
     console.log('PharmacistModuleRouter: Logging out pharmacist')
     pharmacistAuthService.signOutPharmacist()
+    firebaseAuthService.signOut()
     // The parent App.svelte will handle the logout
   }
   

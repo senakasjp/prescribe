@@ -6,6 +6,7 @@
   import backupService from '../services/backupService.js'
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
+  import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
   import ThreeDots from './ThreeDots.svelte'
   
   
@@ -88,6 +89,11 @@
     }
   }
 
+  const handleCountryChange = (event) => {
+    country = event.target.value
+    currency = resolveCurrencyFromCountry(country) || 'USD'
+  }
+
   const procedureOptions = [
     'C&D- type -A',
     'C&D-type -B',
@@ -167,7 +173,7 @@
       city = String(user.city || '')
       consultationCharge = String(user.consultationCharge || '')
       hospitalCharge = String(user.hospitalCharge || '')
-      currency = String(user.currency || 'USD')
+      currency = String(user.currency || resolveCurrencyFromCountry(user.country) || 'USD')
       deleteCode = String(user.deleteCode || '')
       templateType = String(user?.templateSettings?.templateType || templateType)
       headerSize = user?.templateSettings?.headerSize || headerSize
@@ -603,6 +609,7 @@
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="editCountry" 
               bind:value={country}
+              on:change={handleCountryChange}
               required
               disabled={loading}
             >

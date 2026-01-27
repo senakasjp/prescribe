@@ -82,13 +82,17 @@ class DoctorAuthService {
       }
 
       // Check if doctor already exists
-      const existingDoctor = await firebaseStorage.getDoctorByEmail(doctorData.email)
+      const normalizedEmail = String(doctorData.email || '').trim().toLowerCase()
+      const existingDoctor = await firebaseStorage.getDoctorByEmail(normalizedEmail)
       if (existingDoctor) {
         throw new Error('Doctor with this email already exists')
       }
 
       // Create doctor in Firebase
-      const doctor = await firebaseStorage.createDoctor(doctorData)
+      const doctor = await firebaseStorage.createDoctor({
+        ...doctorData,
+        email: normalizedEmail
+      })
       
       // Set role to doctor
       doctor.role = 'doctor'
@@ -116,7 +120,7 @@ class DoctorAuthService {
       }
 
       if (doctor.isApproved === false) {
-        throw new Error('Your account is pending approval. Please contact the administrator.')
+        throw new Error('Your account is waiting for approval. Once approved, you will receive a confirmation email. For questions, contact support@mprescribe.net.')
       }
 
       if (doctor.accessExpiresAt) {
@@ -158,6 +162,13 @@ class DoctorAuthService {
       this.saveCurrentDoctor(doctor)
       
       console.log('DoctorAuthService: Doctor signed in successfully:', doctor)
+      firebaseStorage.addAuthLog({
+        action: 'login',
+        role: doctor.role || 'doctor',
+        email: doctor.email || '',
+        doctorId: doctor.id || doctor.uid || '',
+        status: 'success'
+      })
       return doctor
     } catch (error) {
       console.error('DoctorAuthService: Error signing in doctor:', error)
@@ -169,7 +180,17 @@ class DoctorAuthService {
   async signOutDoctor() {
     try {
       console.log('DoctorAuthService: Signing out doctor')
+      const current = this.currentDoctor
       this.clearCurrentDoctor()
+      if (current?.email) {
+        firebaseStorage.addAuthLog({
+          action: 'logout',
+          role: current.role || 'doctor',
+          email: current.email || '',
+          doctorId: current.id || current.uid || '',
+          status: 'success'
+        })
+      }
       console.log('DoctorAuthService: Doctor signed out successfully')
     } catch (error) {
       console.error('DoctorAuthService: Error signing out doctor:', error)

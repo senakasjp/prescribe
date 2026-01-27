@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte'
   import jsPDF from 'jspdf'
+  import JsBarcode from 'jsbarcode'
   import firebaseStorage from '../services/firebaseStorage.js'
   import doctorAuthService from '../services/doctor/doctorAuthService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
@@ -317,6 +318,29 @@
       doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
       const prescriptionId = formatPrescriptionId(Date.now().toString())
       doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
+
+      let barcodeDataUrl = null
+      try {
+        const barcodeCanvas = document.createElement('canvas')
+        JsBarcode(barcodeCanvas, prescriptionId, {
+          format: 'CODE128',
+          displayValue: false,
+          margin: 0,
+          width: 0.9,
+          height: 18
+        })
+        barcodeDataUrl = barcodeCanvas.toDataURL('image/png')
+      } catch (error) {
+        console.error('❌ Failed to generate barcode:', error)
+      }
+
+      if (barcodeDataUrl) {
+        const barcodeWidth = 42
+        const barcodeHeight = 8
+        const barcodeX = pageWidth - margin - barcodeWidth
+        const barcodeY = contentYStart + 15
+        doc.addImage(barcodeDataUrl, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight)
+      }
       
       const patientSex = selectedPatient.gender || selectedPatient.sex || 'Not specified'
       doc.text(`Sex: ${patientSex}`, margin, contentYStart + 19)

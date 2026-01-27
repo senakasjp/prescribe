@@ -188,6 +188,10 @@ class AuthService {
         }
       }
 
+      if (doctor.isApproved === false) {
+        throw new Error('Your account is waiting for approval. Once approved, you will receive a confirmation email. For questions, contact support@mprescribe.net.')
+      }
+
       // Verify password
       if (doctor.password !== password) {
         throw new Error('Invalid password')
@@ -259,6 +263,13 @@ class AuthService {
       // Set as current user
       this.saveCurrentUser(doctor)
       console.log('✅ Doctor signed in successfully:', doctor.email)
+      firebaseStorage.addAuthLog({
+        action: 'login',
+        role: doctor.role || 'doctor',
+        email: doctor.email || '',
+        doctorId: doctor.id || doctor.firebaseId || '',
+        status: 'success'
+      })
       return doctor
     } catch (error) {
       console.error('Error signing in doctor:', error)
@@ -367,7 +378,17 @@ class AuthService {
 
   // Sign out doctor/pharmacist
   async signOut() {
+    const current = this.currentUser
     this.clearCurrentUser()
+    if (current?.email) {
+      firebaseStorage.addAuthLog({
+        action: 'logout',
+        role: current.role || 'doctor',
+        email: current.email || '',
+        doctorId: current.id || current.firebaseId || '',
+        status: 'success'
+      })
+    }
   }
 
   // Get current user

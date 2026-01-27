@@ -12,6 +12,7 @@
   import HeaderEditor from './HeaderEditor.svelte'
   import backupService from '../services/backupService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
 
   const dispatch = createEventDispatcher()
   export let user
@@ -238,7 +239,7 @@
     city = user?.city || ''
     consultationCharge = String(user?.consultationCharge || '')
     hospitalCharge = String(user?.hospitalCharge || '')
-    currency = user?.currency || 'USD'
+    currency = user?.currency || resolveCurrencyFromCountry(user?.country) || 'USD'
     deleteCode = user?.deleteCode || ''
     
     // Load template settings
@@ -255,6 +256,16 @@
     }
 
     procedurePricing = normalizeProcedurePricing(user?.templateSettings?.procedurePricing)
+  }
+
+  const handleCountryChange = (event) => {
+    country = event.target.value
+    const resolvedCurrency = resolveCurrencyFromCountry(country)
+    currency = resolvedCurrency || 'USD'
+  }
+
+  const handleCurrencyChange = (event) => {
+    currency = event.target.value
   }
 
   const loadDeleteCode = async () => {
@@ -932,7 +943,7 @@
                 <select 
                   id="country"
                   value={country}
-                  on:change={(e) => country = e.target.value}
+                  on:change={handleCountryChange}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   required
                 >
@@ -993,7 +1004,7 @@
                 <select 
                   id="currency"
                   value={currency}
-                  on:change={(e) => currency = e.target.value}
+                  on:change={handleCurrencyChange}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   required
                 >

@@ -12,6 +12,7 @@
   import PrescriptionsTab from './PrescriptionsTab.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import { formatPrescriptionId } from '../utils/idFormat.js'
+  import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
   export const addToPrescription = null
@@ -374,6 +375,13 @@
   function handleConfirmationCancel() {
     pendingAction = null
     showConfirmationModal = false
+  }
+
+  const openHelpInventory = () => {
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'help-inventory'
+    }
+    dispatch('view-change', 'help')
   }
   
   let expandedIllnesses = {}
@@ -1827,6 +1835,14 @@
       
       if (connectedPharmacists.length === 0) {
         console.log('❌ No connected pharmacists')
+        pendingAction = openHelpInventory
+        showConfirmation(
+          'Connect a Pharmacy',
+          'No pharmacy is connected to your account. Please connect a pharmacy to send prescriptions.',
+          'Open Help',
+          'Close',
+          'info'
+        )
         return
       }
       
@@ -2624,6 +2640,29 @@
       doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
       const prescriptionId = formatPrescriptionId(currentPrescription?.id || Date.now().toString())
       doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
+
+      let barcodeDataUrl = null
+      try {
+        const barcodeCanvas = document.createElement('canvas')
+        JsBarcode(barcodeCanvas, prescriptionId, {
+          format: 'CODE128',
+          displayValue: false,
+          margin: 0,
+          width: 0.9,
+          height: 18
+        })
+        barcodeDataUrl = barcodeCanvas.toDataURL('image/png')
+      } catch (error) {
+        console.error('❌ Failed to generate barcode:', error)
+      }
+
+      if (barcodeDataUrl) {
+        const barcodeWidth = 42
+        const barcodeHeight = 8
+        const barcodeX = pageWidth - margin - barcodeWidth
+        const barcodeY = contentYStart + 15
+        doc.addImage(barcodeDataUrl, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight)
+      }
       
       // Sex/Gender on third line
       const patientSex = selectedPatient.gender || selectedPatient.sex || 'Not specified'

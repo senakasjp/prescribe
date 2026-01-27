@@ -20,3 +20,4 @@ const formatId = (prefix, rawId, length) => {
 export const formatDoctorId = (rawId) => formatId('DR', rawId, 5)
 export const formatPrescriptionId = (rawId) => formatId('PR', rawId, 7)
 export const formatPatientId = (rawId) => formatId('PA', rawId, 7)
+export const formatPharmacyId = (rawId) => formatId('PH', rawId, 5)

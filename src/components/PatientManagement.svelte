@@ -2100,6 +2100,7 @@
           authUser={authUser}
           on:dataUpdated={handleDataUpdated}
           on:view-patient={handleViewPatient}
+          on:view-change={(e) => dispatch('view-change', e.detail)}
         />
       {:else}
       <!-- Welcome Dashboard -->

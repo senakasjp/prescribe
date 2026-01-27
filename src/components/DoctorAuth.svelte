@@ -15,6 +15,13 @@
   let error = ''
   let loading = false
   let googleLoading = false
+  let referralId = ''
+
+  const readReferralId = () => {
+    if (typeof window === 'undefined') return ''
+    const params = new URLSearchParams(window.location.search)
+    return params.get('ref') || ''
+  }
   
   // Toggle between login and register modes
   const toggleMode = () => {
@@ -27,6 +34,8 @@
     confirmPassword = ''
     country = ''
   }
+
+  referralId = readReferralId()
   
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -81,7 +90,7 @@
           throw new Error('Password cannot contain repeated characters')
         }
         
-        const user = await firebaseAuthService.registerDoctorWithEmailPassword(email, password, { firstName, lastName, country })
+        const user = await firebaseAuthService.registerDoctorWithEmailPassword(email, password, { firstName, lastName, country, referredByDoctorId: referralId })
         console.log('Doctor registered successfully')
         
         // Dispatch event to parent to refresh user state
@@ -108,6 +117,9 @@
     googleLoading = true
     
     try {
+      if (typeof window !== 'undefined' && referralId) {
+        localStorage.setItem('pendingReferralId', referralId)
+      }
       const user = await firebaseAuthService.signInWithGoogle('doctor')
       console.log('Doctor signed in with Google successfully')
       
