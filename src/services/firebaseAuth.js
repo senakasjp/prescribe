@@ -48,6 +48,44 @@ class FirebaseAuthService {
     return { providerId, provider, authProvider }
   }
 
+  async ensureDoctorAccess(doctor) {
+    if (!doctor) return
+    if (doctor.isApproved === false) {
+      await firebaseSignOut(auth)
+      throw new Error('Your account is pending approval. Please contact the administrator.')
+    }
+    if (doctor.accessExpiresAt) {
+      const expiresAt = new Date(doctor.accessExpiresAt)
+      if (!Number.isNaN(expiresAt.getTime()) && Date.now() > expiresAt.getTime()) {
+        await firebaseSignOut(auth)
+        throw new Error('Your access period has expired. Please contact the administrator.')
+      }
+    }
+    if (doctor.isDisabled) {
+      await firebaseSignOut(auth)
+      throw new Error('Your account is disabled. Please contact the administrator.')
+    }
+
+    if (doctor.externalDoctor && doctor.invitedByDoctorId) {
+      const ownerDoctor = await firebaseStorage.getDoctorById(doctor.invitedByDoctorId)
+      if (ownerDoctor?.isApproved === false) {
+        await firebaseSignOut(auth)
+        throw new Error('Owner doctor account is pending approval. External access is not allowed.')
+      }
+      if (ownerDoctor?.accessExpiresAt) {
+        const ownerExpiresAt = new Date(ownerDoctor.accessExpiresAt)
+        if (!Number.isNaN(ownerExpiresAt.getTime()) && Date.now() > ownerExpiresAt.getTime()) {
+          await firebaseSignOut(auth)
+          throw new Error('Owner doctor access period has expired. External access is not allowed.')
+        }
+      }
+      if (ownerDoctor?.isDisabled) {
+        await firebaseSignOut(auth)
+        throw new Error('Owner doctor account is disabled. External access is not allowed.')
+      }
+    }
+  }
+
   getSecondaryAuth() {
     if (this.secondaryAuth) {
       return this.secondaryAuth
@@ -93,6 +131,9 @@ class FirebaseAuthService {
           throw new Error('External doctor login is allowed only from the owner doctor device.')
         }
       }
+
+      await this.ensureDoctorAccess(existingUser)
+
       console.log('✅ Updating existing user with Firebase data')
       // Update existing user with Firebase data
       const updatedUser = {
@@ -122,6 +163,7 @@ class FirebaseAuthService {
         lastName: firebaseUser.displayName?.split(' ').slice(1).join(' ') || '',
         name: firebaseUser.displayName || '',
         role: 'doctor',
+        isApproved: false,
         uid: firebaseUser.uid,
         displayName: firebaseUser.displayName,
         photoURL: firebaseUser.photoURL,
@@ -243,6 +285,9 @@ class FirebaseAuthService {
       }
 
       if (existingUser) {
+        if (userType === 'doctor') {
+          await this.ensureDoctorAccess(existingUser)
+        }
         console.log('✅ Updating existing user with Google data')
         // Update existing user with Google data
         const updatedUser = {
@@ -272,6 +317,7 @@ class FirebaseAuthService {
           lastName: user.displayName?.split(' ').slice(1).join(' ') || '',
           name: user.displayName || '',
           role: 'doctor',
+          isApproved: false,
           uid: user.uid,
           displayName: user.displayName,
           photoURL: user.photoURL,
@@ -392,6 +438,7 @@ class FirebaseAuthService {
         country: profile.country || '',
         city: profile.city || '',
         role: 'doctor',
+        isApproved: profile.isApproved ?? true,
         permissions: profile.permissions || [],
         accessLevel: profile.accessLevel || 'external_minimal',
         externalDoctor: true,
@@ -460,6 +507,7 @@ class FirebaseAuthService {
           lastName: 'Doctor',
           name: mockDisplayName,
           role: 'doctor',
+          isApproved: false,
           uid: `mock-google-${Date.now()}`,
           displayName: mockDisplayName,
           photoURL: 'https://via.placeholder.com/150/4285f4/ffffff?text=G',

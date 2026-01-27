@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
+  import { formatPrescriptionId } from '../utils/idFormat.js'
   
   export let prescriptions = []
   export let selectedPatient = null
@@ -320,6 +321,10 @@
           <div class="text-sm opacity-90 mt-1">
             <i class="fas fa-user-md mr-1"></i>
             {prescription.doctorName || prescription.doctor?.name || 'Doctor'}
+          </div>
+          <div class="text-xs opacity-80 mt-1">
+            <i class="fas fa-hashtag mr-1"></i>
+            {formatPrescriptionId(prescription.id)}
           </div>
           {#if prescription.notes}
             <div class="text-sm opacity-90 mt-1">

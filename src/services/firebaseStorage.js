@@ -30,7 +30,8 @@ class FirebaseStorageService {
       pharmacists: 'pharmacists',
       pharmacyUsers: 'pharmacyUsers',
       doctorReports: 'doctorReports',
-      reports: 'reports'
+      reports: 'reports',
+      systemSettings: 'systemSettings'
     }
   }
 
@@ -69,6 +70,9 @@ class FirebaseStorageService {
         authProvider: doctorData.authProvider,
         connectedPharmacists: doctorData.connectedPharmacists || [],
         allowedDeviceId: doctorData.allowedDeviceId,
+        isDisabled: doctorData.isDisabled ?? false,
+        isApproved: doctorData.isApproved ?? true,
+        accessExpiresAt: doctorData.accessExpiresAt || null,
         uid: doctorData.uid,
         displayName: doctorData.displayName,
         photoURL: doctorData.photoURL,
@@ -171,6 +175,9 @@ class FirebaseStorageService {
         connectedPharmacists: updatedDoctor.connectedPharmacists,
         deleteCode: updatedDoctor.deleteCode,
         allowedDeviceId: updatedDoctor.allowedDeviceId,
+        isDisabled: updatedDoctor.isDisabled,
+        isApproved: updatedDoctor.isApproved,
+        accessExpiresAt: updatedDoctor.accessExpiresAt,
         uid: updatedDoctor.uid,
         displayName: updatedDoctor.displayName,
         photoURL: updatedDoctor.photoURL,
@@ -1647,6 +1654,119 @@ class FirebaseStorageService {
       }
     } catch (error) {
       console.error('❌ Error getting template settings:', error)
+      throw error
+    }
+  }
+
+  // System settings: welcome email template
+  async getWelcomeEmailTemplate() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'welcomeEmail')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting welcome email template:', error)
+      throw error
+    }
+  }
+
+  async saveWelcomeEmailTemplate(templateData) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'welcomeEmail')
+      await setDoc(docRef, {
+        ...templateData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving welcome email template:', error)
+      throw error
+    }
+  }
+
+  async getDoctorBroadcastEmailTemplate() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'doctorBroadcastEmail')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting doctor broadcast email template:', error)
+      throw error
+    }
+  }
+
+  async saveDoctorBroadcastEmailTemplate(templateData) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'doctorBroadcastEmail')
+      await setDoc(docRef, {
+        ...templateData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving doctor broadcast email template:', error)
+      throw error
+    }
+  }
+
+  async getEmailTemplate(templateId) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, templateId)
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting email template:', error)
+      throw error
+    }
+  }
+
+  async saveEmailTemplate(templateId, templateData) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, templateId)
+      await setDoc(docRef, {
+        ...templateData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving email template:', error)
+      throw error
+    }
+  }
+
+  async getSmtpSettings() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'smtp')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting SMTP settings:', error)
+      throw error
+    }
+  }
+
+  async saveSmtpSettings(settings) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'smtp')
+      await setDoc(docRef, {
+        ...settings,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving SMTP settings:', error)
       throw error
     }
   }

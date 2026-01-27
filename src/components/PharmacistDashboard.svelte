@@ -10,6 +10,7 @@
   import InventoryDashboard from './pharmacist/InventoryDashboard.svelte'
   import PharmacistSettings from './pharmacist/PharmacistSettings.svelte'
   import inventoryService from '../services/pharmacist/inventoryService.js'
+  import { formatDoctorId, formatPrescriptionId } from '../utils/idFormat.js'
   
   export let pharmacist
   let pharmacyId = null
@@ -1805,7 +1806,7 @@
                         </td>
                         <td class="px-3 sm:px-6 py-4 align-top" style="white-space: normal; word-wrap: break-word; max-width: 300px;">
                           <div class="font-semibold text-gray-900 text-xs sm:text-sm">{prescription.doctorName || getDoctorName(prescription.doctorId)}</div>
-                          <div class="text-xs sm:text-sm text-gray-500" style="word-break: break-all;">ID: {prescription.doctorId}</div>
+                          <div class="text-xs sm:text-sm text-gray-500" style="word-break: break-all;">ID: {formatDoctorId(prescription.doctorId)}</div>
                         </td>
                         <td class="px-3 sm:px-6 py-4 align-top" style="white-space: normal; word-wrap: break-word;">
                           <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -2061,7 +2062,7 @@
               {#each selectedPrescription.prescriptions as prescription}
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-4">
                   <div class="bg-gray-50 px-3 sm:px-4 py-3 border-b border-gray-200">
-                    <h6 class="text-xs sm:text-sm font-semibold mb-0">Prescription ID: {prescription.id}</h6>
+                    <h6 class="text-xs sm:text-sm font-semibold mb-0">Prescription ID: {formatPrescriptionId(prescription.id)}</h6>
                   </div>
                   <div class="p-3 sm:p-4">
                     <!-- Medications for this prescription -->

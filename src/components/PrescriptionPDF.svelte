@@ -3,6 +3,7 @@
   import jsPDF from 'jspdf'
   import firebaseStorage from '../services/firebaseStorage.js'
   import doctorAuthService from '../services/doctor/doctorAuthService.js'
+  import { formatPrescriptionId } from '../utils/idFormat.js'
   
   const dispatch = createEventDispatcher()
   
@@ -314,7 +315,7 @@
       doc.text(`Date: ${currentDate}`, pageWidth - margin, contentYStart + 7, { align: 'right' })
       
       doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
-      const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
+      const prescriptionId = formatPrescriptionId(Date.now().toString())
       doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
       
       const patientSex = selectedPatient.gender || selectedPatient.sex || 'Not specified'

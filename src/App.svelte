@@ -22,6 +22,7 @@
   let user = null
   let loading = true
   let showAdminPanel = false
+  const ADMIN_PANEL_STORAGE_KEY = 'prescribe-admin-panel-active'
   let doctorUsageStats = null
   let doctorQuotaStatus = null
   let refreshInterval = null
@@ -62,6 +63,20 @@
 
   $: if (user?.email) {
     loadSettingsDoctor()
+  }
+
+  const canAccessAdminPanel = (currentUser) => {
+    return !!(currentUser && (currentUser.isAdmin || currentUser.role === 'admin' || currentUser.email === 'senakahks@gmail.com'))
+  }
+
+  $: if (user) {
+    const storedAdminPanel = localStorage.getItem(ADMIN_PANEL_STORAGE_KEY) === 'true'
+    if (storedAdminPanel && canAccessAdminPanel(user) && !showAdminPanel) {
+      showAdminPanel = true
+    } else if (!canAccessAdminPanel(user) && showAdminPanel) {
+      showAdminPanel = false
+      localStorage.removeItem(ADMIN_PANEL_STORAGE_KEY)
+    }
   }
   
   // Handle menu navigation
@@ -424,6 +439,7 @@
       user = null
       doctorUsageStats = null
       showAdminPanel = false
+      localStorage.removeItem(ADMIN_PANEL_STORAGE_KEY)
     } catch (error) {
       console.error('Error signing out:', error)
     }
@@ -525,12 +541,14 @@
     console.log('🔍 User isAdmin:', user?.isAdmin)
     console.log('🔍 User role:', user?.role)
     showAdminPanel = true
+    localStorage.setItem(ADMIN_PANEL_STORAGE_KEY, 'true')
     console.log('🔍 showAdminPanel set to:', showAdminPanel)
   }
   
   // Handle back from admin panel
   const handleBackFromAdmin = () => {
     showAdminPanel = false
+    localStorage.removeItem(ADMIN_PANEL_STORAGE_KEY)
   }
   
   const handlePharmacistLogin = (pharmacistData) => {

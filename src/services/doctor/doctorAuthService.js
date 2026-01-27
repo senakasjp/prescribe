@@ -115,6 +115,37 @@ class DoctorAuthService {
         throw new Error('Doctor not found')
       }
 
+      if (doctor.isApproved === false) {
+        throw new Error('Your account is pending approval. Please contact the administrator.')
+      }
+
+      if (doctor.accessExpiresAt) {
+        const expiresAt = new Date(doctor.accessExpiresAt)
+        if (!Number.isNaN(expiresAt.getTime()) && Date.now() > expiresAt.getTime()) {
+          throw new Error('Your access period has expired. Please contact the administrator.')
+        }
+      }
+
+      if (doctor.isDisabled) {
+        throw new Error('Your account is disabled. Please contact the administrator.')
+      }
+
+      if (doctor.externalDoctor && doctor.invitedByDoctorId) {
+        const ownerDoctor = await firebaseStorage.getDoctorById(doctor.invitedByDoctorId)
+        if (ownerDoctor?.isApproved === false) {
+          throw new Error('Owner doctor account is pending approval. External access is not allowed.')
+        }
+        if (ownerDoctor?.accessExpiresAt) {
+          const ownerExpiresAt = new Date(ownerDoctor.accessExpiresAt)
+          if (!Number.isNaN(ownerExpiresAt.getTime()) && Date.now() > ownerExpiresAt.getTime()) {
+            throw new Error('Owner doctor access period has expired. External access is not allowed.')
+          }
+        }
+        if (ownerDoctor?.isDisabled) {
+          throw new Error('Owner doctor account is disabled. External access is not allowed.')
+        }
+      }
+
       // Simple password check (in production, use proper hashing)
       if (doctor.password !== password) {
         throw new Error('Invalid password')

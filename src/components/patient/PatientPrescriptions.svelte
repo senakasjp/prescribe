@@ -3,6 +3,7 @@
   import { formatDate, sortByDate } from '../../utils/dataProcessing.js'
   import { getIconClass, getButtonClasses, getBadgeClasses } from '../../utils/uiHelpers.js'
   import { PRESCRIPTION_STATUS, MEDICATION_FREQUENCIES } from '../../utils/constants.js'
+  import { formatPrescriptionId } from '../../utils/idFormat.js'
   
   const dispatch = createEventDispatcher()
   
@@ -276,7 +277,7 @@
               <div class="flex-1">
                 <div class="flex items-center space-x-3 mb-2">
                   <h4 class="text-lg font-medium text-gray-900">
-                    Prescription #{prescription.id?.slice(-8) || 'Unknown'}
+                    Prescription {formatPrescriptionId(prescription.id)}
                   </h4>
                   <span class="{getBadgeClasses(getStatusColor(prescription.status), { size: 'sm' })}">
                     {getStatusLabel(prescription.status)}

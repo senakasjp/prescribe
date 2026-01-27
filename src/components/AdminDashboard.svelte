@@ -2,10 +2,12 @@
   import { createEventDispatcher, onMount } from 'svelte'
   import adminAuthService from '../services/adminAuthService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import { auth } from '../firebase-config.js'
   import LoadingSpinner from './LoadingSpinner.svelte'
   import aiTokenTracker from '../services/aiTokenTracker.js'
   import AIPromptLogs from './AIPromptLogs.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
+  import { formatDoctorId } from '../utils/idFormat.js'
   
   const dispatch = createEventDispatcher()
   
@@ -64,6 +66,80 @@
   // Configuration variables
   let defaultQuotaInput = 0
   let tokenPriceInput = 0
+
+  // Welcome email template (system setting)
+  let welcomeEmailLoading = false
+  let welcomeEmailSaving = false
+  let welcomeEmailStatus = ''
+  let welcomeSubject = ''
+  let welcomeText = ''
+  let welcomeHtml = ''
+  let welcomeFromName = ''
+  let welcomeFromEmail = ''
+  let welcomeReplyTo = ''
+
+  // Doctor broadcast email template
+  let doctorBroadcastLoading = false
+  let doctorBroadcastSaving = false
+  let doctorBroadcastStatus = ''
+  let doctorBroadcastSending = false
+  let doctorBroadcastSubject = ''
+  let doctorBroadcastText = ''
+  let doctorBroadcastHtml = ''
+  let doctorBroadcastFromName = ''
+  let doctorBroadcastFromEmail = ''
+  let doctorBroadcastReplyTo = ''
+
+  // Email templates for single-doctor sends
+  let selectedDoctorForEmail = ''
+  let approvalWelcomeLoading = false
+  let approvalWelcomeSaving = false
+  let approvalWelcomeStatus = ''
+  let approvalWelcomeSubject = ''
+  let approvalWelcomeText = ''
+  let approvalWelcomeHtml = ''
+  let approvalWelcomeFromName = ''
+  let approvalWelcomeFromEmail = ''
+  let approvalWelcomeReplyTo = ''
+
+  let paymentReminderLoading = false
+  let paymentReminderSaving = false
+  let paymentReminderStatus = ''
+  let paymentReminderSubject = ''
+  let paymentReminderText = ''
+  let paymentReminderHtml = ''
+  let paymentReminderFromName = ''
+  let paymentReminderFromEmail = ''
+  let paymentReminderReplyTo = ''
+
+  let paymentThanksLoading = false
+  let paymentThanksSaving = false
+  let paymentThanksStatus = ''
+  let paymentThanksSubject = ''
+  let paymentThanksText = ''
+  let paymentThanksHtml = ''
+  let paymentThanksFromName = ''
+  let paymentThanksFromEmail = ''
+  let paymentThanksReplyTo = ''
+
+  let otherMessageLoading = false
+  let otherMessageSaving = false
+  let otherMessageStatus = ''
+  let otherMessageSubject = ''
+  let otherMessageText = ''
+  let otherMessageHtml = ''
+  let otherMessageFromName = ''
+  let otherMessageFromEmail = ''
+  let otherMessageReplyTo = ''
+
+  // SMTP settings (stored in Firestore)
+  let smtpLoading = false
+  let smtpSaving = false
+  let smtpStatus = ''
+  let smtpHost = ''
+  let smtpPort = '587'
+  let smtpSecure = false
+  let smtpUser = ''
   
   // Reactive statement to reload data when currentAdmin changes
   $: if (currentAdmin) {
@@ -111,6 +187,15 @@
       console.log('🔍 Loading doctors...')
       await loadDoctors()
       console.log('✅ Doctors loaded')
+
+      // Load system settings (welcome email template)
+      await loadWelcomeEmailTemplate()
+      await loadDoctorBroadcastTemplate()
+      await loadSmtpSettings()
+      await loadApprovalWelcomeTemplate()
+      await loadPaymentReminderTemplate()
+      await loadPaymentThanksTemplate()
+      await loadOtherMessageTemplate()
       
       console.log('🎉 All admin data loaded successfully')
       
@@ -120,6 +205,374 @@
     } finally {
       loading = false
       console.log('🔍 Loading set to false')
+    }
+  }
+
+  const loadWelcomeEmailTemplate = async () => {
+    try {
+      welcomeEmailLoading = true
+      const template = await firebaseStorage.getWelcomeEmailTemplate()
+      welcomeSubject = template?.subject || ''
+      welcomeText = template?.text || ''
+      welcomeHtml = template?.html || ''
+      welcomeFromName = template?.fromName || ''
+      welcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      welcomeReplyTo = template?.replyTo || ''
+    } catch (error) {
+      console.error('❌ Error loading welcome email template:', error)
+    } finally {
+      welcomeEmailLoading = false
+    }
+  }
+
+  const loadDoctorBroadcastTemplate = async () => {
+    try {
+      doctorBroadcastLoading = true
+      const template = await firebaseStorage.getDoctorBroadcastEmailTemplate()
+      doctorBroadcastSubject = template?.subject || ''
+      doctorBroadcastText = template?.text || ''
+      doctorBroadcastHtml = template?.html || ''
+      doctorBroadcastFromName = template?.fromName || ''
+      doctorBroadcastFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      doctorBroadcastReplyTo = template?.replyTo || ''
+    } catch (error) {
+      console.error('❌ Error loading doctor broadcast email template:', error)
+    } finally {
+      doctorBroadcastLoading = false
+    }
+  }
+
+  const loadApprovalWelcomeTemplate = async () => {
+    try {
+      approvalWelcomeLoading = true
+      const template = await firebaseStorage.getEmailTemplate('approvalWelcomeEmail')
+      approvalWelcomeSubject = template?.subject || ''
+      approvalWelcomeText = template?.text || ''
+      approvalWelcomeHtml = template?.html || ''
+      approvalWelcomeFromName = template?.fromName || ''
+      approvalWelcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      approvalWelcomeReplyTo = template?.replyTo || ''
+    } catch (error) {
+      console.error('❌ Error loading approval welcome template:', error)
+    } finally {
+      approvalWelcomeLoading = false
+    }
+  }
+
+  const saveApprovalWelcomeTemplate = async () => {
+    try {
+      approvalWelcomeSaving = true
+      approvalWelcomeStatus = ''
+      await firebaseStorage.saveEmailTemplate('approvalWelcomeEmail', {
+        subject: approvalWelcomeSubject.trim(),
+        text: approvalWelcomeText.trim(),
+        html: approvalWelcomeHtml.trim(),
+        fromName: approvalWelcomeFromName.trim(),
+        fromEmail: approvalWelcomeFromEmail.trim(),
+        replyTo: approvalWelcomeReplyTo.trim()
+      })
+      approvalWelcomeStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving approval welcome template:', error)
+      approvalWelcomeStatus = 'Save failed'
+    } finally {
+      approvalWelcomeSaving = false
+      setTimeout(() => {
+        approvalWelcomeStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadPaymentReminderTemplate = async () => {
+    try {
+      paymentReminderLoading = true
+      const template = await firebaseStorage.getEmailTemplate('paymentReminderEmail')
+      paymentReminderSubject = template?.subject || ''
+      paymentReminderText = template?.text || ''
+      paymentReminderHtml = template?.html || ''
+      paymentReminderFromName = template?.fromName || ''
+      paymentReminderFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      paymentReminderReplyTo = template?.replyTo || ''
+    } catch (error) {
+      console.error('❌ Error loading payment reminder template:', error)
+    } finally {
+      paymentReminderLoading = false
+    }
+  }
+
+  const savePaymentReminderTemplate = async () => {
+    try {
+      paymentReminderSaving = true
+      paymentReminderStatus = ''
+      await firebaseStorage.saveEmailTemplate('paymentReminderEmail', {
+        subject: paymentReminderSubject.trim(),
+        text: paymentReminderText.trim(),
+        html: paymentReminderHtml.trim(),
+        fromName: paymentReminderFromName.trim(),
+        fromEmail: paymentReminderFromEmail.trim(),
+        replyTo: paymentReminderReplyTo.trim()
+      })
+      paymentReminderStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving payment reminder template:', error)
+      paymentReminderStatus = 'Save failed'
+    } finally {
+      paymentReminderSaving = false
+      setTimeout(() => {
+        paymentReminderStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadPaymentThanksTemplate = async () => {
+    try {
+      paymentThanksLoading = true
+      const template = await firebaseStorage.getEmailTemplate('paymentThanksEmail')
+      paymentThanksSubject = template?.subject || ''
+      paymentThanksText = template?.text || ''
+      paymentThanksHtml = template?.html || ''
+      paymentThanksFromName = template?.fromName || ''
+      paymentThanksFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      paymentThanksReplyTo = template?.replyTo || ''
+    } catch (error) {
+      console.error('❌ Error loading payment thanks template:', error)
+    } finally {
+      paymentThanksLoading = false
+    }
+  }
+
+  const savePaymentThanksTemplate = async () => {
+    try {
+      paymentThanksSaving = true
+      paymentThanksStatus = ''
+      await firebaseStorage.saveEmailTemplate('paymentThanksEmail', {
+        subject: paymentThanksSubject.trim(),
+        text: paymentThanksText.trim(),
+        html: paymentThanksHtml.trim(),
+        fromName: paymentThanksFromName.trim(),
+        fromEmail: paymentThanksFromEmail.trim(),
+        replyTo: paymentThanksReplyTo.trim()
+      })
+      paymentThanksStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving payment thanks template:', error)
+      paymentThanksStatus = 'Save failed'
+    } finally {
+      paymentThanksSaving = false
+      setTimeout(() => {
+        paymentThanksStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadOtherMessageTemplate = async () => {
+    try {
+      otherMessageLoading = true
+      const template = await firebaseStorage.getEmailTemplate('doctorMessageEmail')
+      otherMessageSubject = template?.subject || ''
+      otherMessageText = template?.text || ''
+      otherMessageHtml = template?.html || ''
+      otherMessageFromName = template?.fromName || ''
+      otherMessageFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      otherMessageReplyTo = template?.replyTo || ''
+    } catch (error) {
+      console.error('❌ Error loading other message template:', error)
+    } finally {
+      otherMessageLoading = false
+    }
+  }
+
+  const saveOtherMessageTemplate = async () => {
+    try {
+      otherMessageSaving = true
+      otherMessageStatus = ''
+      await firebaseStorage.saveEmailTemplate('doctorMessageEmail', {
+        subject: otherMessageSubject.trim(),
+        text: otherMessageText.trim(),
+        html: otherMessageHtml.trim(),
+        fromName: otherMessageFromName.trim(),
+        fromEmail: otherMessageFromEmail.trim(),
+        replyTo: otherMessageReplyTo.trim()
+      })
+      otherMessageStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving other message template:', error)
+      otherMessageStatus = 'Save failed'
+    } finally {
+      otherMessageSaving = false
+      setTimeout(() => {
+        otherMessageStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveDoctorBroadcastTemplate = async () => {
+    try {
+      doctorBroadcastSaving = true
+      doctorBroadcastStatus = ''
+      await firebaseStorage.saveDoctorBroadcastEmailTemplate({
+        subject: doctorBroadcastSubject.trim(),
+        text: doctorBroadcastText.trim(),
+        html: doctorBroadcastHtml.trim(),
+        fromName: doctorBroadcastFromName.trim(),
+        fromEmail: doctorBroadcastFromEmail.trim(),
+        replyTo: doctorBroadcastReplyTo.trim()
+      })
+      doctorBroadcastStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving doctor broadcast email template:', error)
+      doctorBroadcastStatus = 'Save failed'
+    } finally {
+      doctorBroadcastSaving = false
+      setTimeout(() => {
+        doctorBroadcastStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadSmtpSettings = async () => {
+    try {
+      smtpLoading = true
+      const settings = await firebaseStorage.getSmtpSettings()
+      smtpHost = settings?.host || ''
+      smtpPort = String(settings?.port || '587')
+      smtpSecure = Boolean(settings?.secure)
+      smtpUser = settings?.user || ''
+    } catch (error) {
+      console.error('❌ Error loading SMTP settings:', error)
+    } finally {
+      smtpLoading = false
+    }
+  }
+
+  const saveSmtpSettings = async () => {
+    try {
+      smtpSaving = true
+      smtpStatus = ''
+      await firebaseStorage.saveSmtpSettings({
+        host: smtpHost.trim(),
+        port: smtpPort.trim(),
+        secure: smtpSecure,
+        user: smtpUser.trim(),
+        pass: ''
+      })
+      smtpStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving SMTP settings:', error)
+      smtpStatus = 'Save failed'
+    } finally {
+      smtpSaving = false
+      setTimeout(() => {
+        smtpStatus = ''
+      }, 2500)
+    }
+  }
+
+  const getFunctionsBaseUrl = () => {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
+    const region = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
+    if (!projectId) return null
+    return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`
+  }
+
+  const sendTemplateToDoctor = async (templateId, doctorId, statusSetter) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    if (!doctorId) {
+      statusSetter('Select a doctor first')
+      return
+    }
+    try {
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendDoctorTemplateEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ templateId, doctorId })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      statusSetter('Sent')
+    } catch (error) {
+      statusSetter(error?.message || 'Send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 3000)
+    }
+  }
+
+  const sendDoctorBroadcast = async (mode) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      console.error('❌ Functions base URL is not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      console.error('❌ No authenticated user found for email send')
+      return
+    }
+    try {
+      doctorBroadcastSending = true
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendDoctorBroadcastEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ mode })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      const data = await response.json()
+      doctorBroadcastStatus = mode === 'test'
+        ? `Test sent to ${data?.sent || 0} recipient`
+        : `Sent to ${data?.sent || 0} doctors`
+    } catch (error) {
+      console.error('❌ Error sending doctor broadcast:', error)
+      doctorBroadcastStatus = error?.message || 'Send failed'
+    } finally {
+      doctorBroadcastSending = false
+      setTimeout(() => {
+        doctorBroadcastStatus = ''
+      }, 3000)
+    }
+  }
+  const saveWelcomeEmailTemplate = async () => {
+    try {
+      welcomeEmailSaving = true
+      welcomeEmailStatus = ''
+      await firebaseStorage.saveWelcomeEmailTemplate({
+        subject: welcomeSubject.trim(),
+        text: welcomeText.trim(),
+        html: welcomeHtml.trim(),
+        fromName: welcomeFromName.trim(),
+        fromEmail: welcomeFromEmail.trim(),
+        replyTo: welcomeReplyTo.trim()
+      })
+      welcomeEmailStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving welcome email template:', error)
+      welcomeEmailStatus = 'Save failed'
+    } finally {
+      welcomeEmailSaving = false
+      setTimeout(() => {
+        welcomeEmailStatus = ''
+      }, 2500)
     }
   }
   
@@ -223,7 +676,35 @@
   const loadDoctors = async () => {
     try {
       console.log('🔍 Loading doctors...')
-      doctors = await firebaseStorage.getAllDoctors()
+      const fetchedDoctors = await firebaseStorage.getAllDoctors()
+      const dedupedDoctors = []
+      const seenByEmail = new Map()
+
+      fetchedDoctors.forEach((doctor) => {
+        const emailKey = (doctor?.email || '').toLowerCase()
+        if (!emailKey) {
+          dedupedDoctors.push(doctor)
+          return
+        }
+
+        const existing = seenByEmail.get(emailKey)
+        if (!existing) {
+          seenByEmail.set(emailKey, doctor)
+          return
+        }
+
+        const existingDate = new Date(existing.createdAt || 0).getTime()
+        const currentDate = new Date(doctor.createdAt || 0).getTime()
+        if (currentDate > existingDate) {
+          seenByEmail.set(emailKey, doctor)
+        }
+      })
+
+      seenByEmail.forEach((doctor) => {
+        dedupedDoctors.push(doctor)
+      })
+
+      doctors = dedupedDoctors
       
       console.log(`🔍 Found ${doctors.length} doctors`)
       
@@ -303,6 +784,113 @@
       month: '2-digit',
       year: 'numeric'
     })
+  }
+
+  const isTrialActive = (doctor) => {
+    if (!doctor?.accessExpiresAt) return false
+    const expiresAt = new Date(doctor.accessExpiresAt)
+    if (Number.isNaN(expiresAt.getTime())) return false
+    return Date.now() <= expiresAt.getTime()
+  }
+
+  const getOwnerDoctor = (doctor) => {
+    if (!doctor?.externalDoctor || !doctor?.invitedByDoctorId) return null
+    return doctors.find(d => d.id === doctor.invitedByDoctorId) || null
+  }
+
+  const isApprovalPending = (doctor) => doctor?.isApproved === false
+
+  const isOwnerDisabled = (doctor) => {
+    const ownerDoctor = getOwnerDoctor(doctor)
+    return !!ownerDoctor?.isDisabled
+  }
+
+  const isEffectivelyDisabled = (doctor) => {
+    return isApprovalPending(doctor) || !!doctor?.isDisabled || isOwnerDisabled(doctor)
+  }
+
+  const getDoctorStatusLabel = (doctor) => {
+    if (isApprovalPending(doctor)) {
+      return 'Approval Pending'
+    }
+    if (isOwnerDisabled(doctor)) {
+      return 'Disabled (Owner)'
+    }
+    return doctor?.isDisabled ? 'Disabled' : 'Enabled'
+  }
+
+  const getDoctorStatusBadgeClass = (doctor) => {
+    if (isApprovalPending(doctor)) {
+      return 'bg-amber-100 text-amber-700'
+    }
+    return isEffectivelyDisabled(doctor) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+  }
+
+  const canToggleDoctor = (doctor) => {
+    if (!doctor) return false
+    if (doctor.isAdmin || doctor.email === 'senakahks@gmail.com') return false
+    if (doctor.externalDoctor && isOwnerDisabled(doctor)) return false
+    if (isApprovalPending(doctor)) return false
+    return true
+  }
+
+  const approveDoctor = async (doctor) => {
+    if (!doctor || doctor.isApproved) return
+    try {
+      const date = new Date()
+      date.setMonth(date.getMonth() + 1)
+      const updatedDoctor = {
+        ...doctor,
+        isApproved: true,
+        isDisabled: false,
+        accessExpiresAt: date.toISOString()
+      }
+      await firebaseStorage.updateDoctor(updatedDoctor)
+      doctors = doctors.map(d => d.id === doctor.id ? { ...d, isApproved: true, isDisabled: false, accessExpiresAt: updatedDoctor.accessExpiresAt } : d)
+      try {
+        await sendTemplateToDoctor('approvalWelcomeEmail', doctor.id, () => {})
+      } catch (error) {
+        console.error('❌ Error sending approval welcome email:', error)
+      }
+    } catch (error) {
+      console.error('❌ Error approving doctor:', error)
+    }
+  }
+
+  const toggleDoctorStatus = async (doctor) => {
+    if (!doctor || !canToggleDoctor(doctor)) return
+    try {
+      const enabling = doctor.isDisabled
+      const accessExpiresAt = enabling
+        ? (() => {
+            const date = new Date()
+            date.setMonth(date.getMonth() + 1)
+            return date.toISOString()
+          })()
+        : doctor.accessExpiresAt || null
+      const updatedDoctor = { ...doctor, isDisabled: !doctor.isDisabled, accessExpiresAt }
+      await firebaseStorage.updateDoctor(updatedDoctor)
+      doctors = doctors.map(d => d.id === doctor.id ? { ...d, isDisabled: updatedDoctor.isDisabled, accessExpiresAt } : d)
+    } catch (error) {
+      console.error('❌ Error updating doctor status:', error)
+    }
+  }
+
+  const formatCompactNumber = (value) => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) {
+      return '0'
+    }
+    const abs = Math.abs(num)
+    const format = (divisor, suffix) => {
+      const trimmed = (num / divisor).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+      return `${trimmed}${suffix}`
+    }
+    if (abs >= 1e12) return format(1e12, 'T')
+    if (abs >= 1e9) return format(1e9, 'G')
+    if (abs >= 1e6) return format(1e6, 'M')
+    if (abs >= 1e3) return format(1e3, 'K')
+    return num.toLocaleString()
   }
   
   // Refresh data
@@ -615,6 +1203,18 @@
             >
                   <i class="fas fa-cog mr-3"></i>System
             </button>
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'email-settings' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('email-settings')}
+            >
+                  <i class="fas fa-envelope mr-3"></i>Email Settings
+            </button>
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'email-templates' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('email-templates')}
+            >
+                  <i class="fas fa-paper-plane mr-3"></i>Email Templates
+            </button>
               </nav>
             </div>
           </div>
@@ -721,11 +1321,27 @@
                           <tr class="hover:bg-gray-50">
                             <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
                               <div class="truncate" title={doctor.email}>{doctor.email}</div>
+                              <div class="text-xs text-gray-500 mt-1">ID: {formatDoctorId(doctor.id)}</div>
                             </td>
                             <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
                               <div class="truncate" title={doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}>
                                 {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}
                               </div>
+                              {#if isTrialActive(doctor)}
+                                <div class="mt-1">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
+                                    Trial until {formatDate(doctor.accessExpiresAt)}
+                                  </span>
+                                </div>
+                              {/if}
+                              {#if doctor.externalDoctor}
+                                {@const ownerDoctor = getOwnerDoctor(doctor)}
+                                <div class="mt-1">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 text-indigo-700">
+                                    External of {ownerDoctor?.id ? formatDoctorId(ownerDoctor.id) : 'Owner'}
+                                  </span>
+                                </div>
+                              {/if}
                             </td>
                             <td class="px-4 py-4 text-sm text-gray-900">
                               <div class="flex flex-wrap gap-1">
@@ -745,7 +1361,7 @@
                                 </div>
                                 <div class="flex items-center text-xs text-gray-500">
                                   <i class="fas fa-hashtag text-blue-600 mr-1 flex-shrink-0"></i>
-                                  <span class="truncate">{(doctor.tokenUsage?.total?.tokens || 0).toLocaleString()} tokens</span>
+                                  <span class="truncate">{formatCompactNumber(doctor.tokenUsage?.total?.tokens || 0)} tokens</span>
                                 </div>
                                 <div class="flex items-center text-xs text-gray-500">
                                   <i class="fas fa-bolt text-green-600 mr-1 flex-shrink-0"></i>
@@ -754,20 +1370,52 @@
                               </div>
                             </td>
                             <td class="px-4 py-4 text-sm text-gray-900">
-                              {#if doctor.email !== 'senakahks@gmail.com'}
-                                <button 
-                                  class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-lg"
-                                  data-doctor-id={doctor.id}
-                                  on:click={() => deleteDoctor(doctor)}
-                                  title="Delete doctor and all related data"
-                                >
-                                  <i class="fas fa-trash mr-1"></i>Delete
-                                </button>
-                              {:else}
-                                <span class="text-gray-500 text-xs">
-                                  <i class="fas fa-shield-alt mr-1"></i>Super Admin
+                              <div class="flex flex-col gap-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {getDoctorStatusBadgeClass(doctor)}">
+                                  {getDoctorStatusLabel(doctor)}
                                 </span>
-                              {/if}
+                                {#if !doctor.externalDoctor}
+                                  {#if isApprovalPending(doctor)}
+                                    <button
+                                      class="inline-flex items-center px-2 py-1 border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 text-xs font-medium rounded-lg"
+                                      on:click={() => approveDoctor(doctor)}
+                                    >
+                                      <i class="fas fa-check mr-1"></i>Approve
+                                    </button>
+                                  {:else}
+                                    <button
+                                      class="inline-flex items-center px-2 py-1 border {isEffectivelyDisabled(doctor) ? 'border-green-300 text-green-700 hover:bg-green-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                      on:click={() => toggleDoctorStatus(doctor)}
+                                      disabled={!canToggleDoctor(doctor)}
+                                    >
+                                      <i class="fas {isEffectivelyDisabled(doctor) ? 'fa-unlock' : 'fa-ban'} mr-1"></i>
+                                      {#if isOwnerDisabled(doctor)}
+                                        Owner Disabled
+                                      {:else if doctor.isDisabled}
+                                        Enable
+                                      {:else}
+                                        Disable
+                                      {/if}
+                                    </button>
+                                  {/if}
+                                  {#if doctor.email !== 'senakahks@gmail.com'}
+                                    <button 
+                                      class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-lg"
+                                      data-doctor-id={doctor.id}
+                                      on:click={() => deleteDoctor(doctor)}
+                                      title="Delete doctor and all related data"
+                                    >
+                                      <i class="fas fa-trash mr-1"></i>Delete
+                                    </button>
+                                  {:else}
+                                    <span class="text-gray-500 text-xs">
+                                      <i class="fas fa-shield-alt mr-1"></i>Super Admin
+                                    </span>
+                                  {/if}
+                                {:else}
+                                  <span class="text-xs text-gray-500">Managed by owner</span>
+                                {/if}
+                              </div>
                             </td>
                           </tr>
                         {/each}
@@ -787,6 +1435,17 @@
                               <p class="text-xs text-gray-500 truncate" title={doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}>
                                 {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}
                               </p>
+                              {#if isTrialActive(doctor)}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700 mt-1">
+                                  Trial until {formatDate(doctor.accessExpiresAt)}
+                                </span>
+                              {/if}
+                              {#if doctor.externalDoctor}
+                                {@const ownerDoctor = getOwnerDoctor(doctor)}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 text-indigo-700 mt-1">
+                                  External of {ownerDoctor?.id ? formatDoctorId(ownerDoctor.id) : 'Owner'}
+                                </span>
+                              {/if}
                             </div>
                             <div class="flex flex-wrap gap-1 ml-2">
                               <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctor.role}</span>
@@ -824,7 +1483,7 @@
                                   <i class="fas fa-hashtag text-blue-600 mr-1"></i>
                                   <span class="text-gray-500">Tokens:</span>
                 </div>
-                                <span class="font-medium text-gray-900">{(doctor.tokenUsage?.total?.tokens || 0).toLocaleString()}</span>
+                                <span class="font-medium text-gray-900">{formatCompactNumber(doctor.tokenUsage?.total?.tokens || 0)}</span>
                     </div>
                               <div class="flex items-center justify-between">
                                 <div class="flex items-center">
@@ -835,24 +1494,64 @@
                 </div>
                     </div>
                   </div>
+
+                          <div class="border-t pt-3">
+                            <div class="flex items-center justify-between mb-2">
+                              <span class="text-xs text-gray-500">Status:</span>
+                              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {getDoctorStatusBadgeClass(doctor)}">
+                                {getDoctorStatusLabel(doctor)}
+                              </span>
+                            </div>
+                            {#if !doctor.externalDoctor}
+                              {#if isApprovalPending(doctor)}
+                                <button
+                                  class="w-full inline-flex items-center justify-center px-3 py-2 border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 text-sm font-medium rounded-lg"
+                                  on:click={() => approveDoctor(doctor)}
+                                >
+                                  <i class="fas fa-check mr-2"></i>Approve
+                                </button>
+                              {:else}
+                                <button
+                                  class="w-full inline-flex items-center justify-center px-3 py-2 border {isEffectivelyDisabled(doctor) ? 'border-green-300 text-green-700 hover:bg-green-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                  on:click={() => toggleDoctorStatus(doctor)}
+                                  disabled={!canToggleDoctor(doctor)}
+                                >
+                                  <i class="fas {isEffectivelyDisabled(doctor) ? 'fa-unlock' : 'fa-ban'} mr-2"></i>
+                                  {#if isOwnerDisabled(doctor)}
+                                    Owner Disabled
+                                  {:else if doctor.isDisabled}
+                                    Enable
+                                  {:else}
+                                    Disable
+                                  {/if}
+                                </button>
+                              {/if}
+                            {:else}
+                              <span class="text-xs text-gray-500">Managed by owner</span>
+                            {/if}
+                          </div>
                           
                           <!-- Actions -->
                           <div class="border-t pt-3">
-                            {#if doctor.email !== 'senakahks@gmail.com'}
-                              <button 
-                                class="w-full inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
-                                data-doctor-id={doctor.id}
-                                on:click={() => deleteDoctor(doctor)}
-                                title="Delete doctor and all related data"
-                              >
-                                <i class="fas fa-trash mr-2"></i>Delete Doctor
-                              </button>
+                            {#if !doctor.externalDoctor}
+                              {#if doctor.email !== 'senakahks@gmail.com'}
+                                <button 
+                                  class="w-full inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
+                                  data-doctor-id={doctor.id}
+                                  on:click={() => deleteDoctor(doctor)}
+                                  title="Delete doctor and all related data"
+                                >
+                                  <i class="fas fa-trash mr-2"></i>Delete Doctor
+                                </button>
+                              {:else}
+                                <div class="text-center text-gray-500 text-sm">
+                                  <i class="fas fa-shield-alt mr-1"></i>Super Admin - Protected
+                                </div>
+                              {/if}
                             {:else}
-                              <div class="text-center text-gray-500 text-sm">
-                                <i class="fas fa-shield-alt mr-1"></i>Super Admin - Protected
-                </div>
+                              <div class="text-center text-gray-500 text-sm">Managed by owner</div>
                             {/if}
-                    </div>
+                          </div>
                   </div>
                       </div>
                     {/each}
@@ -897,7 +1596,7 @@
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-hashtag mr-1"></i>Total Tokens
                   </h6>
-                  <h5 class="text-teal-600 text-xl font-bold mb-1">{aiUsageStats.total.tokens.toLocaleString()}</h5>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">{formatCompactNumber(aiUsageStats.total.tokens)}</h5>
                   <small class="text-gray-500">All Time</small>
                     </div>
                 <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
@@ -968,7 +1667,7 @@
                                   year: 'numeric'
                                 })}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{day.requests || 0}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(day.tokens || 0).toLocaleString()}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCompactNumber(day.tokens || 0)}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(day.cost || 0).toFixed(4)}</td>
                               </tr>
                             {/each}
@@ -1004,7 +1703,7 @@
                             <tr class="hover:bg-gray-50">
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{month.requests || 0}</td>
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{(month.tokens || 0).toLocaleString()}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCompactNumber(month.tokens || 0)}</td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(month.cost || 0).toFixed(4)}</td>
                               </tr>
                             {/each}
@@ -1188,7 +1887,7 @@
                             <tr class="hover:bg-gray-50">
                               <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
                                 <div class="font-medium text-gray-900 truncate" title={getDoctorName(doctor.doctorId)}>{getDoctorName(doctor.doctorId)}</div>
-                                <div class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {doctor.doctorId}</div>
+                                <div class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {formatDoctorId(doctor.doctorId)}</div>
                               </td>
                               <td class="px-4 py-4 text-sm text-gray-900">
                                 {#if doctor.quota}
@@ -1262,7 +1961,7 @@
                             <div class="flex justify-between items-start">
                               <div class="flex-1 min-w-0">
                                 <h3 class="text-sm font-medium text-gray-900 truncate" title={getDoctorName(doctor.doctorId)}>{getDoctorName(doctor.doctorId)}</h3>
-                                <p class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {doctor.doctorId}</p>
+                                <p class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {formatDoctorId(doctor.doctorId)}</p>
                               </div>
                               <div class="ml-2">
                                 {#if doctor.quotaStatus.hasQuota}
@@ -1432,10 +2131,750 @@
                     </div>
                   </div>
               </div>
-          {/if}
-                </div>
+          {:else if activeTab === 'email-settings'}
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-envelope mr-2 text-red-600"></i>Email Settings</h2>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">SMTP Settings</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if smtpLoading}
+                  <p class="text-sm text-gray-500">Loading settings...</p>
+                {:else}
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="smtpHost">SMTP Host</label>
+                      <input
+                        id="smtpHost"
+                        type="text"
+                        bind:value={smtpHost}
+                        placeholder="smtp.gmail.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="smtpPort">SMTP Port</label>
+                      <input
+                        id="smtpPort"
+                        type="number"
+                        min="1"
+                        bind:value={smtpPort}
+                        placeholder="587"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="smtpUser">SMTP User</label>
+                      <input
+                        id="smtpUser"
+                        type="text"
+                        bind:value={smtpUser}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-3">
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input type="checkbox" bind:checked={smtpSecure} class="rounded border-gray-300 text-red-600 focus:ring-red-200" />
+                      Use SSL/TLS (secure)
+                    </label>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveSmtpSettings}
+                      disabled={smtpSaving}
+                    >
+                      {#if smtpSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    {#if smtpStatus}
+                      <span class="text-sm text-gray-500">{smtpStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Welcome Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if welcomeEmailLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeSubject">Subject</label>
+                      <input
+                        id="welcomeSubject"
+                        type="text"
+                        bind:value={welcomeSubject}
+                        placeholder="Welcome to Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeFromName">From Name (optional)</label>
+                      <input
+                        id="welcomeFromName"
+                        type="text"
+                        bind:value={welcomeFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeFromEmail">From Email (optional)</label>
+                      <input
+                        id="welcomeFromEmail"
+                        type="email"
+                        bind:value={welcomeFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="welcomeReplyTo"
+                        type="email"
+                        bind:value={welcomeReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeText">Plain Text</label>
+                      <textarea
+                        id="welcomeText"
+                        rows="8"
+                        bind:value={welcomeText}
+                        placeholder="Hi {{name}},&#10;Welcome to Prescribe..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeHtml">HTML</label>
+                      <textarea
+                        id="welcomeHtml"
+                        rows="8"
+                        bind:value={welcomeHtml}
+                        placeholder="<h2>Welcome to Prescribe</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveWelcomeEmailTemplate}
+                      disabled={welcomeEmailSaving}
+                    >
+                      {#if welcomeEmailSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    {#if welcomeEmailStatus}
+                      <span class="text-sm text-gray-500">{welcomeEmailStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {:else if activeTab === 'email-templates'}
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-paper-plane mr-2 text-red-600"></i>Email Templates</h2>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Broadcast Email to All Doctors</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if doctorBroadcastLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastSubject">Subject</label>
+                      <input
+                        id="doctorBroadcastSubject"
+                        type="text"
+                        bind:value={doctorBroadcastSubject}
+                        placeholder="Important update from Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastFromName">From Name (optional)</label>
+                      <input
+                        id="doctorBroadcastFromName"
+                        type="text"
+                        bind:value={doctorBroadcastFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastFromEmail">From Email (optional)</label>
+                      <input
+                        id="doctorBroadcastFromEmail"
+                        type="email"
+                        bind:value={doctorBroadcastFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="doctorBroadcastReplyTo"
+                        type="email"
+                        bind:value={doctorBroadcastReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastText">Plain Text</label>
+                      <textarea
+                        id="doctorBroadcastText"
+                        rows="8"
+                        bind:value={doctorBroadcastText}
+                        placeholder="Hi {{name}},&#10;We have an important update..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastHtml">HTML</label>
+                      <textarea
+                        id="doctorBroadcastHtml"
+                        rows="8"
+                        bind:value={doctorBroadcastHtml}
+                        placeholder="<h2>Important update</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveDoctorBroadcastTemplate}
+                      disabled={doctorBroadcastSaving}
+                    >
+                      {#if doctorBroadcastSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendDoctorBroadcast('test')}
+                      disabled={doctorBroadcastSending}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
+                      on:click={() => {
+                        pendingAction = () => sendDoctorBroadcast('all')
+                        showConfirmation(
+                          'Send Broadcast',
+                          'Send this email to all doctors?',
+                          'Send',
+                          'Cancel',
+                          'warning'
+                        )
+                      }}
+                      disabled={doctorBroadcastSending}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to all doctors
+                    </button>
+                    {#if doctorBroadcastStatus}
+                      <span class="text-sm text-gray-500">{doctorBroadcastStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Send to a Single Doctor</h5>
+              </div>
+              <div class="p-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="singleDoctorSelect">Select Doctor</label>
+                <select
+                  id="singleDoctorSelect"
+                  bind:value={selectedDoctorForEmail}
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                >
+                  <option value="">Choose a doctor...</option>
+                  {#each doctors as doctor (doctor.id)}
+                    <option value={doctor.id}>{doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Approval Welcome Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if approvalWelcomeLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeSubject">Subject</label>
+                      <input
+                        id="approvalWelcomeSubject"
+                        type="text"
+                        bind:value={approvalWelcomeSubject}
+                        placeholder="Your account is approved"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeFromName">From Name (optional)</label>
+                      <input
+                        id="approvalWelcomeFromName"
+                        type="text"
+                        bind:value={approvalWelcomeFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeFromEmail">From Email (optional)</label>
+                      <input
+                        id="approvalWelcomeFromEmail"
+                        type="email"
+                        bind:value={approvalWelcomeFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="approvalWelcomeReplyTo"
+                        type="email"
+                        bind:value={approvalWelcomeReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeText">Plain Text</label>
+                      <textarea
+                        id="approvalWelcomeText"
+                        rows="8"
+                        bind:value={approvalWelcomeText}
+                        placeholder="Hi {{name}},&#10;Your account is approved..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeHtml">HTML</label>
+                      <textarea
+                        id="approvalWelcomeHtml"
+                        rows="8"
+                        bind:value={approvalWelcomeHtml}
+                        placeholder="<h2>Your account is approved</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveApprovalWelcomeTemplate}
+                      disabled={approvalWelcomeSaving}
+                    >
+                      {#if approvalWelcomeSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('approvalWelcomeEmail', selectedDoctorForEmail, (msg) => approvalWelcomeStatus = msg)}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if approvalWelcomeStatus}
+                      <span class="text-sm text-gray-500">{approvalWelcomeStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Payment Reminder</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if paymentReminderLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderSubject">Subject</label>
+                      <input
+                        id="paymentReminderSubject"
+                        type="text"
+                        bind:value={paymentReminderSubject}
+                        placeholder="Payment reminder"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderFromName">From Name (optional)</label>
+                      <input
+                        id="paymentReminderFromName"
+                        type="text"
+                        bind:value={paymentReminderFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderFromEmail">From Email (optional)</label>
+                      <input
+                        id="paymentReminderFromEmail"
+                        type="email"
+                        bind:value={paymentReminderFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="paymentReminderReplyTo"
+                        type="email"
+                        bind:value={paymentReminderReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderText">Plain Text</label>
+                      <textarea
+                        id="paymentReminderText"
+                        rows="8"
+                        bind:value={paymentReminderText}
+                        placeholder="Hi {{name}},&#10;This is a payment reminder..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderHtml">HTML</label>
+                      <textarea
+                        id="paymentReminderHtml"
+                        rows="8"
+                        bind:value={paymentReminderHtml}
+                        placeholder="<h2>Payment reminder</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={savePaymentReminderTemplate}
+                      disabled={paymentReminderSaving}
+                    >
+                      {#if paymentReminderSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('paymentReminderEmail', selectedDoctorForEmail, (msg) => paymentReminderStatus = msg)}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if paymentReminderStatus}
+                      <span class="text-sm text-gray-500">{paymentReminderStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Payment Thank You</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if paymentThanksLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksSubject">Subject</label>
+                      <input
+                        id="paymentThanksSubject"
+                        type="text"
+                        bind:value={paymentThanksSubject}
+                        placeholder="Thank you for your payment"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksFromName">From Name (optional)</label>
+                      <input
+                        id="paymentThanksFromName"
+                        type="text"
+                        bind:value={paymentThanksFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksFromEmail">From Email (optional)</label>
+                      <input
+                        id="paymentThanksFromEmail"
+                        type="email"
+                        bind:value={paymentThanksFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="paymentThanksReplyTo"
+                        type="email"
+                        bind:value={paymentThanksReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksText">Plain Text</label>
+                      <textarea
+                        id="paymentThanksText"
+                        rows="8"
+                        bind:value={paymentThanksText}
+                        placeholder="Hi {{name}},&#10;Thank you for your payment..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksHtml">HTML</label>
+                      <textarea
+                        id="paymentThanksHtml"
+                        rows="8"
+                        bind:value={paymentThanksHtml}
+                        placeholder="<h2>Thank you</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={savePaymentThanksTemplate}
+                      disabled={paymentThanksSaving}
+                    >
+                      {#if paymentThanksSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('paymentThanksEmail', selectedDoctorForEmail, (msg) => paymentThanksStatus = msg)}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if paymentThanksStatus}
+                      <span class="text-sm text-gray-500">{paymentThanksStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Other Message</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if otherMessageLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageSubject">Subject</label>
+                      <input
+                        id="otherMessageSubject"
+                        type="text"
+                        bind:value={otherMessageSubject}
+                        placeholder="A message from Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageFromName">From Name (optional)</label>
+                      <input
+                        id="otherMessageFromName"
+                        type="text"
+                        bind:value={otherMessageFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageFromEmail">From Email (optional)</label>
+                      <input
+                        id="otherMessageFromEmail"
+                        type="email"
+                        bind:value={otherMessageFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="otherMessageReplyTo"
+                        type="email"
+                        bind:value={otherMessageReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageText">Plain Text</label>
+                      <textarea
+                        id="otherMessageText"
+                        rows="8"
+                        bind:value={otherMessageText}
+                        placeholder="Hi {{name}},&#10;Here is an update..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageHtml">HTML</label>
+                      <textarea
+                        id="otherMessageHtml"
+                        rows="8"
+                        bind:value={otherMessageHtml}
+                        placeholder="<h2>Update</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveOtherMessageTemplate}
+                      disabled={otherMessageSaving}
+                    >
+                      {#if otherMessageSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('doctorMessageEmail', selectedDoctorForEmail, (msg) => otherMessageStatus = msg)}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if otherMessageStatus}
+                      <span class="text-sm text-gray-500">{otherMessageStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
+                    </div>
+                  </div>
+              </div>
+              
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Secrets Setup (CLI)</h5>
+                </div>
+                <div class="p-4 space-y-3">
+                  <p class="text-sm text-gray-600">Run these in your project root to store secrets in Firebase Functions.</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-3 overflow-x-auto"><code>firebase functions:secrets:set SMTP_PASS
+firebase functions:secrets:set OPENAI_API_KEY</code></pre>
+                </div>
+              </div>
           {/if}
         </div>
 
@@ -1482,7 +2921,7 @@
               <label class="block text-sm font-medium text-gray-900 dark:text-white mb-1">
                 Doctor: <span class="font-semibold text-red-600">{getDoctorName(selectedDoctorId)}</span>
               </label>
-              <span class="text-xs text-gray-500 dark:text-gray-400">ID: {selectedDoctorId}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">ID: {formatDoctorId(selectedDoctorId)}</span>
             </div>
             
             <div>

@@ -11,6 +11,7 @@
   import AIRecommendations from './AIRecommendations.svelte'
   import PrescriptionsTab from './PrescriptionsTab.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
+  import { formatPrescriptionId } from '../utils/idFormat.js'
   
   export let selectedPatient
   export const addToPrescription = null
@@ -2621,7 +2622,7 @@
       
       // Age and Prescription number on same line
       doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
-      const prescriptionId = `RX-${Date.now().toString().slice(-6)}`
+      const prescriptionId = formatPrescriptionId(currentPrescription?.id || Date.now().toString())
       doc.text(`Prescription #: ${prescriptionId}`, pageWidth - margin, contentYStart + 13, { align: 'right' })
       
       // Sex/Gender on third line

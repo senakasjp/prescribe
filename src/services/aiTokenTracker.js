@@ -10,6 +10,49 @@ class AITokenTracker {
     this.migrateRequestsWithMissingDoctorId()
   }
 
+  sanitizeNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/[^0-9.-]+/g, '')
+      const parsed = Number(cleaned)
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+    return 0
+  }
+
+  normalizeUsageData() {
+    this.usageData.totalTokens = this.sanitizeNumber(this.usageData.totalTokens)
+    this.usageData.totalCost = this.sanitizeNumber(this.usageData.totalCost)
+
+    Object.keys(this.usageData.dailyUsage || {}).forEach((date) => {
+      const entry = this.usageData.dailyUsage[date]
+      if (!entry) return
+      entry.tokens = this.sanitizeNumber(entry.tokens)
+      entry.cost = this.sanitizeNumber(entry.cost)
+      entry.requests = this.sanitizeNumber(entry.requests)
+    })
+
+    Object.keys(this.usageData.monthlyUsage || {}).forEach((month) => {
+      const entry = this.usageData.monthlyUsage[month]
+      if (!entry) return
+      entry.tokens = this.sanitizeNumber(entry.tokens)
+      entry.cost = this.sanitizeNumber(entry.cost)
+      entry.requests = this.sanitizeNumber(entry.requests)
+    })
+
+    if (Array.isArray(this.usageData.requests)) {
+      this.usageData.requests = this.usageData.requests.map((req) => ({
+        ...req,
+        promptTokens: this.sanitizeNumber(req?.promptTokens),
+        completionTokens: this.sanitizeNumber(req?.completionTokens),
+        totalTokens: this.sanitizeNumber(req?.totalTokens),
+        cost: this.sanitizeNumber(req?.cost)
+      }))
+    }
+  }
+
   // Load usage data from localStorage
   loadUsageData() {
     try {
@@ -162,13 +205,20 @@ class AITokenTracker {
 
   // Get usage statistics
   getUsageStats() {
+    this.normalizeUsageData()
     const today = new Date().toISOString().split('T')[0]
     const thisMonth = new Date().toISOString().substring(0, 7)
+    const totalTokens = Array.isArray(this.usageData.requests)
+      ? this.usageData.requests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+      : 0
+    const totalCost = Array.isArray(this.usageData.requests)
+      ? this.usageData.requests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
+      : 0
     
     return {
       total: {
-        tokens: this.usageData.totalTokens,
-        cost: this.usageData.totalCost,
+        tokens: totalTokens,
+        cost: totalCost,
         requests: this.usageData.requests.length
       },
       today: this.usageData.dailyUsage[today] || { tokens: 0, cost: 0, requests: 0 },
@@ -270,14 +320,14 @@ class AITokenTracker {
     
     const today = new Date().toISOString().split('T')[0]
     
-    const totalTokens = doctorRequests.reduce((sum, req) => sum + req.totalTokens, 0)
-    const totalCost = doctorRequests.reduce((sum, req) => sum + req.cost, 0)
+    const totalTokens = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const totalCost = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
     const totalRequests = doctorRequests.length
     
     // Today's usage for this doctor
     const todayRequests = doctorRequests.filter(req => req.timestamp.startsWith(today))
-    const todayTokens = todayRequests.reduce((sum, req) => sum + req.totalTokens, 0)
-    const todayCost = todayRequests.reduce((sum, req) => sum + req.cost, 0)
+    const todayTokens = todayRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const todayCost = todayRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
     const todayRequestCount = todayRequests.length
     
     const stats = {

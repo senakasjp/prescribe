@@ -1,5 +1,6 @@
 <script>
   import LoadingSpinner from './LoadingSpinner.svelte'
+  import { formatPatientId } from '../utils/idFormat.js'
   
   export const patients = []
   export let filteredPatients = []
@@ -147,7 +148,7 @@
                 <div class="text-end">
                   <small class="text-gray-600 dark:text-gray-300">
                     <i class="fas fa-id-card mr-1"></i>
-                    ID: {patient.id.slice(-8)}
+                    ID: {formatPatientId(patient.id)}
                   </small>
                 </div>
               </div>
@@ -175,7 +176,7 @@
                   <p class="text-xs sm:text-sm text-gray-500">{patient.gender || 'N/A'}</p>
                 </div>
                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs sm:text-sm font-medium bg-blue-100 text-blue-800">
-                  ID: {patient.id.slice(-8)}
+                  ID: {formatPatientId(patient.id)}
                 </span>
               </div>
               
