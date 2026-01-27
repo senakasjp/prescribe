@@ -10,51 +10,35 @@ import {
   orderBy, 
   limit 
 } from 'firebase/firestore'
-import { db } from '../firebase-config.js'
+import { db, auth } from '../firebase-config.js'
 
 class OpenAIService {
   constructor() {
-    this.apiKey = import.meta.env.VITE_OPENAI_API_KEY
-    this.baseURL = 'https://api.openai.com/v1'
     this.client = null
     this.responseCache = new Map()
     this.cacheTtlMs = 5 * 60 * 1000
     this.maxCacheEntries = 200
     this.imageAnalysisCache = new Map()
     this.imageAnalysisTtlMs = 24 * 60 * 60 * 1000
-    this.initializeClient()
   }
 
   // Initialize OpenAI client
   initializeClient() {
-    if (this.isConfigured()) {
-      try {
-        // Dynamic import of OpenAI to avoid build issues
-        import('openai').then(({ default: OpenAI }) => {
-          this.client = new OpenAI({
-            apiKey: this.apiKey,
-            baseURL: this.baseURL,
-            dangerouslyAllowBrowser: true
-          })
-          console.log('✅ OpenAI client initialized successfully')
-        }).catch(error => {
-          console.error('❌ Failed to initialize OpenAI client:', error)
-        })
-      } catch (error) {
-        console.error('❌ Error importing OpenAI:', error)
-      }
-    }
+    // Client-side OpenAI SDK is no longer used.
   }
 
   // Check if API key is configured
   isConfigured() {
-    const configured = this.apiKey && this.apiKey !== 'undefined' && this.apiKey !== ''
-    console.log('🔑 OpenAI API Key Status:', {
-      hasKey: !!this.apiKey,
-      keyValue: this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'undefined',
-      configured: configured
-    })
+    const configured = !!this.getFunctionsBaseUrl()
+    console.log('🔑 OpenAI Proxy Status:', { configured })
     return configured
+  }
+
+  getFunctionsBaseUrl() {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
+    const region = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
+    if (!projectId) return null
+    return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`
   }
 
   // Log AI prompt to Firebase for admin monitoring - Enhanced to capture ALL OpenAI requests
@@ -170,18 +154,28 @@ class OpenAIService {
       })
       console.log('✅ AI prompt logged to Firebase successfully')
 
-      const response = await fetch(`${this.baseURL}/${endpoint}`, {
+      const baseUrl = this.getFunctionsBaseUrl()
+      if (!baseUrl) {
+        throw new Error('OpenAI is not configured.')
+      }
+      const currentUser = auth?.currentUser
+      if (!currentUser) {
+        throw new Error('Not authenticated')
+      }
+      const token = await currentUser.getIdToken()
+
+      const response = await fetch(`${baseUrl}/openaiProxy`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({ endpoint, requestBody })
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        const error = new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
+        const errorText = await response.text()
+        const error = new Error(errorText || 'OpenAI proxy error')
         
         // Log the error
         await this.logAIPrompt(promptType, {
@@ -200,7 +194,8 @@ class OpenAIService {
         throw error
       }
 
-      const data = await response.json()
+      const responseText = await response.text()
+      const data = responseText ? JSON.parse(responseText) : {}
 
       if (this.shouldUseCache(endpoint, requestBody, additionalContext)) {
         this.setCachedResponse(cacheKey, data)
@@ -346,26 +341,9 @@ class OpenAIService {
   // Ensure client is initialized
   async ensureClientReady() {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured')
+      throw new Error('OpenAI is not configured')
     }
-    
-    if (!this.client) {
-      // Try to initialize client synchronously
-      try {
-        const { default: OpenAI } = await import('openai')
-        this.client = new OpenAI({
-          apiKey: this.apiKey,
-          baseURL: this.baseURL,
-          dangerouslyAllowBrowser: true
-        })
-        console.log('✅ OpenAI client initialized on demand')
-      } catch (error) {
-        console.error('❌ Failed to initialize OpenAI client:', error)
-        throw new Error('Failed to initialize OpenAI client')
-      }
-    }
-    
-    return this.client
+    throw new Error('OpenAI client is not available in the browser')
   }
 
 
@@ -759,7 +737,7 @@ class OpenAIService {
   // Generate comprehensive prescription analysis
   async generateComprehensivePrescriptionAnalysis(patientData, doctorId = null) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -965,7 +943,7 @@ class OpenAIService {
   // Generate AI-assisted drug suggestions for prescriptions
   async generateAIDrugSuggestions(symptoms, currentMedications = [], patientAge = null, doctorId = null, additionalContext = {}) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -1109,7 +1087,7 @@ IMPORTANT: MEDICATION SUGGESTIONS:
   // Generate combined analysis (recommendations + medication suggestions) in single call
   async generateCombinedAnalysis(symptoms, currentMedications = [], patientAge = null, doctorId = null, patientAllergies = null, patientGender = null, longTermMedications = null, additionalContext = {}) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -1276,7 +1254,7 @@ Concise medical info only.`
   // Generate patient management summary
   async generatePatientSummary(patientData, doctorId = null) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -1411,7 +1389,7 @@ IMPORTANT FORMATTING RULES:
   // Improve text spelling only (strict spelling correction)
   async improveText(text, doctorId = null) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {

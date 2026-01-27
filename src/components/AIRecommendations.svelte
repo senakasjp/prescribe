@@ -367,7 +367,7 @@ model: 'gpt-4o-mini',
   {#if !isOpenAIConfigured}
     <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4" role="alert">
       <i class="fas fa-info-circle mr-2 text-blue-600"></i>
-      <span class="font-medium text-blue-800">AI Features Disabled:</span> <span class="text-blue-700">To enable AI recommendations, please configure your OpenAI API key in the environment variables (VITE_OPENAI_API_KEY).</span>
+      <span class="font-medium text-blue-800">AI Features Disabled:</span> <span class="text-blue-700">To enable AI recommendations, configure the OpenAI key in Firebase Functions Secrets (OPENAI_API_KEY) and deploy functions.</span>
     </div>
   {/if}
   

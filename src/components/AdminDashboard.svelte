@@ -132,6 +132,10 @@
   let otherMessageFromEmail = ''
   let otherMessageReplyTo = ''
 
+  // OpenAI proxy test
+  let openaiTestRunning = false
+  let openaiTestStatus = ''
+
   // SMTP settings (stored in Firestore)
   let smtpLoading = false
   let smtpSaving = false
@@ -140,6 +144,8 @@
   let smtpPort = '587'
   let smtpSecure = false
   let smtpUser = ''
+  let smtpTestRunning = false
+  let smtpTestStatus = ''
   
   // Reactive statement to reload data when currentAdmin changes
   $: if (currentAdmin) {
@@ -468,6 +474,44 @@
     }
   }
 
+  const testSmtpSettings = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      smtpTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      smtpTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      smtpTestRunning = true
+      smtpTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/testSmtp`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'SMTP test failed')
+      }
+      smtpTestStatus = 'SMTP test email sent'
+    } catch (error) {
+      smtpTestStatus = error?.message || 'SMTP test failed'
+    } finally {
+      smtpTestRunning = false
+      setTimeout(() => {
+        smtpTestStatus = ''
+      }, 3000)
+    }
+  }
+
   const getFunctionsBaseUrl = () => {
     const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
     const region = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
@@ -549,6 +593,55 @@
       doctorBroadcastSending = false
       setTimeout(() => {
         doctorBroadcastStatus = ''
+      }, 3000)
+    }
+  }
+
+  const testOpenAIProxy = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      openaiTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      openaiTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      openaiTestRunning = true
+      openaiTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/openaiProxy`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          endpoint: 'chat/completions',
+          requestBody: {
+            model: 'gpt-3.5-turbo',
+            messages: [
+              { role: 'system', content: 'You are a test endpoint.' },
+              { role: 'user', content: 'Reply with OK.' }
+            ],
+            max_tokens: 5,
+            temperature: 0
+          }
+        })
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'OpenAI test failed')
+      }
+      openaiTestStatus = 'OpenAI proxy OK'
+    } catch (error) {
+      openaiTestStatus = error?.message || 'OpenAI test failed'
+    } finally {
+      openaiTestRunning = false
+      setTimeout(() => {
+        openaiTestStatus = ''
       }, 3000)
     }
   }
@@ -2185,7 +2278,7 @@
                     </label>
                   </div>
 
-                  <div class="flex items-center justify-between">
+                  <div class="flex flex-wrap items-center gap-3">
                     <button
                       class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
                       on:click={saveSmtpSettings}
@@ -2197,8 +2290,22 @@
                         <i class="fas fa-save mr-2"></i>Save
                       {/if}
                     </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={testSmtpSettings}
+                      disabled={smtpTestRunning}
+                    >
+                      {#if smtpTestRunning}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Testing
+                      {:else}
+                        <i class="fas fa-vial mr-2"></i>Test SMTP
+                      {/if}
+                    </button>
                     {#if smtpStatus}
                       <span class="text-sm text-gray-500">{smtpStatus}</span>
+                    {/if}
+                    {#if smtpTestStatus}
+                      <span class="text-sm text-gray-500">{smtpTestStatus}</span>
                     {/if}
                   </div>
                 {/if}
@@ -2873,6 +2980,31 @@
                   <p class="text-sm text-gray-600">Run these in your project root to store secrets in Firebase Functions.</p>
                   <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-3 overflow-x-auto"><code>firebase functions:secrets:set SMTP_PASS
 firebase functions:secrets:set OPENAI_API_KEY</code></pre>
+                </div>
+              </div>
+              
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">OpenAI Proxy Test</h5>
+                </div>
+                <div class="p-4 space-y-3">
+                  <p class="text-sm text-gray-600">Sends a tiny request through the Functions proxy to confirm the secret is working.</p>
+                  <div class="flex items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={testOpenAIProxy}
+                      disabled={openaiTestRunning}
+                    >
+                      {#if openaiTestRunning}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Testing
+                      {:else}
+                        <i class="fas fa-vial mr-2"></i>Test OpenAI
+                      {/if}
+                    </button>
+                    {#if openaiTestStatus}
+                      <span class="text-sm text-gray-500">{openaiTestStatus}</span>
+                    {/if}
+                  </div>
                 </div>
               </div>
           {/if}

@@ -40,12 +40,14 @@ VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 
-# OpenAI Configuration
-VITE_OPENAI_API_KEY=your_openai_api_key
-
 # Application Configuration
 VITE_APP_NAME=Prescribe
 VITE_APP_VERSION=2.0.0
+```
+
+Set the OpenAI key in Functions secrets:
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
 ```
 
 ### 4. Firebase Configuration
@@ -438,5 +440,3 @@ git push origin backup-$(date +%Y%m%d)
 - Monitor performance metrics
 - Track user engagement
 - Monitor API usage and costs
-
-

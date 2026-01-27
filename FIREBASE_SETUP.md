@@ -198,8 +198,11 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 VITE_FIREBASE_APP_ID=your-app-id
 
-# OpenAI API Key (for AI features)
-VITE_OPENAI_API_KEY=your-openai-api-key
+```
+
+Set the OpenAI key in Functions secrets:
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
 ```
 
 ## 📊 Firebase Collections Structure

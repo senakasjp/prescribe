@@ -2,7 +2,7 @@
 
 ## 🤖 Setting Up AI Drug Interaction Testing
 
-To enable AI-powered drug interaction testing in M-Prescribe, you need to configure your OpenAI API key.
+To enable AI-powered drug interaction testing in M-Prescribe, configure the OpenAI API key in Firebase Functions secrets.
 
 ## 📋 Prerequisites
 
@@ -20,22 +20,16 @@ To enable AI-powered drug interaction testing in M-Prescribe, you need to config
 4. Click **"Create new secret key"**
 5. Copy the generated key (starts with `sk-`)
 
-### Step 2: Configure Environment Variables
+### Step 2: Configure Firebase Functions Secret
 
-1. **Copy the example file**:
+1. **Set the secret**:
    ```bash
-   cp env.example .env
+   firebase functions:secrets:set OPENAI_API_KEY
    ```
 
-2. **Edit the `.env` file** and add your API key:
+2. **Deploy functions**:
    ```bash
-   # OpenAI Configuration
-   VITE_OPENAI_API_KEY=sk-your-actual-api-key-here
-   ```
-
-3. **Restart the development server**:
-   ```bash
-   npm run dev
+   firebase deploy --only functions
    ```
 
 ### Step 3: Verify Configuration
@@ -49,10 +43,10 @@ To enable AI-powered drug interaction testing in M-Prescribe, you need to config
 
 ## 🚨 Troubleshooting
 
-### Issue: "OpenAI API not configured"
-**Solution**: Make sure your `.env` file contains:
+### Issue: "OpenAI is not configured"
+**Solution**: Make sure the Functions secret is set:
 ```
-VITE_OPENAI_API_KEY=sk-your-actual-key-here
+firebase functions:secrets:set OPENAI_API_KEY
 ```
 
 ### Issue: "Not enough medications for interaction check"
@@ -72,7 +66,7 @@ VITE_OPENAI_API_KEY=sk-your-actual-key-here
 
 ## 🔒 Security Notes
 
-- **Never commit** your `.env` file to version control
+- **Never commit** OpenAI keys to version control
 - **Keep your API key** private and secure
 - **Monitor usage** through OpenAI dashboard
 - **Set usage limits** to prevent unexpected charges

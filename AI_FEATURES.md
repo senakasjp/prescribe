@@ -75,15 +75,15 @@ This document describes the AI features integrated into the M-Prescribe Patient 
 3. Generate a new API key
 4. Copy the API key
 
-### 2. Configure Environment Variables
-Create a `.env` file in the project root with:
-```env
-VITE_OPENAI_API_KEY=your_openai_api_key_here
+### 2. Configure Firebase Functions Secret
+Store the key in Firebase Functions secrets:
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
 ```
 
-### 3. Restart Development Server
+### 3. Deploy Functions
 ```bash
-npm run dev
+firebase deploy --only functions
 ```
 
 ## 📱 How to Use
@@ -129,7 +129,7 @@ npm run dev
 - **Temperature**: 0.3 for recommendations, 0.2 for medications
 
 ### Error Handling
-- **API Key Validation**: Checks if OpenAI API key is configured
+- **API Key Validation**: Checks if OpenAI secret is configured in Functions
 - **Network Errors**: Handles API connection issues
 - **Rate Limiting**: Respects OpenAI rate limits
 - **Fallback**: Graceful degradation when AI is unavailable
@@ -142,9 +142,9 @@ npm run dev
 ## 🚀 Deployment
 
 ### Environment Variables for Production
-Ensure your production environment has the OpenAI API key configured:
-```env
-VITE_OPENAI_API_KEY=your_production_api_key
+Ensure your production environment has the OpenAI secret configured:
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
 ```
 
 ### Firebase Hosting
@@ -183,13 +183,13 @@ The AI features work with Firebase Hosting. Make sure to:
 ## 🆘 Troubleshooting
 
 ### Common Issues
-1. **"OpenAI API key not configured"**
+1. **"OpenAI is not configured"**
    - Check if `.env` file exists and contains the API key
    - Restart the development server
    - Verify the API key is valid
 
 2. **"AI Features Disabled"**
-   - Ensure `VITE_OPENAI_API_KEY` is set correctly
+   - Ensure `OPENAI_API_KEY` is set in Functions secrets
    - Check browser console for errors
    - Verify network connectivity
 

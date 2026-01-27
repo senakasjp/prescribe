@@ -62,7 +62,7 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 - Node.js 18.x or higher
 - npm 8.x or higher
 - Firebase CLI
-- OpenAI API key
+- OpenAI API key (stored in Firebase Functions secrets)
 
 ## 🚀 Quick Start
 
@@ -86,7 +86,11 @@ VITE_FIREBASE_PROJECT_ID=your_project_id
 VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
-VITE_OPENAI_API_KEY=your_openai_api_key
+```
+
+Set OpenAI key in Functions secrets:
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
 ```
 
 ### 4. Firebase Setup
@@ -201,7 +205,7 @@ The system uses Firebase for:
 - **Storage**: File storage for documents
 
 ### OpenAI Configuration
-AI features require OpenAI API key for:
+AI features require the OpenAI API key in Firebase Functions secrets for:
 - Drug suggestion generation
 - Medical analysis
 - Drug interaction checking
