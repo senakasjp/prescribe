@@ -1,13 +1,18 @@
 <script>
   import { createEventDispatcher } from 'svelte'
+  import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
+  import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
   import ThreeDots from './ThreeDots.svelte'
   
   const dispatch = createEventDispatcher()
+  export let defaultCountry = ''
   
   let firstName = ''
   let lastName = ''
   let email = ''
   let phone = ''
+  let phoneCountryCode = ''
+  let phoneCodeTouched = false
   let gender = ''
   let dateOfBirth = ''
   let age = ''
@@ -22,6 +27,13 @@
   let emergencyPhone = ''
   let error = ''
   let loading = false
+
+  $: if (defaultCountry && !phoneCodeTouched && !phoneCountryCode) {
+    const resolved = getDialCodeForCountry(defaultCountry)
+    if (resolved) {
+      phoneCountryCode = resolved
+    }
+  }
   
   // Calculate age from date of birth
   const calculateAge = (birthDate) => {
@@ -136,6 +148,7 @@
         lastName: lastName.trim() || '',
         email: email.trim() || '',
         phone: phone.trim() || '',
+        phoneCountryCode: phoneCountryCode.trim() || '',
         gender: gender || '',
         dateOfBirth: dateOfBirth || '',
         age: ageDisplay,
@@ -157,6 +170,8 @@
       lastName = ''
       email = ''
       phone = ''
+      phoneCountryCode = ''
+      phoneCodeTouched = false
       gender = ''
       dateOfBirth = ''
       age = ''
@@ -241,14 +256,27 @@
         </div>
         <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-            <input 
-              type="tel" 
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-              id="phone" 
-              bind:value={phone}
-              disabled={loading}
-            >
+            <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <div class="grid grid-cols-3 gap-2">
+              <select
+                class="col-span-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                bind:value={phoneCountryCode}
+                on:change={() => { phoneCodeTouched = true }}
+                disabled={loading}
+              >
+                <option value="">Code</option>
+                {#each phoneCountryCodes as entry}
+                  <option value={entry.dialCode}>{entry.name} ({entry.dialCode})</option>
+                {/each}
+              </select>
+              <input 
+                type="tel" 
+                class="col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                id="phone" 
+                bind:value={phone}
+                disabled={loading}
+              >
+            </div>
           </div>
         </div>
       </div>

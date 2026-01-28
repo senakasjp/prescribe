@@ -84,8 +84,10 @@ Prescribe is a modern, web-based patient management system designed specifically
    - **Business Name**: Your pharmacy name
    - **Email**: Your business email
    - **Password**: Create a secure password
-4. After registration, you'll receive a **6-digit pharmacist number**
-5. Share this number with doctors to connect
+4. After registration, you'll receive:
+   - A **6-digit pharmacist number**
+   - A **PH code** (example: `PH48397`)
+5. Share either ID with doctors to connect
 
 ---
 
@@ -253,16 +255,18 @@ Choose one of these options:
 ### Connecting with Pharmacists
 
 #### For Doctors:
-1. **Get Pharmacist Number**: Ask your pharmacy partner for their 6-digit number
+1. **Get Pharmacy ID**: Ask your pharmacy partner for their 6-digit number or PH code
 2. **Go to Pharmacists Tab**: Click "Pharmacists" in the main navigation
 3. **Connect Pharmacist**: Click "Connect Pharmacist"
-4. **Enter Number**: Input the 6-digit pharmacist number
+4. **Enter ID**: Input the 6-digit number or PH code
 5. **Confirm**: Click "Connect"
+
+**Auto-connect (own pharmacy)**: If a pharmacy account exists with the **same email** as the doctor, it is automatically connected as the doctor’s own pharmacy.
 
 #### For Pharmacists:
 1. **Register**: Create your pharmacist account
-2. **Get Your Number**: Note your 6-digit pharmacist number
-3. **Share with Doctors**: Give this number to doctors you want to work with
+2. **Get Your IDs**: Note your 6-digit number and PH code
+3. **Share with Doctors**: Give either ID to doctors you want to work with
 
 ### Prescription Sharing
 - **Automatic Sharing**: Prescriptions are automatically shared with connected pharmacists
@@ -319,8 +323,9 @@ Choose one of these options:
 - **Verify Drug Details**: Ensure all required fields are filled
 
 #### "Can't Connect to Pharmacist"
-- **Verify Number**: Double-check the 6-digit pharmacist number
-- **Check Pharmacist Registration**: Ensure pharmacist has registered
+- **Verify ID**: Double-check the 6-digit number or PH code
+- **Check Pharmacist Registration**: Ensure the pharmacy account exists
+- **Own Pharmacy**: If using the same email for doctor + pharmacy, it should auto-connect
 - **Try Again**: Sometimes connection takes a moment
 
 ### Getting Help
@@ -399,4 +404,3 @@ If you need help or have questions:
 - **Contact support** for technical assistance
 
 **Welcome to Prescribe! We're here to help you provide better patient care.** 🏥✨
-

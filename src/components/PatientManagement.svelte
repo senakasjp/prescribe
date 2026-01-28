@@ -1762,7 +1762,7 @@
 
   
   {#if showPatientForm}
-    <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
+    <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
   {/if}
 
   <!-- All Patients Table Card -->
@@ -2088,7 +2088,7 @@
     <div class="lg:col-span-8">
       
       {#if showPatientForm}
-        <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
+        <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
       {:else if selectedPatient}
         <PatientDetails 
           {selectedPatient} 

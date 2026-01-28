@@ -18,6 +18,7 @@
   import NotificationContainer from './components/NotificationContainer.svelte'
   import LoadingSpinner from './components/LoadingSpinner.svelte'
   import PrivacyPolicyModal from './components/PrivacyPolicyModal.svelte'
+  import BrandName from './components/BrandName.svelte'
   import PrivacyPolicyPage from './components/PrivacyPolicyPage.svelte'
   
   let user = null
@@ -685,7 +686,10 @@
       <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4">
         <a href="/" class="flex items-center space-x-3 rtl:space-x-reverse">
           <i class="fas fa-user-md text-white text-xl"></i>
-          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.24</span></span>
+          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">
+            <BrandName className="text-white" />
+            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.24</span>
+          </span>
         </a>
           
           <!-- Mobile Toggle Button -->
@@ -1019,7 +1023,7 @@
                   HIPAA-ready workflows
                 </div>
                 <h1 class="mt-4 text-3xl sm:text-4xl lg:text-5xl font-semibold text-gray-900 font-hero">
-                  M-Prescribe Patient and Pharmacy Management System
+                  <BrandName /> Patient and Pharmacy Management System
                 </h1>
                 <p class="mt-3 text-base text-gray-600 max-w-xl">
                   One workspace for doctors and pharmacies to manage patients, prescriptions, inventory, and billing — with AI support and secure audit trails.

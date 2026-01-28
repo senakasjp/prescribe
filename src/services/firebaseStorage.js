@@ -16,6 +16,7 @@ import {
   onSnapshot
 } from 'firebase/firestore'
 import { db } from '../firebase-config.js'
+import { formatPharmacyId } from '../utils/idFormat.js'
 import { capitalizePatientNames } from '../utils/nameUtils.js'
 import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
 
@@ -552,7 +553,9 @@ class FirebaseStorageService {
       }
       
       const docRef = await addDoc(collection(db, this.collections.pharmacists), pharmacist)
-      const createdPharmacist = { id: docRef.id, ...pharmacist }
+      const pharmacyIdShort = formatPharmacyId(docRef.id)
+      await updateDoc(docRef, { pharmacyIdShort })
+      const createdPharmacist = { id: docRef.id, ...pharmacist, pharmacyIdShort }
       
       console.log('🏥 Created pharmacist in Firebase:', createdPharmacist)
       return createdPharmacist
@@ -578,6 +581,11 @@ class FirebaseStorageService {
         await updateDoc(doc.ref, { deleteCode })
         data.deleteCode = deleteCode
       }
+      if (!data.pharmacyIdShort) {
+        const pharmacyIdShort = formatPharmacyId(doc.id)
+        await updateDoc(doc.ref, { pharmacyIdShort })
+        data.pharmacyIdShort = pharmacyIdShort
+      }
       return { id: doc.id, ...data }
     } catch (error) {
       console.error('Error getting pharmacist by email:', error)
@@ -597,6 +605,11 @@ class FirebaseStorageService {
           await updateDoc(docRef, { deleteCode })
           data.deleteCode = deleteCode
         }
+        if (!data.pharmacyIdShort) {
+          const pharmacyIdShort = formatPharmacyId(docSnap.id)
+          await updateDoc(docRef, { pharmacyIdShort })
+          data.pharmacyIdShort = pharmacyIdShort
+        }
         return { id: docSnap.id, ...data }
       }
       return null
@@ -608,13 +621,48 @@ class FirebaseStorageService {
 
   async getPharmacistByNumber(pharmacistNumber) {
     try {
-      console.log('🔍 Searching for pharmacist number in Firebase:', pharmacistNumber)
+      const normalizedNumber = String(pharmacistNumber || '').trim().toUpperCase()
+      console.log('🔍 Searching for pharmacist number in Firebase:', normalizedNumber)
       
-      const q = query(collection(db, this.collections.pharmacists), where('pharmacistNumber', '==', pharmacistNumber))
+      const q = query(collection(db, this.collections.pharmacists), where('pharmacistNumber', '==', normalizedNumber))
       const querySnapshot = await getDocs(q)
       
       if (querySnapshot.empty) {
-        console.log('❌ Pharmacist not found with number:', pharmacistNumber)
+        if (normalizedNumber.startsWith('PH')) {
+          const byShortIdQuery = query(
+            collection(db, this.collections.pharmacists),
+            where('pharmacyIdShort', '==', normalizedNumber)
+          )
+          const byShortIdSnapshot = await getDocs(byShortIdQuery)
+          if (!byShortIdSnapshot.empty) {
+            const docSnap = byShortIdSnapshot.docs[0]
+            const data = docSnap.data()
+            return { id: docSnap.id, ...data }
+          }
+        }
+
+        const allPharmacists = await this.getAllPharmacists()
+        const normalizedDigits = normalizedNumber.replace(/^PH/, '').replace(/^0+/, '')
+        const match = allPharmacists.find(pharmacist => {
+          if (!pharmacist?.id) return false
+          const pharmacistNumberValue = String(pharmacist.pharmacistNumber || '').trim().toUpperCase()
+          if (pharmacistNumberValue && pharmacistNumberValue === normalizedNumber) return true
+          if (pharmacistNumberValue && pharmacistNumberValue === normalizedDigits) return true
+          const formattedId = formatPharmacyId(pharmacist.id).toUpperCase()
+          const formattedDigits = formattedId.replace(/^PH/, '').replace(/^0+/, '')
+          if (formattedId === normalizedNumber || formattedDigits === normalizedDigits) return true
+          return false
+        })
+        if (match) {
+          if (!match.pharmacyIdShort) {
+            const pharmacyIdShort = formatPharmacyId(match.id)
+            await updateDoc(doc(db, this.collections.pharmacists, match.id), { pharmacyIdShort })
+            match.pharmacyIdShort = pharmacyIdShort
+          }
+          console.log('✅ Found pharmacist by fallback lookup:', match.businessName, 'with id:', match.id)
+          return match
+        }
+        console.log('❌ Pharmacist not found with number:', normalizedNumber)
         return null
       }
       
@@ -828,12 +876,21 @@ class FirebaseStorageService {
       console.log('Firebase: Attempting to use setDoc with merge...')
       
       const updateData = {
-        businessName: String(updatedPharmacist.businessName || ''),
-        country: String(updatedPharmacist.country || ''),
-        city: String(updatedPharmacist.city || ''),
-        currency: String(updatedPharmacist.currency || 'USD'),
+        businessName: updatedPharmacist.businessName ? String(updatedPharmacist.businessName) : undefined,
+        country: updatedPharmacist.country ? String(updatedPharmacist.country) : undefined,
+        city: updatedPharmacist.city ? String(updatedPharmacist.city) : undefined,
+        currency: updatedPharmacist.currency ? String(updatedPharmacist.currency) : undefined,
+        pharmacistNumber: updatedPharmacist.pharmacistNumber ? String(updatedPharmacist.pharmacistNumber) : undefined,
+        email: updatedPharmacist.email ? String(updatedPharmacist.email) : undefined,
+        connectedDoctors: Array.isArray(updatedPharmacist.connectedDoctors) ? updatedPharmacist.connectedDoctors : undefined,
         updatedAt: new Date().toISOString()
       }
+
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key]
+        }
+      })
       
       console.log('Firebase: Update data prepared:', updateData)
       
@@ -954,11 +1011,15 @@ class FirebaseStorageService {
     }
   }
 
-  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier) {
+  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier, options = {}) {
     try {
       console.log('🔍 Looking for pharmacist with number in Firebase:', pharmacistNumber)
       
-      const pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+      let pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+      if (!pharmacist && options?.isOwnPharmacy && doctorIdentifier) {
+        console.log('🔍 Pharmacist not found by number, trying email for own pharmacy...')
+        pharmacist = await this.getPharmacistByEmail(doctorIdentifier)
+      }
       if (!pharmacist) {
         console.log('❌ Pharmacist not found with number:', pharmacistNumber)
         throw new Error('Pharmacist not found')
@@ -1049,8 +1110,11 @@ class FirebaseStorageService {
         lastName: capitalizedPatientData.lastName?.trim() || '',
         email: capitalizedPatientData.email?.trim() || '',
         phone: capitalizedPatientData.phone?.trim() || '',
+        phoneCountryCode: capitalizedPatientData.phoneCountryCode?.trim() || '',
+        gender: capitalizedPatientData.gender?.trim() || '',
         dateOfBirth: capitalizedPatientData.dateOfBirth || '',
         age: capitalizedPatientData.age?.toString().trim() || '',
+        ageType: capitalizedPatientData.ageType?.toString().trim() || '',
         weight: capitalizedPatientData.weight?.toString().trim() || '',
         bloodGroup: capitalizedPatientData.bloodGroup?.trim() || '',
         idNumber: capitalizedPatientData.idNumber?.trim() || '',

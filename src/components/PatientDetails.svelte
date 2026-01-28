@@ -12,6 +12,8 @@
   import PrescriptionsTab from './PrescriptionsTab.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import { formatPrescriptionId } from '../utils/idFormat.js'
+  import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
+  import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
   import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
@@ -22,6 +24,14 @@
   export let authUser = null
   export let settingsDoctor = null
   export let initialTab = 'overview' // Allow parent to set initial tab
+
+  const formatPhoneDisplay = (patient) => {
+    const code = (patient?.phoneCountryCode || '').trim()
+    const number = (patient?.phone || '').trim()
+    if (!code) return number
+    if (!number) return code
+    return `${code} ${number}`
+  }
   
   // Event dispatcher to notify parent of data changes
   import { createEventDispatcher } from 'svelte'
@@ -390,6 +400,7 @@
   let prescriptionNotes = ''
   let prescriptionDiscount = 0 // New discount field
   let prescriptionDiscountScope = 'consultation'
+  let nextAppointmentDate = ''
   let prescriptionProcedures = []
   let otherProcedurePrice = ''
   let excludeConsultationCharge = false
@@ -408,6 +419,7 @@
     lastName: '',
     email: '',
     phone: '',
+    phoneCountryCode: '',
     gender: '',
     dateOfBirth: '',
     age: '',
@@ -519,6 +531,7 @@
       excludeConsultationCharge = !!currentPrescription.excludeConsultationCharge
       prescriptionDiscount = Number.isFinite(Number(currentPrescription.discount)) ? Number(currentPrescription.discount) : 0
       prescriptionDiscountScope = currentPrescription.discountScope || 'consultation'
+      nextAppointmentDate = currentPrescription.nextAppointmentDate || ''
       
       console.log('📅 Set current medications:', currentMedications.length)
     } else {
@@ -530,6 +543,7 @@
       excludeConsultationCharge = false
       prescriptionDiscount = 0
       prescriptionDiscountScope = 'consultation'
+      nextAppointmentDate = ''
     }
     
     // Clear any existing AI analysis when loading data
@@ -1079,6 +1093,7 @@
       currentPrescription.otherProcedurePrice = otherProcedurePrice
       currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
       currentPrescription.discountScope = prescriptionDiscountScope || 'consultation'
+      currentPrescription.nextAppointmentDate = nextAppointmentDate || ''
       currentPrescription.patient = buildPatientSnapshot()
       
       // Check if prescription already exists in database
@@ -1092,6 +1107,7 @@
           doctorId: doctorId,
           otherProcedurePrice: otherProcedurePrice,
           discountScope: prescriptionDiscountScope || 'consultation',
+          nextAppointmentDate: nextAppointmentDate || '',
           patient: buildPatientSnapshot()
         })
         console.log('✅ Saved new prescription with', currentPrescription.medications.length, 'medications')
@@ -1111,6 +1127,7 @@
           doctorId: doctorId,
           otherProcedurePrice: otherProcedurePrice,
           discountScope: prescriptionDiscountScope || 'consultation',
+          nextAppointmentDate: nextAppointmentDate || '',
           patient: buildPatientSnapshot()
         }
         
@@ -1810,6 +1827,7 @@
         excludeConsultationCharge: !!excludeConsultationCharge,
         discount: prescriptionDiscount || 0, // Include discount for pharmacy
         discountScope: prescriptionDiscountScope || 'consultation',
+        nextAppointmentDate: nextAppointmentDate || '',
         createdAt: new Date().toISOString(),
         status: 'pending'
       }]
@@ -2904,6 +2922,7 @@
       lastName: selectedPatient.lastName || '',
       email: selectedPatient.email || '',
       phone: selectedPatient.phone || '',
+      phoneCountryCode: selectedPatient.phoneCountryCode || getDialCodeForCountry(currentUser?.country || ''),
       gender: selectedPatient.gender || '',
       dateOfBirth: selectedPatient.dateOfBirth || '',
       age: selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || '',
@@ -2931,6 +2950,7 @@
       lastName: '',
       email: '',
       phone: '',
+      phoneCountryCode: '',
       gender: '',
       dateOfBirth: '',
       age: '',
@@ -3192,6 +3212,7 @@
       currentPrescription.otherProcedurePrice = otherProcedurePrice
       currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
       currentPrescription.discountScope = prescriptionDiscountScope || 'consultation'
+      currentPrescription.nextAppointmentDate = nextAppointmentDate || ''
       currentPrescription.finalizedAt = new Date().toISOString()
       
       // Save to Firebase
@@ -3203,6 +3224,7 @@
         excludeConsultationCharge: !!excludeConsultationCharge,
         patient: buildPatientSnapshot(),
         discountScope: prescriptionDiscountScope || 'consultation',
+        nextAppointmentDate: nextAppointmentDate || '',
         finalizedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       })
@@ -3732,13 +3754,25 @@
                     <div>
                       <div class="mb-3 sm:mb-4">
                         <label for="editPhone" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                        <input 
-                          type="tel" 
-                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-                          id="editPhone" 
-                          bind:value={editPatientData.phone}
-                          disabled={savingPatient}
-                        >
+                        <div class="grid grid-cols-3 gap-2">
+                          <select
+                            class="col-span-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            bind:value={editPatientData.phoneCountryCode}
+                            disabled={savingPatient}
+                          >
+                            <option value="">Code</option>
+                            {#each phoneCountryCodes as entry}
+                              <option value={entry.dialCode}>{entry.name} ({entry.dialCode})</option>
+                            {/each}
+                          </select>
+                          <input 
+                            type="tel" 
+                            class="col-span-2 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                            id="editPhone" 
+                            bind:value={editPatientData.phone}
+                            disabled={savingPatient}
+                          >
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3986,8 +4020,8 @@
                   {#if selectedPatient.email}
                     <p class="mb-2"><span class="font-semibold text-gray-900">Email:</span> <span class="text-gray-700">{selectedPatient.email}</span></p>
                   {/if}
-                  {#if selectedPatient.phone}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Phone:</span> <span class="text-gray-700">{selectedPatient.phone}</span></p>
+                  {#if selectedPatient.phone || selectedPatient.phoneCountryCode}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Phone:</span> <span class="text-gray-700">{formatPhoneDisplay(selectedPatient)}</span></p>
                   {/if}
                   {#if selectedPatient.gender}
                     <p class="mb-2"><span class="font-semibold text-gray-900">Gender:</span> <span class="text-gray-700">{selectedPatient.gender}</span></p>
@@ -5129,6 +5163,11 @@
           onGenerateAIDrugSuggestions={generateAIDrugSuggestions}
           onAddAISuggestedDrug={addAISuggestedDrug}
           onRemoveAISuggestedDrug={removeAISuggestedDrug}
+          onGenerateAIAnalysis={performFullAIAnalysis}
+          loadingAIAnalysis={loadingFullAnalysis}
+          showAIAnalysis={showFullAnalysis}
+          aiAnalysisHtml={fullAIAnalysis}
+          aiAnalysisError={fullAnalysisError}
           onNewPrescription={async () => { 
             console.log('🆕 New Prescription button clicked - Creating NEW prescription');
             showMedicationForm = false; 
@@ -5194,6 +5233,7 @@
                 patient: buildPatientSnapshot(),
                 name: 'New Prescription',
                 notes: 'Prescription created from Prescriptions tab',
+                nextAppointmentDate: '',
                 medications: [],
                 procedures: [],
                 otherProcedurePrice: '',
@@ -5207,6 +5247,7 @@
               prescriptionProcedures = [];
               otherProcedurePrice = '';
               excludeConsultationCharge = false;
+              nextAppointmentDate = '';
               prescriptionFinished = false;
               prescriptionsFinalized = false;
               
@@ -5235,6 +5276,7 @@
           onPrintPrescriptions={printPrescriptions}
           onPrintExternalPrescriptions={printExternalPrescriptions}
           bind:prescriptionDiscountScope
+          bind:nextAppointmentDate
           />
         </div>
       {/if}

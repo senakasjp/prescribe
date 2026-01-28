@@ -278,6 +278,11 @@ M-Prescribe/
 - **Responsive Utilities** - Use Bootstrap responsive classes
 - **Consistent Naming** - Follow Bootstrap naming conventions
 
+### ID Display Rule (Important)
+- **System of record**: Always use the **Firebase document ID** for storage, queries, and internal references.
+- **UI/UX**: Always display and share **short formatted IDs** (e.g., `DRxxxxx`, `PHxxxxx`, `PAxxxxx`, `PRxxxxxxx`) in the UI, emails, logs, and printables.
+- **Do not expose raw Firestore IDs** in the UI.
+
 ## 👤 Profile Management Implementation
 
 ### Profile Editing Architecture

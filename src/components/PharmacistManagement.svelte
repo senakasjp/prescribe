@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import firebaseAuthService from '../services/firebaseAuth.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import ThreeDots from './ThreeDots.svelte'
   
@@ -14,6 +15,7 @@
   let pharmacistNumber = ''
   let searchQuery = ''
   let isOwnPharmacy = false
+  let autoConnectChecked = false
   
   // Force reactive updates
   let refreshTrigger = 0
@@ -35,6 +37,51 @@
       console.log('🔍 Doctor ID:', doctorId)
       console.log('🔍 Doctor connectedPharmacists:', doctor?.connectedPharmacists)
       
+      // Auto-connect own pharmacy (same email) once per load
+      if (!autoConnectChecked && doctor?.email && doctorId) {
+        autoConnectChecked = true
+        let ownPharmacy = allPharmacists.find(pharmacist => {
+          const pharmacistEmail = (pharmacist?.email || '').toLowerCase()
+          return pharmacistEmail && pharmacistEmail === doctor.email.toLowerCase()
+        })
+
+        if (!ownPharmacy) {
+          console.log('🧪 Own pharmacy not found, creating pharmacy profile for:', doctor.email)
+          const pharmacistNumber = firebaseAuthService.generatePharmacistNumber()
+          const created = await firebaseStorage.createPharmacist({
+            email: doctor.email,
+            password: `doctor-${Date.now()}`,
+            role: 'pharmacist',
+            businessName: doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email,
+            pharmacistNumber
+          })
+          ownPharmacy = created
+          allPharmacists.push(created)
+        }
+
+        if (ownPharmacy?.id) {
+          const pharmacistHasDoctor = ownPharmacy.connectedDoctors?.includes(doctorId)
+          const doctorHasPharmacist = doctor.connectedPharmacists?.includes(ownPharmacy.id)
+          if (!pharmacistHasDoctor || !doctorHasPharmacist) {
+            console.log('🔗 Auto-connecting own pharmacy for:', doctor.email)
+            const updatedConnectedDoctors = [...(ownPharmacy.connectedDoctors || []), doctorId]
+            const updatedConnectedPharmacists = [...(doctor.connectedPharmacists || []), ownPharmacy.id]
+            await Promise.all([
+              firebaseStorage.updatePharmacist({
+                id: ownPharmacy.id,
+                connectedDoctors: Array.from(new Set(updatedConnectedDoctors))
+              }),
+              firebaseStorage.updateDoctor({
+                id: doctorId,
+                connectedPharmacists: Array.from(new Set(updatedConnectedPharmacists))
+              })
+            ])
+            ownPharmacy.connectedDoctors = Array.from(new Set(updatedConnectedDoctors))
+            doctor.connectedPharmacists = Array.from(new Set(updatedConnectedPharmacists))
+          }
+        }
+      }
+
       // Separate connected and unconnected pharmacists (check both sides of the connection)
       connectedPharmacists = allPharmacists.filter(pharmacist => {
         // Check if pharmacist has this doctor in their connectedDoctors
@@ -78,22 +125,32 @@
   }
   
   // Connect to pharmacist
+  const normalizePharmacistLookup = (value) => String(value || '').trim().toUpperCase()
+
+  const isValidPharmacistLookup = (value) => {
+    if (!value) return false
+    if (/^\d{6}$/.test(value)) return true
+    if (/^PH\d{4,6}$/.test(value)) return true
+    return false
+  }
+
   const connectPharmacist = async () => {
-    if (!pharmacistNumber.trim()) {
+    const normalizedNumber = normalizePharmacistLookup(pharmacistNumber)
+    if (!normalizedNumber) {
       notifyError('Please enter a pharmacist number')
       return
     }
     
-    if (pharmacistNumber.length !== 6) {
-      notifyError('Pharmacist number must be 6 digits')
+    if (!isValidPharmacistLookup(normalizedNumber)) {
+      notifyError('Enter a 6-digit number or PH code')
       return
     }
     
     // Log the checkbox state for debugging
-    console.log('Connecting to pharmacist:', pharmacistNumber, 'Is own pharmacy:', isOwnPharmacy)
+    console.log('Connecting to pharmacist:', normalizedNumber, 'Is own pharmacy:', isOwnPharmacy)
     
     try {
-      await firebaseStorage.connectPharmacistToDoctor(pharmacistNumber, user.email)
+      await firebaseStorage.connectPharmacistToDoctor(normalizedNumber, user.email, { isOwnPharmacy })
       const message = isOwnPharmacy 
         ? 'Successfully connected to your own pharmacy!'
         : 'Successfully connected to pharmacist!'
@@ -274,13 +331,13 @@
                   id="pharmacistNumber"
                   class="flex-1 px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   bind:value={pharmacistNumber}
-                  placeholder="Enter 6-digit pharmacist number"
-                  maxlength="6"
+                  placeholder="Enter 6-digit number or PH code"
+                  maxlength="7"
                   pattern="[0-9]{6}"
                 />
               </div>
               <div class="text-sm text-gray-500 mt-1">
-                Ask the pharmacist for their unique 6-digit number to connect.
+                Ask the pharmacist for their 6-digit number or PH code to connect.
               </div>
             </div>
           </div>
@@ -289,7 +346,7 @@
               <button 
                 class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 on:click={connectPharmacist}
-                disabled={!pharmacistNumber || pharmacistNumber.length !== 6}
+                disabled={!isValidPharmacistLookup(normalizePharmacistLookup(pharmacistNumber))}
               >
                 <i class="fas fa-link mr-1"></i>
                 Connect
@@ -406,15 +463,15 @@
                 id="modalPharmacistNumber"
                 class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-500 rounded-r-lg text-sm text-gray-900 dark:text-white bg-white dark:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 bind:value={pharmacistNumber}
-                placeholder="Enter 6-digit pharmacist number"
-                maxlength="6"
+                placeholder="Enter 6-digit number or PH code"
+                maxlength="7"
                 pattern="[0-9]{6}"
                 autofocus
               />
             </div>
             <div class="text-sm text-gray-600 dark:text-gray-300 mt-1">
               <i class="fas fa-info-circle mr-1"></i>
-              Ask the pharmacist for their unique 6-digit number to connect.
+              Ask the pharmacist for their 6-digit number or PH code to connect.
             </div>
           </div>
           
@@ -451,7 +508,7 @@
             type="button" 
             class="text-white bg-blue-600 hover:bg-blue-700 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200" 
             on:click={connectPharmacist}
-            disabled={!pharmacistNumber || pharmacistNumber.length !== 6}
+            disabled={!isValidPharmacistLookup(normalizePharmacistLookup(pharmacistNumber))}
           >
             <i class="fas fa-link mr-1"></i>
             Connect

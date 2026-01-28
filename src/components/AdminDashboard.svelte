@@ -152,6 +152,10 @@
   let smtpUser = ''
   let smtpTestRunning = false
   let smtpTestStatus = ''
+  let whatsappTestNumber = 'whatsapp:+642041210342'
+  let whatsappTestMessage = 'Welcome to M-Prescribe!'
+  let whatsappTestRunning = false
+  let whatsappTestStatus = ''
   // Email logs
   let emailLogs = []
   let emailLogsLoading = false
@@ -591,7 +595,48 @@
       smtpTestRunning = false
       setTimeout(() => {
         smtpTestStatus = ''
-      }, 3000)
+      }, 12000)
+    }
+  }
+
+  const testWhatsappWelcome = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      whatsappTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      whatsappTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      whatsappTestRunning = true
+      whatsappTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendWelcomeWhatsapp`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          to: whatsappTestNumber,
+          body: whatsappTestMessage
+        })
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'WhatsApp send failed')
+      }
+      whatsappTestStatus = 'WhatsApp message sent'
+    } catch (error) {
+      whatsappTestStatus = error?.message || 'WhatsApp send failed'
+    } finally {
+      whatsappTestRunning = false
+      setTimeout(() => {
+        whatsappTestStatus = ''
+      }, 12000)
     }
   }
 
@@ -1555,6 +1600,12 @@
               on:click={() => handleTabChange('promotions')}
             >
                   <i class="fas fa-bullhorn mr-3"></i>Promotions
+            </button>
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'messaging' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('messaging')}
+            >
+                  <i class="fas fa-comment-dots mr-3"></i>Messaging
             </button>
             <button
                   class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'system' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
@@ -2662,6 +2713,94 @@
               </div>
               <div class="p-4">
                 <p class="text-sm text-gray-600">Promotions dashboard coming soon.</p>
+              </div>
+            </div>
+          {:else if activeTab === 'messaging'}
+            <!-- Messaging Tab -->
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-comment-dots mr-2 text-red-600"></i>Messaging</h2>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-6 space-y-5">
+              <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <p class="text-sm text-blue-900 font-semibold mb-1">Twilio WhatsApp (Welcome Message)</p>
+                <p class="text-sm text-blue-800">
+                  Store credentials in Firebase Secrets. Do not paste the Auth Token in the UI.
+                </p>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Test Number</label>
+                  <input
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                    bind:value={whatsappTestNumber}
+                    placeholder="whatsapp:+14155238886"
+                  />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                  <input
+                    type="text"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                    bind:value={whatsappTestMessage}
+                    placeholder="Welcome to M-Prescribe!"
+                  />
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <button
+                  class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                  on:click={testWhatsappWelcome}
+                  disabled={whatsappTestRunning}
+                >
+                  {#if whatsappTestRunning}
+                    <i class="fas fa-spinner fa-spin mr-2"></i>Sending...
+                  {:else}
+                    <i class="fas fa-paper-plane mr-2"></i>Send Test WhatsApp
+                  {/if}
+                </button>
+                {#if whatsappTestStatus}
+                  <span class="text-sm text-gray-600">{whatsappTestStatus}</span>
+                {/if}
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-gray-700 mb-2">Secrets (CLI)</p>
+                <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set TWILIO_ACCOUNT_SID
+firebase functions:secrets:set TWILIO_AUTH_TOKEN
+firebase functions:secrets:set TWILIO_WHATSAPP_FROM</code></pre>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-gray-700 mb-2">Sample Node.js (Cloud Function)</p>
+                <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>const functions = require('firebase-functions');
+const twilio = require('twilio');
+
+exports.sendWelcomeWhatsapp = functions
+  .runWith(&#123;
+    secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_FROM']
+  &#125;)
+  .https.onCall(async (data) =&gt; &#123;
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const from = process.env.TWILIO_WHATSAPP_FROM; // e.g. whatsapp:+14155238886
+
+    const client = twilio(accountSid, authToken);
+    const to = data?.to; // e.g. whatsapp:+642041210342
+    const body = data?.body || 'Welcome to M-Prescribe!';
+
+    if (!to) &#123;
+      throw new functions.https.HttpsError('invalid-argument', 'Recipient is required.');
+    &#125;
+
+    const message = await client.messages.create(&#123; body, from, to &#125;);
+    return &#123; sid: message.sid &#125;;
+  &#125;);</code></pre>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-gray-700 mb-2">Test Payload</p>
+                <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>&#123;
+  "to": "whatsapp:+642041210342",
+  "body": "Welcome to M-Prescribe!"
+&#125;</code></pre>
               </div>
             </div>
           {:else if activeTab === 'doctor-view'}

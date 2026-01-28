@@ -134,7 +134,7 @@
           <!-- Logo and Title -->
           <div class="flex items-center">
             <div class="flex-shrink-0">
-              <h1 class="text-xl font-bold text-teal-600">Prescribe - Doctor Portal</h1>
+  <h1 class="text-xl font-bold text-teal-600"><span class="text-red-600 font-extrabold">M</span>-Prescribe - Doctor Portal</h1>
             </div>
           </div>
           

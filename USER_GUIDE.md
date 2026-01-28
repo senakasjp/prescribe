@@ -178,8 +178,10 @@ This guide will help pharmacists connect with doctors and manage prescriptions.
    - Email Address
    - Password (minimum 6 characters)
    - Confirm Password
-4. **Get Your Number** - After registration, you'll receive a unique 6-digit pharmacist number
-5. **Share Your Number** - Give this number to doctors who want to connect with your pharmacy
+4. **Get Your IDs** - After registration, you'll receive:
+   - A unique **6-digit pharmacist number**
+   - A short **PH code** (example: `PH48397`)
+5. **Share Your ID** - Give either the 6-digit number or PH code to doctors who want to connect
 
 ### Pharmacist Dashboard
 Once logged in, you'll see:
@@ -220,6 +222,10 @@ The system supports two authentication methods:
 4. **Seamless Integration** - Works with all pharmacist connection features
 
 **Note**: Both authentication methods create Firebase doctor records automatically, ensuring pharmacists can connect to your account regardless of how you log in.
+
+### Pharmacy Connection (Doctors)
+- **Auto-connect own pharmacy**: If a pharmacist account exists with the **same email** as the doctor, it is automatically connected as the doctor’s **own pharmacy**.
+- **Manual connect**: You can also connect any pharmacy using the **6-digit pharmacist number** or the **PH code** shown in the pharmacy portal.
 
 ### Dashboard Overview
 Once logged in, you'll see:

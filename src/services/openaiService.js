@@ -437,6 +437,13 @@ class OpenAIService {
       if (jsonResponse.recommendations.followUp) {
         html += `<li><strong>Follow-up:</strong> ${jsonResponse.recommendations.followUp}</li>`
       }
+      if (Array.isArray(jsonResponse.recommendations.additionalMedications) && jsonResponse.recommendations.additionalMedications.length > 0) {
+        html += `<li><strong>Additional medications to consider:</strong><ul>`
+        jsonResponse.recommendations.additionalMedications.forEach(item => {
+          html += `<li>${item}</li>`
+        })
+        html += `</ul></li>`
+      }
       html += `</ul></div>`
     }
 
@@ -816,7 +823,7 @@ class OpenAIService {
           messages: [
             {
               role: 'system',
-              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide comprehensive prescription analysis with structured JSON output. CRITICAL: Consider regional healthcare practices, local drug availability, country-specific medical guidelines, and drug regulatory approvals. Assess if prescribed medications are available and approved in the patient\'s country. Suggest alternative medications if drugs are not available in the patient\'s region. Focus on key safety issues, effectiveness, and actionable recommendations tailored to the patient and doctor locations. Account for patient gender, age, and other demographic factors in medication recommendations and dosing considerations.'
+              content: 'Medical AI assistant providing second opinion support to qualified medical doctors. The reader is a qualified medical doctor. Provide comprehensive prescription analysis with structured JSON output. CRITICAL: Consider regional healthcare practices, local drug availability, country-specific medical guidelines, and drug regulatory approvals. Assess if prescribed medications are available and approved in the patient\'s country. Suggest alternative medications if drugs are not available in the patient\'s region. Suggest any additional medications that may be clinically appropriate or missing (e.g., supportive, adjunct, prophylactic, or monitoring-related) and populate recommendations.additionalMedications with specific, concise items. Focus on key safety issues, effectiveness, and actionable recommendations tailored to the patient and doctor locations. Account for patient gender, age, and other demographic factors in medication recommendations and dosing considerations. Use clear, clinician-friendly language with concise headings and bullet points.'
             },
             {
               role: 'user',
@@ -869,9 +876,14 @@ class OpenAIService {
                     type: "object",
                     properties: {
                       adjustments: { type: "string" },
-                      followUp: { type: "string" }
+                      followUp: { type: "string" },
+                      additionalMedications: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "Other clinically appropriate or missing medications to consider"
+                      }
                     },
-                    required: ["adjustments", "followUp"]
+                    required: ["adjustments", "followUp", "additionalMedications"]
                   },
                   warnings: {
                     type: "object",

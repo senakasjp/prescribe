@@ -15,11 +15,15 @@ const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
 const QRCode = require("qrcode");
+const twilio = require("twilio");
 
 admin.initializeApp();
 
 const OPENAI_API_KEY = defineSecret("OPENAI_API_KEY");
 const SMTP_PASS = defineSecret("SMTP_PASS");
+const TWILIO_ACCOUNT_SID = defineSecret("TWILIO_ACCOUNT_SID");
+const TWILIO_AUTH_TOKEN = defineSecret("TWILIO_AUTH_TOKEN");
+const TWILIO_WHATSAPP_FROM = defineSecret("TWILIO_WHATSAPP_FROM");
 
 const setCors = (req, res) => {
   const origin = req.headers.origin || "*";
@@ -786,6 +790,73 @@ exports.testSmtp = onRequest(
         }
       }
     });
+
+exports.sendWelcomeWhatsapp = onRequest(
+    {
+      secrets: [
+        TWILIO_ACCOUNT_SID,
+        TWILIO_AUTH_TOKEN,
+        TWILIO_WHATSAPP_FROM,
+      ],
+    },
+    async (req, res) => {
+      setCors(req, res);
+      if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+      }
+      if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+      }
+
+      const adminUser = await getAuthorizedAdmin(req);
+      if (!adminUser) {
+        res.status(401).send("Unauthorized");
+        return;
+      }
+
+      const {to, body} = req.body || {};
+      let from = TWILIO_WHATSAPP_FROM.value();
+      const accountSid = TWILIO_ACCOUNT_SID.value();
+      const authToken = TWILIO_AUTH_TOKEN.value();
+
+      if (!accountSid || !authToken || !from) {
+        res.status(500).send("Twilio configuration missing");
+        return;
+      }
+
+      if (!to || typeof to !== "string") {
+        res.status(400).send("Recipient is required");
+        return;
+      }
+
+      const messageBody = body || "Welcome to M-Prescribe!";
+      if (from && !String(from).startsWith("whatsapp:")) {
+        from = `whatsapp:${from}`;
+      }
+      let formattedTo = String(to);
+      if (!formattedTo.startsWith("whatsapp:")) {
+        formattedTo = `whatsapp:${formattedTo}`;
+      }
+
+      try {
+        const client = twilio(accountSid, authToken);
+        const message = await client.messages.create({
+          body: messageBody,
+          from: from,
+          to: formattedTo,
+        });
+        res.json({success: true, sid: message.sid});
+      } catch (error) {
+        logger.error("Twilio WhatsApp send failed:", error);
+        const message = String(
+            (error && error.message) || "Failed to send WhatsApp message",
+        );
+        res.status(500).send(message);
+      }
+    },
+);
 
 exports.clearEmailLogs = onRequest(async (req, res) => {
   setCors(req, res);

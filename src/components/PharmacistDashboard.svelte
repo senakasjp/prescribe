@@ -4,16 +4,19 @@
   import { db } from '../firebase-config.js'
   import authService from '../services/authService.js'
   import pharmacistAuthService from '../services/pharmacist/pharmacistAuthService.js'
-  import firebaseAuthService from '../services/firebaseAuth.js'
   import { createEventDispatcher } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import firebaseAuthService from '../services/firebaseAuth.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import JsBarcode from 'jsbarcode'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import InventoryDashboard from './pharmacist/InventoryDashboard.svelte'
+  import PatientForm from './PatientForm.svelte'
   import PharmacistSettings from './pharmacist/PharmacistSettings.svelte'
   import inventoryService from '../services/pharmacist/inventoryService.js'
-  import { formatDoctorId, formatPrescriptionId, formatPharmacyId } from '../utils/idFormat.js'
+  import { formatDoctorId, formatPrescriptionId, formatPharmacyId, formatPatientId } from '../utils/idFormat.js'
+  import BrandName from './BrandName.svelte'
   
   export let pharmacist
   let pharmacyId = null
@@ -70,7 +73,21 @@
   let currentPrescriptionPage = 1
   let prescriptionsPerPage = 10
   
-  let activeTab = 'prescriptions' // 'prescriptions' or 'inventory'
+  let activeTab = 'prescriptions' // 'prescriptions', 'inventory', or 'registrations'
+  let registrationTab = 'add' // 'add' or 'barcodes'
+  let canRegisterPatients = false
+  $: canRegisterPatients = connectedDoctors.length === 1
+  $: if (!canRegisterPatients && activeTab === 'registrations') {
+    activeTab = 'prescriptions'
+  }
+  let ownDoctorAutoConnected = false
+  let registrationPatients = []
+  let registrationPatientsLoading = false
+  let registrationPatientsLoaded = false
+  let registrationPatientQuery = ''
+  let selectedRegistrationPatient = null
+  let registrationBarcodeDataUrl = ''
+  let registrationBarcodeValue = ''
   
   // Charge calculation state
   let chargeBreakdown = null
@@ -113,6 +130,130 @@
 
   $: if (pharmacyId) {
     migrateLegacyInventoryIfNeeded()
+  }
+
+  const handleRegisterPatient = async (event) => {
+    if (!canRegisterPatients) {
+      notifyError('Registrations are available only when exactly one doctor is connected.')
+      return
+    }
+
+    const doctor = connectedDoctors[0]
+    if (!doctor?.id) {
+      notifyError('Connected doctor not available. Please refresh and try again.')
+      return
+    }
+
+    try {
+      const patientData = event.detail || {}
+      const patientToCreate = {
+        ...patientData,
+        doctorId: doctor.id
+      }
+      await firebaseStorage.createPatient(patientToCreate)
+      notifySuccess(`Patient added to ${doctor.name || doctor.email || 'connected doctor'}.`)
+    } catch (error) {
+      console.error('❌ PharmacistDashboard: Error creating patient:', error)
+      notifyError(error?.message || 'Failed to create patient.')
+    }
+  }
+
+  const loadRegistrationPatients = async () => {
+    if (!canRegisterPatients) return
+    if (registrationPatientsLoading) return
+    registrationPatientsLoading = true
+    try {
+      const doctorId = connectedDoctors[0]?.id
+      if (!doctorId) {
+        notifyError('Connected doctor not available yet. Please refresh.')
+        registrationPatients = []
+        registrationPatientsLoaded = false
+        return
+      }
+      registrationPatients = await firebaseStorage.getPatientsByDoctorId(doctorId)
+      registrationPatientsLoaded = true
+    } catch (error) {
+      console.error('❌ Error loading registration patients:', error)
+      notifyError(error?.message || 'Failed to load patients.')
+    } finally {
+      registrationPatientsLoading = false
+    }
+  }
+
+  $: if (activeTab === 'registrations' && registrationTab === 'barcodes' && canRegisterPatients) {
+    if (!registrationPatientsLoaded && !registrationPatientsLoading) {
+      loadRegistrationPatients()
+    }
+  }
+
+  $: filteredRegistrationPatients = registrationPatients.filter(patient => {
+    const query = registrationPatientQuery.trim().toLowerCase()
+    if (!query) return true
+    const name = `${patient.firstName || ''} ${patient.lastName || ''}`.trim().toLowerCase()
+    const email = (patient.email || '').toLowerCase()
+    const phone = (patient.phone || '').toLowerCase()
+    const idNumber = (patient.idNumber || '').toLowerCase()
+    const patientIdShort = formatPatientId(patient.id).toLowerCase()
+    return (
+      name.includes(query) ||
+      email.includes(query) ||
+      phone.includes(query) ||
+      idNumber.includes(query) ||
+      patientIdShort.includes(query)
+    )
+  })
+
+  const selectRegistrationPatient = (patient) => {
+    selectedRegistrationPatient = patient
+    const patientIdShort = formatPatientId(patient.id)
+    registrationBarcodeValue = patientIdShort
+
+    try {
+      const barcodeCanvas = document.createElement('canvas')
+      JsBarcode(barcodeCanvas, patientIdShort, {
+        format: 'CODE128',
+        width: 2,
+        height: 60,
+        displayValue: false,
+        margin: 0
+      })
+      registrationBarcodeDataUrl = barcodeCanvas.toDataURL('image/png')
+    } catch (error) {
+      console.error('❌ Failed to generate patient barcode:', error)
+      registrationBarcodeDataUrl = ''
+    }
+  }
+
+  const printRegistrationBarcode = () => {
+    if (!selectedRegistrationPatient || !registrationBarcodeDataUrl) return
+    const patientName = `${selectedRegistrationPatient.firstName || ''} ${selectedRegistrationPatient.lastName || ''}`.trim() || 'Patient'
+    const patientIdShort = registrationBarcodeValue || formatPatientId(selectedRegistrationPatient.id)
+    const printWindow = window.open('', '_blank', 'width=600,height=600')
+    if (!printWindow) return
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Patient ID</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; }
+            .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; text-align: center; }
+            .name { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+            .id { font-size: 16px; color: #333; margin-bottom: 12px; }
+            img { max-width: 100%; height: auto; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="name">${patientName}</div>
+            <div class="id">Patient ID: ${patientIdShort}</div>
+            <img src="${registrationBarcodeDataUrl}" alt="Patient Barcode" />
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
   }
 
   // Initialize editable amounts and fetch inventory data when prescription is selected
@@ -1141,6 +1282,25 @@
       console.log('🔍 PharmacistDashboard: pharmacist object:', pharmacist)
       console.log('🔍 PharmacistDashboard: pharmacyId:', pharmacyId)
       console.log('🔍 PharmacistDashboard: pharmacist.connectedDoctors:', pharmacist?.connectedDoctors)
+
+      // Ensure pharmacist profile exists in pharmacy collection
+      if (pharmacist?.email) {
+        const pharmacistProfile = await firebaseStorage.getPharmacistByEmail(pharmacist.email)
+        if (!pharmacistProfile) {
+          console.log('🧪 Pharmacist profile missing. Creating pharmacy profile for:', pharmacist.email)
+          const pharmacistNumber = firebaseAuthService.generatePharmacistNumber()
+          const created = await firebaseStorage.createPharmacist({
+            email: pharmacist.email,
+            password: `doctor-${Date.now()}`,
+            role: 'pharmacist',
+            businessName: pharmacist.businessName || pharmacist.name || pharmacist.email,
+            pharmacistNumber
+          })
+          pharmacist = created
+        } else if (pharmacistProfile?.id && pharmacistProfile.id !== pharmacist?.id) {
+          pharmacist = pharmacistProfile
+        }
+      }
       
       // Check if pharmacist data is valid
       if (!pharmacyId) {
@@ -1149,6 +1309,31 @@
         return
       }
       
+      // Auto-connect own doctor account (same email) if present
+      if (!ownDoctorAutoConnected && pharmacist?.email) {
+        ownDoctorAutoConnected = true
+        const doctor = await firebaseStorage.getDoctorByEmail(pharmacist.email)
+        if (doctor?.id) {
+          const pharmacistHasDoctor = pharmacist.connectedDoctors?.includes(doctor.id)
+          const doctorHasPharmacist = doctor.connectedPharmacists?.includes(pharmacyId)
+          if (!pharmacistHasDoctor || !doctorHasPharmacist) {
+            const updatedConnectedDoctors = Array.from(new Set([...(pharmacist.connectedDoctors || []), doctor.id]))
+            const updatedConnectedPharmacists = Array.from(new Set([...(doctor.connectedPharmacists || []), pharmacyId]))
+            await Promise.all([
+              firebaseStorage.updatePharmacist({
+                id: pharmacyId,
+                connectedDoctors: updatedConnectedDoctors
+              }),
+              firebaseStorage.updateDoctor({
+                id: doctor.id,
+                connectedPharmacists: updatedConnectedPharmacists
+              })
+            ])
+            pharmacist.connectedDoctors = updatedConnectedDoctors
+          }
+        }
+      }
+
       // Get prescriptions from connected doctors using Firebase
       prescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacyId)
       
@@ -1170,15 +1355,30 @@
       
       // Load connected doctors info from Firebase
       connectedDoctors = []
-      if (pharmacist.connectedDoctors && Array.isArray(pharmacist.connectedDoctors)) {
+      if (pharmacist.connectedDoctors && Array.isArray(pharmacist.connectedDoctors) && pharmacist.connectedDoctors.length > 0) {
+        const loadedDoctors = []
         for (const doctorId of pharmacist.connectedDoctors) {
           const doctor = await firebaseStorage.getDoctorById(doctorId)
           if (doctor) {
-            connectedDoctors.push(doctor)
+            loadedDoctors.push(doctor)
           }
         }
+        connectedDoctors = loadedDoctors
       } else {
-        console.log('🔍 PharmacistDashboard: No connected doctors found or connectedDoctors is not an array')
+        console.log('🔍 PharmacistDashboard: No connected doctors found on pharmacist profile, falling back to doctor records')
+        const allDoctors = await firebaseStorage.getAllDoctors()
+        const matchedDoctors = allDoctors.filter(doctor => {
+          const connected = Array.isArray(doctor.connectedPharmacists) && doctor.connectedPharmacists.includes(pharmacyId)
+          return connected
+        })
+        if (matchedDoctors.length > 0) {
+          connectedDoctors = matchedDoctors
+          pharmacist.connectedDoctors = matchedDoctors.map(doctor => doctor.id)
+          await firebaseStorage.updatePharmacist({
+            id: pharmacyId,
+            connectedDoctors: pharmacist.connectedDoctors
+          })
+        }
       }
       
       // Sort prescriptions by date (newest first)
@@ -1586,7 +1786,10 @@
         <div class="flex items-center min-w-0 flex-1">
           <i class="fas fa-pills text-blue-600 mr-2 text-lg"></i>
           <div class="min-w-0 flex-1">
-            <h1 class="text-sm sm:text-base font-bold text-blue-600 truncate">M-Prescribe <span class="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1">v2.2.24</span></h1>
+              <h1 class="text-sm sm:text-base font-bold text-blue-600 truncate">
+                <BrandName />
+                <span class="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded ml-1">v2.2.24</span>
+              </h1>
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
       </div>
         </div>
@@ -1744,6 +1947,18 @@
                   <span class="hidden xs:inline">Inventory</span>
                   <span class="xs:hidden">Stock</span>
               </button>
+              {#if canRegisterPatients}
+                <button
+                  class="flex-1 sm:flex-none px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2 {activeTab === 'registrations' ? 'text-white bg-blue-600 hover:bg-blue-700 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800' : 'text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-700 focus:ring-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:bg-gray-700 dark:hover:text-white'}"
+                  on:click={() => activeTab = 'registrations'}
+                  type="button"
+                  role="tab"
+                >
+                  <i class="fas fa-user-plus mr-1 sm:mr-2"></i>
+                  <span class="hidden xs:inline">Registrations</span>
+                  <span class="xs:hidden">New</span>
+                </button>
+              {/if}
             </div>
               
               <!-- Action Buttons -->
@@ -1980,6 +2195,136 @@
           {:else if activeTab === 'inventory'}
             <!-- Advanced Inventory System -->
             <InventoryDashboard {pharmacist} />
+          {:else if activeTab === 'registrations'}
+            <div class="space-y-4">
+              <div class="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex space-x-1" role="tablist" aria-label="Registration tabs">
+                  <button
+                    type="button"
+                    class="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2 {registrationTab === 'add' ? 'text-white bg-blue-600 hover:bg-blue-700 focus:ring-blue-300' : 'text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-700 focus:ring-gray-300'}"
+                    on:click={() => registrationTab = 'add'}
+                    role="tab"
+                  >
+                    <i class="fas fa-user-plus mr-1 sm:mr-2"></i>
+                    Add New Patient
+                  </button>
+                  <button
+                    type="button"
+                    class="px-3 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-offset-2 {registrationTab === 'barcodes' ? 'text-white bg-blue-600 hover:bg-blue-700 focus:ring-blue-300' : 'text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-700 focus:ring-gray-300'}"
+                    on:click={() => registrationTab = 'barcodes'}
+                    role="tab"
+                  >
+                    <i class="fas fa-qrcode mr-1 sm:mr-2"></i>
+                    Barcodes
+                  </button>
+                </div>
+              </div>
+              <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                <div class="flex items-start gap-3">
+                  <i class="fas fa-user-md text-blue-600 mt-0.5"></i>
+                  <div>
+                    <p class="text-sm font-semibold text-blue-900">Connected Doctor</p>
+                    <p class="text-sm text-blue-800">
+                      {connectedDoctors[0]?.name || `${connectedDoctors[0]?.firstName || ''} ${connectedDoctors[0]?.lastName || ''}`.trim() || connectedDoctors[0]?.email || 'Doctor'}
+                      {#if connectedDoctors[0]?.id}
+                        <span class="ml-2 text-xs text-blue-700">ID: {formatDoctorId(connectedDoctors[0]?.id)}</span>
+                      {/if}
+                    </p>
+                    <p class="text-xs text-blue-700">New patients added here will appear in this doctor’s database.</p>
+                  </div>
+                </div>
+              </div>
+              {#if registrationTab === 'add'}
+                <PatientForm on:patient-added={handleRegisterPatient} defaultCountry={connectedDoctors[0]?.country || pharmacist?.country || ''} />
+              {:else}
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div class="lg:col-span-1 space-y-3">
+                    <div class="rounded-lg border border-gray-200 bg-white p-3">
+                      <label class="block text-xs font-semibold text-gray-600 mb-2">Search patient</label>
+                      <input
+                        type="text"
+                        class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        placeholder="Name, email, phone, ID"
+                        bind:value={registrationPatientQuery}
+                      />
+                      <button
+                        type="button"
+                        class="mt-3 inline-flex items-center justify-center rounded-lg bg-blue-100 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-200"
+                        on:click={loadRegistrationPatients}
+                        disabled={registrationPatientsLoading}
+                      >
+                        <i class="fas fa-sync-alt mr-1"></i>
+                        {registrationPatientsLoading ? 'Loading...' : 'Refresh list'}
+                      </button>
+                    </div>
+
+                    <div class="rounded-lg border border-gray-200 bg-white p-3 max-h-[360px] overflow-y-auto">
+                      {#if registrationPatientsLoading}
+                        <p class="text-sm text-gray-500">Loading patients...</p>
+                      {:else if filteredRegistrationPatients.length === 0}
+                        <p class="text-sm text-gray-500">No patients found.</p>
+                      {:else}
+                        <div class="space-y-2">
+                          {#each filteredRegistrationPatients as patient (patient.id)}
+                            <button
+                              type="button"
+                              class="w-full text-left rounded-lg border border-gray-200 px-3 py-2 text-sm hover:border-blue-300 hover:bg-blue-50"
+                              on:click={() => selectRegistrationPatient(patient)}
+                            >
+                              <div class="font-semibold text-gray-900">
+                                {patient.firstName} {patient.lastName}
+                              </div>
+                              <div class="text-xs text-gray-500">
+                                {formatPatientId(patient.id)} · {patient.email || 'No email'}
+                              </div>
+                            </button>
+                          {/each}
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+
+                  <div class="lg:col-span-2">
+                    {#if selectedRegistrationPatient}
+                      <div class="rounded-lg border border-gray-200 bg-white p-6">
+                        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p class="text-sm font-semibold text-gray-700">Printable Patient ID</p>
+                            <h3 class="text-xl font-bold text-gray-900">
+                              {selectedRegistrationPatient.firstName} {selectedRegistrationPatient.lastName}
+                            </h3>
+                            <p class="text-sm text-gray-500">
+                              ID: {registrationBarcodeValue || formatPatientId(selectedRegistrationPatient.id)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                            on:click={printRegistrationBarcode}
+                            disabled={!registrationBarcodeDataUrl}
+                          >
+                            <i class="fas fa-print mr-2"></i>
+                            Print
+                          </button>
+                        </div>
+                        <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
+                          {#if registrationBarcodeDataUrl}
+                            <img src={registrationBarcodeDataUrl} alt="Patient Barcode" class="mx-auto" />
+                          {:else}
+                            <p class="text-sm text-gray-500">Barcode not available.</p>
+                          {/if}
+                        </div>
+                      </div>
+                    {:else}
+                      <div class="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center">
+                        <i class="fas fa-qrcode text-3xl text-gray-400 mb-3"></i>
+                        <p class="text-sm text-gray-600">Select a patient to view the printable ID and barcode.</p>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+            </div>
           {/if}
         </div>
       </div>

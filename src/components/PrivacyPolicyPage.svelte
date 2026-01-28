@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte'
+  import BrandName from './BrandName.svelte'
 
   const defaultPrivacyContent = `# Privacy Policy
 
@@ -114,7 +115,9 @@ Email: support@mprescribe.net`
   <div class="max-w-6xl mx-auto px-6 py-10">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
       <div>
-        <p class="text-xs uppercase tracking-[0.2em] text-teal-600 font-semibold">M-Prescribe</p>
+        <p class="text-xs uppercase tracking-[0.2em] text-teal-600 font-semibold">
+          <BrandName className="text-teal-600" />
+        </p>
         <h1 class="text-3xl sm:text-4xl lg:text-5xl font-semibold text-gray-900 font-hero">Privacy Policy</h1>
         <p class="mt-2 text-sm text-gray-600">For Tronicgate Hardware and Software Services</p>
       </div>

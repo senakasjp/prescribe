@@ -192,8 +192,11 @@ class JSONStorage {
     return this.data.pharmacists
   }
 
-  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier) {
-    const pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier, options = {}) {
+    let pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+    if (!pharmacist && options?.isOwnPharmacy && doctorIdentifier) {
+      pharmacist = await this.getPharmacistByEmail(doctorIdentifier)
+    }
     if (!pharmacist) {
       throw new Error('Pharmacist not found')
     }

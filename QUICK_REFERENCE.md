@@ -36,6 +36,10 @@
 | **Doctor** | Get 6-digit number → Pharmacists tab → Connect |
 | **Pharmacist** | Register → Get number → Share with doctors |
 
+## 🧾 ID Display Rule
+- **Storage/queries**: Use raw Firebase document IDs only.
+- **UI/communications**: Use short formatted IDs (`DRxxxxx`, `PHxxxxx`, `PAxxxxx`, `PRxxxxxxx`) everywhere.
+
 ## 🔍 Quick Search
 - **Patient Name**: Type any part of name
 - **Patient ID**: Enter ID number
@@ -74,4 +78,3 @@
 ---
 **System URL**: `https://prescribe-7e1e8.web.app`  
 **Support**: Check BEGINNER_GUIDE.md for detailed help
-

@@ -27,6 +27,11 @@
   export let onAddAISuggestedDrug
   export let onRemoveAISuggestedDrug
   export let loadingAIDrugSuggestions
+  export let onGenerateAIAnalysis = null
+  export let loadingAIAnalysis = false
+  export let showAIAnalysis = false
+  export let aiAnalysisHtml = ''
+  export let aiAnalysisError = ''
   export let symptoms
   export let openaiService
   export let onNewPrescription
@@ -36,16 +41,15 @@
   export let prescriptionNotes = ''
   export let prescriptionDiscount = 0 // New discount field
   export let prescriptionDiscountScope = 'consultation' // 'consultation' | 'consultation_hospital'
+  export let nextAppointmentDate = ''
   export let prescriptionProcedures = []
   export let otherProcedurePrice = ''
   export let excludeConsultationCharge = false
   export let currentUserEmail = null
   export let doctorProfileFallback = null
   
-  // Debug AI suggestions
-  $: console.log('🔍 PrescriptionsTab - showAIDrugSuggestions:', showAIDrugSuggestions)
-  $: console.log('🔍 PrescriptionsTab - aiDrugSuggestions:', aiDrugSuggestions)
-  $: console.log('🔍 PrescriptionsTab - aiDrugSuggestions.length:', aiDrugSuggestions?.length)
+  // Debug AI analysis
+  $: console.log('🔍 PrescriptionsTab - showAIAnalysis:', showAIAnalysis)
   
   // Pharmacy stock availability
   let pharmacyStock = []
@@ -60,9 +64,38 @@
   let expectedPharmacist = null
   let expectedPriceRequestId = 0
   let showProcedures = false
+  let showNotes = false
+  let showDiscounts = false
+  let showNextAppointment = false
   
   $: if (!prescriptionProcedures?.includes('Other')) {
     otherProcedurePrice = ''
+  }
+
+  $: if (currentPrescription?.notes && !showNotes) {
+    showNotes = true
+  }
+
+  $: {
+    const hasDiscount = Number(prescriptionDiscount) > 0 || Number(currentPrescription?.discount) > 0
+    if (hasDiscount && !showDiscounts) {
+      showDiscounts = true
+    }
+  }
+
+  $: if (currentPrescription?.nextAppointmentDate && !showNextAppointment) {
+    showNextAppointment = true
+  }
+
+  $: if (currentPrescription?.notes && !showNotes) {
+    showNotes = true
+  }
+
+  $: {
+    const hasDiscount = Number(prescriptionDiscount) > 0 || Number(currentPrescription?.discount) > 0
+    if (hasDiscount && !showDiscounts) {
+      showDiscounts = true
+    }
   }
 
   const procedureOptions = [
@@ -529,21 +562,21 @@
             <i class="fas fa-plus mr-1"></i>Add Drug
           </button>
           
-          <!-- AI Drug Suggestions Button -->
+          <!-- AI Analysis Button -->
           <button 
               class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:outline-none focus:ring-purple-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-purple-600 dark:hover:bg-purple-700 dark:focus:ring-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
-              on:click={onGenerateAIDrugSuggestions}
-              disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured() || !currentPrescription}
-              title={!currentPrescription ? "Create a prescription first" : (!symptoms || symptoms.length === 0) ? "Add symptoms first" : "Get AI-assisted drug suggestions based on symptoms"}
+              on:click={onGenerateAIAnalysis}
+              disabled={loadingAIAnalysis || !currentPrescription || !openaiService.isConfigured() || !currentMedications || currentMedications.length === 0}
+              title={!currentPrescription ? "Create a prescription first" : (!currentMedications || currentMedications.length === 0) ? "Add medications first" : "Run AI analysis for this prescription"}
           >
-            {#if loadingAIDrugSuggestions}
+            {#if loadingAIAnalysis}
               <svg class="animate-spin -ml-1 mr-1 h-3 w-3 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               Generating...
             {:else}
-              <i class="fas fa-brain mr-1 text-red-600"></i>AI Suggestions
+              <i class="fas fa-brain mr-1 text-red-600"></i>AI Analysis
             {/if}
           </button>
         </div>
@@ -562,53 +595,28 @@
             onCancelMedication={onCancelMedication}
           />
           
-          <!-- AI Suggestions Section - Always visible when available -->
-          {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0}
+          <!-- AI Analysis Section -->
+          {#if showAIAnalysis}
             <div class="mt-4 border-t border-gray-200 pt-4">
               <div class="flex justify-between items-center mb-4">
                 <h6 class="text-lg font-semibold text-gray-700 mb-0">
                   <i class="fas fa-brain mr-2 text-red-600"></i>
-                  AI Drug Suggestions ({aiDrugSuggestions.length})
+                  AI Analysis
                 </h6>
               </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {#each aiDrugSuggestions as suggestion, index}
-                  <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-                    <div class="p-3">
-                      <div class="flex justify-between items-start mb-2">
-                        <h6 class="text-sm font-semibold text-gray-700 mb-0">{suggestion.name}</h6>
-                        <div class="flex gap-1">
-                          <button 
-                            class="inline-flex items-center px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                            on:click={() => onAddAISuggestedDrug(suggestion, index)}
-                            disabled={!currentPrescription}
-                            title="Add to prescription"
-                          >
-                            <i class="fas fa-plus"></i>
-                          </button>
-                          <button 
-                            class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
-                            on:click={() => onRemoveAISuggestedDrug(index)}
-                            title="Remove suggestion"
-                          >
-                            <i class="fas fa-times"></i>
-                          </button>
-                        </div>
-                      </div>
-                      <div class="text-gray-500 text-sm mb-2">
-                        <span class="font-medium">Dosage:</span> {suggestion.dosage} • <span class="font-medium">Frequency:</span> {suggestion.frequency}
-                      </div>
-                      {#if suggestion.reason}
-                        <div class="text-gray-700 text-sm">
-                          <i class="fas fa-lightbulb mr-1"></i>
-                          <span class="font-medium">Reason:</span> {suggestion.reason}
-                        </div>
-                      {/if}
-                    </div>
-                  </div>
-                {/each}
-              </div>
+              {#if aiAnalysisError}
+                <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {aiAnalysisError}
+                </div>
+              {:else if aiAnalysisHtml}
+                <div class="prose max-w-none text-gray-700 ai-analysis" style="font-size: 0.95rem;">
+                  {@html aiAnalysisHtml}
+                </div>
+              {:else}
+                <p class="text-sm text-gray-500">Run AI Analysis to see results.</p>
+              {/if}
             </div>
+            <hr class="mt-4 border-gray-200" />
           {/if}
           
           <!-- Current Prescriptions List -->
@@ -769,74 +777,124 @@
           </div>
 
           {#if currentMedications && currentMedications.length > 0}
-            <!-- Prescription Notes -->
+            <!-- Prescription Notes Toggle -->
             <div class="mt-4">
-              <label for="prescriptionNotes" class="block text-sm font-medium text-gray-700 mb-2">
-                <i class="fas fa-sticky-note mr-1"></i>Prescription Notes
-              </label>
-              <textarea
-                id="prescriptionNotes"
-                bind:value={prescriptionNotes}
-                rows="3"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                placeholder="Additional instructions or notes for the prescription..."
-              ></textarea>
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                  type="checkbox"
+                  id="toggleNotes"
+                  bind:checked={showNotes}
+                  disabled={!currentPrescription}
+                >
+                <label class="text-sm font-medium text-gray-700" for="toggleNotes">
+                  Prescription Notes
+                </label>
+              </div>
+              {#if showNotes}
+                <textarea
+                  id="prescriptionNotes"
+                  bind:value={prescriptionNotes}
+                  rows="3"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  placeholder="Additional instructions or notes for the prescription..."
+                ></textarea>
+              {/if}
+            </div>
+
+            <!-- Next Appointment Toggle -->
+            <div class="mt-4">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                  type="checkbox"
+                  id="toggleNextAppointment"
+                  bind:checked={showNextAppointment}
+                  disabled={!currentPrescription}
+                >
+                <label class="text-sm font-medium text-gray-700" for="toggleNextAppointment">
+                  Next Appointment Date
+                </label>
+              </div>
+              {#if showNextAppointment}
+                <input
+                  type="date"
+                  class="w-48 max-w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={nextAppointmentDate}
+                >
+              {/if}
             </div>
             
-            <!-- Discount Fields -->
-            <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label for="prescriptionDiscount" class="block text-sm font-medium text-gray-700 mb-2">
-                  <i class="fas fa-percentage mr-2 text-teal-600"></i>
+            <!-- Discount Toggle + Fields -->
+            <div class="mt-4">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                  type="checkbox"
+                  id="toggleDiscounts"
+                  bind:checked={showDiscounts}
+                  disabled={!currentPrescription}
+                >
+                <label class="text-sm font-medium text-gray-700" for="toggleDiscounts">
                   Discount (for pharmacy use only)
                 </label>
-                <select
-                  id="prescriptionDiscount"
-                  bind:value={prescriptionDiscount}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                >
-                  <option value={0}>0% - No Discount</option>
-                  <option value={5}>5%</option>
-                  <option value={10}>10%</option>
-                  <option value={15}>15%</option>
-                  <option value={20}>20%</option>
-                  <option value={25}>25%</option>
-                  <option value={30}>30%</option>
-                  <option value={35}>35%</option>
-                  <option value={40}>40%</option>
-                  <option value={45}>45%</option>
-                  <option value={50}>50%</option>
-                  <option value={55}>55%</option>
-                  <option value={60}>60%</option>
-                  <option value={65}>65%</option>
-                  <option value={70}>70%</option>
-                  <option value={75}>75%</option>
-                  <option value={80}>80%</option>
-                  <option value={85}>85%</option>
-                  <option value={90}>90%</option>
-                  <option value={95}>95%</option>
-                  <option value={100}>100%</option>
-                </select>
-                <div class="text-xs text-gray-500 mt-1">
-                  <i class="fas fa-info-circle mr-1"></i>
-                  Discount applies only when sending to pharmacy (not included in PDF)
-                </div>
               </div>
+              {#if showDiscounts}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label for="prescriptionDiscount" class="block text-sm font-medium text-gray-700 mb-2">
+                      <i class="fas fa-percentage mr-2 text-teal-600"></i>
+                      Discount percentage
+                    </label>
+                    <select
+                      id="prescriptionDiscount"
+                      bind:value={prescriptionDiscount}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      <option value={0}>0% - No Discount</option>
+                      <option value={5}>5%</option>
+                      <option value={10}>10%</option>
+                      <option value={15}>15%</option>
+                      <option value={20}>20%</option>
+                      <option value={25}>25%</option>
+                      <option value={30}>30%</option>
+                      <option value={35}>35%</option>
+                      <option value={40}>40%</option>
+                      <option value={45}>45%</option>
+                      <option value={50}>50%</option>
+                      <option value={55}>55%</option>
+                      <option value={60}>60%</option>
+                      <option value={65}>65%</option>
+                      <option value={70}>70%</option>
+                      <option value={75}>75%</option>
+                      <option value={80}>80%</option>
+                      <option value={85}>85%</option>
+                      <option value={90}>90%</option>
+                      <option value={95}>95%</option>
+                      <option value={100}>100%</option>
+                    </select>
+                    <div class="text-xs text-gray-500 mt-1">
+                      <i class="fas fa-info-circle mr-1"></i>
+                      Discount applies only when sending to pharmacy (not included in PDF)
+                    </div>
+                  </div>
 
-              <div>
-                <label for="discountScope" class="block text-sm font-medium text-gray-700 mb-2">
-                  <i class="fas fa-sliders-h mr-2 text-teal-600"></i>
-                  Discount applies to
-                </label>
-                <select
-                  id="discountScope"
-                  bind:value={prescriptionDiscountScope}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                >
-                  <option value="consultation">Only Consultation (default)</option>
-                  <option value="consultation_hospital">Consultation + Hospital</option>
-                </select>
-              </div>
+                  <div>
+                    <label for="discountScope" class="block text-sm font-medium text-gray-700 mb-2">
+                      <i class="fas fa-sliders-h mr-2 text-teal-600"></i>
+                      Discount applies to
+                    </label>
+                    <select
+                      id="discountScope"
+                      bind:value={prescriptionDiscountScope}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      <option value="consultation">Only Consultation (default)</option>
+                      <option value="consultation_hospital">Consultation + Hospital</option>
+                    </select>
+                  </div>
+                </div>
+              {/if}
             </div>
             
             <!-- Prescription Actions -->
@@ -896,7 +954,7 @@
               <i class="fas fa-pills text-4xl mb-3"></i>
               <p class="mb-2">No current prescriptions for today</p>
               <p class="text-sm text-gray-400 mb-1">Click the <span class="font-medium text-teal-600">"+ Add Drug"</span> button to start adding medications to this prescription.</p>
-              <p class="text-sm text-gray-400">Or you can use <span class="font-medium text-teal-600">AI suggestions</span> to get AI recommendations based on symptoms.</p>
+              <p class="text-sm text-gray-400">Or you can use <span class="font-medium text-teal-600">AI Analysis</span> to review interactions, allergies, and dosing risks.</p>
             </div>
           {/if}
           
@@ -917,4 +975,31 @@
 
 <style>
   /* Component-specific styles - main responsive styles are in PatientDetails.svelte */
+  .ai-analysis :global(h1),
+  .ai-analysis :global(h2),
+  .ai-analysis :global(h3) {
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .ai-analysis :global(p) {
+    line-height: 1.6;
+    margin: 0.5rem 0;
+  }
+
+  .ai-analysis :global(ul),
+  .ai-analysis :global(ol) {
+    padding-left: 1.25rem;
+    margin: 0.5rem 0 0.75rem;
+  }
+
+  .ai-analysis :global(li) {
+    margin: 0.25rem 0;
+  }
+
+  .ai-analysis :global(strong) {
+    color: #0f172a;
+  }
 </style>

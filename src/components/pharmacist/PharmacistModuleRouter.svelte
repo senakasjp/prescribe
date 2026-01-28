@@ -112,7 +112,7 @@
           <!-- Logo and Title -->
           <div class="flex items-center">
             <div class="flex-shrink-0">
-              <h1 class="text-xl font-bold text-blue-600">Prescribe - Pharmacist Portal</h1>
+              <h1 class="text-xl font-bold text-blue-600"><span class="text-red-600 font-extrabold">M</span>-Prescribe - Pharmacist Portal</h1>
             </div>
           </div>
           
