@@ -154,7 +154,7 @@
             headerContainer.style.width = `${baseWidthPx}px`
             headerContainer.style.minWidth = `${baseWidthPx}px`
             headerContainer.style.backgroundColor = 'white'
-            headerContainer.style.padding = '16px'
+            headerContainer.style.padding = '8px'
             headerContainer.style.fontFamily = 'Arial, sans-serif'
             headerContainer.style.lineHeight = '1.4'
             headerContainer.style.color = '#000000'
@@ -175,18 +175,45 @@
               .header-capture-container .ql-editor {
                 width: 100% !important;
                 padding: 0 !important;
-                font-size: 21.33px !important;
+                font-size: 24px !important;
                 line-height: 1.4 !important;
                 font-family: inherit !important;
+              }
+              .header-capture-container .ql-editor h1 {
+                font-size: 3em !important;
+                margin: 0.2em 0 !important;
+              }
+              .header-capture-container .ql-editor h2 {
+                font-size: 2.4em !important;
+                margin: 0.2em 0 !important;
+              }
+              .header-capture-container .ql-editor h3 {
+                font-size: 1.9em !important;
+                margin: 0.2em 0 !important;
+              }
+              .header-capture-container .ql-editor h4 {
+                font-size: 1.5em !important;
+                margin: 0.2em 0 !important;
+              }
+              .header-capture-container .ql-editor h5 {
+                font-size: 1.25em !important;
+                margin: 0.2em 0 !important;
+              }
+              .header-capture-container .ql-editor h6 {
+                font-size: 1.1em !important;
+                margin: 0.2em 0 !important;
+              }
+              .header-capture-container .ql-editor p {
+                margin: 0.2em 0 !important;
               }
               .header-capture-container .ql-size-small {
                 font-size: 0.75em !important;
               }
               .header-capture-container .ql-size-large {
-                font-size: 1.5em !important;
+                font-size: 1.9em !important;
               }
               .header-capture-container .ql-size-huge {
-                font-size: 2.5em !important;
+                font-size: 3em !important;
               }
               .header-capture-container * {
                 box-sizing: border-box !important;
@@ -223,20 +250,21 @@
               })
               
               const headerImageData = canvas.toDataURL('image/png')
-              const maxHeaderWidthMm = pageWidth - (margin * 2)
-              const maxHeaderHeightMm = pageHeight - (margin * 2)
+              const maxHeaderWidthMm = pageWidth
+              const maxHeaderHeightMm = null
               const rawHeaderWidthMm = (canvas.width / captureScale) / pxPerMm
               const rawHeaderHeightMm = (canvas.height / captureScale) / pxPerMm
+              const headerScale = 5
               const aspectRatio = canvas.width / canvas.height
               
-              let headerImageWidthMm = rawHeaderWidthMm
-              let headerImageHeightMm = rawHeaderHeightMm
+              let headerImageWidthMm = rawHeaderWidthMm * headerScale
+              let headerImageHeightMm = rawHeaderHeightMm * headerScale
 
               if (headerImageWidthMm < maxHeaderWidthMm) {
                 headerImageWidthMm = maxHeaderWidthMm
                 headerImageHeightMm = headerImageWidthMm / aspectRatio
               }
-              if (headerImageHeightMm > maxHeaderHeightMm) {
+              if (maxHeaderHeightMm && headerImageHeightMm > maxHeaderHeightMm) {
                 headerImageHeightMm = maxHeaderHeightMm
                 headerImageWidthMm = headerImageHeightMm * aspectRatio
               }
@@ -244,6 +272,16 @@
               if (headerImageWidthMm > maxHeaderWidthMm) {
                 headerImageWidthMm = maxHeaderWidthMm
                 headerImageHeightMm = headerImageWidthMm / aspectRatio
+              }
+
+              const minHeaderHeightMm = 0
+              if (minHeaderHeightMm && headerImageHeightMm < minHeaderHeightMm) {
+                headerImageHeightMm = minHeaderHeightMm
+                headerImageWidthMm = headerImageHeightMm * aspectRatio
+                if (headerImageWidthMm > maxHeaderWidthMm) {
+                  headerImageWidthMm = maxHeaderWidthMm
+                  headerImageHeightMm = headerImageWidthMm / aspectRatio
+                }
               }
               
               const headerImageX = (pageWidth - headerImageWidthMm) / 2
@@ -254,7 +292,7 @@
               capturedHeaderHeight = headerImageHeightMm
               capturedHeaderX = headerImageX
               
-              const lineY = headerYStart + headerImageHeightMm + 2
+              const lineY = headerYStart + headerImageHeightMm + 6
               doc.setLineWidth(0.5)
               doc.line(margin, lineY, pageWidth - margin, lineY)
               contentYStart = lineY + 5

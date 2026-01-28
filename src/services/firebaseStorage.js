@@ -46,6 +46,24 @@ class FirebaseStorageService {
     return String(Math.floor(100000 + Math.random() * 900000))
   }
 
+  formatDoctorId(rawId) {
+    if (!rawId) return ''
+    const input = String(rawId)
+    let hash = 5381
+    for (let i = 0; i < input.length; i += 1) {
+      hash = ((hash << 5) + hash) + input.charCodeAt(i)
+      hash &= 0xffffffff
+    }
+    const numeric = Math.abs(hash >>> 0) % 100000
+    const padded = String(numeric).padStart(5, '0')
+    return `DR${padded}`
+  }
+
+  generateReferralCode() {
+    const raw = Math.random().toString(36).replace(/[^a-z0-9]/g, '')
+    return raw.slice(0, 8).toUpperCase()
+  }
+
   normalizeEmail(email) {
     return String(email || '').trim().toLowerCase()
   }
@@ -64,6 +82,18 @@ class FirebaseStorageService {
       const existing = await this.getDoctorByEmail(normalizedEmail)
       if (existing) {
         throw new Error('Doctor with this email already exists')
+      }
+
+      let referralCode = doctorData.referralCode
+      if (!referralCode) {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const candidate = this.generateReferralCode()
+          const existingCode = await this.getDoctorByReferralCode(candidate)
+          if (!existingCode) {
+            referralCode = candidate
+            break
+          }
+        }
       }
 
       // Only include serializable fields to avoid Firebase errors
@@ -89,6 +119,7 @@ class FirebaseStorageService {
         referralEligibleAt: doctorData.referralEligibleAt,
         referralBonusApplied: doctorData.referralBonusApplied,
         referralBonusAppliedAt: doctorData.referralBonusAppliedAt,
+        referralCode: referralCode,
         authProvider: doctorData.authProvider,
         connectedPharmacists: doctorData.connectedPharmacists || [],
         allowedDeviceId: doctorData.allowedDeviceId,
@@ -112,7 +143,9 @@ class FirebaseStorageService {
       
       const docRef = await addDoc(collection(db, this.collections.doctors), serializableData)
       
-      const createdDoctor = { id: docRef.id, ...serializableData }
+      const doctorIdShort = this.formatDoctorId(docRef.id)
+      await updateDoc(docRef, { doctorIdShort })
+      const createdDoctor = { id: docRef.id, ...serializableData, doctorIdShort }
       console.log('🔥 Firebase: Doctor created successfully with ID:', docRef.id)
       console.log('🔥 Firebase: Created doctor object:', createdDoctor)
       
@@ -161,6 +194,10 @@ class FirebaseStorageService {
       
       const doc = querySnapshot.docs[0]
       const data = doc.data()
+      if (!data.doctorIdShort) {
+        data.doctorIdShort = this.formatDoctorId(doc.id)
+        await updateDoc(doc.ref, { doctorIdShort: data.doctorIdShort })
+      }
       if (!data.deleteCode) {
         const deleteCode = this.generateDeleteCode()
         await updateDoc(doc.ref, { deleteCode })
@@ -186,6 +223,10 @@ class FirebaseStorageService {
       
       if (docSnap.exists()) {
         const data = docSnap.data()
+        if (!data.doctorIdShort) {
+          data.doctorIdShort = this.formatDoctorId(docSnap.id)
+          await updateDoc(docRef, { doctorIdShort: data.doctorIdShort })
+        }
         if (!data.deleteCode) {
           const deleteCode = this.generateDeleteCode()
           await updateDoc(docRef, { deleteCode })
@@ -202,6 +243,23 @@ class FirebaseStorageService {
       return null
     } catch (error) {
       console.error('Error getting doctor by ID:', error)
+      throw error
+    }
+  }
+
+  async getDoctorByReferralCode(code) {
+    try {
+      const normalized = String(code || '').trim().toUpperCase()
+      if (!normalized) return null
+      const doctorsRef = collection(db, this.collections.doctors)
+      const q = query(doctorsRef, where('referralCode', '==', normalized), limit(1))
+      const snapshot = await getDocs(q)
+      if (snapshot.empty) return null
+      const docSnap = snapshot.docs[0]
+      const data = docSnap.data()
+      return { id: docSnap.id, ...data }
+    } catch (error) {
+      console.error('Error getting doctor by referral code:', error)
       throw error
     }
   }
@@ -244,6 +302,8 @@ class FirebaseStorageService {
         referralEligibleAt: updatedDoctor.referralEligibleAt,
         referralBonusApplied: updatedDoctor.referralBonusApplied,
         referralBonusAppliedAt: updatedDoctor.referralBonusAppliedAt,
+        referralCode: updatedDoctor.referralCode,
+        doctorIdShort: updatedDoctor.doctorIdShort,
         uid: updatedDoctor.uid,
         displayName: updatedDoctor.displayName,
         photoURL: updatedDoctor.photoURL,

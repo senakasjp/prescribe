@@ -1590,36 +1590,27 @@
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
       </div>
         </div>
-        <div class="relative ml-2">
-        <button 
-          id="pharmacistDropdownButton" 
-          data-dropdown-toggle="pharmacistDropdown" 
-            class="text-gray-700 hover:text-gray-900 flex items-center p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200" 
-          type="button"
-        >
-            <i class="fas fa-user-circle text-lg"></i>
-            <svg class="w-3 h-3 ml-1" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
-          </svg>
-        </button>
-          <div id="pharmacistDropdown" class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow-lg w-48 dark:bg-gray-700 absolute right-0 mt-2">
-          <div class="px-4 py-3 text-sm text-gray-900 dark:text-white">
-              <div class="font-medium truncate">{pharmacist.businessName}</div>
-              <div class="text-xs text-gray-500">ID: {pharmacist.pharmacistNumber}</div>
-          </div>
-          <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
-            <li>
-                <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" on:click={handleProfileSettings}>
-                <i class="fas fa-cog mr-2"></i>Profile Settings
-              </button>
-            </li>
-            <li>
-                <button class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" on:click={handleSignOut}>
-                <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
-              </button>
-            </li>
-          </ul>
-          </div>
+        <div class="ml-2 flex items-center gap-2">
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors duration-200"
+            on:click={handleProfileSettings}
+          >
+            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-700">
+              <i class="fas fa-cog"></i>
+            </span>
+            Settings
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 transition-colors duration-200"
+            on:click={handleSignOut}
+          >
+            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-100 text-red-700">
+              <i class="fas fa-sign-out-alt"></i>
+            </span>
+            Logout
+          </button>
         </div>
       </div>
     </div>

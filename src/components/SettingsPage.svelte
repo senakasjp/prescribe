@@ -850,8 +850,19 @@
         </div>
       </div>
     </div>
-  </div>
+</div>
 
+<style>
+  .system-header-preview {
+    text-align: center;
+    line-height: 1.4;
+    color: #111827;
+  }
+
+  .system-header-preview .ql-editor {
+    padding: 0;
+  }
+</style>
   <!-- Main Content -->
   <div class="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1275,8 +1286,10 @@
                 {:else if templateType === 'system'}
                   <div id="prescription-header-preview-system" class="text-center mb-6 bg-white p-4 rounded-lg">
                     {#if headerText && headerText.trim()}
-                      <div class="system-header-preview" bind:this={previewElement}>
-                        {@html headerText}
+                      <div class="system-header-preview ql-snow">
+                        <div class="ql-editor" bind:this={previewElement}>
+                          {@html headerText}
+                        </div>
                       </div>
                     {:else}
                       <h4 class="font-bold text-lg mb-2">Dr. {user?.name || '[Your Name]'}</h4>

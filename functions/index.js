@@ -14,6 +14,7 @@ const {defineSecret} = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
+const QRCode = require("qrcode");
 
 admin.initializeApp();
 
@@ -145,15 +146,20 @@ const formatDoctorId = (rawId) => {
   return `DR${padded}`;
 };
 
+
 const applyTemplate = (value, replacements) => {
   if (!value) return value;
-  return Object.keys(replacements).reduce(
-      (result, key) => result.replaceAll(`{{${key}}}`, replacements[key]),
-      value,
-  );
+  let result = String(value);
+  Object.keys(replacements).forEach((key) => {
+    const escapedKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`{{\\s*${escapedKey}\\s*}}`, "gi");
+    const replacement = replacements[key] || "";
+    result = result.replace(pattern, String(replacement));
+  });
+  return result;
 };
 
-const buildWelcomeEmail = (doctor, template = {}) => {
+const buildWelcomeEmail = async (doctor, template = {}) => {
   const name =
     (doctor && doctor.name) ||
     [doctor && doctor.firstName, doctor && doctor.lastName]
@@ -163,14 +169,22 @@ const buildWelcomeEmail = (doctor, template = {}) => {
   const rawDoctorId =
     (doctor && (doctor.id || doctor.doctorId || doctor.uid)) || "";
   const referralBaseUrl = "https://mprescribe.net";
-  const referralUrl = rawDoctorId ?
-    `${referralBaseUrl}/?ref=${encodeURIComponent(rawDoctorId)}` :
+  const referralValue = formatDoctorId(rawDoctorId);
+  const referralUrl = referralValue ?
+    `${referralBaseUrl}/?ref=${encodeURIComponent(referralValue)}` :
     "";
-  const referralQr = referralUrl ?
-    `https://chart.googleapis.com/chart?cht=qr&chs=300x300&chl=${
-      encodeURIComponent(referralUrl)
-    }` :
-    "";
+  let referralQr = "";
+  if (referralUrl) {
+    try {
+      referralQr = await QRCode.toDataURL(referralUrl, {
+        width: 300,
+        margin: 1,
+      });
+    } catch (error) {
+      logger.error("Failed to generate referral QR code:", error);
+      referralQr = "";
+    }
+  }
   const replacements = {
     name,
     email: (doctor && doctor.email) || "",
@@ -337,7 +351,10 @@ exports.sendDoctorWelcomeEmail = onDocumentCreated(
 
       const transporter = nodemailer.createTransport(smtpConfig);
       const template = await getWelcomeTemplate();
-      const {subject, text, html} = buildWelcomeEmail(doctor, template || {});
+      const {subject, text, html} = await buildWelcomeEmail(
+          doctor,
+          template || {},
+      );
       const fromEmail = (template && template.fromEmail) || from;
       const fromName = (template && template.fromName) || "";
       const replyTo = (template && template.replyTo) || undefined;
@@ -419,7 +436,10 @@ exports.sendDoctorBroadcastEmail = onRequest(
       const transporter = nodemailer.createTransport(smtpConfig);
 
       const sendOne = async (doctor) => {
-        const {subject, text, html} = buildWelcomeEmail(doctor, template || {});
+        const {subject, text, html} = await buildWelcomeEmail(
+            doctor,
+            template || {},
+        );
         const fromEmail = (template && template.fromEmail) || from;
         const fromName = (template && template.fromName) || "";
         const replyTo = (template && template.replyTo) || undefined;
@@ -582,7 +602,10 @@ exports.sendDoctorTemplateEmail = onRequest(
         targetDoctor = doctor;
 
         const transporter = nodemailer.createTransport(smtpConfig);
-        const {subject, text, html} = buildWelcomeEmail(doctor, template || {});
+        const {subject, text, html} = await buildWelcomeEmail(
+            doctor,
+            template || {},
+        );
         const fromEmail = (template && template.fromEmail) || from;
         const fromName = (template && template.fromName) || "";
         const replyTo = (template && template.replyTo) || undefined;

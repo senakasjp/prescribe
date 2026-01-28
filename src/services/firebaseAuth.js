@@ -57,6 +57,25 @@ class FirebaseAuthService {
     return referralId
   }
 
+  async resolveReferralDoctorId(referralValue) {
+    if (!referralValue) return ''
+    const referralCode = String(referralValue).trim().toUpperCase()
+    let resolvedId = ''
+    if (referralCode.startsWith('DR')) {
+      const doctors = await firebaseStorage.getAllDoctors()
+      const matched = doctors.find((doc) => doc.doctorIdShort === referralCode)
+      resolvedId = matched?.id || ''
+    } else {
+      const referredDoctor = await firebaseStorage.getDoctorByReferralCode(referralCode)
+      resolvedId = referredDoctor?.id || ''
+    }
+    if (!resolvedId) {
+      const fallbackDoctor = await firebaseStorage.getDoctorById(referralValue)
+      resolvedId = fallbackDoctor?.id || ''
+    }
+    return resolvedId
+  }
+
   getProviderMeta(firebaseUser) {
     const providerId = firebaseUser?.providerData?.[0]?.providerId || 'password'
     const provider = providerId === 'google.com' ? 'google' : providerId === 'password' ? 'password' : providerId
@@ -189,6 +208,7 @@ class FirebaseAuthService {
     } else {
       console.log('🆕 Creating new user in Firebase')
       // Create new user
+      const resolvedReferralId = isSuperAdmin ? '' : await this.resolveReferralDoctorId(this.getAndClearReferralId())
       const doctorData = {
         email: firebaseUser.email,
         firstName: firebaseUser.displayName?.split(' ')[0] || '',
@@ -196,7 +216,7 @@ class FirebaseAuthService {
         name: firebaseUser.displayName || '',
         role: 'doctor',
         isApproved: isSuperAdmin ? true : false,
-        referredByDoctorId: isSuperAdmin ? '' : this.getAndClearReferralId(),
+        referredByDoctorId: resolvedReferralId,
         uid: firebaseUser.uid,
         displayName: firebaseUser.displayName,
         photoURL: firebaseUser.photoURL,
@@ -432,6 +452,11 @@ class FirebaseAuthService {
         return updatedDoctor
       }
 
+      let referredByDoctorId = doctorData.referredByDoctorId || ''
+      if (referredByDoctorId) {
+        referredByDoctorId = await this.resolveReferralDoctorId(referredByDoctorId)
+      }
+
       const doctorPayload = {
         email,
         firstName: doctorData.firstName || '',
@@ -440,7 +465,7 @@ class FirebaseAuthService {
         country: doctorData.country || '',
         role: 'doctor',
         isApproved: false,
-        referredByDoctorId: doctorData.referredByDoctorId || '',
+        referredByDoctorId: referredByDoctorId,
         uid: firebaseUser.uid,
         provider: 'password',
         authProvider: 'firebase-email',
@@ -464,6 +489,19 @@ class FirebaseAuthService {
       return await this.handleUserLogin(firebaseUser)
     } catch (error) {
       console.error('Error signing in with email/password:', error)
+      const code = error?.code || ''
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
+        throw new Error('Invalid email or password.')
+      }
+      if (code === 'auth/user-not-found') {
+        throw new Error('No account found with this email.')
+      }
+      if (code === 'auth/too-many-requests') {
+        throw new Error('Too many attempts. Please try again later.')
+      }
+      if (code === 'auth/user-disabled') {
+        throw new Error('Your account is disabled. Please contact support.')
+      }
       throw error
     }
   }

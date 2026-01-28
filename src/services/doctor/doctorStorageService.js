@@ -72,6 +72,7 @@ class DoctorStorageService {
         referralEligibleAt: doctorData.referralEligibleAt,
         referralBonusApplied: doctorData.referralBonusApplied,
         referralBonusAppliedAt: doctorData.referralBonusAppliedAt,
+        referralCode: doctorData.referralCode,
         uid: doctorData.uid,
         displayName: doctorData.displayName,
         photoURL: doctorData.photoURL,

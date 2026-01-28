@@ -1018,6 +1018,18 @@
     })
   }
 
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'N/A'
+    return new Date(dateString).toLocaleString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  }
+
   const isTrialActive = (doctor) => {
     if (!doctor?.accessExpiresAt) return false
     const expiresAt = new Date(doctor.accessExpiresAt)
@@ -2559,7 +2571,7 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                           {#each emailLogs as log (log.id)}
                             <tr>
-                              <td class="px-3 py-2 text-gray-900">{formatDate(log.createdAt)}</td>
+                              <td class="px-3 py-2 text-gray-900">{formatDateTime(log.createdAt)}</td>
                               <td class="px-3 py-2 text-gray-700">{log.type || '-'}</td>
                               <td class="px-3 py-2">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {log.status === 'sent' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
@@ -2610,7 +2622,7 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                           {#each authLogs as log (log.id)}
                             <tr>
-                              <td class="px-3 py-2 text-gray-900">{formatDate(log.createdAt)}</td>
+                              <td class="px-3 py-2 text-gray-900">{formatDateTime(log.createdAt)}</td>
                               <td class="px-3 py-2 text-gray-700">{log.action || '-'}</td>
                               <td class="px-3 py-2 text-gray-700">{log.role || '-'}</td>
                               <td class="px-3 py-2 text-gray-700">{log.email || '-'}</td>
