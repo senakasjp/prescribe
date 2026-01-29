@@ -152,10 +152,22 @@
   let smtpUser = ''
   let smtpTestRunning = false
   let smtpTestStatus = ''
+  let messagingTab = 'templates'
   let whatsappTestNumber = 'whatsapp:+642041210342'
   let whatsappTestMessage = 'Welcome to M-Prescribe!'
   let whatsappTestRunning = false
   let whatsappTestStatus = ''
+  let smsTestRecipient = '31612345678'
+  let smsTestSenderId = 'YourName'
+  let smsTestType = 'plain'
+  let smsTestMessage = 'This is a test message'
+  let smsTestRunning = false
+  let smsTestStatus = ''
+  let registrationTemplate =
+    'Welcome {{name}} to Prescribe! Your account is ready. Sign in at {{appUrl}}.'
+  let appointmentReminderTemplate =
+    'Reminder: your appointment with {{doctorName}} is on {{date}} at {{time}}. Reply if you need to reschedule.'
+  let emailTab = 'settings'
   // Email logs
   let emailLogs = []
   let emailLogsLoading = false
@@ -636,6 +648,49 @@
       whatsappTestRunning = false
       setTimeout(() => {
         whatsappTestStatus = ''
+      }, 12000)
+    }
+  }
+
+  const testSmsSend = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      smsTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      smsTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      smsTestRunning = true
+      smsTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendSmsApi`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipient: smsTestRecipient,
+          senderId: smsTestSenderId,
+          type: smsTestType,
+          message: smsTestMessage
+        })
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'SMS send failed')
+      }
+      smsTestStatus = 'SMS sent'
+    } catch (error) {
+      smsTestStatus = error?.message || 'SMS send failed'
+    } finally {
+      smsTestRunning = false
+      setTimeout(() => {
+        smsTestStatus = ''
       }, 12000)
     }
   }
@@ -1614,16 +1669,10 @@
                   <i class="fas fa-cog mr-3"></i>System
             </button>
             <button
-                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'email-settings' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-              on:click={() => handleTabChange('email-settings')}
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'email' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('email')}
             >
-                  <i class="fas fa-envelope mr-3"></i>Email Settings
-            </button>
-            <button
-                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'email-templates' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-              on:click={() => handleTabChange('email-templates')}
-            >
-                  <i class="fas fa-paper-plane mr-3"></i>Email Templates
+                  <i class="fas fa-envelope mr-3"></i>Email
             </button>
               </nav>
             </div>
@@ -1633,6 +1682,7 @@
         <!-- Main Content Area -->
         <div class="lg:col-span-9">
           {#if activeTab === 'overview'}
+            <div>
             <!-- Overview Tab -->
             <div class="flex justify-between items-center mb-6">
               <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-chart-bar mr-2 text-red-500"></i>System Overview</h2>
@@ -1688,7 +1738,7 @@
                 <p class="text-sm text-gray-500">AI Cost <small>(Est.)</small></p>
               </div>
             </div>
-            
+
             <!-- Recent Activity -->
             <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
               <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
@@ -1698,7 +1748,7 @@
                 <p class="text-gray-500">Recent system activity will be displayed here.</p>
               </div>
             </div>
-            
+            </div>
           {:else if activeTab === 'doctors'}
             <!-- Doctors Tab -->
             <div class="flex justify-between items-center mb-6">
@@ -2097,7 +2147,7 @@
                   <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h5>
                   <small class="text-gray-500">All Time Average</small>
                   </div>
-              </div>
+                  </div>
               
               <!-- Last Updated Card -->
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -2107,6 +2157,7 @@
                   </h6>
                   <h6 class="text-teal-600 text-lg font-bold mb-1">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
                   <small class="text-gray-500">Usage Data</small>
+                </div>
               </div>
               
               <!-- Daily Usage Chart -->
@@ -2147,7 +2198,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
               
               <!-- Monthly Usage Chart -->
               <div class="mb-6">
@@ -2720,58 +2770,124 @@
             <div class="flex justify-between items-center mb-6">
               <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-comment-dots mr-2 text-red-600"></i>Messaging</h2>
             </div>
+            <div class="flex items-center gap-2 mb-4">
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  messagingTab === 'templates'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (messagingTab = 'templates')}
+              >
+                Templates
+              </button>
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  messagingTab === 'whatsapp'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (messagingTab = 'whatsapp')}
+              >
+                Whatsapp
+              </button>
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  messagingTab === 'sms'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (messagingTab = 'sms')}
+              >
+                SMS
+              </button>
+            </div>
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-6 space-y-5">
-              <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                <p class="text-sm text-blue-900 font-semibold mb-1">Twilio WhatsApp (Welcome Message)</p>
-                <p class="text-sm text-blue-800">
-                  Store credentials in Firebase Secrets. Do not paste the Auth Token in the UI.
-                </p>
-              </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Test Number</label>
-                  <input
-                    type="text"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-                    bind:value={whatsappTestNumber}
-                    placeholder="whatsapp:+14155238886"
-                  />
+              {#if messagingTab === 'templates'}
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p class="text-sm text-blue-900 font-semibold mb-1">Message Templates</p>
+                  <p class="text-sm text-blue-800">
+                    Use placeholders like &#123;&#123;name&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;.
+                  </p>
                 </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-                  <input
-                    type="text"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-                    bind:value={whatsappTestMessage}
-                    placeholder="Welcome to M-Prescribe!"
-                  />
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-user-plus text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Registration</p>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={registrationTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;name&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-bell text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Appointment Reminder</p>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={appointmentReminderTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;</p>
+                  </div>
                 </div>
-              </div>
-              <div class="flex items-center gap-3">
-                <button
-                  class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
-                  on:click={testWhatsappWelcome}
-                  disabled={whatsappTestRunning}
-                >
-                  {#if whatsappTestRunning}
-                    <i class="fas fa-spinner fa-spin mr-2"></i>Sending...
-                  {:else}
-                    <i class="fas fa-paper-plane mr-2"></i>Send Test WhatsApp
+              {:else if messagingTab === 'whatsapp'}
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p class="text-sm text-blue-900 font-semibold mb-1">Twilio WhatsApp (Welcome Message)</p>
+                  <p class="text-sm text-blue-800">
+                    Store credentials in Firebase Secrets. Do not paste the Auth Token in the UI.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Test Number</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={whatsappTestNumber}
+                      placeholder="whatsapp:+14155238886"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={whatsappTestMessage}
+                      placeholder="Welcome to M-Prescribe!"
+                    />
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                    on:click={testWhatsappWelcome}
+                    disabled={whatsappTestRunning}
+                  >
+                    {#if whatsappTestRunning}
+                      <i class="fas fa-spinner fa-spin mr-2"></i>Sending...
+                    {:else}
+                      <i class="fas fa-paper-plane mr-2"></i>Send Test WhatsApp
+                    {/if}
+                  </button>
+                  {#if whatsappTestStatus}
+                    <span class="text-sm text-gray-600">{whatsappTestStatus}</span>
                   {/if}
-                </button>
-                {#if whatsappTestStatus}
-                  <span class="text-sm text-gray-600">{whatsappTestStatus}</span>
-                {/if}
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-gray-700 mb-2">Secrets (CLI)</p>
-                <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set TWILIO_ACCOUNT_SID
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Secrets (CLI)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set TWILIO_ACCOUNT_SID
 firebase functions:secrets:set TWILIO_AUTH_TOKEN
 firebase functions:secrets:set TWILIO_WHATSAPP_FROM</code></pre>
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-gray-700 mb-2">Sample Node.js (Cloud Function)</p>
-                <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>const functions = require('firebase-functions');
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Sample Node.js (Cloud Function)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>const functions = require('firebase-functions');
 const twilio = require('twilio');
 
 exports.sendWelcomeWhatsapp = functions
@@ -2794,14 +2910,116 @@ exports.sendWelcomeWhatsapp = functions
     const message = await client.messages.create(&#123; body, from, to &#125;);
     return &#123; sid: message.sid &#125;;
   &#125;);</code></pre>
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-gray-700 mb-2">Test Payload</p>
-                <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>&#123;
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Test Payload</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>&#123;
   "to": "whatsapp:+642041210342",
   "body": "Welcome to M-Prescribe!"
 &#125;</code></pre>
-              </div>
+                </div>
+              {:else}
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p class="text-sm text-blue-900 font-semibold mb-1">SMS API (smsapi.lk)</p>
+                  <p class="text-sm text-blue-800">
+                    Store the API token in Firebase Secrets. Do not paste it in the UI.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Recipient</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestRecipient}
+                      placeholder="31612345678"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sender ID</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestSenderId}
+                      placeholder="YourName"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <select
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestType}
+                    >
+                      <option value="plain">plain</option>
+                      <option value="unicode">unicode</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestMessage}
+                      placeholder="This is a test message"
+                    />
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                    on:click={testSmsSend}
+                    disabled={smsTestRunning}
+                  >
+                    {#if smsTestRunning}
+                      <i class="fas fa-spinner fa-spin mr-2"></i>Sending...
+                    {:else}
+                      <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                    {/if}
+                  </button>
+                  {#if smsTestStatus}
+                    <span class="text-sm text-gray-600">{smsTestStatus}</span>
+                  {/if}
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Secrets (CLI)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set SMSAPI_TOKEN</code></pre>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Sample Node.js (Cloud Function)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>exports.sendSmsApi = functions
+  .runWith(&#123; secrets: ['SMSAPI_TOKEN'] &#125;)
+  .https.onCall(async (data) =&gt; &#123;
+    const token = process.env.SMSAPI_TOKEN;
+    const payload = &#123;
+      recipient: data?.recipient,
+      sender_id: data?.senderId,
+      type: data?.type || 'plain',
+      message: data?.message
+    &#125;;
+
+    const response = await fetch('https://dashboard.smsapi.lk/api/v3/sms/send', &#123;
+      method: 'POST',
+      headers: &#123;
+        Authorization: `Bearer &#36;&#123;token&#125;`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      &#125;,
+      body: JSON.stringify(payload)
+    &#125;);
+
+    return response.json();
+  &#125;);</code></pre>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Test Payload</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>&#123;
+  "recipient": "31612345678",
+  "senderId": "YourName",
+  "type": "plain",
+  "message": "This is a test message"
+&#125;</code></pre>
+                </div>
+              {/if}
             </div>
           {:else if activeTab === 'doctor-view'}
             <!-- Doctor View Tab -->
@@ -2933,10 +3151,33 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                   </div>
                 </div>
               </div>
-          {:else if activeTab === 'email-settings'}
+          {:else if activeTab === 'email'}
             <div class="flex justify-between items-center mb-6">
-              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-envelope mr-2 text-red-600"></i>Email Settings</h2>
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-envelope mr-2 text-red-600"></i>Email</h2>
             </div>
+            <div class="flex items-center gap-2 mb-4">
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  emailTab === 'settings'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (emailTab = 'settings')}
+              >
+                Settings
+              </button>
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  emailTab === 'templates'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (emailTab = 'templates')}
+              >
+                Templates
+              </button>
+            </div>
+            {#if emailTab === 'settings'}
 
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
@@ -3021,7 +3262,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
               </div>
             </div>
 
-          {:else if activeTab === 'email-templates'}
+          {:else}
             <div class="flex justify-between items-center mb-6">
               <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-paper-plane mr-2 text-red-600"></i>Email Templates</h2>
             </div>
@@ -3860,12 +4101,10 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
               </div>
             </div>
           {/if}
-                    </div>
-                  </div>
-              </div>
-              
           {/if}
         </div>
+      </div>
+    </div>
 
 <!-- Quota Management Modal -->
 {#if showQuotaModal}
@@ -3971,3 +4210,5 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
 />
 
 <!-- Flowbite styling -->
+{/if}
+</div>

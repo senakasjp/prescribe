@@ -24,6 +24,7 @@ const SMTP_PASS = defineSecret("SMTP_PASS");
 const TWILIO_ACCOUNT_SID = defineSecret("TWILIO_ACCOUNT_SID");
 const TWILIO_AUTH_TOKEN = defineSecret("TWILIO_AUTH_TOKEN");
 const TWILIO_WHATSAPP_FROM = defineSecret("TWILIO_WHATSAPP_FROM");
+const SMSAPI_TOKEN = defineSecret("SMSAPI_TOKEN");
 
 const setCors = (req, res) => {
   const origin = req.headers.origin || "*";
@@ -852,6 +853,98 @@ exports.sendWelcomeWhatsapp = onRequest(
         logger.error("Twilio WhatsApp send failed:", error);
         const message = String(
             (error && error.message) || "Failed to send WhatsApp message",
+        );
+        res.status(500).send(message);
+      }
+    },
+);
+
+exports.sendSmsApi = onRequest(
+    {
+      secrets: [SMSAPI_TOKEN],
+    },
+    async (req, res) => {
+      setCors(req, res);
+      if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+      }
+      if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+      }
+
+      const adminUser = await getAuthorizedAdmin(req);
+      if (!adminUser) {
+        res.status(401).send("Unauthorized");
+        return;
+      }
+
+      const token = SMSAPI_TOKEN.value();
+      if (!token) {
+        res.status(500).send("SMS API token missing");
+        return;
+      }
+
+      const {recipient, senderId, type, message} = req.body || {};
+      if (!recipient || typeof recipient !== "string") {
+        res.status(400).send("Recipient is required");
+        return;
+      }
+      if (!senderId || typeof senderId !== "string") {
+        res.status(400).send("Sender ID is required");
+        return;
+      }
+      if (!message || typeof message !== "string") {
+        res.status(400).send("Message is required");
+        return;
+      }
+
+      const payload = {
+        recipient: String(recipient),
+        sender_id: String(senderId),
+        type: String(type || "plain"),
+        message: String(message),
+      };
+
+      try {
+        const response = await fetch(
+            "https://dashboard.smsapi.lk/api/v3/sms/send",
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+              },
+              body: JSON.stringify(payload),
+            },
+        );
+
+        const raw = await response.text();
+        let data = null;
+        if (raw) {
+          try {
+            data = JSON.parse(raw);
+          } catch (error) {
+            data = {raw};
+          }
+        }
+
+        if (!response.ok) {
+          const errorMessage =
+            (data && data.message) ||
+            raw ||
+            "Failed to send SMS";
+          res.status(500).send(String(errorMessage));
+          return;
+        }
+
+        res.json({success: true, response: data});
+      } catch (error) {
+        logger.error("SMS API send failed:", error);
+        const message = String(
+            (error && error.message) || "Failed to send SMS",
         );
         res.status(500).send(message);
       }
