@@ -1955,6 +1955,35 @@ class FirebaseStorageService {
     }
   }
 
+  // System settings: messaging templates (SMS/WhatsApp)
+  async getMessagingTemplates() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'messagingTemplates')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting messaging templates:', error)
+      throw error
+    }
+  }
+
+  async saveMessagingTemplates(templateData) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'messagingTemplates')
+      await setDoc(docRef, {
+        ...templateData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving messaging templates:', error)
+      throw error
+    }
+  }
+
   async getEmailTemplate(templateId) {
     try {
       const docRef = doc(db, this.collections.systemSettings, templateId)

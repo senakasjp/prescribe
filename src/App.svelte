@@ -1012,59 +1012,61 @@
             </div>
           </div>
         {:else}
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           <div class="lg:col-span-7">
-            <div class="rounded-3xl border border-teal-100 bg-white/80 backdrop-blur px-6 py-10 shadow-sm relative overflow-hidden">
+            <div class="rounded-3xl border border-teal-100 bg-white/80 backdrop-blur px-6 py-10 shadow-sm relative overflow-hidden h-full flex flex-col">
               <div class="absolute -top-24 -right-16 h-48 w-48 rounded-full bg-teal-200/40"></div>
               <div class="absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-amber-200/40"></div>
-              <div class="relative">
-                <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
-                  <i class="fas fa-shield-alt"></i>
-                  HIPAA-ready workflows
-                </div>
-                <h1 class="mt-4 text-3xl sm:text-4xl lg:text-5xl font-semibold text-gray-900 font-hero">
-                  <BrandName /> Patient and Pharmacy Management System
-                </h1>
-                <p class="mt-3 text-base text-gray-600 max-w-xl">
-                  One workspace for doctors and pharmacies to manage patients, prescriptions, inventory, and billing — with AI support and secure audit trails.
-                </p>
-                <div class="mt-5 flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                  <span class="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-amber-700 font-semibold">
-                    One month free access for new registrations
-                  </span>
-                  <a
-                    href="/?register=1#signin"
-                    class="inline-flex items-center gap-2 rounded-full bg-teal-600 px-4 py-2 text-white font-semibold shadow-sm hover:bg-teal-700 transition-colors duration-200"
-                  >
-                    <i class="fas fa-user-plus"></i>
-                    Register free trial
-                  </a>
-                </div>
-                <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div class="rounded-2xl border border-gray-200 bg-white p-4">
-                    <div class="flex items-center gap-3">
-                      <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
-                        <i class="fas fa-notes-medical"></i>
-                      </span>
-                      <div>
-                        <p class="text-sm font-semibold text-gray-900">Doctor Portal</p>
-                        <p class="text-xs text-gray-500">Patients, prescriptions, AI insights</p>
+              <div class="relative flex flex-col h-full justify-between">
+                <div>
+                  <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+                    <i class="fas fa-shield-alt"></i>
+                    HIPAA-ready workflows
+                  </div>
+                  <h1 class="mt-4 text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900 font-hero">
+                    <BrandName /> Patient and Pharmacy Management System
+                  </h1>
+                  <p class="mt-3 text-base text-gray-600 max-w-xl">
+                    One workspace for doctors and pharmacies to manage patients, prescriptions, inventory, and billing — with AI support and secure audit trails.
+                  </p>
+                  <div class="mt-5 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                    <span class="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-amber-700 font-semibold">
+                      One month free access for new registrations
+                    </span>
+                    <a
+                      href="/?register=1#signin"
+                      class="inline-flex items-center gap-2 rounded-full bg-teal-600 px-4 py-2 text-white font-semibold shadow-sm hover:bg-teal-700 transition-colors duration-200"
+                    >
+                      <i class="fas fa-user-plus"></i>
+                      Register free trial
+                    </a>
+                  </div>
+                  <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                      <div class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
+                          <i class="fas fa-notes-medical"></i>
+                        </span>
+                        <div>
+                          <p class="text-sm font-semibold text-gray-900">Doctor Portal</p>
+                          <p class="text-xs text-gray-500">Patients, prescriptions, AI insights</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                      <div class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                          <i class="fas fa-pills"></i>
+                        </span>
+                        <div>
+                          <p class="text-sm font-semibold text-gray-900">Pharmacy Portal</p>
+                          <p class="text-xs text-gray-500">Inventory, billing, team access</p>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div class="rounded-2xl border border-gray-200 bg-white p-4">
-                    <div class="flex items-center gap-3">
-                      <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-                        <i class="fas fa-pills"></i>
-                      </span>
-                      <div>
-                        <p class="text-sm font-semibold text-gray-900">Pharmacy Portal</p>
-                        <p class="text-xs text-gray-500">Inventory, billing, team access</p>
-                      </div>
-                    </div>
-                  </div>
                 </div>
-                <div class="mt-6 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                <div class="pt-6 flex flex-wrap items-center gap-3 text-xs text-gray-500">
                   <span class="inline-flex items-center gap-1"><i class="fas fa-lock"></i> Secure access</span>
                   <span class="inline-flex items-center gap-1"><i class="fas fa-bolt"></i> Fast workflows</span>
                   <span class="inline-flex items-center gap-1"><i class="fas fa-chart-line"></i> Usage analytics</span>
@@ -1073,7 +1075,7 @@
             </div>
           </div>
           <div class="lg:col-span-5">
-            <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
+            <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden h-full flex flex-col">
               <div class="px-6 py-6 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                   <div>
@@ -1129,7 +1131,7 @@
                   {/if}
                 </div>
               </div>
-              <div class="bg-gray-50 px-6 py-4 text-center text-xs text-gray-500 space-y-2">
+              <div class="bg-gray-50 px-6 py-4 text-center text-xs text-gray-500 space-y-2 mt-auto">
                 <div class="flex flex-wrap justify-center gap-2">
                   <span class="inline-flex items-center gap-1"><i class="fas fa-shield-alt"></i> Secure</span>
                   <span class="inline-flex items-center gap-1"><i class="fas fa-brain"></i> AI-Enhanced</span>
@@ -1153,68 +1155,90 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="flex items-center gap-3">
-                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-100 text-teal-700 text-3xl">
                   <i class="fas fa-notes-medical"></i>
                 </span>
                 <div>
-                  <p class="text-sm font-semibold text-gray-900">Patient history</p>
-                  <p class="text-xs text-gray-500">Complete records with fast lookup</p>
+                  <p class="text-base font-semibold text-gray-900">Patient history</p>
+                  <p class="text-sm text-gray-500">Search visits, diagnoses, labs, and meds in seconds with unified charts</p>
                 </div>
               </div>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="flex items-center gap-3">
-                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-100 text-rose-700 text-3xl">
+                  <i class="fas fa-bell"></i>
+                </span>
+                <div>
+                  <p class="text-base font-semibold text-gray-900">SMS + email notifications</p>
+                  <p class="text-sm text-gray-500">Automatic registration confirmations and next-visit reminders via SMS and email</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 text-3xl">
+                  <i class="fas fa-folder-open"></i>
+                </span>
+                <div>
+                  <p class="text-base font-semibold text-gray-900">Fast account retrieval</p>
+                  <p class="text-sm text-gray-500">Locate patient accounts and past prescriptions with smart filters, quick search, and optional barcode retrieval</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 text-3xl">
                   <i class="fas fa-brain"></i>
                 </span>
                 <div>
-                  <p class="text-sm font-semibold text-gray-900">Optional AI based diagnosis</p>
-                  <p class="text-xs text-gray-500">Assistive insights when needed</p>
+                  <p class="text-base font-semibold text-gray-900">Optional AI based diagnosis</p>
+                  <p class="text-sm text-gray-500">On-demand clinical suggestions to support decisions without replacing judgment</p>
                 </div>
               </div>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="flex items-center gap-3">
-                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 text-3xl">
                   <i class="fas fa-file-prescription"></i>
                 </span>
                 <div>
-                  <p class="text-sm font-semibold text-gray-900">Printing prescription</p>
-                  <p class="text-xs text-gray-500">Quick print with clinic branding</p>
+                  <p class="text-base font-semibold text-gray-900">Printing prescription</p>
+                  <p class="text-sm text-gray-500">Generate clean, branded prescriptions with dosage, notes, and refill details</p>
                 </div>
               </div>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="flex items-center gap-3">
-                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 text-3xl">
                   <i class="fas fa-capsules"></i>
                 </span>
                 <div>
-                  <p class="text-sm font-semibold text-gray-900">Maintain drug inventory</p>
-                  <p class="text-xs text-gray-500">Stock, dispensing, and alerts</p>
+                  <p class="text-base font-semibold text-gray-900">Maintain drug inventory</p>
+                  <p class="text-sm text-gray-500">Track stock levels, dispensing history, expiries, and low-stock alerts</p>
                 </div>
               </div>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="flex items-center gap-3">
-                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 text-3xl">
                   <i class="fas fa-calculator"></i>
                 </span>
                 <div>
-                  <p class="text-sm font-semibold text-gray-900">Charge calculations</p>
-                  <p class="text-xs text-gray-500">Auto totals and discounts</p>
+                  <p class="text-base font-semibold text-gray-900">Charge calculations</p>
+                  <p class="text-sm text-gray-500">Accurate totals with taxes, discounts, and itemized billing in one step</p>
                 </div>
               </div>
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="flex items-center gap-3">
-                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+              <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 text-3xl">
                   <i class="fas fa-chart-line"></i>
                 </span>
                 <div>
-                  <p class="text-sm font-semibold text-gray-900">Daily monthly income reports</p>
-                  <p class="text-xs text-gray-500">Track revenue over time</p>
+                  <p class="text-base font-semibold text-gray-900">Daily monthly income reports</p>
+                  <p class="text-sm text-gray-500">Daily and monthly revenue snapshots with exports for accounting</p>
                 </div>
               </div>
             </div>
@@ -1252,7 +1276,7 @@
   }
 
   :global(.font-hero) {
-    font-family: 'DM Serif Display', 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    font-family: 'Merriweather', 'Space Grotesk', 'Inter', system-ui, sans-serif;
   }
   
   

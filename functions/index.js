@@ -24,7 +24,8 @@ const SMTP_PASS = defineSecret("SMTP_PASS");
 const TWILIO_ACCOUNT_SID = defineSecret("TWILIO_ACCOUNT_SID");
 const TWILIO_AUTH_TOKEN = defineSecret("TWILIO_AUTH_TOKEN");
 const TWILIO_WHATSAPP_FROM = defineSecret("TWILIO_WHATSAPP_FROM");
-const SMSAPI_TOKEN = defineSecret("SMSAPI_TOKEN");
+const NOTIFY_USER_ID = defineSecret("NOTIFY_USER_ID");
+const NOTIFY_API_KEY = defineSecret("NOTIFY_API_KEY");
 
 const setCors = (req, res) => {
   const origin = req.headers.origin || "*";
@@ -861,7 +862,7 @@ exports.sendWelcomeWhatsapp = onRequest(
 
 exports.sendSmsApi = onRequest(
     {
-      secrets: [SMSAPI_TOKEN],
+      secrets: [NOTIFY_USER_ID, NOTIFY_API_KEY],
     },
     async (req, res) => {
       setCors(req, res);
@@ -880,9 +881,10 @@ exports.sendSmsApi = onRequest(
         return;
       }
 
-      const token = SMSAPI_TOKEN.value();
-      if (!token) {
-        res.status(500).send("SMS API token missing");
+      const userId = NOTIFY_USER_ID.value();
+      const apiKey = NOTIFY_API_KEY.value();
+      if (!userId || !apiKey) {
+        res.status(500).send("Notify.lk configuration missing");
         return;
       }
 
@@ -900,24 +902,45 @@ exports.sendSmsApi = onRequest(
         return;
       }
 
-      const payload = {
-        recipient: String(recipient),
-        sender_id: String(senderId),
-        type: String(type || "plain"),
-        message: String(message),
+      const normalizeNotifyRecipient = (input) => {
+        const digits = String(input || "").replace(/\D/g, "");
+        if (!digits) return "";
+        if (digits.length === 11) return digits;
+        if (digits.startsWith("0") && digits.length === 10) {
+          return `94${digits.slice(1)}`;
+        }
+        return digits;
       };
+
+      const formattedRecipient = normalizeNotifyRecipient(recipient);
+      if (!/^\d{11}$/.test(formattedRecipient)) {
+        res.status(400).send(
+            "Recipient format invalid. Use an 11-digit number or 07XXXXXXXX.",
+        );
+        return;
+      }
+
+      const payload = new URLSearchParams({
+        user_id: String(userId),
+        api_key: String(apiKey),
+        sender_id: String(senderId),
+        to: formattedRecipient,
+        message: String(message),
+      });
+      if (String(type || "").toLowerCase() === "unicode") {
+        payload.set("type", "unicode");
+      }
 
       try {
         const response = await fetch(
-            "https://dashboard.smsapi.lk/api/v3/sms/send",
+            "https://app.notify.lk/api/v1/send",
             {
               method: "POST",
               headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
                 "Accept": "application/json",
               },
-              body: JSON.stringify(payload),
+              body: payload.toString(),
             },
         );
 

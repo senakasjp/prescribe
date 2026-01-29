@@ -157,16 +157,23 @@
   let whatsappTestMessage = 'Welcome to M-Prescribe!'
   let whatsappTestRunning = false
   let whatsappTestStatus = ''
-  let smsTestRecipient = '31612345678'
+  let smsTestRecipient = '94712345678'
   let smsTestSenderId = 'YourName'
   let smsTestType = 'plain'
   let smsTestMessage = 'This is a test message'
   let smsTestRunning = false
   let smsTestStatus = ''
+  let smsSenderIdSaving = false
+  let smsSenderIdStatus = ''
   let registrationTemplate =
-    'Welcome {{name}} to Prescribe! Your account is ready. Sign in at {{appUrl}}.'
+    'Welcome {{name}} to Prescribe! Your account is ready with Dr. {{doctorName}}. Sign in at {{appUrl}}.'
   let appointmentReminderTemplate =
     'Reminder: your appointment with {{doctorName}} is on {{date}} at {{time}}. Reply if you need to reschedule.'
+  let registrationChannel = 'sms'
+  let appointmentReminderChannel = 'sms'
+  let messagingTemplatesLoading = false
+  let messagingTemplatesSaving = false
+  let messagingTemplatesStatus = ''
   let emailTab = 'settings'
   // Email logs
   let emailLogs = []
@@ -230,6 +237,7 @@
       await loadWelcomeEmailTemplate()
       await loadDoctorBroadcastTemplate()
       await loadSmtpSettings()
+      await loadMessagingTemplates()
       await loadApprovalWelcomeTemplate()
       await loadPaymentReminderTemplate()
       await loadPaymentThanksTemplate()
@@ -550,6 +558,68 @@
     }
   }
 
+  const loadMessagingTemplates = async () => {
+    try {
+      messagingTemplatesLoading = true
+      const templates = await firebaseStorage.getMessagingTemplates()
+      if (templates) {
+        registrationTemplate = templates.registrationTemplate || registrationTemplate
+        appointmentReminderTemplate =
+          templates.appointmentReminderTemplate || appointmentReminderTemplate
+        registrationChannel = templates.registrationChannel || registrationChannel
+        appointmentReminderChannel =
+          templates.appointmentReminderChannel || appointmentReminderChannel
+        smsTestSenderId = templates.smsSenderId || smsTestSenderId
+      }
+    } catch (error) {
+      console.error('❌ Error loading messaging templates:', error)
+    } finally {
+      messagingTemplatesLoading = false
+    }
+  }
+
+  const saveMessagingTemplates = async () => {
+    try {
+      messagingTemplatesSaving = true
+      messagingTemplatesStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        registrationTemplate: registrationTemplate.trim(),
+        appointmentReminderTemplate: appointmentReminderTemplate.trim(),
+        registrationChannel,
+        appointmentReminderChannel,
+        smsSenderId: smsTestSenderId.trim()
+      })
+      messagingTemplatesStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving messaging templates:', error)
+      messagingTemplatesStatus = 'Save failed'
+    } finally {
+      messagingTemplatesSaving = false
+      setTimeout(() => {
+        messagingTemplatesStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveSmsSenderId = async () => {
+    try {
+      smsSenderIdSaving = true
+      smsSenderIdStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        smsSenderId: smsTestSenderId.trim()
+      })
+      smsSenderIdStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving SMS sender ID:', error)
+      smsSenderIdStatus = 'Save failed'
+    } finally {
+      smsSenderIdSaving = false
+      setTimeout(() => {
+        smsSenderIdStatus = ''
+      }, 2500)
+    }
+  }
+
   const saveSmtpSettings = async () => {
     try {
       smtpSaving = true
@@ -676,7 +746,7 @@
         body: JSON.stringify({
           recipient: smsTestRecipient,
           senderId: smsTestSenderId,
-          type: smsTestType,
+          type: smsTestType === 'unicode' ? smsTestType : undefined,
           message: smsTestMessage
         })
       })
@@ -2807,35 +2877,79 @@
                 <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <p class="text-sm text-blue-900 font-semibold mb-1">Message Templates</p>
                   <p class="text-sm text-blue-800">
-                    Use placeholders like &#123;&#123;name&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;.
+                    Use placeholders like &#123;&#123;name&#125;&#125;, &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;.
                   </p>
                 </div>
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {#if messagingTemplatesLoading}
+                  <p class="text-sm text-gray-500">Loading templates...</p>
+                {:else}
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div class="border border-gray-200 rounded-lg p-4 space-y-3">
                     <div class="flex items-center gap-2">
                       <i class="fas fa-user-plus text-red-600"></i>
                       <p class="text-sm font-semibold text-gray-800">Registration</p>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1" for="registrationChannel">Channel</label>
+                      <select
+                        id="registrationChannel"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                        bind:value={registrationChannel}
+                      >
+                        <option value="sms">SMS</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="both">Both</option>
+                      </select>
                     </div>
                     <label class="block text-xs text-gray-500">Template</label>
                     <textarea
                       class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
                       bind:value={registrationTemplate}
                     ></textarea>
-                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;name&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;name&#125;&#125;, &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
                   </div>
                   <div class="border border-gray-200 rounded-lg p-4 space-y-3">
                     <div class="flex items-center gap-2">
                       <i class="fas fa-bell text-red-600"></i>
                       <p class="text-sm font-semibold text-gray-800">Appointment Reminder</p>
                     </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1" for="appointmentChannel">Channel</label>
+                      <select
+                        id="appointmentChannel"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                        bind:value={appointmentReminderChannel}
+                      >
+                        <option value="sms">SMS</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="both">Both</option>
+                      </select>
+                    </div>
                     <label class="block text-xs text-gray-500">Template</label>
                     <textarea
                       class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
                       bind:value={appointmentReminderTemplate}
                     ></textarea>
-                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;</p>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;</p>
                   </div>
                 </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                    on:click={saveMessagingTemplates}
+                    disabled={messagingTemplatesSaving}
+                  >
+                    {#if messagingTemplatesSaving}
+                      <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                    {:else}
+                      <i class="fas fa-save mr-2"></i>Save Templates
+                    {/if}
+                  </button>
+                  {#if messagingTemplatesStatus}
+                    <span class="text-sm text-gray-600">{messagingTemplatesStatus}</span>
+                  {/if}
+                </div>
+                {/if}
               {:else if messagingTab === 'whatsapp'}
                 <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <p class="text-sm text-blue-900 font-semibold mb-1">Twilio WhatsApp (Welcome Message)</p>
@@ -2920,10 +3034,37 @@ exports.sendWelcomeWhatsapp = functions
                 </div>
               {:else}
                 <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                  <p class="text-sm text-blue-900 font-semibold mb-1">SMS API (smsapi.lk)</p>
+                  <p class="text-sm text-blue-900 font-semibold mb-1">SMS Gateway (notify.lk)</p>
                   <p class="text-sm text-blue-800">
                     Store the API token in Firebase Secrets. Do not paste it in the UI.
                   </p>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm font-semibold text-gray-800">Sender ID</p>
+                    {#if smsSenderIdStatus}
+                      <span class="text-xs text-gray-500">{smsSenderIdStatus}</span>
+                    {/if}
+                  </div>
+                  <div class="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestSenderId}
+                      placeholder="YourName"
+                    />
+                    <button
+                      class="inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                      on:click={saveSmsSenderId}
+                      disabled={smsSenderIdSaving}
+                    >
+                      {#if smsSenderIdSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save Sender ID
+                      {/if}
+                    </button>
+                  </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -2932,7 +3073,7 @@ exports.sendWelcomeWhatsapp = functions
                       type="text"
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
                       bind:value={smsTestRecipient}
-                      placeholder="31612345678"
+                      placeholder="94712345678"
                     />
                   </div>
                   <div>
@@ -2945,7 +3086,7 @@ exports.sendWelcomeWhatsapp = functions
                     />
                   </div>
                   <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Type (unicode only)</label>
                     <select
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
                       bind:value={smsTestType}
@@ -2982,29 +3123,31 @@ exports.sendWelcomeWhatsapp = functions
                 </div>
                 <div>
                   <p class="text-sm font-semibold text-gray-700 mb-2">Secrets (CLI)</p>
-                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set SMSAPI_TOKEN</code></pre>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set NOTIFY_USER_ID
+firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
                 </div>
                 <div>
                   <p class="text-sm font-semibold text-gray-700 mb-2">Sample Node.js (Cloud Function)</p>
                   <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>exports.sendSmsApi = functions
-  .runWith(&#123; secrets: ['SMSAPI_TOKEN'] &#125;)
+  .runWith(&#123; secrets: ['NOTIFY_USER_ID', 'NOTIFY_API_KEY'] &#125;)
   .https.onCall(async (data) =&gt; &#123;
-    const token = process.env.SMSAPI_TOKEN;
-    const payload = &#123;
-      recipient: data?.recipient,
+    const userId = process.env.NOTIFY_USER_ID;
+    const apiKey = process.env.NOTIFY_API_KEY;
+    const payload = new URLSearchParams(&#123;
+      user_id: userId,
+      api_key: apiKey,
       sender_id: data?.senderId,
-      type: data?.type || 'plain',
+      to: data?.recipient,
       message: data?.message
-    &#125;;
+    &#125;);
 
-    const response = await fetch('https://dashboard.smsapi.lk/api/v3/sms/send', &#123;
+    const response = await fetch('https://app.notify.lk/api/v1/send', &#123;
       method: 'POST',
       headers: &#123;
-        Authorization: `Bearer &#36;&#123;token&#125;`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
         Accept: 'application/json'
       &#125;,
-      body: JSON.stringify(payload)
+      body: payload.toString()
     &#125;);
 
     return response.json();
