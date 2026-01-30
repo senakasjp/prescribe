@@ -37,7 +37,43 @@
   import { createEventDispatcher } from 'svelte'
   const dispatch = createEventDispatcher()
 
+  let improvingFields = {}
+  let improvedFields = {}
+  let lastImprovedValues = {}
+
   const getDoctorSettingsFallback = () => settingsDoctor || currentUser || {}
+
+  const getDoctorIdForImprove = () => {
+    const firebaseUser = authUser || authService.getCurrentUser()
+    return firebaseUser?.id || firebaseUser?.uid || 'default-user'
+  }
+
+  const handleImproveField = async (fieldKey, currentValue, setter) => {
+    if (!currentValue || !currentValue.trim()) {
+      return
+    }
+    try {
+      improvingFields = { ...improvingFields, [fieldKey]: true }
+      const result = await openaiService.improveText(currentValue, getDoctorIdForImprove())
+      setter(result.improvedText)
+      improvedFields = { ...improvedFields, [fieldKey]: true }
+      lastImprovedValues = { ...lastImprovedValues, [fieldKey]: result.improvedText }
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+    } catch (error) {
+      console.error('❌ Error improving text:', error)
+    } finally {
+      improvingFields = { ...improvingFields, [fieldKey]: false }
+    }
+  }
+
+  const handleFieldEdit = (fieldKey, value) => {
+    if (improvedFields[fieldKey] && lastImprovedValues[fieldKey] !== value) {
+      improvedFields = { ...improvedFields, [fieldKey]: false }
+    }
+  }
   $: effectiveDoctorSettings = getDoctorSettingsFallback()
 
   const getDisplayDoctorName = (doctorProfile) => {
@@ -3894,25 +3930,81 @@
                   </div>
                   
                   <div class="mb-3">
-                    <label for="editAddress" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                    <div class="flex items-center justify-between mb-1">
+                      <label for="editAddress" class="block text-sm font-medium text-gray-700">
+                        Address
+                        {#if improvedFields.editAddress}
+                          <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            AI Improved
+                          </span>
+                        {/if}
+                      </label>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        on:click={() => handleImproveField('editAddress', editPatientData.address || '', (value) => editPatientData = { ...editPatientData, address: value })}
+                        disabled={savingPatient || improvingFields.editAddress || improvedFields.editAddress || !editPatientData.address}
+                        title="Improve grammar and spelling with AI"
+                      >
+                        {#if improvingFields.editAddress}
+                          <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Improving...
+                        {:else}
+                          <i class="fas fa-sparkles mr-1.5"></i>
+                          Improve English AI
+                        {/if}
+                      </button>
+                    </div>
                     <textarea 
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                       id="editAddress" 
                       rows="3" 
                       bind:value={editPatientData.address}
+                      on:input={(e) => handleFieldEdit('editAddress', e.target.value)}
                       disabled={savingPatient}
                     ></textarea>
                   </div>
                   
                   <div class="mb-3">
-                    <label for="editAllergies" class="block text-sm font-medium text-gray-700 mb-1">
-                      <i class="fas fa-exclamation-triangle me-1"></i>Allergies
-                    </label>
+                    <div class="flex items-center justify-between mb-1">
+                      <label for="editAllergies" class="block text-sm font-medium text-gray-700">
+                        <i class="fas fa-exclamation-triangle me-1"></i>Allergies
+                        {#if improvedFields.editAllergies}
+                          <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            AI Improved
+                          </span>
+                        {/if}
+                      </label>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        on:click={() => handleImproveField('editAllergies', editPatientData.allergies || '', (value) => editPatientData = { ...editPatientData, allergies: value })}
+                        disabled={savingPatient || improvingFields.editAllergies || improvedFields.editAllergies || !editPatientData.allergies}
+                        title="Improve grammar and spelling with AI"
+                      >
+                        {#if improvingFields.editAllergies}
+                          <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Improving...
+                        {:else}
+                          <i class="fas fa-sparkles mr-1.5"></i>
+                          Improve English AI
+                        {/if}
+                      </button>
+                    </div>
                     <textarea 
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                       id="editAllergies" 
                       rows="3" 
                       bind:value={editPatientData.allergies}
+                      on:input={(e) => handleFieldEdit('editAllergies', e.target.value)}
                       placeholder="List any known allergies (e.g., Penicillin, Shellfish, Latex, etc.)"
                       disabled={savingPatient}
                     ></textarea>
@@ -3920,14 +4012,41 @@
                   </div>
                   
                   <div class="mb-3">
-                    <label for="editLongTermMedications" class="block text-sm font-medium text-gray-700 mb-1">
-                      <i class="fas fa-pills me-1"></i>Long Term Medications
-                    </label>
+                    <div class="flex items-center justify-between mb-1">
+                      <label for="editLongTermMedications" class="block text-sm font-medium text-gray-700">
+                        <i class="fas fa-pills me-1"></i>Long Term Medications
+                        {#if improvedFields.editLongTermMedications}
+                          <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            AI Improved
+                          </span>
+                        {/if}
+                      </label>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        on:click={() => handleImproveField('editLongTermMedications', editPatientData.longTermMedications || '', (value) => editPatientData = { ...editPatientData, longTermMedications: value })}
+                        disabled={savingPatient || improvingFields.editLongTermMedications || improvedFields.editLongTermMedications || !editPatientData.longTermMedications}
+                        title="Improve grammar and spelling with AI"
+                      >
+                        {#if improvingFields.editLongTermMedications}
+                          <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Improving...
+                        {:else}
+                          <i class="fas fa-sparkles mr-1.5"></i>
+                          Improve English AI
+                        {/if}
+                      </button>
+                    </div>
                     <textarea 
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                       id="editLongTermMedications" 
                       rows="3" 
                       bind:value={editPatientData.longTermMedications}
+                      on:input={(e) => handleFieldEdit('editLongTermMedications', e.target.value)}
                       placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
                       disabled={savingPatient}
                     ></textarea>
@@ -4060,6 +4179,56 @@
                   {/if}
                 </div>
               </div>
+
+              <!-- Patient Information -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                <div>
+                                    {#if selectedPatient.email}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Email:</span> <span class="text-gray-700">{selectedPatient.email}</span></p>
+                  {/if}
+                  {#if selectedPatient.phone || selectedPatient.phoneCountryCode}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Phone:</span> <span class="text-gray-700">{formatPhoneDisplay(selectedPatient)}</span></p>
+                  {/if}
+                                    {#if selectedPatient.dateOfBirth}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Date of Birth:</span> <span class="text-gray-700">{selectedPatient.dateOfBirth}</span></p>
+                  {/if}
+                                                      {#if selectedPatient.bloodGroup}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Blood Group:</span> <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">{selectedPatient.bloodGroup}</span></p>
+                  {/if}
+                </div>
+                <div>
+                  {#if selectedPatient.idNumber}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">ID Number:</span> <span class="text-gray-700">{selectedPatient.idNumber}</span></p>
+                  {/if}
+                  {#if selectedPatient.address}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Address:</span> <span class="text-gray-700">{selectedPatient.address}</span></p>
+                  {/if}
+                  {#if selectedPatient.emergencyContact}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Emergency Contact:</span> <span class="text-gray-700">{selectedPatient.emergencyContact}</span></p>
+                  {/if}
+                  {#if selectedPatient.emergencyPhone}
+                    <p class="mb-2"><span class="font-semibold text-gray-900">Emergency Phone:</span> <span class="text-gray-700">{selectedPatient.emergencyPhone}</span></p>
+                  {/if}
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <h6 class="text-sm font-semibold text-yellow-800 mb-2">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
+                  </h6>
+                  <p class="text-sm text-yellow-700 mb-0">{selectedPatient.allergies || 'None recorded'}</p>
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <h6 class="text-sm font-semibold text-blue-800 mb-2">
+                    <i class="fas fa-pills mr-2"></i>Long Term Medications
+                  </h6>
+                  <p class="text-sm text-blue-700 mb-0">{selectedPatient.longTermMedications || 'None recorded'}</p>
+                </div>
+              </div>
                 
                 <!-- Long-term medications edit form -->
                 {#if editLongTermMedications !== null}
@@ -4073,17 +4242,44 @@
                         </div>
                       <div class="p-3">
                           <div class="mb-3">
-                          <label for="editLongTermMedicationsField" class="block text-sm font-medium text-gray-700 mb-1">
-                              Long Term Medications
-                            </label>
+                            <div class="flex items-center justify-between mb-1">
+                              <label for="editLongTermMedicationsField" class="block text-sm font-medium text-gray-700">
+                                Long Term Medications
+                                {#if improvedFields.editLongTermMedicationsField}
+                                  <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                    <i class="fas fa-check-circle mr-1"></i>
+                                    AI Improved
+                                  </span>
+                                {/if}
+                              </label>
+                              <button
+                                type="button"
+                                class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                                on:click={() => handleImproveField('editLongTermMedicationsField', editLongTermMedications || '', (value) => editLongTermMedications = value)}
+                                disabled={improvingFields.editLongTermMedicationsField || improvedFields.editLongTermMedicationsField || !editLongTermMedications}
+                                title="Improve grammar and spelling with AI"
+                              >
+                                {#if improvingFields.editLongTermMedicationsField}
+                                  <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  Improving...
+                                {:else}
+                                  <i class="fas fa-sparkles mr-1.5"></i>
+                                  Improve English AI
+                                {/if}
+                              </button>
+                            </div>
                             <textarea 
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
                               id="editLongTermMedicationsField" 
                               rows="3" 
                               bind:value={editLongTermMedications}
+                              on:input={(e) => handleFieldEdit('editLongTermMedicationsField', e.target.value)}
                               placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
                             ></textarea>
-                          <small class="text-gray-500 text-xs mt-1">List medications the patient is currently taking on a regular basis</small>
+                            <small class="text-gray-500 text-xs mt-1">List medications the patient is currently taking on a regular basis</small>
                           </div>
                           
                         <div class="flex flex-col sm:flex-row gap-2">
@@ -4494,11 +4690,40 @@
                 
                 {#if reportType === 'text'}
                   <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Report Content</label>
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="block text-sm font-medium text-gray-700">
+                        Report Content
+                        {#if improvedFields.reportText}
+                          <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            AI Improved
+                          </span>
+                        {/if}
+                      </label>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        on:click={() => handleImproveField('reportText', reportText || '', (value) => reportText = value)}
+                        disabled={improvingFields.reportText || improvedFields.reportText || !reportText}
+                        title="Improve grammar and spelling with AI"
+                      >
+                        {#if improvingFields.reportText}
+                          <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Improving...
+                        {:else}
+                          <i class="fas fa-sparkles mr-1.5"></i>
+                          Improve English AI
+                        {/if}
+                      </button>
+                    </div>
                     <textarea 
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
                       rows="6" 
                       bind:value={reportText}
+                      on:input={(e) => handleFieldEdit('reportText', e.target.value)}
                       placeholder="Enter the report details, findings, and observations..."
                     ></textarea>
                   </div>
@@ -4776,14 +5001,43 @@
                 </div>
                 
                 <div class="mb-3 sm:mb-4">
-                  <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnosis Description</label>
-              <textarea 
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs sm:text-sm font-medium text-gray-700">
+                      Diagnosis Description
+                      {#if improvedFields.diagnosticDescription}
+                        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                          <i class="fas fa-check-circle mr-1"></i>
+                          AI Improved
+                        </span>
+                      {/if}
+                    </label>
+                    <button
+                      type="button"
+                      class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                      on:click={() => handleImproveField('diagnosticDescription', diagnosticDescription || '', (value) => diagnosticDescription = value)}
+                      disabled={improvingFields.diagnosticDescription || improvedFields.diagnosticDescription || !diagnosticDescription}
+                      title="Improve grammar and spelling with AI"
+                    >
+                      {#if improvingFields.diagnosticDescription}
+                        <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Improving...
+                      {:else}
+                        <i class="fas fa-sparkles mr-1.5"></i>
+                        Improve English AI
+                      {/if}
+                    </button>
+                  </div>
+                  <textarea 
                     class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                     rows="3" 
                     bind:value={diagnosticDescription}
+                    on:input={(e) => handleFieldEdit('diagnosticDescription', e.target.value)}
                     placeholder="Describe the diagnosis, symptoms, findings, and clinical assessment..."
-              ></textarea>
-            </div>
+                  ></textarea>
+                </div>
             
                 <!-- Responsive button layout: stacked on mobile, side-by-side on tablet+ -->
                 <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">

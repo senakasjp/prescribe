@@ -67,6 +67,9 @@
   let showNotes = false
   let showDiscounts = false
   let showNextAppointment = false
+  let improvingNotes = false
+  let notesImproved = false
+  let lastImprovedNotes = ''
   
   $: if (!prescriptionProcedures?.includes('Other')) {
     otherProcedurePrice = ''
@@ -74,6 +77,10 @@
 
   $: if (currentPrescription?.notes && !showNotes) {
     showNotes = true
+  }
+
+  $: if (!improvingNotes && notesImproved && prescriptionNotes !== lastImprovedNotes) {
+    notesImproved = false
   }
 
   $: {
@@ -95,6 +102,34 @@
     const hasDiscount = Number(prescriptionDiscount) > 0 || Number(currentPrescription?.discount) > 0
     if (hasDiscount && !showDiscounts) {
       showDiscounts = true
+    }
+  }
+
+  const handleImprovePrescriptionNotes = async () => {
+    if (!prescriptionNotes || !prescriptionNotes.trim()) {
+      return
+    }
+
+    if (!openaiService) {
+      console.error('OpenAI service is not available for improving notes.')
+      return
+    }
+
+    try {
+      improvingNotes = true
+      const originalNotes = prescriptionNotes
+      const resolvedDoctorId = doctorId || currentPrescription?.doctorId || 'default-user'
+      const result = await openaiService.improveText(prescriptionNotes, resolvedDoctorId)
+      prescriptionNotes = result.improvedText
+
+      const normalizedOriginal = String(originalNotes ?? '').trim()
+      const normalizedImproved = String(prescriptionNotes ?? '').trim()
+      notesImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedNotes = notesImproved ? normalizedImproved : ''
+    } catch (err) {
+      console.error('❌ Error improving prescription notes:', err)
+    } finally {
+      improvingNotes = false
     }
   }
 
@@ -594,7 +629,6 @@
             onMedicationAdded={onMedicationAdded}
             onCancelMedication={onCancelMedication}
           />
-          
           <!-- AI Analysis Section -->
           {#if showAIAnalysis}
             <div class="mt-4 border-t border-gray-200 pt-4">
@@ -609,7 +643,7 @@
                   {aiAnalysisError}
                 </div>
               {:else if aiAnalysisHtml}
-                <div class="prose max-w-none text-gray-700 ai-analysis" style="font-size: 0.95rem;">
+                <div class="prose max-w-none text-gray-700 ai-analysis ai-analysis-short" style="font-size: 0.95rem;">
                   {@html aiAnalysisHtml}
                 </div>
               {:else}
@@ -618,6 +652,7 @@
             </div>
             <hr class="mt-4 border-gray-200" />
           {/if}
+          
           
           <!-- Current Prescriptions List -->
           {#if currentMedications && currentMedications.length > 0}
@@ -777,24 +812,50 @@
           {#if currentMedications && currentMedications.length > 0}
             <!-- Prescription Notes Toggle -->
             <div class="mt-4">
-              <div class="flex items-center gap-2 mb-2">
-                <input
-                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
-                  type="checkbox"
-                  id="toggleNotes"
-                  bind:checked={showNotes}
-                  disabled={!currentPrescription}
-                >
-                <label class="text-sm font-medium text-gray-700" for="toggleNotes">
-                  Prescription Notes
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-700" for="toggleNotes">
+                  <input
+                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                    type="checkbox"
+                    id="toggleNotes"
+                    bind:checked={showNotes}
+                    disabled={!currentPrescription}
+                  >
+                  <span>Prescription Notes</span>
+                  {#if notesImproved}
+                    <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      <i class="fas fa-check-circle mr-1"></i>
+                      AI Improved
+                    </span>
+                  {/if}
                 </label>
+                {#if showNotes}
+                  <button
+                    type="button"
+                    class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                    on:click={handleImprovePrescriptionNotes}
+                    disabled={!currentPrescription || improvingNotes || notesImproved || !prescriptionNotes}
+                    title="Fix spelling and grammar with AI"
+                  >
+                    {#if improvingNotes}
+                      <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Improving...
+                    {:else}
+                      <i class="fas fa-sparkles mr-1.5"></i>
+                      Improve English AI
+                    {/if}
+                  </button>
+                {/if}
               </div>
               {#if showNotes}
                 <textarea
                   id="prescriptionNotes"
                   bind:value={prescriptionNotes}
                   rows="3"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  class="w-full px-3 py-2 border rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 transition-all duration-200 {notesImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {improvingNotes ? 'bg-gray-100' : ''}"
                   placeholder="Additional instructions or notes for the prescription..."
                 ></textarea>
               {/if}
@@ -999,5 +1060,29 @@
 
   .ai-analysis :global(strong) {
     color: #0f172a;
+  }
+
+  .ai-analysis-short {
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar-track {
+    background: #e5e7eb;
+    border-radius: 999px;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 999px;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
   }
 </style>

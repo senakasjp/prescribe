@@ -2,6 +2,8 @@
   import { createEventDispatcher } from 'svelte'
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
   import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
+  import openaiService from '../services/openaiService.js'
+  import authService from '../services/doctor/doctorAuthService.js'
   import ThreeDots from './ThreeDots.svelte'
   
   const dispatch = createEventDispatcher()
@@ -27,6 +29,21 @@
   let emergencyPhone = ''
   let error = ''
   let loading = false
+  let improvingFields = {
+    address: false,
+    allergies: false,
+    longTermMedications: false
+  }
+  let improvedFields = {
+    address: false,
+    allergies: false,
+    longTermMedications: false
+  }
+  let lastImprovedValues = {
+    address: '',
+    allergies: '',
+    longTermMedications: ''
+  }
 
   $: if (defaultCountry && !phoneCodeTouched && !phoneCountryCode) {
     const resolved = getDialCodeForCountry(defaultCountry)
@@ -196,6 +213,47 @@
   // Handle cancel
   const handleCancel = () => {
     dispatch('cancel')
+  }
+
+  const getDoctorIdForImprove = () => {
+    const currentDoctor = authService.getCurrentDoctor()
+    return currentDoctor?.id || currentDoctor?.uid || 'default-user'
+  }
+
+  const handleFieldEdit = (fieldKey, value) => {
+    if (lastImprovedValues[fieldKey] && value !== lastImprovedValues[fieldKey]) {
+      lastImprovedValues = { ...lastImprovedValues, [fieldKey]: '' }
+      improvedFields = { ...improvedFields, [fieldKey]: false }
+    }
+  }
+
+  const handleImproveField = async (fieldKey, currentValue, setter) => {
+    if (!currentValue || !currentValue.trim()) {
+      error = 'Please enter some text to improve'
+      return
+    }
+
+    try {
+      improvingFields = { ...improvingFields, [fieldKey]: true }
+      error = ''
+      const doctorId = getDoctorIdForImprove()
+      const result = await openaiService.improveText(currentValue, doctorId)
+      setter(result.improvedText)
+
+      const normalizedImproved = String(result.improvedText ?? '').trim()
+      lastImprovedValues = { ...lastImprovedValues, [fieldKey]: normalizedImproved }
+      improvedFields = { ...improvedFields, [fieldKey]: normalizedImproved !== '' }
+
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+    } catch (err) {
+      console.error('❌ Error improving text:', err)
+      error = err.message || 'Failed to improve text. Please try again.'
+    } finally {
+      improvingFields = { ...improvingFields, [fieldKey]: false }
+    }
   }
 
 </script>
@@ -411,25 +469,81 @@
       </div>
       
       <div class="mb-3">
-        <label for="address" class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+        <div class="flex items-center justify-between mb-1">
+          <label for="address" class="block text-sm font-medium text-gray-700">
+            Address
+            {#if improvedFields.address}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={() => handleImproveField('address', address, (value) => address = value)}
+            disabled={loading || improvingFields.address || improvedFields.address || !address}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingFields.address}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English AI
+            {/if}
+          </button>
+        </div>
         <textarea 
           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           id="address" 
           rows="3" 
           bind:value={address}
+          on:input={(e) => handleFieldEdit('address', e.target.value)}
           disabled={loading}
         ></textarea>
       </div>
       
       <div class="mb-3">
-        <label for="allergies" class="block text-sm font-medium text-gray-700 mb-1">
-          <i class="fas fa-exclamation-triangle mr-1"></i>Allergies
-        </label>
+        <div class="flex items-center justify-between mb-1">
+          <label for="allergies" class="block text-sm font-medium text-gray-700">
+            <i class="fas fa-exclamation-triangle mr-1"></i>Allergies
+            {#if improvedFields.allergies}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={() => handleImproveField('allergies', allergies, (value) => allergies = value)}
+            disabled={loading || improvingFields.allergies || improvedFields.allergies || !allergies}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingFields.allergies}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English AI
+            {/if}
+          </button>
+        </div>
         <textarea 
           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           id="allergies" 
           rows="3" 
           bind:value={allergies}
+          on:input={(e) => handleFieldEdit('allergies', e.target.value)}
           placeholder="List any known allergies (e.g., Penicillin, Shellfish, Latex, etc.)"
           disabled={loading}
         ></textarea>
@@ -437,14 +551,41 @@
       </div>
       
       <div class="mb-3">
-        <label for="longTermMedications" class="block text-sm font-medium text-gray-700 mb-1">
-          <i class="fas fa-pills mr-1"></i>Long Term Medications
-        </label>
+        <div class="flex items-center justify-between mb-1">
+          <label for="longTermMedications" class="block text-sm font-medium text-gray-700">
+            <i class="fas fa-pills mr-1"></i>Long Term Medications
+            {#if improvedFields.longTermMedications}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={() => handleImproveField('longTermMedications', longTermMedications, (value) => longTermMedications = value)}
+            disabled={loading || improvingFields.longTermMedications || improvedFields.longTermMedications || !longTermMedications}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingFields.longTermMedications}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English AI
+            {/if}
+          </button>
+        </div>
         <textarea 
           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
           id="longTermMedications" 
           rows="3" 
           bind:value={longTermMedications}
+          on:input={(e) => handleFieldEdit('longTermMedications', e.target.value)}
           placeholder="List current long-term medications (e.g., Lisinopril 10mg daily, Metformin 500mg twice daily, etc.)"
           disabled={loading}
         ></textarea>

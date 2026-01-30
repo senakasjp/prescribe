@@ -206,8 +206,18 @@ const applyTemplate = (value, replacements) => {
   Object.keys(replacements).forEach((key) => {
     const escapedKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = new RegExp(`{{\\s*${escapedKey}\\s*}}`, "gi");
+    const encodedPattern = new RegExp(
+        `&#123;\\s*&#123;\\s*${escapedKey}\\s*&#125;\\s*&#125;`,
+        "gi",
+    );
+    const namedEncodedPattern = new RegExp(
+        `&lbrace;\\s*&lbrace;\\s*${escapedKey}\\s*&rbrace;\\s*&rbrace;`,
+        "gi",
+    );
     const replacement = replacements[key] || "";
     result = result.replace(pattern, String(replacement));
+    result = result.replace(encodedPattern, String(replacement));
+    result = result.replace(namedEncodedPattern, String(replacement));
   });
   return result;
 };
@@ -330,7 +340,7 @@ const buildWelcomeEmail = async (doctor, template = {}) => {
         bcid: "code128",
         text: barcodeText,
         scale: 2,
-        height: 60,
+        height: 22,
         includetext: false,
         padding: 0,
       });
@@ -425,6 +435,7 @@ const buildPatientWelcomeEmail = async (patient, doctorName, template = {}) => {
   const rawPatientId = (patient && (patient.id || patient.patientId)) || "";
   const patientIdShort = formatPatientId(rawPatientId);
   let patientIdBarcode = "";
+  let barcodeBuffer = null;
   const barcodeText = patientIdShort || rawPatientId;
   if (barcodeText) {
     try {
@@ -436,8 +447,8 @@ const buildPatientWelcomeEmail = async (patient, doctorName, template = {}) => {
         includetext: false,
         padding: 0,
       });
-      const barcodeBase64 = buffer.toString("base64");
-      patientIdBarcode = `data:image/png;base64,${barcodeBase64}`;
+      barcodeBuffer = buffer;
+      patientIdBarcode = "cid:patient-id-barcode";
     } catch (error) {
       logger.error("Failed to generate patient ID barcode:", error);
       patientIdBarcode = "";
@@ -507,6 +518,58 @@ M-Prescribe Team
     htmlSource = defaultHtml;
   }
 
+  const ensureBarcodeImage = (html) => {
+    if (!html) return html;
+    const barcodeToken =
+      "(?:patientIdBarcode|barcodeValue)";
+    const encodedToken =
+      "&#123;\\s*&#123;\\s*" +
+      barcodeToken +
+      "\\s*&#125;\\s*&#125;";
+    const namedEncodedToken =
+      "&lbrace;\\s*&lbrace;\\s*" +
+      barcodeToken +
+      "\\s*&rbrace;\\s*&rbrace;";
+    const tokenPattern =
+      "\\{\\{\\s*" + barcodeToken + "\\s*\\}\\}";
+    const imgWithToken = new RegExp(
+        "<img[^>]+(?:" +
+        tokenPattern +
+        "|" +
+        encodedToken +
+        "|" +
+        namedEncodedToken +
+        ")[^>]*>",
+        "i",
+    );
+    if (imgWithToken.test(html)) {
+      return html;
+    }
+    const placeholderPattern = new RegExp(
+        "(" +
+        tokenPattern +
+        "|" +
+        encodedToken +
+        "|" +
+        namedEncodedToken +
+        ")",
+        "gi",
+    );
+    if (placeholderPattern.test(html)) {
+      return html.replace(
+          placeholderPattern,
+          "<img " +
+          "src=\"{{patientIdBarcode}}\" " +
+          "alt=\"Patient barcode\" " +
+          "style=\"display:block; max-width:100%; height:auto;\" " +
+          "/>",
+      );
+    }
+    return html;
+  };
+
+  htmlSource = ensureBarcodeImage(htmlSource);
+
   const replacements = {
     name: patientName,
     patientName,
@@ -514,14 +577,24 @@ M-Prescribe Team
     patientId: rawPatientId,
     patientIdShort,
     patientIdBarcode,
+    barcodeValue: barcodeText || patientIdShort || rawPatientId || "",
+    barcodeText: barcodeText || patientIdShort || rawPatientId || "",
     doctorName: doctorName || "",
   };
 
   const subject = applyTemplate(subjectSource, replacements);
   const text = applyTemplate(textSource, replacements);
   const html = applyTemplate(htmlSource, replacements);
+  const attachments = barcodeBuffer ? [
+    {
+      filename: "patient-barcode.png",
+      content: barcodeBuffer,
+      cid: "patient-id-barcode",
+      contentType: "image/png",
+    },
+  ] : [];
 
-  return {subject, text, html};
+  return {subject, text, html, attachments};
 };
 
 const buildAppointmentReminderEmail = async (
@@ -831,11 +904,12 @@ exports.sendPatientWelcomeEmail = onDocumentCreated(
         logger.info("Patient welcome disabled. Skipping:", patient.email);
         return;
       }
-      const {subject, text, html} = await buildPatientWelcomeEmail(
-          patient,
-          doctorName,
-          template || {},
-      );
+      const {subject, text, html, attachments} =
+          await buildPatientWelcomeEmail(
+              patient,
+              doctorName,
+              template || {},
+          );
       const fromEmail = (template && template.fromEmail) || from;
       const fromName = (template && template.fromName) || "";
       const replyTo = (template && template.replyTo) || undefined;
@@ -849,6 +923,7 @@ exports.sendPatientWelcomeEmail = onDocumentCreated(
           text,
           html,
           replyTo,
+          attachments,
         });
 
         await admin.firestore()
@@ -1278,11 +1353,12 @@ exports.sendPatientTemplateEmail = onRequest(
         }
 
         const transporter = nodemailer.createTransport(smtpConfig);
-        const {subject, text, html} = await buildPatientWelcomeEmail(
-            patient,
-            resolvedDoctorName,
-            template || {},
-        );
+        const {subject, text, html, attachments} =
+          await buildPatientWelcomeEmail(
+              patient,
+              resolvedDoctorName,
+              template || {},
+          );
         const fromEmail = (template && template.fromEmail) || from;
         const fromName = (template && template.fromName) || "";
         const replyTo = (template && template.replyTo) || undefined;
@@ -1295,6 +1371,7 @@ exports.sendPatientTemplateEmail = onRequest(
           text,
           html,
           replyTo,
+          attachments,
         });
 
         await logEmailEvent({

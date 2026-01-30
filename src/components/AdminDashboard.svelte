@@ -935,6 +935,7 @@
       return
     }
     try {
+      const testPatientId = `test-patient-${Math.random().toString(36).slice(2, 10)}`
       const token = await currentUser.getIdToken()
       const response = await fetch(`${baseUrl}/sendPatientTemplateEmail`, {
         method: 'POST',
@@ -947,7 +948,7 @@
           patientEmail: 'senakahks@gmail.com',
           doctorName: 'Dr. Test',
           patientData: {
-            id: 'test-patient',
+            id: testPatientId,
             firstName: 'Test',
             lastName: 'Patient',
             email: 'senakahks@gmail.com'

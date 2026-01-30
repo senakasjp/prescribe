@@ -18,17 +18,26 @@
   let improvingText = false
   let textImproved = false
   let lastImprovedDescription = ''
+  let improvingNotes = false
+  let notesImproved = false
+  let lastImprovedNotes = ''
 
   // Reset loading state when form is hidden
   $: if (!visible) {
     loading = false
     improvingText = false
     textImproved = false
+    improvingNotes = false
+    notesImproved = false
   }
 
   // Reset improved state only when the user edits after a successful correction
   $: if (!improvingText && textImproved && description !== lastImprovedDescription) {
     textImproved = false
+  }
+
+  $: if (!improvingNotes && notesImproved && notes !== lastImprovedNotes) {
+    notesImproved = false
   }
   
   // Handle form submission
@@ -68,6 +77,8 @@
       duration = ''
       onsetDate = ''
       notes = ''
+      notesImproved = false
+      lastImprovedNotes = ''
       
     } catch (err) {
       error = err.message
@@ -125,6 +136,43 @@
       improvingText = false
     }
   }
+
+  const handleImproveNotes = async () => {
+    if (!notes || !notes.trim()) {
+      error = 'Please enter some text to improve'
+      return
+    }
+
+    try {
+      improvingNotes = true
+      error = ''
+      const originalNotes = notes
+
+      const currentDoctor = authService.getCurrentDoctor()
+      const doctorId = currentDoctor?.id || currentDoctor?.uid || 'default-user'
+
+      const result = await openaiService.improveText(notes, doctorId)
+
+      notes = result.improvedText
+
+      const normalizedOriginal = String(originalNotes ?? '').trim()
+      const normalizedImproved = String(notes ?? '').trim()
+      notesImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedNotes = notesImproved ? normalizedImproved : ''
+
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+
+      console.log('✅ Notes improved successfully')
+    } catch (err) {
+      console.error('❌ Error improving notes:', err)
+      error = err.message || 'Failed to improve text. Please try again.'
+    } finally {
+      improvingNotes = false
+    }
+  }
 </script>
 
 <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
@@ -139,44 +187,44 @@
   <div class="p-4">
     <form on:submit={handleSubmit}>
       <div class="mb-4">
-        <label for="symptomsDescription" class="block text-sm font-medium text-gray-700 mb-1">
-          Symptom Description <span class="text-red-500">*</span>
-          {#if textImproved}
-            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-              <i class="fas fa-check-circle mr-1"></i>
-              AI Improved
-            </span>
-          {/if}
-        </label>
-        <div class="relative">
-          <textarea
-            class="w-full px-3 py-2 border rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:cursor-not-allowed transition-all duration-300 {textImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-teal-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingText ? 'bg-gray-100' : ''}"
-            id="symptomsDescription"
-            rows="3"
-            bind:value={description}
-            required
-            disabled={loading || improvingText}
-            placeholder="Describe the symptoms in detail (e.g., chest pain, shortness of breath, fever)"
-          ></textarea>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="symptomsDescription" class="text-sm font-medium text-gray-700">
+            Symptom Description <span class="text-red-500">*</span>
+            {#if textImproved}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
           <button
             type="button"
-            class="absolute top-2 right-2 inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
             on:click={handleImproveText}
-            disabled={loading || improvingText || !description}
+            disabled={loading || improvingText || textImproved || !description}
             title="Improve grammar and spelling with AI"
           >
             {#if improvingText}
               <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               Improving...
             {:else}
               <i class="fas fa-sparkles mr-1.5"></i>
-              Improve with AI
+              Improve English AI
             {/if}
           </button>
         </div>
+        <textarea
+          class="w-full px-3 py-2 border rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:cursor-not-allowed transition-all duration-300 {textImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-teal-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingText ? 'bg-gray-100' : ''}"
+          id="symptomsDescription"
+          rows="3"
+          bind:value={description}
+          required
+          disabled={loading || improvingText}
+          placeholder="Describe the symptoms in detail (e.g., chest pain, shortness of breath, fever)"
+        ></textarea>
       </div>
       
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -219,13 +267,41 @@
       </div>
       
       <div class="mb-4">
-        <label for="symptomsNotes" class="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="symptomsNotes" class="text-sm font-medium text-gray-700">
+            Additional Notes
+            {#if notesImproved}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={handleImproveNotes}
+            disabled={loading || improvingNotes || notesImproved || !notes}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingNotes}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English AI
+            {/if}
+          </button>
+        </div>
         <textarea 
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full px-3 py-2 border rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {notesImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingNotes ? 'bg-gray-100' : ''}"
           id="symptomsNotes" 
           rows="2" 
           bind:value={notes}
-          disabled={loading}
+          disabled={loading || improvingNotes}
           placeholder="Any additional notes about the symptoms (triggers, patterns, etc.)"
         ></textarea>
       </div>

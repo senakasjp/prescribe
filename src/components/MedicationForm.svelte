@@ -33,6 +33,12 @@
   let improvingBrandName = false
   let brandNameImproved = false
   let lastImprovedName = ''
+  let improvingInstructions = false
+  let instructionsImproved = false
+  let lastImprovedInstructions = ''
+  let improvingNotes = false
+  let notesImproved = false
+  let lastImprovedNotes = ''
 
   // Mapping for routes to their full display names
   const routeDisplayMap = {
@@ -64,11 +70,23 @@
     loading = false
     improvingBrandName = false
     brandNameImproved = false
+    improvingInstructions = false
+    instructionsImproved = false
+    improvingNotes = false
+    notesImproved = false
   }
 
   // Reset improved state only when the user edits after a successful correction
   $: if (!improvingBrandName && brandNameImproved && name !== lastImprovedName) {
     brandNameImproved = false
+  }
+
+  $: if (!improvingInstructions && instructionsImproved && instructions !== lastImprovedInstructions) {
+    instructionsImproved = false
+  }
+
+  $: if (!improvingNotes && notesImproved && notes !== lastImprovedNotes) {
+    notesImproved = false
   }
   
   // Track if form has been initialized for editing
@@ -418,6 +436,11 @@
     dispatch('cancel')
   }
 
+  const getDoctorIdForImprove = () => {
+    const currentDoctor = authService.getCurrentDoctor()
+    return doctorId || currentDoctor?.id || currentDoctor?.uid || 'default-user'
+  }
+
   // Improve brand name with AI
   const improveBrandName = async () => {
     if (!name || !name.trim()) {
@@ -431,11 +454,10 @@
       const originalName = name
 
       // Get doctor information for token tracking
-      const currentDoctor = authService.getCurrentDoctor()
-      const doctorId = currentDoctor?.id || currentDoctor?.uid || 'default-user'
+      const resolvedDoctorId = getDoctorIdForImprove()
 
       // Call OpenAI service to improve text
-      const result = await openaiService.improveText(name, doctorId)
+      const result = await openaiService.improveText(name, resolvedDoctorId)
 
       // Update the brand name with improved text
       name = result.improvedText
@@ -459,6 +481,70 @@
       error = err.message || 'Failed to improve brand name. Please try again.'
     } finally {
       improvingBrandName = false
+    }
+  }
+
+  const improveInstructions = async () => {
+    if (!instructions || !instructions.trim()) {
+      error = 'Please enter instructions to improve'
+      return
+    }
+
+    try {
+      improvingInstructions = true
+      error = ''
+      const originalInstructions = instructions
+      const resolvedDoctorId = getDoctorIdForImprove()
+
+      const result = await openaiService.improveText(instructions, resolvedDoctorId)
+      instructions = result.improvedText
+
+      const normalizedOriginal = String(originalInstructions ?? '').trim()
+      const normalizedImproved = String(instructions ?? '').trim()
+      instructionsImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedInstructions = instructionsImproved ? normalizedImproved : ''
+
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+    } catch (err) {
+      console.error('❌ Error improving instructions:', err)
+      error = err.message || 'Failed to improve text. Please try again.'
+    } finally {
+      improvingInstructions = false
+    }
+  }
+
+  const improveNotes = async () => {
+    if (!notes || !notes.trim()) {
+      error = 'Please enter notes to improve'
+      return
+    }
+
+    try {
+      improvingNotes = true
+      error = ''
+      const originalNotes = notes
+      const resolvedDoctorId = getDoctorIdForImprove()
+
+      const result = await openaiService.improveText(notes, resolvedDoctorId)
+      notes = result.improvedText
+
+      const normalizedOriginal = String(originalNotes ?? '').trim()
+      const normalizedImproved = String(notes ?? '').trim()
+      notesImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedNotes = notesImproved ? normalizedImproved : ''
+
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+    } catch (err) {
+      console.error('❌ Error improving notes:', err)
+      error = err.message || 'Failed to improve text. Please try again.'
+    } finally {
+      improvingNotes = false
     }
   }
 
@@ -678,14 +764,42 @@
       </div>
       
       <div>
-        <label for="medicationInstructions" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Instructions <span class="text-red-500">*</span></label>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="medicationInstructions" class="text-xs sm:text-sm font-medium text-gray-700">
+            Instructions <span class="text-red-500">*</span>
+            {#if instructionsImproved}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={improveInstructions}
+            disabled={loading || improvingInstructions || instructionsImproved || !instructions}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingInstructions}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English AI
+            {/if}
+          </button>
+        </div>
         <textarea 
-          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {instructionsImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingInstructions ? 'bg-gray-100' : ''}"
           id="medicationInstructions" 
           rows="2" 
           bind:value={instructions}
           required
-          disabled={loading}
+          disabled={loading || improvingInstructions}
           placeholder="e.g., Take with food, Take before bedtime"
         ></textarea>
       </div>
@@ -726,13 +840,41 @@
       </div>
       
       <div>
-        <label for="medicationNotes" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="medicationNotes" class="text-xs sm:text-sm font-medium text-gray-700">
+            Additional Notes
+            {#if notesImproved}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={improveNotes}
+            disabled={loading || improvingNotes || notesImproved || !notes}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingNotes}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English AI
+            {/if}
+          </button>
+        </div>
         <textarea 
-          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {notesImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingNotes ? 'bg-gray-100' : ''}"
           id="medicationNotes" 
           rows="2" 
           bind:value={notes}
-          disabled={loading}
+          disabled={loading || improvingNotes}
           placeholder="Any additional notes about the medication"
         ></textarea>
       </div>
