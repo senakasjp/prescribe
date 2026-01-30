@@ -1079,6 +1079,34 @@
                 </div>
               </div>
             </div>
+
+            <!-- Prescription Rules -->
+            <div class="mt-8 border-t border-gray-200 pt-6">
+              <h3 class="text-lg font-semibold text-gray-900 mb-2">Prescription Rules</h3>
+              <p class="text-gray-600 mb-4">
+                Control how prescriptions behave when pharmacy inventory is missing.
+              </p>
+              <div class="flex flex-col gap-3">
+                <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">Exclude own pharmacy drugs</p>
+                    <p class="text-sm text-gray-500">
+                      When enabled, only medications not found in connected pharmacy inventory can be added.
+                    </p>
+                  </div>
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      class="sr-only peer"
+                      bind:checked={excludePharmacyDrugs}
+                    />
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:bg-teal-600 relative">
+                      <div class="absolute top-0.5 left-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
           </form>
         </div>
         {/if}
@@ -1236,33 +1264,6 @@
     </div>
   </div>
           
-          <!-- Prescription Rules -->
-          <div class="mt-8 border-t border-gray-200 pt-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">Prescription Rules</h3>
-            <p class="text-gray-600 mb-4">
-              Control how prescriptions behave when pharmacy inventory is missing.
-            </p>
-            <div class="flex flex-col gap-3">
-              <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <div>
-                  <p class="text-sm font-medium text-gray-900">Exclude own pharmacy drugs</p>
-                  <p class="text-sm text-gray-500">
-                    When enabled, only medications not found in connected pharmacy inventory can be added.
-                  </p>
-                </div>
-                <label class="inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    class="sr-only peer"
-                    bind:checked={excludePharmacyDrugs}
-                  />
-                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-teal-300 rounded-full peer peer-checked:bg-teal-600 relative">
-                    <div class="absolute top-0.5 left-0.5 h-5 w-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-                  </div>
-                </label>
-              </div>
-            </div>
-          </div>
 
           <!-- Prescription Preview Section -->
           {#if templateType && templatePreview}

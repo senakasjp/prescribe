@@ -1927,6 +1927,62 @@ class FirebaseStorageService {
     }
   }
 
+  async getPatientWelcomeEmailTemplate() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'patientWelcomeEmail')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting patient welcome email template:', error)
+      throw error
+    }
+  }
+
+  async savePatientWelcomeEmailTemplate(templateData) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'patientWelcomeEmail')
+      await setDoc(docRef, {
+        ...templateData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving patient welcome email template:', error)
+      throw error
+    }
+  }
+
+  async getAppointmentReminderEmailTemplate() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'appointmentReminderEmail')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting appointment reminder email template:', error)
+      throw error
+    }
+  }
+
+  async saveAppointmentReminderEmailTemplate(templateData) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'appointmentReminderEmail')
+      await setDoc(docRef, {
+        ...templateData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving appointment reminder email template:', error)
+      throw error
+    }
+  }
+
   async getDoctorBroadcastEmailTemplate() {
     try {
       const docRef = doc(db, this.collections.systemSettings, 'doctorBroadcastEmail')

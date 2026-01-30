@@ -698,19 +698,6 @@
             </div>
           {/if}
 
-          <!-- Exclude Consultation Charge -->
-          <div class="mt-2">
-            <label class="flex items-center gap-2 text-sm font-medium text-red-600">
-              <input
-                class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
-                type="checkbox"
-                bind:checked={excludeConsultationCharge}
-                disabled={!currentPrescription}
-              >
-              Exclude consultation charge
-            </label>
-          </div>
-
           <!-- Procedures / Treatments -->
           <div class="mt-4">
             <div class="flex items-center gap-2 mb-2">
@@ -726,6 +713,17 @@
               </label>
             </div>
             {#if showProcedures}
+              <div class="mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium text-red-600">
+                  <input
+                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                    type="checkbox"
+                    bind:checked={excludeConsultationCharge}
+                    disabled={!currentPrescription}
+                  >
+                  Exclude consultation charge
+                </label>
+              </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {#each procedureOptions as option}
                   {#if option === 'Other'}

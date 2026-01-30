@@ -78,6 +78,33 @@
   let welcomeFromEmail = ''
   let welcomeReplyTo = ''
   let welcomeTextOnly = false
+  let welcomeEmailEnabled = true
+
+  // Patient welcome email template
+  let patientWelcomeLoading = false
+  let patientWelcomeSaving = false
+  let patientWelcomeStatus = ''
+  let patientWelcomeSubject = ''
+  let patientWelcomeText = ''
+  let patientWelcomeHtml = ''
+  let patientWelcomeFromName = ''
+  let patientWelcomeFromEmail = ''
+  let patientWelcomeReplyTo = ''
+  let patientWelcomeTextOnly = false
+  let patientWelcomeEnabled = true
+
+  // Appointment reminder email template
+  let appointmentEmailLoading = false
+  let appointmentEmailSaving = false
+  let appointmentEmailStatus = ''
+  let appointmentEmailSubject = ''
+  let appointmentEmailText = ''
+  let appointmentEmailHtml = ''
+  let appointmentEmailFromName = ''
+  let appointmentEmailFromEmail = ''
+  let appointmentEmailReplyTo = ''
+  let appointmentEmailTextOnly = false
+  let appointmentEmailEnabled = true
 
   // Doctor broadcast email template
   let doctorBroadcastLoading = false
@@ -104,6 +131,7 @@
   let approvalWelcomeFromEmail = ''
   let approvalWelcomeReplyTo = ''
   let approvalWelcomeTextOnly = false
+  let approvalWelcomeEnabled = true
 
   let paymentReminderLoading = false
   let paymentReminderSaving = false
@@ -167,8 +195,10 @@
   let smsSenderIdStatus = ''
   let registrationTemplate =
     'Welcome {{name}} to Prescribe! Your account is ready with Dr. {{doctorName}}. Sign in at {{appUrl}}.'
+  let registrationTemplateEnabled = true
   let appointmentReminderTemplate =
     'Reminder: your appointment with {{doctorName}} is on {{date}} at {{time}}. Reply if you need to reschedule.'
+  let appointmentReminderTemplateEnabled = true
   let registrationChannel = 'sms'
   let appointmentReminderChannel = 'sms'
   let messagingTemplatesLoading = false
@@ -235,6 +265,8 @@
 
       // Load system settings (welcome email template)
       await loadWelcomeEmailTemplate()
+      await loadPatientWelcomeTemplate()
+      await loadAppointmentReminderTemplate()
       await loadDoctorBroadcastTemplate()
       await loadSmtpSettings()
       await loadMessagingTemplates()
@@ -321,10 +353,49 @@
       welcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
       welcomeReplyTo = template?.replyTo || ''
       welcomeTextOnly = Boolean(template?.textOnly)
+      welcomeEmailEnabled = template?.enabled !== false
     } catch (error) {
       console.error('❌ Error loading welcome email template:', error)
     } finally {
       welcomeEmailLoading = false
+    }
+  }
+
+  const loadPatientWelcomeTemplate = async () => {
+    try {
+      patientWelcomeLoading = true
+      const template = await firebaseStorage.getPatientWelcomeEmailTemplate()
+      patientWelcomeSubject = template?.subject || ''
+      patientWelcomeText = template?.text || ''
+      patientWelcomeHtml = template?.html || ''
+      patientWelcomeFromName = template?.fromName || ''
+      patientWelcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      patientWelcomeReplyTo = template?.replyTo || ''
+      patientWelcomeTextOnly = Boolean(template?.textOnly)
+      patientWelcomeEnabled = template?.enabled !== false
+    } catch (error) {
+      console.error('❌ Error loading patient welcome template:', error)
+    } finally {
+      patientWelcomeLoading = false
+    }
+  }
+
+  const loadAppointmentReminderTemplate = async () => {
+    try {
+      appointmentEmailLoading = true
+      const template = await firebaseStorage.getAppointmentReminderEmailTemplate()
+      appointmentEmailSubject = template?.subject || ''
+      appointmentEmailText = template?.text || ''
+      appointmentEmailHtml = template?.html || ''
+      appointmentEmailFromName = template?.fromName || ''
+      appointmentEmailFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      appointmentEmailReplyTo = template?.replyTo || ''
+      appointmentEmailTextOnly = Boolean(template?.textOnly)
+      appointmentEmailEnabled = template?.enabled !== false
+    } catch (error) {
+      console.error('❌ Error loading appointment reminder template:', error)
+    } finally {
+      appointmentEmailLoading = false
     }
   }
 
@@ -357,6 +428,7 @@
       approvalWelcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
       approvalWelcomeReplyTo = template?.replyTo || ''
       approvalWelcomeTextOnly = Boolean(template?.textOnly)
+      approvalWelcomeEnabled = template?.enabled !== false
     } catch (error) {
       console.error('❌ Error loading approval welcome template:', error)
     } finally {
@@ -375,7 +447,8 @@
         fromName: approvalWelcomeFromName.trim(),
         fromEmail: approvalWelcomeFromEmail.trim(),
         replyTo: approvalWelcomeReplyTo.trim(),
-        textOnly: approvalWelcomeTextOnly
+        textOnly: approvalWelcomeTextOnly,
+        enabled: approvalWelcomeEnabled
       })
       approvalWelcomeStatus = 'Saved'
     } catch (error) {
@@ -564,8 +637,10 @@
       const templates = await firebaseStorage.getMessagingTemplates()
       if (templates) {
         registrationTemplate = templates.registrationTemplate || registrationTemplate
+        registrationTemplateEnabled = templates.registrationTemplateEnabled !== false
         appointmentReminderTemplate =
           templates.appointmentReminderTemplate || appointmentReminderTemplate
+        appointmentReminderTemplateEnabled = templates.appointmentReminderTemplateEnabled !== false
         registrationChannel = templates.registrationChannel || registrationChannel
         appointmentReminderChannel =
           templates.appointmentReminderChannel || appointmentReminderChannel
@@ -585,6 +660,8 @@
       await firebaseStorage.saveMessagingTemplates({
         registrationTemplate: registrationTemplate.trim(),
         appointmentReminderTemplate: appointmentReminderTemplate.trim(),
+        registrationTemplateEnabled,
+        appointmentReminderTemplateEnabled,
         registrationChannel,
         appointmentReminderChannel,
         smsSenderId: smsTestSenderId.trim()
@@ -846,6 +923,94 @@
     }
   }
 
+  const sendPatientTemplateToTest = async (templateId, statusSetter, templateData = null) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    try {
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendPatientTemplateEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          templateId,
+          patientEmail: 'senakahks@gmail.com',
+          doctorName: 'Dr. Test',
+          patientData: {
+            id: 'test-patient',
+            firstName: 'Test',
+            lastName: 'Patient',
+            email: 'senakahks@gmail.com'
+          },
+          templateData: templateData || undefined
+        })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      statusSetter('Test sent to senakahks@gmail.com')
+    } catch (error) {
+      statusSetter(error?.message || 'Send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 3000)
+    }
+  }
+
+  const sendAppointmentTemplateToTest = async (templateId, statusSetter, templateData = null) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    try {
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendAppointmentReminderTemplateEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          templateId,
+          patientEmail: 'senakahks@gmail.com',
+          doctorName: 'Dr. Test',
+          appointmentDate: '2026-01-01',
+          patientData: {
+            firstName: 'Test',
+            lastName: 'Patient',
+            email: 'senakahks@gmail.com'
+          },
+          templateData: templateData || undefined
+        })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      statusSetter('Test sent to senakahks@gmail.com')
+    } catch (error) {
+      statusSetter(error?.message || 'Send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 3000)
+    }
+  }
+
   const sendDoctorBroadcast = async (mode) => {
     const baseUrl = getFunctionsBaseUrl()
     if (!baseUrl) {
@@ -946,7 +1111,8 @@
         fromName: welcomeFromName.trim(),
         fromEmail: welcomeFromEmail.trim(),
         replyTo: welcomeReplyTo.trim(),
-        textOnly: welcomeTextOnly
+        textOnly: welcomeTextOnly,
+        enabled: welcomeEmailEnabled
       })
       welcomeEmailStatus = 'Saved'
     } catch (error) {
@@ -956,6 +1122,58 @@
       welcomeEmailSaving = false
       setTimeout(() => {
         welcomeEmailStatus = ''
+      }, 2500)
+    }
+  }
+
+  const savePatientWelcomeTemplate = async () => {
+    try {
+      patientWelcomeSaving = true
+      patientWelcomeStatus = ''
+      await firebaseStorage.savePatientWelcomeEmailTemplate({
+        subject: patientWelcomeSubject.trim(),
+        text: patientWelcomeText.trim(),
+        html: patientWelcomeHtml.trim(),
+        fromName: patientWelcomeFromName.trim(),
+        fromEmail: patientWelcomeFromEmail.trim(),
+        replyTo: patientWelcomeReplyTo.trim(),
+        textOnly: patientWelcomeTextOnly,
+        enabled: patientWelcomeEnabled
+      })
+      patientWelcomeStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving patient welcome template:', error)
+      patientWelcomeStatus = 'Save failed'
+    } finally {
+      patientWelcomeSaving = false
+      setTimeout(() => {
+        patientWelcomeStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveAppointmentReminderTemplate = async () => {
+    try {
+      appointmentEmailSaving = true
+      appointmentEmailStatus = ''
+      await firebaseStorage.saveAppointmentReminderEmailTemplate({
+        subject: appointmentEmailSubject.trim(),
+        text: appointmentEmailText.trim(),
+        html: appointmentEmailHtml.trim(),
+        fromName: appointmentEmailFromName.trim(),
+        fromEmail: appointmentEmailFromEmail.trim(),
+        replyTo: appointmentEmailReplyTo.trim(),
+        textOnly: appointmentEmailTextOnly,
+        enabled: appointmentEmailEnabled
+      })
+      appointmentEmailStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving appointment reminder template:', error)
+      appointmentEmailStatus = 'Save failed'
+    } finally {
+      appointmentEmailSaving = false
+      setTimeout(() => {
+        appointmentEmailStatus = ''
       }, 2500)
     }
   }
@@ -2901,6 +3119,17 @@
                         <option value="both">Both</option>
                       </select>
                     </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="registrationTemplateEnabled"
+                        type="checkbox"
+                        bind:checked={registrationTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="registrationTemplateEnabled" class="text-sm text-gray-700">
+                        Enable registration messages
+                      </label>
+                    </div>
                     <label class="block text-xs text-gray-500">Template</label>
                     <textarea
                       class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
@@ -2924,6 +3153,17 @@
                         <option value="whatsapp">WhatsApp</option>
                         <option value="both">Both</option>
                       </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="appointmentReminderEnabled"
+                        type="checkbox"
+                        bind:checked={appointmentReminderTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="appointmentReminderEnabled" class="text-sm text-gray-700">
+                        Enable appointment reminders
+                      </label>
                     </div>
                     <label class="block text-xs text-gray-500">Template</label>
                     <textarea
@@ -3424,6 +3664,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
                   </p>
@@ -3581,6 +3822,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
                   </p>
@@ -3636,6 +3878,17 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     />
                     <label for="welcomeTextOnly" class="text-sm text-gray-700">
                       Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="welcomeEmailEnabled"
+                      type="checkbox"
+                      bind:checked={welcomeEmailEnabled}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="welcomeEmailEnabled" class="text-sm text-gray-700">
+                      Enable automated welcome emails
                     </label>
                   </div>
 
@@ -3702,6 +3955,291 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
 
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
               <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Patient Welcome Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if patientWelcomeLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorName}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeSubject">Subject</label>
+                      <input
+                        id="patientWelcomeSubject"
+                        type="text"
+                        bind:value={patientWelcomeSubject}
+                        placeholder="Welcome to M-Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeFromName">From Name (optional)</label>
+                      <input
+                        id="patientWelcomeFromName"
+                        type="text"
+                        bind:value={patientWelcomeFromName}
+                        placeholder="M-Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeFromEmail">From Email (optional)</label>
+                      <input
+                        id="patientWelcomeFromEmail"
+                        type="email"
+                        bind:value={patientWelcomeFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="patientWelcomeReplyTo"
+                        type="email"
+                        bind:value={patientWelcomeReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="patientWelcomeTextOnly"
+                      type="checkbox"
+                      bind:checked={patientWelcomeTextOnly}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="patientWelcomeTextOnly" class="text-sm text-gray-700">
+                      Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="patientWelcomeEnabled"
+                      type="checkbox"
+                      bind:checked={patientWelcomeEnabled}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="patientWelcomeEnabled" class="text-sm text-gray-700">
+                      Enable automated patient welcome emails
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeText">Plain Text</label>
+                      <textarea
+                        id="patientWelcomeText"
+                        rows="8"
+                        bind:value={patientWelcomeText}
+                        placeholder="Hi {{name}},&#10;Welcome to M-Prescribe..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeHtml">HTML</label>
+                      <textarea
+                        id="patientWelcomeHtml"
+                        rows="8"
+                        bind:value={patientWelcomeHtml}
+                        placeholder="<h2>Welcome to M-Prescribe</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={savePatientWelcomeTemplate}
+                      disabled={patientWelcomeSaving}
+                    >
+                      {#if patientWelcomeSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendPatientTemplateToTest(
+                        'patientWelcomeEmail',
+                        (msg) => patientWelcomeStatus = msg,
+                        {
+                          subject: patientWelcomeSubject,
+                          text: patientWelcomeText,
+                          html: patientWelcomeHtml,
+                          fromName: patientWelcomeFromName,
+                          fromEmail: patientWelcomeFromEmail,
+                          replyTo: patientWelcomeReplyTo,
+                          textOnly: patientWelcomeTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    {#if patientWelcomeStatus}
+                      <span class="text-sm text-gray-500">{patientWelcomeStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Appointment Reminder Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if appointmentEmailLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientName}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorName}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{date}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailSubject">Subject</label>
+                      <input
+                        id="appointmentEmailSubject"
+                        type="text"
+                        bind:value={appointmentEmailSubject}
+                        placeholder="Appointment reminder"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailFromName">From Name (optional)</label>
+                      <input
+                        id="appointmentEmailFromName"
+                        type="text"
+                        bind:value={appointmentEmailFromName}
+                        placeholder="M-Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailFromEmail">From Email (optional)</label>
+                      <input
+                        id="appointmentEmailFromEmail"
+                        type="email"
+                        bind:value={appointmentEmailFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="appointmentEmailReplyTo"
+                        type="email"
+                        bind:value={appointmentEmailReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="appointmentEmailTextOnly"
+                      type="checkbox"
+                      bind:checked={appointmentEmailTextOnly}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="appointmentEmailTextOnly" class="text-sm text-gray-700">
+                      Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="appointmentEmailEnabled"
+                      type="checkbox"
+                      bind:checked={appointmentEmailEnabled}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="appointmentEmailEnabled" class="text-sm text-gray-700">
+                      Enable automated appointment reminders
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailText">Plain Text</label>
+                      <textarea
+                        id="appointmentEmailText"
+                        rows="8"
+                        bind:value={appointmentEmailText}
+                        placeholder="Hi &#123;&#123;patientName&#125;&#125;,&#10;Reminder: your appointment with &#123;&#123;doctorName&#125;&#125; is on &#123;&#123;date&#125;&#125;."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailHtml">HTML</label>
+                      <textarea
+                        id="appointmentEmailHtml"
+                        rows="8"
+                        bind:value={appointmentEmailHtml}
+                        placeholder="<h2>Appointment reminder</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveAppointmentReminderTemplate}
+                      disabled={appointmentEmailSaving}
+                    >
+                      {#if appointmentEmailSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendAppointmentTemplateToTest(
+                        'appointmentReminderEmail',
+                        (msg) => appointmentEmailStatus = msg,
+                        {
+                          subject: appointmentEmailSubject,
+                          text: appointmentEmailText,
+                          html: appointmentEmailHtml,
+                          fromName: appointmentEmailFromName,
+                          fromEmail: appointmentEmailFromEmail,
+                          replyTo: appointmentEmailReplyTo,
+                          textOnly: appointmentEmailTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    {#if appointmentEmailStatus}
+                      <span class="text-sm text-gray-500">{appointmentEmailStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
                 <h5 class="text-lg font-semibold text-gray-900 mb-0">Approval Welcome Email</h5>
               </div>
               <div class="p-4 space-y-4">
@@ -3714,6 +4252,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
                   </p>
@@ -3772,35 +4311,13 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                   </div>
                   <div class="flex items-center gap-2">
                     <input
-                      id="paymentReminderTextOnly"
+                      id="approvalWelcomeEnabled"
                       type="checkbox"
-                      bind:checked={paymentReminderTextOnly}
+                      bind:checked={approvalWelcomeEnabled}
                       class="h-4 w-4 text-red-600 border-gray-300 rounded"
                     />
-                    <label for="paymentReminderTextOnly" class="text-sm text-gray-700">
-                      Send plain text only (ignore HTML)
-                    </label>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <input
-                      id="paymentThanksTextOnly"
-                      type="checkbox"
-                      bind:checked={paymentThanksTextOnly}
-                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
-                    />
-                    <label for="paymentThanksTextOnly" class="text-sm text-gray-700">
-                      Send plain text only (ignore HTML)
-                    </label>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <input
-                      id="otherMessageTextOnly"
-                      type="checkbox"
-                      bind:checked={otherMessageTextOnly}
-                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
-                    />
-                    <label for="otherMessageTextOnly" class="text-sm text-gray-700">
-                      Send plain text only (ignore HTML)
+                    <label for="approvalWelcomeEnabled" class="text-sm text-gray-700">
+                      Enable approval welcome email
                     </label>
                   </div>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3852,12 +4369,14 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                           textOnly: approvalWelcomeTextOnly
                         }
                       )}
+                      disabled={!approvalWelcomeEnabled}
                     >
                       <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
                     </button>
                     <button
                       class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
                       on:click={() => sendTemplateToDoctor('approvalWelcomeEmail', selectedDoctorForEmail, (msg) => approvalWelcomeStatus = msg)}
+                      disabled={!approvalWelcomeEnabled}
                     >
                       <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
                     </button>
@@ -3883,6 +4402,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
                   </p>
@@ -4008,6 +4528,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
                   </p>
@@ -4133,6 +4654,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
                   </p>

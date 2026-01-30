@@ -20,6 +20,11 @@
   import PrivacyPolicyModal from './components/PrivacyPolicyModal.svelte'
   import BrandName from './components/BrandName.svelte'
   import PrivacyPolicyPage from './components/PrivacyPolicyPage.svelte'
+  import ContactPage from './components/ContactPage.svelte'
+  import HelpPage from './components/HelpPage.svelte'
+  import FaqPage from './components/FaqPage.svelte'
+  import PricingPage from './components/PricingPage.svelte'
+  import PublicHeader from './components/PublicHeader.svelte'
   
   let user = null
   let loading = true
@@ -28,9 +33,14 @@
   let doctorUsageStats = null
   let doctorQuotaStatus = null
   let refreshInterval = null
+  let tawkScriptLoaded = false
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
   let authOnly = false
   let privacyOnly = false
+  let contactOnly = false
+  let helpOnly = false
+  let faqOnly = false
+  let pricingOnly = false
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
   let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'reports', 'settings'
   let prescriptions = [] // All prescriptions for the doctor
@@ -40,6 +50,57 @@
     const params = new URLSearchParams(window.location.search)
     authOnly = params.get('register') === '1'
     privacyOnly = params.get('privacy') === '1'
+    contactOnly = params.get('contact') === '1'
+    helpOnly = params.get('help') === '1'
+    faqOnly = params.get('faq') === '1'
+    pricingOnly = params.get('pricing') === '1'
+  }
+
+  const shouldEnableChat = () => {
+    return contactOnly || helpOnly || (user && currentView === 'help')
+  }
+
+  const loadTawkScript = () => {
+    if (typeof document === 'undefined' || tawkScriptLoaded) {
+      return
+    }
+    const existingScript = document.querySelector('script[src="https://embed.tawk.to/697b33bd435d921c378e9c20/1jg4k483e"]')
+    if (existingScript) {
+      tawkScriptLoaded = true
+      return
+    }
+    window.Tawk_API = window.Tawk_API || {}
+    window.Tawk_LoadStart = new Date()
+    const script = document.createElement('script')
+    const firstScript = document.getElementsByTagName('script')[0]
+    script.async = true
+    script.src = 'https://embed.tawk.to/697b33bd435d921c378e9c20/1jg4k483e'
+    script.charset = 'UTF-8'
+    script.setAttribute('crossorigin', '*')
+    script.onload = () => {
+      tawkScriptLoaded = true
+      if (window.__tawkOpenOnLoad && window.Tawk_API && typeof window.Tawk_API.maximize === 'function') {
+        window.Tawk_API.maximize()
+        window.__tawkOpenOnLoad = false
+      }
+    }
+    if (firstScript && firstScript.parentNode) {
+      firstScript.parentNode.insertBefore(script, firstScript)
+    } else {
+      document.body.appendChild(script)
+    }
+  }
+
+  const showChatWidget = () => {
+    if (typeof window !== 'undefined' && window.Tawk_API && typeof window.Tawk_API.showWidget === 'function') {
+      window.Tawk_API.showWidget()
+    }
+  }
+
+  const hideChatWidget = () => {
+    if (typeof window !== 'undefined' && window.Tawk_API && typeof window.Tawk_API.hideWidget === 'function') {
+      window.Tawk_API.hideWidget()
+    }
   }
   
   $: isExternalDoctor = user?.role === 'doctor' && user?.externalDoctor && user?.invitedByDoctorId
@@ -662,6 +723,15 @@
       clearInterval(refreshInterval)
     }
   })
+
+  $: if (typeof window !== 'undefined') {
+    if (shouldEnableChat()) {
+      loadTawkScript()
+      showChatWidget()
+    } else {
+      hideChatWidget()
+    }
+  }
 </script>
 
 <main class="min-h-screen bg-gray-50" on:ai-usage-updated={handleAIUsageUpdate}>
@@ -676,6 +746,16 @@
         text="Loading M-Prescribe v2.2.24..."
       fullScreen={true}
     />
+  {:else if privacyOnly}
+    <PrivacyPolicyPage />
+  {:else if contactOnly}
+    <ContactPage />
+  {:else if helpOnly}
+    <HelpPage />
+  {:else if faqOnly}
+    <FaqPage />
+  {:else if pricingOnly}
+    <PricingPage />
   {:else if user}
     {#if user.role === 'pharmacist'}
       <!-- Pharmacist Dashboard -->
@@ -926,12 +1006,11 @@
       {/if}
     </div>
     {/if}
-  {:else if privacyOnly}
-    <PrivacyPolicyPage />
   {:else}
     <!-- Landing page + login -->
-    <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#e2f7f2_0%,_#f9fafb_45%,_#f3f4f6_100%)] px-4 py-8">
-      <div class="mx-auto max-w-6xl">
+    <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#e2f7f2_0%,_#f9fafb_45%,_#f3f4f6_100%)] px-4 py-4">
+      <PublicHeader />
+      <div class="mx-auto max-w-6xl pt-4">
         {#if authOnly}
           <div class="flex justify-center">
             <div class="w-full max-w-md">
@@ -997,18 +1076,8 @@
                     <span class="inline-flex items-center gap-1"><i class="fas fa-brain"></i> AI-Enhanced</span>
                     <span class="inline-flex items-center gap-1"><i class="fas fa-user-check"></i> Role-based access</span>
                   </div>
-                  <a
-                    href="/?privacy=1"
-                    class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded inline-flex items-center gap-1"
-                  >
-                    <i class="fas fa-file-shield"></i>
-                    Privacy Policy
-                  </a>
                 </div>
               </div>
-              <footer class="mt-6 text-center text-xs text-gray-500">
-                <a href="/?privacy=1" class="text-blue-600 hover:text-blue-800 underline">Privacy Policy</a>
-              </footer>
             </div>
           </div>
         {:else}
@@ -1024,10 +1093,11 @@
                     HIPAA-ready workflows
                   </div>
                   <h1 class="mt-4 text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900 font-hero">
-                    <BrandName /> Patient and Pharmacy Management System
+                    <BrandName className="text-teal-600" />
+                    <span class="block mt-2">Patient and Pharmacy Management System</span>
                   </h1>
                   <p class="mt-3 text-base text-gray-600 max-w-xl">
-                    One workspace for doctors and pharmacies to manage patients, prescriptions, inventory, and billing — with AI support and secure audit trails.
+                    Patient history management, AI treatment suggestions, drug interaction checks, barcode IDs, prescriptions, inventory tracking, low-stock notifications, appointment reminders, auto billing, and daily/monthly income reports.
                   </p>
                   <div class="mt-5 flex flex-wrap items-center gap-3 text-sm text-gray-600">
                     <span class="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-amber-700 font-semibold">
@@ -1066,10 +1136,18 @@
                     </div>
                   </div>
                 </div>
-                <div class="pt-6 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                  <span class="inline-flex items-center gap-1"><i class="fas fa-lock"></i> Secure access</span>
-                  <span class="inline-flex items-center gap-1"><i class="fas fa-bolt"></i> Fast workflows</span>
-                  <span class="inline-flex items-center gap-1"><i class="fas fa-chart-line"></i> Usage analytics</span>
+                <div class="pt-6">
+                  <img
+                    src="/hero.png"
+                    alt="M-Prescribe overview"
+                    class="w-full h-auto rounded-2xl border border-gray-200 bg-white shadow-sm"
+                    loading="lazy"
+                  />
+                  <div class="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                    <span class="inline-flex items-center gap-1"><i class="fas fa-lock"></i> Secure access</span>
+                    <span class="inline-flex items-center gap-1"><i class="fas fa-bolt"></i> Fast workflows</span>
+                    <span class="inline-flex items-center gap-1"><i class="fas fa-chart-line"></i> Usage analytics</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1137,13 +1215,6 @@
                   <span class="inline-flex items-center gap-1"><i class="fas fa-brain"></i> AI-Enhanced</span>
                   <span class="inline-flex items-center gap-1"><i class="fas fa-user-check"></i> Role-based access</span>
                 </div>
-                <a
-                  href="/?privacy=1"
-                  class="text-xs text-blue-600 hover:text-blue-800 underline focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 rounded inline-flex items-center gap-1"
-                >
-                  <i class="fas fa-file-shield"></i>
-                  Privacy Policy
-                </a>
               </div>
             </div>
           </div>
@@ -1248,9 +1319,13 @@
           <span>© Tronicgate Hardware and Software Services</span>
           <div class="flex items-center gap-4">
             <a href="/?privacy=1" class="text-blue-600 hover:text-blue-800 underline">Privacy Policy</a>
+            <a href="/?pricing=1" class="text-blue-600 hover:text-blue-800 underline">Pricing</a>
+            <a href="/?faq=1" class="text-blue-600 hover:text-blue-800 underline">FAQ</a>
+            <a href="/?help=1" class="text-blue-600 hover:text-blue-800 underline">Help</a>
+            <a href="/?contact=1" class="text-blue-600 hover:text-blue-800 underline">Contact us</a>
           </div>
         </footer>
-        {/if}
+      {/if}
       </div>
     </div>
   {/if}

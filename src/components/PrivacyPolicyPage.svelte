@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import BrandName from './BrandName.svelte'
+  import PublicHeader from './PublicHeader.svelte'
 
   const defaultPrivacyContent = `# Privacy Policy
 
@@ -112,7 +113,8 @@ Email: support@mprescribe.net`
 </script>
 
 <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#e6f7f4_0%,_#f9fafb_55%,_#f3f4f6_100%)]">
-  <div class="max-w-6xl mx-auto px-6 py-10">
+  <PublicHeader />
+  <div class="max-w-6xl mx-auto px-6 py-6">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
       <div>
         <p class="text-xs uppercase tracking-[0.2em] text-teal-600 font-semibold">
@@ -121,13 +123,7 @@ Email: support@mprescribe.net`
         <h1 class="text-3xl sm:text-4xl lg:text-5xl font-semibold text-gray-900 font-hero">Privacy Policy</h1>
         <p class="mt-2 text-sm text-gray-600">For Tronicgate Hardware and Software Services</p>
       </div>
-      <a
-        href="/"
-        class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50"
-      >
-        <i class="fas fa-arrow-left"></i>
-        Back to home
-      </a>
+      <div></div>
     </div>
 
     <div class="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm">
@@ -142,6 +138,17 @@ Email: support@mprescribe.net`
         </div>
       {/if}
     </div>
+
+    <footer class="mt-10 border-t border-gray-200 pt-6 text-sm text-gray-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <span>© Tronicgate Hardware and Software Services</span>
+      <div class="flex items-center gap-4">
+        <a href="/?privacy=1" class="text-blue-600 hover:text-blue-800 underline">Privacy Policy</a>
+        <a href="/?pricing=1" class="text-blue-600 hover:text-blue-800 underline">Pricing</a>
+        <a href="/?faq=1" class="text-blue-600 hover:text-blue-800 underline">FAQ</a>
+        <a href="/?help=1" class="text-blue-600 hover:text-blue-800 underline">Help</a>
+        <a href="/?contact=1" class="text-blue-600 hover:text-blue-800 underline">Contact us</a>
+      </div>
+    </footer>
   </div>
 </div>
 
