@@ -4011,128 +4011,55 @@
                   </div>
                 </form>
               {:else}
-                <!-- Display Patient Information -->
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  {#if selectedPatient.firstName || selectedPatient.lastName}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Name:</span> <span class="text-gray-700">{selectedPatient.firstName} {selectedPatient.lastName}</span></p>
-                  {/if}
-                  {#if selectedPatient.email}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Email:</span> <span class="text-gray-700">{selectedPatient.email}</span></p>
-                  {/if}
-                  {#if selectedPatient.phone || selectedPatient.phoneCountryCode}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Phone:</span> <span class="text-gray-700">{formatPhoneDisplay(selectedPatient)}</span></p>
-                  {/if}
-                  {#if selectedPatient.gender}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Gender:</span> <span class="text-gray-700">{selectedPatient.gender}</span></p>
-                  {/if}
-                  {#if selectedPatient.dateOfBirth}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Date of Birth:</span> <span class="text-gray-700">{selectedPatient.dateOfBirth}</span></p>
-                  {/if}
-                  {#if selectedPatient.age || calculateAge(selectedPatient.dateOfBirth)}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Age:</span> <span class="text-gray-700">{selectedPatient.age || calculateAge(selectedPatient.dateOfBirth)}</span></p>
-                  {/if}
-                  {#if selectedPatient.weight}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Weight:</span> <span class="text-gray-700">{selectedPatient.weight} kg</span></p>
-                  {/if}
-                  {#if selectedPatient.bloodGroup}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Blood Group:</span> <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">{selectedPatient.bloodGroup}</span></p>
-                  {/if}
+                <!-- AI Patient Management Summary -->
+              <div class="rounded-lg border border-teal-200 bg-teal-50 p-4">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-teal-800">AI Patient Management Summary</p>
+                    <p class="text-xs text-teal-700">Generate an AI summary of patient management insights.</p>
+                  </div>
+                  <button
+                    class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
+                    on:click={generatePatientSummary}
+                    disabled={loadingPatientSummary}
+                  >
+                    {#if loadingPatientSummary}
+                      <svg class="animate-spin h-4 w-4 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    {:else}
+                      <i class="fas fa-sparkles mr-1.5"></i>
+                      Generate Summary
+                    {/if}
+                  </button>
                 </div>
-                <div>
-                  {#if selectedPatient.idNumber}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">ID Number:</span> <span class="text-gray-700">{selectedPatient.idNumber}</span></p>
-                  {/if}
-                  {#if selectedPatient.address}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Address:</span> <span class="text-gray-700">{selectedPatient.address}</span></p>
-                  {/if}
-                  {#if selectedPatient.emergencyContact}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Emergency Contact:</span> <span class="text-gray-700">{selectedPatient.emergencyContact}</span></p>
-                  {/if}
-                  {#if selectedPatient.emergencyPhone}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Emergency Phone:</span> <span class="text-gray-700">{selectedPatient.emergencyPhone}</span></p>
+
+                <div class="mt-4">
+                  {#if loadingPatientSummary}
+                    <div class="flex flex-col items-center justify-center py-6">
+                      <svg class="animate-spin h-8 w-8 text-teal-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <p class="text-sm text-teal-700">Analyzing patient data...</p>
+                    </div>
+                  {:else if patientSummary}
+                    <div class="bg-white rounded-lg p-4 shadow-inner">
+                      <div class="prose prose-sm max-w-none">
+                        {@html patientSummary}
+                      </div>
+                      <div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500 flex items-center">
+                        <i class="fas fa-info-circle mr-1.5"></i>
+                        AI-generated summary. Please review before clinical use.
+                      </div>
+                    </div>
+                  {:else}
+                    <p class="text-sm text-teal-800">No summary generated yet.</p>
                   {/if}
                 </div>
               </div>
-                
-                {#if selectedPatient.allergies}
-                  <div class="mt-4">
-                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                      <h6 class="text-sm font-semibold text-yellow-800 mb-2">
-                        <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
-                        </h6>
-                      <p class="text-sm text-yellow-700 mb-0">{selectedPatient.allergies}</p>
-                    </div>
-                  </div>
-                {/if}
-
-                <!-- Current Medications Card -->
-                {#if getCurrentMedications().length > 0}
-                  <div class="mt-4">
-                    <div class="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <h6 class="text-sm font-semibold text-green-800 mb-2">
-                        <i class="fas fa-pills mr-2"></i>Current Medications
-                      </h6>
-                      <div class="space-y-2">
-                        {#each getCurrentMedications() as medication}
-                          <div class="flex justify-between items-center bg-white rounded p-2 border border-green-100">
-                            <div class="flex-1">
-                              <div class="font-medium text-green-900 text-sm">{medication.name}</div>
-                              <div class="text-xs text-green-700">
-                                {medication.dosage}
-                              </div>
-                            </div>
-                            <div class="text-xs text-green-600 ml-2 text-right">
-                              {#if medication.duration}
-                                <div class="font-medium text-green-800">
-                                  {getRemainingDuration(medication)}
-                                </div>
-                              {/if}
-                            </div>
-                          </div>
-                        {/each}
-                      </div>
-                    </div>
-                  </div>
-                {/if}
-                
-                {#if selectedPatient.longTermMedications}
-                  <div class="mt-4">
-                    <div class="bg-blue-50 border border-teal-200 rounded-lg p-3">
-                      <div class="flex justify-between items-start mb-2">
-                        <h6 class="text-sm font-semibold text-teal-800 mb-0">
-                          <i class="fas fa-pills mr-2"></i>Long Term Medications
-                          </h6>
-                          <button 
-                          class="inline-flex items-center px-2 py-1 border border-blue-300 text-xs font-medium text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 rounded transition-colors duration-200" 
-                            on:click={() => editLongTermMedications = selectedPatient.longTermMedications}
-                            title="Edit long-term medications"
-                          >
-                          <i class="fas fa-edit mr-1"></i>Edit
-                          </button>
-                        </div>
-                      <p class="text-sm text-blue-700 mb-0">{selectedPatient.longTermMedications}</p>
-                    </div>
-                  </div>
-                {:else}
-                  <div class="mt-4">
-                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <div class="flex justify-between items-start mb-2">
-                        <h6 class="text-sm font-semibold text-gray-700 mb-0">
-                          <i class="fas fa-pills mr-2"></i>Long Term Medications
-                          </h6>
-                          <button 
-                          class="inline-flex items-center px-2 py-1 border border-blue-300 text-xs font-medium text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 rounded transition-colors duration-200" 
-                            on:click={() => editLongTermMedications = ''}
-                            title="Add long-term medications"
-                          >
-                          <i class="fas fa-plus mr-1"></i>Add
-                          </button>
-                        </div>
-                      <p class="text-sm text-gray-500 mb-0">No long-term medications recorded</p>
-                    </div>
-                  </div>
-                {/if}
                 
                 <!-- Long-term medications edit form -->
                 {#if editLongTermMedications !== null}
