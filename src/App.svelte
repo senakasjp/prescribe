@@ -24,6 +24,7 @@
   import HelpPage from './components/HelpPage.svelte'
   import FaqPage from './components/FaqPage.svelte'
   import PricingPage from './components/PricingPage.svelte'
+  import RegisterPage from './components/RegisterPage.svelte'
   import PublicHeader from './components/PublicHeader.svelte'
   
   let user = null
@@ -765,9 +766,9 @@
     <nav class="bg-teal-600 border-gray-200 dark:bg-gray-900">
       <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto p-4">
         <a href="/" class="flex items-center space-x-3 rtl:space-x-reverse">
-          <i class="fas fa-user-md text-white text-xl"></i>
-          <span class="self-center text-xl font-semibold whitespace-nowrap text-white">
-            <BrandName className="text-white" />
+          <span class="self-center text-xl font-semibold whitespace-nowrap text-white font-hero inline-flex items-center gap-2">
+            <img src="/favicon-32x32.png" alt="M-Prescribe" class="h-6 w-6" loading="lazy" />
+            <BrandName className="text-teal-100" />
             <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.24</span>
           </span>
         </a>
@@ -792,7 +793,6 @@
           <div class="hidden lg:flex items-center space-x-4">
               <!-- User Info -->
             <div class="flex items-center space-x-3 text-white">
-              <i class="fas fa-user"></i>
               <span class="text-sm font-medium">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
               
               </div>
@@ -824,7 +824,6 @@
           <div class="lg:hidden mt-4 space-y-3">
               <!-- User Info Row -->
             <div class="flex items-center space-x-2 text-white">
-              <i class="fas fa-user"></i>
               <span class="text-sm">Dr. {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.firstName || user?.name || user?.email || 'Doctor'}</span>
               </div>
               
@@ -1012,74 +1011,7 @@
       <PublicHeader />
       <div class="mx-auto max-w-6xl pt-4">
         {#if authOnly}
-          <div class="flex justify-center">
-            <div class="w-full max-w-md">
-              <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
-                <div class="px-6 py-6 border-b border-gray-200">
-                  <div class="flex items-center justify-between">
-                    <div>
-                      <h2 class="text-xl font-semibold text-gray-900 font-landing">Sign in</h2>
-                      <p class="text-xs text-gray-500">Doctor or pharmacy access</p>
-                    </div>
-                    <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-teal-100 text-teal-700">
-                      <i class="fas fa-stethoscope"></i>
-                    </div>
-                  </div>
-                </div>
-                <div class="px-6 py-6">
-                  <div class="mb-5">
-                    <div class="flex rounded-xl border border-gray-200 bg-gray-100 p-1 w-full" role="group" aria-label="Authentication mode">
-                      <button 
-                        type="button" 
-                        class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
-                        on:click={handleSwitchToDoctor}
-                      >
-                        <i class="fas fa-user-md mr-2"></i>
-                        <span>Doctor</span>
-                      </button>
-                      <button 
-                        type="button" 
-                        class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
-                        on:click={handleSwitchToPharmacist}
-                      >
-                        <i class="fas fa-pills mr-2"></i>
-                        <span>Pharmacy</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="rounded-2xl bg-gray-50 p-4">
-                    {#if authMode === 'doctor'}
-                      <div class="text-center mb-4">
-                        <h4 class="text-base font-semibold text-gray-900 mb-0">
-                          <i class="fas fa-user-md text-teal-600 mr-2"></i>
-                          Doctor Portal
-                        </h4>
-                      </div>
-                      <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
-                    {:else}
-                      <div class="text-center mb-4">
-                        <h4 class="text-base font-semibold text-gray-900 mb-0">
-                          <i class="fas fa-pills text-teal-600 mr-2"></i>
-                          Pharmacy Portal
-                        </h4>
-                      </div>
-                      <PharmacistAuth 
-                        on:pharmacist-login={handlePharmacistLogin}
-                        on:switch-to-doctor={handleSwitchToDoctor}
-                      />
-                    {/if}
-                  </div>
-                </div>
-                <div class="bg-gray-50 px-6 py-4 text-center text-xs text-gray-500 space-y-2">
-                  <div class="flex flex-wrap justify-center gap-2">
-                    <span class="inline-flex items-center gap-1"><i class="fas fa-shield-alt"></i> Secure</span>
-                    <span class="inline-flex items-center gap-1"><i class="fas fa-brain"></i> AI-Enhanced</span>
-                    <span class="inline-flex items-center gap-1"><i class="fas fa-user-check"></i> Role-based access</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <RegisterPage />
         {:else}
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           <div class="lg:col-span-7">
@@ -1104,7 +1036,7 @@
                       One month free access for new registrations
                     </span>
                     <a
-                      href="/?register=1#signin"
+                      href="/?register=1"
                       class="inline-flex items-center gap-2 rounded-full bg-teal-600 px-4 py-2 text-white font-semibold shadow-sm hover:bg-teal-700 transition-colors duration-200"
                     >
                       <i class="fas fa-user-plus"></i>
@@ -1194,7 +1126,7 @@
                         Doctor Portal
                       </h4>
                     </div>
-                    <DoctorAuth on:user-authenticated={handleUserAuthenticated} />
+                    <DoctorAuth allowRegister={false} on:user-authenticated={handleUserAuthenticated} />
                   {:else}
                     <div class="text-center mb-4">
                       <h4 class="text-base font-semibold text-gray-900 mb-0">
@@ -1205,6 +1137,7 @@
                     <PharmacistAuth 
                       on:pharmacist-login={handlePharmacistLogin}
                       on:switch-to-doctor={handleSwitchToDoctor}
+                      allowRegister={false}
                     />
                   {/if}
                 </div>

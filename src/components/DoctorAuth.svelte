@@ -4,6 +4,8 @@
   import { countries } from '../data/countries.js'
   
   const dispatch = createEventDispatcher()
+  export let allowRegister = true
+  export let registerOnly = false
   
   let firstName = ''
   let lastName = ''
@@ -22,9 +24,18 @@
     const params = new URLSearchParams(window.location.search)
     return params.get('ref') || ''
   }
+
+  const readRegisterMode = () => {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    return params.get('register') === '1'
+  }
   
   // Toggle between login and register modes
   const toggleMode = () => {
+    if (!allowRegister) {
+      return
+    }
     isRegistering = !isRegistering
     error = ''
     firstName = ''
@@ -36,6 +47,15 @@
   }
 
   referralId = readReferralId()
+  isRegistering = registerOnly || (allowRegister && readRegisterMode())
+
+  $: if (registerOnly && !isRegistering) {
+    isRegistering = true
+  }
+
+  $: if (!allowRegister && isRegistering) {
+    isRegistering = false
+  }
   
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -135,6 +155,32 @@
 </script>
 
 <form on:submit={handleSubmit} class="space-y-4">
+  <div class="space-y-3">
+    <button
+      type="button"
+      class="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center"
+      on:click={handleGoogleLogin}
+      disabled={loading || googleLoading}
+    >
+      {#if googleLoading}
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+      {:else}
+        <i class="fab fa-google text-red-500 mr-2"></i>
+      {/if}
+      <span class="hidden sm:inline">{isRegistering ? 'Register with Google' : 'Login with Google'}</span>
+      <span class="sm:hidden">Google</span>
+    </button>
+
+    <div class="flex items-center gap-3 py-4">
+      <div class="h-px flex-1 bg-gray-200"></div>
+      <span class="text-xs font-bold text-gray-600">OR</span>
+      <div class="h-px flex-1 bg-gray-200"></div>
+    </div>
+  </div>
+
   {#if isRegistering}
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
@@ -271,35 +317,22 @@
       {/if}
       {isRegistering ? 'Register' : 'Login'}
     </button>
-    
-    <!-- Google Login Button -->
-    <button 
-      type="button" 
-      class="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center" 
-      on:click={handleGoogleLogin}
-      disabled={loading || googleLoading}
-    >
-      {#if googleLoading}
-        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-      {:else}
-        <i class="fab fa-google text-red-500 mr-2"></i>
-      {/if}
-      <span class="hidden sm:inline">Continue with Google</span>
-      <span class="sm:hidden">Google</span>
-    </button>
   </div>
   
   <div class="text-center pt-3">
-    <button 
-      type="button" 
-      class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400" 
-      on:click={toggleMode}
-      disabled={loading}
-    >
-      {isRegistering ? 'Already have an account? Login' : 'Need an account? Register'}
-    </button>
+    {#if allowRegister && !registerOnly}
+      <button 
+        type="button" 
+        class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400" 
+        on:click={toggleMode}
+        disabled={loading}
+      >
+        {isRegistering ? 'Already have an account? Login' : 'Need an account? Register'}
+      </button>
+    {:else}
+      <a class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200" href="/#signin">
+        {isRegistering ? 'Already have an account? Login' : 'Need an account? Register'}
+      </a>
+    {/if}
   </div>
 </form>

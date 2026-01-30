@@ -6,6 +6,8 @@
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   
   const dispatch = createEventDispatcher()
+  export let allowRegister = true
+  export let registerOnly = false
   
   let isLogin = true
   let loading = false
@@ -35,6 +37,22 @@
     existingNumbers.push(number)
     localStorage.setItem('pharmacistNumbers', JSON.stringify(existingNumbers))
     return number
+  }
+
+  const readRegisterMode = () => {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    return params.get('register') === '1'
+  }
+
+  isLogin = !(registerOnly || (allowRegister && readRegisterMode()))
+
+  $: if (registerOnly && isLogin) {
+    isLogin = false
+  }
+
+  $: if (!allowRegister && !isLogin) {
+    isLogin = true
   }
   
   const handleLogin = async () => {
@@ -140,6 +158,9 @@
   }
   
   const toggleMode = () => {
+    if (!allowRegister) {
+      return
+    }
     isLogin = !isLogin
     error = ''
     // Clear forms when switching
@@ -164,6 +185,31 @@
 <!-- Login Form -->
 {#if isLogin}
   <form on:submit|preventDefault={handleLogin} class="space-y-4">
+    <div class="space-y-3">
+      <button
+        type="button"
+        class="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center"
+        on:click={handleGoogleLogin}
+        disabled={loading || googleLoading}
+      >
+        {#if googleLoading}
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        {:else}
+          <i class="fab fa-google text-red-500 mr-2"></i>
+        {/if}
+        <span class="hidden sm:inline">Login with Google</span>
+        <span class="sm:hidden">Google</span>
+      </button>
+
+      <div class="flex items-center gap-3 py-4">
+        <div class="h-px flex-1 bg-gray-200"></div>
+        <span class="text-xs font-bold text-gray-600">OR</span>
+        <div class="h-px flex-1 bg-gray-200"></div>
+      </div>
+    </div>
     <div>
       <label for="loginEmail" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
       <input
@@ -211,8 +257,29 @@
         {/if}
         Login
       </button>
-      
-      <!-- Google Login Button -->
+    </div>
+    
+    <div class="text-center pt-3">
+      {#if allowRegister && !registerOnly}
+        <button
+          type="button"
+          class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400"
+          on:click={toggleMode}
+          disabled={loading}
+        >
+          Need an account? Register
+        </button>
+      {:else}
+        <a class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200" href="/#signin">
+          Need an account? Register
+        </a>
+      {/if}
+    </div>
+  </form>
+{:else}
+  <!-- Registration Form -->
+  <form on:submit|preventDefault={handleRegister} class="space-y-4">
+    <div class="space-y-3">
       <button
         type="button"
         class="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center"
@@ -227,25 +294,17 @@
         {:else}
           <i class="fab fa-google text-red-500 mr-2"></i>
         {/if}
-        <span class="hidden sm:inline">Continue with Google</span>
+        <span class="hidden sm:inline">Register with Google</span>
         <span class="sm:hidden">Google</span>
       </button>
+
+      <div class="flex items-center gap-3 py-4">
+        <div class="h-px flex-1 bg-gray-200"></div>
+        <span class="text-xs font-bold text-gray-600">OR</span>
+        <div class="h-px flex-1 bg-gray-200"></div>
+      </div>
     </div>
-    
-    <div class="text-center pt-3">
-      <button
-        type="button"
-        class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400"
-        on:click={toggleMode}
-        disabled={loading}
-      >
-        Need an account? Register
-      </button>
-    </div>
-  </form>
-{:else}
-  <!-- Registration Form -->
-  <form on:submit|preventDefault={handleRegister} class="space-y-4">
+
     <div>
       <label for="regBusinessName" class="block text-sm font-medium text-gray-700 mb-1">Pharmacy Name</label>
       <input
@@ -323,14 +382,20 @@
     </div>
     
     <div class="text-center pt-3">
-      <button
-        type="button"
-        class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400"
-        on:click={toggleMode}
-        disabled={loading}
-      >
-        Already have an account? Login
-      </button>
+      {#if allowRegister && !registerOnly}
+        <button
+          type="button"
+          class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400"
+          on:click={toggleMode}
+          disabled={loading}
+        >
+          Already have an account? Login
+        </button>
+      {:else}
+        <a class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200" href="/#signin">
+          Already have an account? Login
+        </a>
+      {/if}
     </div>
   </form>
 {/if}

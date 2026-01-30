@@ -1601,7 +1601,16 @@
 <div class="space-y-3 sm:space-y-4">
   <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
     <div class="text-center">
-      <i class="fas fa-user-md text-3xl sm:text-4xl md:text-5xl text-teal-600 mb-2 sm:mb-3"></i>
+      {#if authUser?.photoURL || user?.photoURL}
+        <img
+          src={authUser?.photoURL || user?.photoURL}
+          alt="Doctor profile"
+          class="h-16 w-16 sm:h-20 sm:w-20 rounded-full object-cover border-2 border-teal-200 mx-auto mb-2 sm:mb-3"
+          loading="lazy"
+        />
+      {:else}
+        <i class="fas fa-user-md text-3xl sm:text-4xl md:text-5xl text-teal-600 mb-2 sm:mb-3"></i>
+      {/if}
       <h2 class="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-1 sm:mb-2">Welcome, Dr. {doctorName}!</h2>
       <p class="text-sm sm:text-base text-gray-600">{doctorCountry}{doctorCity !== 'Not specified' ? `, ${doctorCity}` : ''}</p>
     </div>
@@ -2110,9 +2119,18 @@
                    <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
                      <div class="p-6">
                        <div class="flex items-center">
-                         <div class="flex-shrink-0">
-                           <i class="fas fa-user-md fa-2x text-teal-600"></i>
-                         </div>
+                        <div class="flex-shrink-0">
+                          {#if authUser?.photoURL || user?.photoURL}
+                            <img
+                              src={authUser?.photoURL || user?.photoURL}
+                              alt="Doctor profile"
+                              class="h-12 w-12 rounded-full object-cover border-2 border-teal-200"
+                              loading="lazy"
+                            />
+                          {:else}
+                            <i class="fas fa-user-md fa-2x text-teal-600"></i>
+                          {/if}
+                        </div>
                          <div class="flex-1 ml-4">
                            <!-- Desktop Layout -->
                            <div class="hidden sm:flex justify-between items-center">
