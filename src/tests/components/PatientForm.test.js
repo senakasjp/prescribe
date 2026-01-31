@@ -94,14 +94,9 @@ describe('PatientForm Component', () => {
     it('should calculate age from date of birth', async () => {
       const { container: renderedContainer } = render(PatientForm)
       
-      const dobInput = renderedContainer.querySelector('input[type="date"]')
+      const dobInput = renderedContainer.querySelector('input[placeholder="dd/mm/yyyy"]')
       if (dobInput) {
-        // Set date of birth to 30 years ago
-        const thirtyYearsAgo = new Date()
-        thirtyYearsAgo.setFullYear(thirtyYearsAgo.getFullYear() - 30)
-        const dateString = thirtyYearsAgo.toISOString().split('T')[0]
-        
-        await user.type(dobInput, dateString)
+        await user.type(dobInput, '01/01/1994')
         
         expect(dobInput.value).toBeTruthy()
       }
@@ -300,4 +295,3 @@ describe('PatientForm - Flowbite Integration', () => {
     expect(inputs.length).toBeGreaterThan(0)
   })
 })
-

@@ -1,8 +1,8 @@
 <script>
   import { onMount } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
-  import prescriptionStatusService from '../services/doctor/prescriptionStatusService.js'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
 
   export let user
   
@@ -92,110 +92,8 @@
     return buckets
   }
 
-  const normalizeName = (value) => String(value || '').trim().toLowerCase()
-
-  const parseNumber = (value) => {
-    if (value === null || value === undefined) return 0
-    if (typeof value === 'number') return value
-    const match = String(value).match(/[\d.]+/)
-    return match ? parseFloat(match[0]) : 0
-  }
-
-  const buildPriceLookup = (stockItems) => {
-    const lookup = new Map()
-    stockItems.forEach((item) => {
-      const raw = item.rawItem || item
-      const price = parseNumber(raw.sellingPrice ?? raw.unitPrice ?? raw.costPrice)
-      const names = [
-        raw.brandName,
-        raw.genericName,
-        raw.drugName,
-        item.drugName,
-        item.genericName
-      ]
-      names.forEach((name) => {
-        const key = normalizeName(name)
-        if (key) {
-          lookup.set(key, price)
-        }
-      })
-    })
-    return lookup
-  }
-
   const getPrescriptionDate = (prescription) => {
     return prescription?.createdAt || prescription?.dateCreated || prescription?.sentAt || null
-  }
-
-  const getMedicationList = (prescription) => {
-    if (Array.isArray(prescription?.medications)) {
-      return prescription.medications
-    }
-    if (Array.isArray(prescription?.prescriptions)) {
-      return prescription.prescriptions.flatMap((entry) => entry.medications || [])
-    }
-    return []
-  }
-
-  const matchDispensedMedication = (medication, dispensedEntry) => {
-    if (!dispensedEntry) return false
-    const medId = medication?.id || medication?.medicationId || medication?.name
-    const dispensedId = dispensedEntry.medicationId || dispensedEntry.medicationID
-    if (medId && dispensedId && String(medId) === String(dispensedId)) {
-      return true
-    }
-    const medName = normalizeName(medication?.name || medication?.drugName || medication?.brandName)
-    const dispensedName = normalizeName(dispensedEntry.name || dispensedEntry.medicationName || dispensedEntry.medication)
-    return medName && dispensedName && medName === dispensedName
-  }
-
-  const getDispensedQuantity = (medication, dispensedList) => {
-    if (Array.isArray(dispensedList)) {
-      const match = dispensedList.find((entry) => matchDispensedMedication(medication, entry))
-      if (match?.quantity !== undefined) {
-        return parseNumber(match.quantity)
-      }
-    }
-    const amount = parseNumber(medication?.amount ?? medication?.quantity ?? medication?.dose)
-    if (!amount) {
-      missingQuantityCount += 1
-      return 1
-    }
-    return amount
-  }
-
-  const resolveUnitPrice = (medication, priceLookup) => {
-    const name = normalizeName(medication?.name || medication?.drugName || medication?.brandName)
-    if (!name) {
-      missingPriceCount += 1
-      return 0
-    }
-    if (!priceLookup.has(name)) {
-      missingPriceCount += 1
-      return 0
-    }
-    return priceLookup.get(name)
-  }
-
-  const calculatePharmacyIncome = (prescription, dispensedStatus, priceLookup) => {
-    if (!dispensedStatus?.isDispensed) {
-      return 0
-    }
-    const medications = getMedicationList(prescription)
-    if (!medications.length) {
-      return 0
-    }
-    const dispensedList = dispensedStatus.dispensedMedications
-    const includeAll = !Array.isArray(dispensedList) || dispensedList.length === 0
-
-    return medications.reduce((total, medication) => {
-      if (!includeAll && !dispensedList.some((entry) => matchDispensedMedication(medication, entry))) {
-        return total
-      }
-      const quantity = getDispensedQuantity(medication, dispensedList)
-      const unitPrice = resolveUnitPrice(medication, priceLookup)
-      return total + quantity * unitPrice
-    }, 0)
   }
 
   const loadReport = async () => {
@@ -212,16 +110,7 @@
       }
 
       const prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(doctorId)
-      const statusMap = await prescriptionStatusService.checkMultiplePrescriptionsStatus(
-        prescriptions.map((prescription) => prescription.id),
-        doctorId
-      )
       const pharmacyStock = await pharmacyMedicationService.getPharmacyStock(doctorId)
-      const priceLookup = buildPriceLookup(pharmacyStock)
-
-      const consultationCharge = parseNumber(effectiveDoctor?.consultationCharge)
-      const hospitalCharge = parseNumber(effectiveDoctor?.hospitalCharge)
-      const baseDoctorCharge = consultationCharge + hospitalCharge
 
       const dailyBuckets = buildDailyBuckets()
       const monthlyBuckets = buildMonthlyBuckets()
@@ -239,37 +128,44 @@
       prescriptions.forEach((prescription) => {
         const dateKey = toDateKey(getPrescriptionDate(prescription))
         const monthBucketKey = toMonthKey(getPrescriptionDate(prescription))
-        const discount = parseNumber(prescription?.discount || 0)
-        const doctorCharge = baseDoctorCharge * (1 - discount / 100)
-        const status = statusMap[prescription.id]
 
-        if (status?.isDispensed) {
-          const dispensedKey = toDateKey(status.dispensedAt || getPrescriptionDate(prescription))
-          const dispensedMonthKey = toMonthKey(status.dispensedAt || getPrescriptionDate(prescription))
-          const pharmacyIncome = calculatePharmacyIncome(prescription, status, priceLookup)
-
-          if (dispensedKey) {
-            if (dispensedKey === todayKey) {
-              todayPharmacy += pharmacyIncome
-              todayDoctor += doctorCharge
-            }
-            const bucket = dailyIndex.get(dispensedKey)
-            if (bucket) {
-              bucket.pharmacy += pharmacyIncome
-              bucket.doctor += doctorCharge
-            }
+        const expectedCharge = chargeCalculationService.calculateExpectedChargeFromStock(
+          prescription,
+          effectiveDoctor,
+          pharmacyStock,
+          {
+            roundingPreference: effectiveDoctor?.roundingPreference || 'none',
+            currency,
+            ignoreAvailability: true
           }
+        )
 
-          if (dispensedMonthKey) {
-            if (dispensedMonthKey === monthKey) {
-              monthPharmacy += pharmacyIncome
-              monthDoctor += doctorCharge
-            }
-            const bucket = monthlyIndex.get(dispensedMonthKey)
-            if (bucket) {
-              bucket.pharmacy += pharmacyIncome
-              bucket.doctor += doctorCharge
-            }
+        const doctorCharge = expectedCharge.doctorCharges.totalAfterDiscount || 0
+        const pharmacyIncome = expectedCharge.drugCharges.totalCost || 0
+        missingPriceCount += expectedCharge.drugCharges.missingPriceCount || 0
+        missingQuantityCount += expectedCharge.drugCharges.missingQuantityCount || 0
+
+        if (dateKey) {
+          if (dateKey === todayKey) {
+            todayPharmacy += pharmacyIncome
+            todayDoctor += doctorCharge
+          }
+          const bucket = dailyIndex.get(dateKey)
+          if (bucket) {
+            bucket.pharmacy += pharmacyIncome
+            bucket.doctor += doctorCharge
+          }
+        }
+
+        if (monthBucketKey) {
+          if (monthBucketKey === monthKey) {
+            monthPharmacy += pharmacyIncome
+            monthDoctor += doctorCharge
+          }
+          const bucket = monthlyIndex.get(monthBucketKey)
+          if (bucket) {
+            bucket.pharmacy += pharmacyIncome
+            bucket.doctor += doctorCharge
           }
         }
       })
@@ -674,7 +570,7 @@
 
     <div class="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-3">
       <i class="fas fa-circle-info mr-1 text-teal-600"></i>
-      Pharmacy income is estimated from connected pharmacy stock pricing and dispensed medications.
+      Pharmacy income is estimated from connected pharmacy stock pricing and assumes all pharmacy-available drugs are selected.
       Missing pricing: {missingPriceCount}, missing quantities: {missingQuantityCount}.
     </div>
   {/if}

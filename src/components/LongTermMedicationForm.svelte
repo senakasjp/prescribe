@@ -4,6 +4,7 @@
   import authService from '../services/doctor/doctorAuthService.js'
   import ThreeDots from './ThreeDots.svelte'
   import { MEDICATION_FREQUENCIES } from '../utils/constants.js'
+  import DateInput from './DateInput.svelte'
   
   export let visible = true
   export let editingMedication = null // Medication data when editing
@@ -226,13 +227,11 @@
           <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">
             <i class="fas fa-calendar mr-1"></i>Start Date
           </label>
-          <input 
-            type="date" 
+          <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
             class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="startDate" 
             bind:value={startDate}
-            disabled={loading}
-          >
+            disabled={loading} />
         </div>
       </div>
       

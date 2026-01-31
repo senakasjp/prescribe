@@ -35,6 +35,7 @@
   
   // Event dispatcher to notify parent of data changes
   import { createEventDispatcher } from 'svelte'
+  import DateInput from './DateInput.svelte'
   const dispatch = createEventDispatcher()
 
   let improvingFields = {}
@@ -462,6 +463,7 @@
     weight: '',
     bloodGroup: '',
     idNumber: '',
+    disableNotifications: false,
     address: '',
     allergies: '',
     longTermMedications: '',
@@ -1938,6 +1940,7 @@
       console.log('📤 Sending prescriptions to selected pharmacies:', selectedPharmacies)
       
       const doctor = await getEffectiveDoctorProfile()
+      const sendingDoctorName = getSendingDoctorName() || getDisplayDoctorName(doctor)
       
       const resolvePharmacyDiscount = (prescriptionList = []) => {
         if (prescriptionDiscount && !isNaN(prescriptionDiscount)) {
@@ -2965,6 +2968,11 @@
       weight: selectedPatient.weight || '',
       bloodGroup: selectedPatient.bloodGroup || '',
       idNumber: selectedPatient.idNumber || '',
+      disableNotifications: Boolean(
+        selectedPatient.disableNotifications ||
+        selectedPatient.doNotSendNotifications ||
+        selectedPatient.dontSendNotifications,
+      ),
       address: selectedPatient.address || '',
       allergies: selectedPatient.allergies || '',
       longTermMedications: selectedPatient.longTermMedications || '',
@@ -2993,6 +3001,7 @@
       weight: '',
       bloodGroup: '',
       idNumber: '',
+      disableNotifications: false,
       address: '',
       allergies: '',
       longTermMedications: '',
@@ -3785,6 +3794,15 @@
                           bind:value={editPatientData.email}
                           disabled={savingPatient}
                         >
+                        <label class="mt-2 inline-flex items-center gap-2 text-xs sm:text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            class="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                            bind:checked={editPatientData.disableNotifications}
+                            disabled={savingPatient}
+                          />
+                          Don't send notifications
+                        </label>
                       </div>
                     </div>
                     <div>
@@ -3841,14 +3859,12 @@
                         <label for="editDateOfBirth" class="block text-sm font-medium text-gray-700 mb-1">
                           <i class="fas fa-calendar mr-1"></i>Date of Birth
                         </label>
-                        <input 
-                          type="date" 
+                        <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editDateOfBirth" 
                           bind:value={editPatientData.dateOfBirth}
                           on:change={handleEditDateOfBirthChange}
-                          disabled={savingPatient}
-                        >
+                          disabled={savingPatient} />
                       </div>
                     </div>
                     <div>
@@ -4642,11 +4658,9 @@
                 </div>
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Report Date</label>
-                    <input 
-                      type="date" 
+                    <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
-                      bind:value={reportDate}
-                    />
+                      bind:value={reportDate} />
               </div>
                 </div>
                 
@@ -4972,11 +4986,9 @@
                   </div>
                   <div>
                     <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnosis Date</label>
-                    <input 
-                      type="date" 
+                    <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                       class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                      bind:value={diagnosticDate}
-                    />
+                      bind:value={diagnosticDate} />
                   </div>
             </div>
             

@@ -5,7 +5,7 @@
   const faqItems = [
     {
       question: 'What are the advantages of this system over paper based method?',
-      answerHtml: `Patient history management.<br>AI based treatment suggestions based on symptoms and reports.<br>AI based drug interaction check.<br>Barcode based patient identification.<br>Barcode based prescription identification.<br>Printing prescriptions, send prescription to own pharmacy assistant's phone/computer.<br>Maintaining a drug inventory.<br>Notification on drug finishing.<br>Send email and SMS notifications for next appointment.<br>Auto charge calculation for each patient.<br>Daily income and monthly income reports.`
+      answerHtml: `Patient history management.<br>AI based treatment suggestions based on symptoms and reports.<br>AI based drug interaction check.<br>AI based medicine name, spelling and grammar corrections.<br>Barcode based patient identification.<br>Barcode based prescription identification.<br>Printing prescriptions, send prescription to own pharmacy assistant's phone/computer.<br>Maintaining a drug inventory.<br>Notification on drug finishing.<br>Send email and SMS notifications for next appointment.<br>Auto charge calculation for each patient.<br>Daily income and monthly income reports.`
     },
     {
       question: 'What is the minimum I need to start using this system?',

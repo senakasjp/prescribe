@@ -55,6 +55,8 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 - **Removed Alerts**: Eliminated all notification popups for cleaner UX
 - **Console Logging**: Replaced with console logging for debugging
 - **Error Handling**: Silent error handling without user interruption
+- **Patient Opt-Out**: Patients can disable automated emails and reminders
+- **Unsubscribe Links**: Email templates support unsubscribe URLs and links
 
 ## File Structure
 ```
@@ -116,5 +118,4 @@ src/
 - Mobile responsive design
 - Progressive Web App features
 - Offline capability for basic functions
-
 

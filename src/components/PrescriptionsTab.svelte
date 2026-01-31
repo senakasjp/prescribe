@@ -3,6 +3,7 @@
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
+  import DateInput from './DateInput.svelte'
   
   export let selectedPatient
   export let showMedicationForm
@@ -377,6 +378,10 @@
       return chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
     }
 
+    if (medication?.frequency && medication.frequency.includes('PRN') && medication?.prnAmount) {
+      return chargeCalculationService.parseMedicationQuantity(medication.prnAmount) || 0
+    }
+
     if (!medication?.frequency || !medication?.duration) {
       return 0
     }
@@ -387,39 +392,7 @@
     }
     const days = parseInt(durationMatch[1], 10)
 
-    let dailyFrequency = 0
-    const frequency = medication.frequency
-
-    if (frequency.includes('Once daily') || frequency.includes('(OD)')) {
-      dailyFrequency = 1
-    } else if (frequency.includes('Twice daily') || frequency.includes('(BD)')) {
-      dailyFrequency = 2
-    } else if (frequency.includes('Three times daily') || frequency.includes('(TDS)')) {
-      dailyFrequency = 3
-    } else if (frequency.includes('Four times daily') || frequency.includes('(QDS)')) {
-      dailyFrequency = 4
-    } else if (frequency.includes('Every 4 hours') || frequency.includes('(Q4H)')) {
-      dailyFrequency = 6
-    } else if (frequency.includes('Every 6 hours') || frequency.includes('(Q6H)')) {
-      dailyFrequency = 4
-    } else if (frequency.includes('Every 8 hours') || frequency.includes('(Q8H)')) {
-      dailyFrequency = 3
-    } else if (frequency.includes('Every 12 hours') || frequency.includes('(Q12H)')) {
-      dailyFrequency = 2
-    } else if (frequency.includes('Weekly')) {
-      dailyFrequency = 1 / 7
-    } else if (frequency.includes('Monthly')) {
-      dailyFrequency = 1 / 30
-    } else if (frequency.includes('Before meals') || frequency.includes('(AC)')) {
-      dailyFrequency = 3
-    } else if (frequency.includes('After meals') || frequency.includes('(PC)')) {
-      dailyFrequency = 3
-    } else if (frequency.includes('At bedtime') || frequency.includes('(HS)')) {
-      dailyFrequency = 1
-    }
-
-    const totalAmount = Math.ceil(dailyFrequency * days)
-    return totalAmount > 0 ? totalAmount : 0
+    return days > 0 ? days : 0
   }
 
   const buildExpectedPrescriptionForCharge = () => {
@@ -483,7 +456,18 @@
         return
       }
 
-      const chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(prescriptionForCharge, expectedPharmacist)
+      const chargeBreakdown = chargeCalculationService.calculateExpectedChargeFromStock(
+        prescriptionForCharge,
+        doctorProfile || doctorProfileFallback || {},
+        pharmacyStock,
+        {
+          roundingPreference: doctorProfile?.roundingPreference
+            || doctorProfileFallback?.roundingPreference
+            || 'none',
+          currency: expectedPharmacist?.currency || doctorCurrency || 'USD',
+          ignoreAvailability: true
+        }
+      )
       if (requestId !== expectedPriceRequestId) {
         return
       }
@@ -876,11 +860,9 @@
                 </label>
               </div>
               {#if showNextAppointment}
-                <input
-                  type="date"
+                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy"
                   class="w-48 max-w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                  bind:value={nextAppointmentDate}
-                >
+                  bind:value={nextAppointmentDate} />
               {/if}
             </div>
             
@@ -911,25 +893,10 @@
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                     >
                       <option value={0}>0% - No Discount</option>
-                      <option value={5}>5%</option>
                       <option value={10}>10%</option>
-                      <option value={15}>15%</option>
                       <option value={20}>20%</option>
-                      <option value={25}>25%</option>
                       <option value={30}>30%</option>
-                      <option value={35}>35%</option>
-                      <option value={40}>40%</option>
-                      <option value={45}>45%</option>
                       <option value={50}>50%</option>
-                      <option value={55}>55%</option>
-                      <option value={60}>60%</option>
-                      <option value={65}>65%</option>
-                      <option value={70}>70%</option>
-                      <option value={75}>75%</option>
-                      <option value={80}>80%</option>
-                      <option value={85}>85%</option>
-                      <option value={90}>90%</option>
-                      <option value={95}>95%</option>
                       <option value={100}>100%</option>
                     </select>
                     <div class="text-xs text-gray-500 mt-1">

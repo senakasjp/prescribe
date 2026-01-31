@@ -1,5 +1,14 @@
 # Recent Fixes Summary - Prescribe Medical System
 
+## 🎯 Latest Updates (January 30, 2026)
+
+### 📧 Patient Notification Opt-Out + Unsubscribe
+**Status**: ✅ **IMPLEMENTED**
+- Added **"Don't send notifications"** checkbox in patient registration and edit forms
+- Implemented unsubscribe endpoint that updates patient notification preference
+- Patient welcome + appointment reminder emails now include unsubscribe variables
+- Email sends skip patients with notifications disabled (including scheduled reminders)
+
 ## 🎯 Latest Updates (January 24, 2026)
 
 ### 🧾 Prescriptions: Procedures + Expected Pricing

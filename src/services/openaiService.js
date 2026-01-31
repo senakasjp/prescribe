@@ -1398,34 +1398,34 @@ IMPORTANT FORMATTING RULES:
     }
   }
 
-  // Improve text spelling only (strict spelling correction)
+  // Improve text spelling/grammar with punctuation
   async improveText(text, doctorId = null) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI is not configured.')
     }
 
     try {
-      console.log('🤖 Correcting spelling errors...')
+      console.log('🤖 Correcting spelling, grammar, and punctuation...')
 
-      const systemMessage = `You are a medical spelling correction assistant. Your ONLY job is to fix spelling errors.
+      const systemMessage = `You are a medical language correction assistant. Your ONLY job is to fix spelling and grammar errors and add missing punctuation.
 
 STRICT RULES:
-1. ONLY fix spelling mistakes - correct misspelled words
-2. DO NOT change grammar or sentence structure
-3. DO NOT rephrase or reword anything
-4. DO NOT add punctuation or capitalization changes (unless it's part of a spelling correction)
-5. DO NOT improve clarity or readability
+1. Fix spelling mistakes and basic grammar issues
+2. DO NOT rephrase or reword anything
+3. DO NOT add or remove medical facts
+4. Add missing punctuation, including full stops at the end of sentences
+5. Preserve the original meaning and word order as much as possible
 6. Keep the exact same word order and sentence structure
 7. Maintain all medical terminology accurately
 8. Return ONLY the corrected text with spelling fixes, nothing else
-9. If there are no spelling errors, return the exact same text unchanged
+9. If there are no errors, return the exact same text unchanged
 
 Example:
 Input: "patient has chest paing and shortnes of breth"
-Output: "patient has chest pain and shortness of breath"
-(Only spelling fixed, grammar and structure unchanged)`
+Output: "patient has chest pain and shortness of breath."
+(Spelling fixed, punctuation added, meaning unchanged)`
 
-      const userMessage = `Fix ONLY the spelling errors in this text:\n\n${text}`
+      const userMessage = `Fix spelling and grammar mistakes and add missing punctuation (including full stops):\n\n${text}`
 
       // Prepare request body
       const requestBody = {

@@ -44,82 +44,21 @@ class ChargeCalculationService {
         throw new Error(`Doctor with ID ${doctorId} not found`)
       }
 
-      // Calculate doctor charges (consultation + hospital + procedures)
-      const baseConsultationCharge = parseFloat(doctor.consultationCharge || 0)
-      const excludeConsultationCharge = !!prescription.excludeConsultationCharge
-      const consultationCharge = excludeConsultationCharge ? 0 : baseConsultationCharge
-      const hospitalCharge = parseFloat(doctor.hospitalCharge || 0)
-
-      const procedurePricingList = doctor?.templateSettings?.procedurePricing || []
-      const procedurePricingMap = {}
-      if (Array.isArray(procedurePricingList)) {
-        procedurePricingList.forEach((item) => {
-          if (item && item.name) {
-            const parsed = Number(item.price)
-            procedurePricingMap[item.name] = Number.isFinite(parsed) ? parsed : 0
-          }
-        })
-      }
-
-      let selectedProcedures = Array.isArray(prescription.procedures) ? prescription.procedures : []
-      if ((!selectedProcedures || selectedProcedures.length === 0) && Array.isArray(prescription.prescriptions)) {
-        const nestedProcedures = prescription.prescriptions
-          .map((entry) => entry?.procedures || [])
-          .flat()
-          .filter(Boolean)
-        selectedProcedures = Array.from(new Set(nestedProcedures))
-      }
-
-      const otherProcedurePrice = Number(prescription?.otherProcedurePrice)
-      const procedureChargesBreakdown = selectedProcedures.map((name) => {
-        const price = name === 'Other' && Number.isFinite(otherProcedurePrice)
-          ? otherProcedurePrice
-          : (procedurePricingMap[name] ?? 0)
-        return {
-          name,
-          price: Number.isFinite(price) ? price : 0
-        }
-      })
-      const totalProcedureCharges = procedureChargesBreakdown.reduce((sum, item) => sum + (item.price || 0), 0)
-
-      const totalDoctorCharges = consultationCharge + hospitalCharge + totalProcedureCharges
-
-      // Get discount percentage from prescription
-      const discountPercentage = prescription.discount || 0
-      const discountScope = prescription.discountScope || 'consultation'
-      const discountBase = discountScope === 'consultation_hospital'
-        ? (consultationCharge + hospitalCharge)
-        : consultationCharge
-      const discountAmount = discountBase * (discountPercentage / 100)
-      const discountedDoctorCharges = totalDoctorCharges - discountAmount
+      const doctorCharges = this.calculateDoctorCharges(prescription, doctor)
 
       // Calculate drug charges for dispensed medications
       const drugCharges = await this.calculateDrugCharges(prescription, pharmacist)
 
       // Calculate total charge before rounding
-      const totalChargeBeforeRounding = (totalDoctorCharges - discountAmount) + drugCharges.totalCost
+      const totalChargeBeforeRounding = doctorCharges.totalAfterDiscount + drugCharges.totalCost
 
-      // Get rounding preference from pharmacist settings (default: 'none')
-      const roundingPreference = pharmacist.roundingPreference || 'none'
+      // Get rounding preference from doctor settings (default: 'none')
+      const roundingPreference = doctor?.roundingPreference || 'none'
       const roundedTotal = this.roundTotalCharge(totalChargeBeforeRounding, roundingPreference)
       const roundingAdjustment = roundedTotal - totalChargeBeforeRounding
 
       const chargeBreakdown = {
-        doctorCharges: {
-          baseConsultationCharge: baseConsultationCharge,
-          consultationCharge: consultationCharge,
-          excludeConsultationCharge: excludeConsultationCharge,
-          hospitalCharge: hospitalCharge,
-          procedureCharges: {
-            total: totalProcedureCharges,
-            breakdown: procedureChargesBreakdown
-          },
-          totalBeforeDiscount: totalDoctorCharges,
-          discountPercentage: discountPercentage,
-          discountScope: discountScope,
-          discountAmount: discountAmount,
-          totalAfterDiscount: discountedDoctorCharges
-        },
+        doctorCharges,
         drugCharges: drugCharges,
         totalBeforeRounding: totalChargeBeforeRounding,
         roundingPreference: roundingPreference,
@@ -134,6 +73,200 @@ class ChargeCalculationService {
     } catch (error) {
       console.error('❌ Error calculating prescription charge:', error)
       throw error
+    }
+  }
+
+  calculateDoctorCharges(prescription, doctor) {
+    const baseConsultationCharge = parseFloat(doctor?.consultationCharge || 0)
+    const excludeConsultationCharge = !!prescription?.excludeConsultationCharge
+    const consultationCharge = excludeConsultationCharge ? 0 : baseConsultationCharge
+    const hospitalCharge = parseFloat(doctor?.hospitalCharge || 0)
+
+    const procedurePricingList = doctor?.templateSettings?.procedurePricing || []
+    const procedurePricingMap = {}
+    if (Array.isArray(procedurePricingList)) {
+      procedurePricingList.forEach((item) => {
+        if (item && item.name) {
+          const parsed = Number(item.price)
+          procedurePricingMap[item.name] = Number.isFinite(parsed) ? parsed : 0
+        }
+      })
+    }
+
+    let selectedProcedures = Array.isArray(prescription?.procedures) ? prescription.procedures : []
+    if ((!selectedProcedures || selectedProcedures.length === 0) && Array.isArray(prescription?.prescriptions)) {
+      const nestedProcedures = prescription.prescriptions
+        .map((entry) => entry?.procedures || [])
+        .flat()
+        .filter(Boolean)
+      selectedProcedures = Array.from(new Set(nestedProcedures))
+    }
+
+    const otherProcedurePrice = Number(prescription?.otherProcedurePrice)
+    const procedureChargesBreakdown = selectedProcedures.map((name) => {
+      const price = name === 'Other' && Number.isFinite(otherProcedurePrice)
+        ? otherProcedurePrice
+        : (procedurePricingMap[name] ?? 0)
+      return {
+        name,
+        price: Number.isFinite(price) ? price : 0
+      }
+    })
+    const totalProcedureCharges = procedureChargesBreakdown.reduce((sum, item) => sum + (item.price || 0), 0)
+
+    const totalDoctorCharges = consultationCharge + hospitalCharge + totalProcedureCharges
+
+    const discountPercentage = prescription?.discount || 0
+    const discountScope = prescription?.discountScope || 'consultation'
+    const discountBase = discountScope === 'consultation_hospital'
+      ? (consultationCharge + hospitalCharge)
+      : consultationCharge
+    const discountAmount = discountBase * (discountPercentage / 100)
+    const discountedDoctorCharges = totalDoctorCharges - discountAmount
+
+    return {
+      baseConsultationCharge: baseConsultationCharge,
+      consultationCharge: consultationCharge,
+      excludeConsultationCharge: excludeConsultationCharge,
+      hospitalCharge: hospitalCharge,
+      procedureCharges: {
+        total: totalProcedureCharges,
+        breakdown: procedureChargesBreakdown
+      },
+      totalBeforeDiscount: totalDoctorCharges,
+      discountPercentage: discountPercentage,
+      discountScope: discountScope,
+      discountAmount: discountAmount,
+      totalAfterDiscount: discountedDoctorCharges
+    }
+  }
+
+  calculateExpectedDrugChargesFromInventory(prescription, inventoryItems, options = {}) {
+    let totalCost = 0
+    let medicationBreakdown = []
+    let totalMedications = 0
+    let missingPriceCount = 0
+    let missingQuantityCount = 0
+    const ignoreAvailability = !!options.ignoreAvailability
+
+    const prescriptions = Array.isArray(prescription?.prescriptions) && prescription.prescriptions.length > 0
+      ? prescription.prescriptions
+      : [{ medications: prescription?.medications || [] }]
+
+    prescriptions.forEach((presc) => {
+      const meds = presc?.medications || []
+      meds.forEach((medication) => {
+        const requestedQuantity = this.parseMedicationQuantity(medication?.amount)
+        if (!requestedQuantity || requestedQuantity <= 0) {
+          missingQuantityCount += 1
+          return
+        }
+
+        const pricingSources = this.buildInventoryPricingSources(
+          medication,
+          inventoryItems || [],
+          medication?.inventoryMatch && medication?.inventoryMatch?.found ? medication.inventoryMatch : null
+        )
+
+        if (!pricingSources.length) {
+          missingPriceCount += 1
+          return
+        }
+
+        if (ignoreAvailability) {
+          const source = pricingSources[0]
+          const unitCost = source.unitCost ?? 0
+          if (!unitCost) {
+            missingPriceCount += 1
+            return
+          }
+          const lineCost = requestedQuantity * unitCost
+          totalCost += lineCost
+          totalMedications += 1
+          medicationBreakdown.push({
+            medicationName: medication.name,
+            dosage: medication.dosage,
+            frequency: medication.frequency,
+            duration: medication.duration,
+            quantity: requestedQuantity,
+            pricedQuantity: requestedQuantity,
+            unitCost: unitCost,
+            totalCost: lineCost,
+            found: true,
+            allocationDetails: [{
+              quantity: requestedQuantity,
+              unitCost: unitCost,
+              lineCost: lineCost,
+              inventoryItemId: source.inventoryItemId,
+              expiryDate: source.expiryDate,
+              brandName: source.brandName,
+              genericName: source.genericName
+            }]
+          })
+          return
+        }
+
+        const allocation = this.allocateQuantityAcrossSources(requestedQuantity, pricingSources)
+        if (allocation.totalPricedQuantity <= 0) {
+          missingPriceCount += 1
+          return
+        }
+
+        totalCost += allocation.totalCost
+        totalMedications += 1
+        medicationBreakdown.push({
+          medicationName: medication.name,
+          dosage: medication.dosage,
+          frequency: medication.frequency,
+          duration: medication.duration,
+          quantity: requestedQuantity,
+          pricedQuantity: allocation.totalPricedQuantity,
+          unitCost: allocation.averageUnitCost,
+          totalCost: allocation.totalCost,
+          found: allocation.remainingQuantity <= 0,
+          allocationDetails: allocation.allocations.map(entry => ({
+            quantity: entry.quantity,
+            unitCost: entry.unitCost,
+            lineCost: entry.lineCost,
+            inventoryItemId: entry.inventoryItemId,
+            expiryDate: entry.expiryDate,
+            brandName: entry.brandName,
+            genericName: entry.genericName
+          }))
+        })
+      })
+    })
+
+    return {
+      totalCost,
+      totalMedications,
+      medicationBreakdown,
+      missingPriceCount,
+      missingQuantityCount
+    }
+  }
+
+  calculateExpectedChargeFromStock(prescription, doctor, inventoryItems, options = {}) {
+    const doctorCharges = this.calculateDoctorCharges(prescription, doctor || {})
+    const drugCharges = this.calculateExpectedDrugChargesFromInventory(
+      prescription,
+      inventoryItems || [],
+      { ignoreAvailability: !!options.ignoreAvailability }
+    )
+
+    const totalChargeBeforeRounding = doctorCharges.totalAfterDiscount + drugCharges.totalCost
+    const roundingPreference = options.roundingPreference || 'none'
+    const roundedTotal = this.roundTotalCharge(totalChargeBeforeRounding, roundingPreference)
+    const roundingAdjustment = roundedTotal - totalChargeBeforeRounding
+
+    return {
+      doctorCharges,
+      drugCharges,
+      totalBeforeRounding: totalChargeBeforeRounding,
+      roundingPreference,
+      roundingAdjustment,
+      totalCharge: roundedTotal,
+      currency: options.currency || 'USD'
     }
   }
 
@@ -161,7 +294,7 @@ class ChargeCalculationService {
     try {
       console.log('💊 Calculating drug charges for prescription:', prescription.id)
       
-      const pharmacyId = pharmacist?.pharmacyId || pharmacist?.id
+      const pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || pharmacist?.uid
       if (!pharmacyId) {
         throw new Error('Pharmacy information not available for drug charge calculation')
       }

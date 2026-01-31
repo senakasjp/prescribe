@@ -5,6 +5,7 @@
   import openaiService from '../services/openaiService.js'
   import authService from '../services/doctor/doctorAuthService.js'
   import ThreeDots from './ThreeDots.svelte'
+  import DateInput from './DateInput.svelte'
   
   const dispatch = createEventDispatcher()
   export let defaultCountry = ''
@@ -22,6 +23,7 @@
   let weight = ''
   let bloodGroup = ''
   let idNumber = ''
+  let disableNotifications = false
   let address = ''
   let allergies = ''
   let longTermMedications = ''
@@ -173,6 +175,7 @@
         weight: weight?.toString().trim() || '',
         bloodGroup: bloodGroup.trim() || '',
         idNumber: idNumber.trim() || '',
+        disableNotifications: Boolean(disableNotifications),
         address: address.trim() || '',
         allergies: allergies.trim() || '',
         longTermMedications: longTermMedications.trim() || '',
@@ -196,6 +199,7 @@
       weight = ''
       bloodGroup = ''
       idNumber = ''
+      disableNotifications = false
       address = ''
       allergies = ''
       longTermMedications = ''
@@ -338,6 +342,21 @@
           </div>
         </div>
       </div>
+
+      <div class="mb-3">
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            class="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+            bind:checked={disableNotifications}
+            disabled={loading}
+          />
+          Don't send notifications
+        </label>
+        <div class="text-xs text-gray-500 mt-1">
+          This will disable automated emails and reminders for this patient.
+        </div>
+      </div>
       
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="col-span-full md:col-span-1">
@@ -367,14 +386,12 @@
             <label for="dateOfBirth" class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-calendar mr-1"></i>Date of Birth
             </label>
-            <input 
-              type="date" 
+            <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="dateOfBirth" 
               bind:value={dateOfBirth}
               on:change={handleDateOfBirthChange}
-              disabled={loading}
-            >
+              disabled={loading} />
           </div>
         </div>
         <div class="col-span-full md:col-span-1">

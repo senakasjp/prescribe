@@ -1120,6 +1120,7 @@ class FirebaseStorageService {
         idNumber: capitalizedPatientData.idNumber?.trim() || '',
         address: capitalizedPatientData.address?.trim() || '',
         allergies: capitalizedPatientData.allergies?.trim() || '',
+        disableNotifications: Boolean(capitalizedPatientData.disableNotifications),
         emergencyContact: capitalizedPatientData.emergencyContact?.trim() || '',
         emergencyPhone: capitalizedPatientData.emergencyPhone?.trim() || '',
         doctorId: capitalizedPatientData.doctorId,

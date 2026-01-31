@@ -3667,7 +3667,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -3825,7 +3827,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -3969,7 +3973,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientIdShort}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientIdBarcode}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorName}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorName}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -4110,7 +4116,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     Available variables:
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientName}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorName}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{date}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{date}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -4255,7 +4263,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -4405,7 +4415,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -4531,7 +4543,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -4657,7 +4671,9 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
-                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
                   </p>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>

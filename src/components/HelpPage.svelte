@@ -15,7 +15,7 @@
           <BrandName className="text-teal-600" />
         </p>
         <h1 class="text-3xl sm:text-4xl lg:text-5xl font-semibold text-gray-900 font-hero">Help center</h1>
-        <p class="mt-2 text-sm text-gray-600">Guides for doctors getting started with M-Prescribe.</p>
+        <p class="mt-2 text-sm text-gray-600">Guides for doctors getting started with M-Prescribe. Includes AI based medicine name, spelling and grammar corrections.</p>
         <div class="mt-4 w-full sm:max-w-md">
           <label class="sr-only" for="help-search">Search help</label>
           <div class="relative">

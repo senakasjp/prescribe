@@ -17,7 +17,6 @@
   let country = ''
   let city = ''
   let currency = 'USD' // Default currency
-  let roundingPreference = 'none' // Default rounding preference
   let loading = false
   let error = ''
   let pharmacyId = null
@@ -25,6 +24,8 @@
   let canEditProfile = false
   let doctorDeleteCode = ''
   let isDoctorOwnedPharmacy = false
+  let availableCities = []
+  let cityOptions = []
   
   // Tab management
   let activeTab = 'edit-profile'
@@ -54,12 +55,15 @@
   ]
   
   // Reactive variable for cities based on selected country
-  $: availableCities = (country && typeof country === 'string' && country.trim()) ? getCitiesByCountry(country.trim()) : []
+  $: availableCities = (country && typeof country === 'string' && country.trim())
+    ? getCitiesByCountry(country.trim())
+    : []
+
+  $: cityOptions = (city && !availableCities.find(c => c && c.name === city))
+    ? [...availableCities, { name: city }]
+    : availableCities
   
-  // Reset city when country changes
-  $: if (country && city && availableCities && !availableCities.find(c => c && c.name === city)) {
-    city = ''
-  }
+  // Keep saved city values even when they are not in the curated list.
   
   // Initialize form with pharmacist data
   const initializeForm = () => {
@@ -69,7 +73,6 @@
       country = pharmacist?.country || ''
       city = pharmacist?.city || ''
       currency = pharmacist?.currency || 'USD'
-      roundingPreference = pharmacist?.roundingPreference || 'none'
       doctorDeleteCode = ''
       isDoctorOwnedPharmacy = false
     } catch (error) {
@@ -80,7 +83,6 @@
       country = ''
       city = ''
       currency = 'USD'
-      roundingPreference = 'none'
       doctorDeleteCode = ''
       isDoctorOwnedPharmacy = false
     }
@@ -250,7 +252,6 @@
         country: country ? country.trim() : '',
         city: city ? city.trim() : '',
         currency: currency || 'USD',
-        roundingPreference: roundingPreference || 'none',
         name: businessName ? businessName.trim() : '',
         // Ensure all required fields are present
         id: pharmacistId, // Use the resolved pharmacist ID
@@ -509,11 +510,11 @@
                   disabled={loading || !country || !canEditProfile}
                 >
                   <option value="">Select your city</option>
-                  {#each availableCities as cityOption}
+                  {#each cityOptions as cityOption}
                     <option value={cityOption.name}>{cityOption.name}</option>
                   {/each}
                 </select>
-                {#if country && availableCities.length === 0}
+                {#if country && cityOptions.length === 0}
                   <div class="text-sm text-gray-500 mt-1 text-yellow-600">
                     <i class="fas fa-exclamation-triangle mr-1"></i>
                     No cities available for the selected country. Please contact support.
@@ -548,27 +549,6 @@
                 <div class="text-xs text-gray-500 mt-1">
                   <i class="fas fa-info-circle mr-1"></i>
                   This currency will be used for pricing and billing
-                </div>
-              </div>
-
-              <div>
-                <label for="roundingPreference" class="block text-sm font-medium text-gray-700 mb-2">
-                  Total Amount Rounding <span class="text-red-600">*</span>
-                </label>
-                <select
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  id="roundingPreference"
-                  bind:value={roundingPreference}
-                  required
-              disabled={loading || !canEditProfile}
-                >
-                  <option value="none">No Rounding</option>
-                  <option value="nearest50">Round to Nearest 50</option>
-                  <option value="nearest100">Round to Nearest 100</option>
-                </select>
-                <div class="text-xs text-gray-500 mt-1">
-                  <i class="fas fa-info-circle mr-1"></i>
-                  Automatically round prescription totals for easier billing
                 </div>
               </div>
             </div>

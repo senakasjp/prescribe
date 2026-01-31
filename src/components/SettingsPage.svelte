@@ -25,6 +25,7 @@
   let consultationCharge = ''
   let hospitalCharge = ''
   let currency = 'USD' // New state variable
+  let roundingPreference = 'none'
   let loading = false
   let error = ''
   let backupLoading = false
@@ -192,7 +193,13 @@
   // Reactive variable for cities based on selected country
   $: {
     try {
-      availableCities = (country && typeof country === 'string' && country.trim()) ? getCitiesByCountry(country.trim()) : []
+      let nextCities = (country && typeof country === 'string' && country.trim())
+        ? getCitiesByCountry(country.trim())
+        : []
+      if (city && !nextCities.find(c => c.name === city)) {
+        nextCities = [...nextCities, { name: city }]
+      }
+      availableCities = nextCities
     } catch (error) {
       console.error('❌ SettingsPage: Error in availableCities reactive statement:', error)
       availableCities = []
@@ -201,35 +208,20 @@
 
   $: {
     try {
-      externalAvailableCities = (externalCountry && typeof externalCountry === 'string' && externalCountry.trim())
+      let nextExternalCities = (externalCountry && typeof externalCountry === 'string' && externalCountry.trim())
         ? getCitiesByCountry(externalCountry.trim())
         : []
+      if (externalCity && !nextExternalCities.find(c => c.name === externalCity)) {
+        nextExternalCities = [...nextExternalCities, { name: externalCity }]
+      }
+      externalAvailableCities = nextExternalCities
     } catch (error) {
       console.error('❌ SettingsPage: Error in externalAvailableCities reactive statement:', error)
       externalAvailableCities = []
     }
   }
 
-  // Reset city when country changes
-  $: {
-    try {
-      if (country && city && !availableCities.find(c => c.name === city)) {
-    city = ''
-      }
-    } catch (error) {
-      console.error('❌ SettingsPage: Error in city reset reactive statement:', error)
-    }
-  }
-
-  $: {
-    try {
-      if (externalCountry && externalCity && !externalAvailableCities.find(c => c.name === externalCity)) {
-        externalCity = ''
-      }
-    } catch (error) {
-      console.error('❌ SettingsPage: Error in external city reset reactive statement:', error)
-    }
-  }
+  // Keep saved city values even when they are not in the curated list.
 
   // Initialize form with user data
   const initializeForm = () => {
@@ -240,6 +232,7 @@
     consultationCharge = String(user?.consultationCharge || '')
     hospitalCharge = String(user?.hospitalCharge || '')
     currency = user?.currency || resolveCurrencyFromCountry(user?.country) || 'USD'
+    roundingPreference = user?.roundingPreference || 'none'
     deleteCode = user?.deleteCode || ''
     
     // Load template settings
@@ -583,6 +576,7 @@
         consultationCharge: String(consultationCharge || '').trim(),
         hospitalCharge: String(hospitalCharge || '').trim(),
         currency: currency,
+        roundingPreference: roundingPreference || 'none',
         name: `${firstName.trim()} ${lastName.trim()}`,
         id: doctor.id // Ensure we use the correct Firebase ID
       }
@@ -1075,6 +1069,25 @@
                   <div class="text-xs text-gray-500 mt-1">
                     <i class="fas fa-info-circle mr-1"></i>
                     Hospital visit or admission fee
+                  </div>
+                </div>
+                <div>
+                  <label for="roundingPreference" class="block text-sm font-medium text-gray-700 mb-2">
+                    Total Amount Rounding
+                  </label>
+                  <select
+                    id="roundingPreference"
+                    value={roundingPreference}
+                    on:change={(e) => roundingPreference = e.target.value}
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  >
+                    <option value="none">No Rounding</option>
+                    <option value="nearest50">Round to Nearest 50</option>
+                    <option value="nearest100">Round to Nearest 100</option>
+                  </select>
+                  <div class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Applies to final totals for prescriptions.
                   </div>
                 </div>
               </div>

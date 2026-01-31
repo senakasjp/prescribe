@@ -205,6 +205,32 @@ const applyTemplate = (value, replacements) => {
   let result = String(value);
   Object.keys(replacements).forEach((key) => {
     const escapedKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (key === "unsubscribeLink") {
+      const replacement = String(replacements[key] || "");
+      const hrefMatch = replacement.match(/href=["']([^"']+)["']/i);
+      if (hrefMatch) {
+        const hrefValue = hrefMatch[1];
+        const hrefPattern = new RegExp(
+            `href=(["']){{\\s*${escapedKey}\\s*}}\\1`,
+            "gi",
+        );
+        const hrefEncodedPattern = new RegExp(
+            `href=(["'])&#123;\\s*&#123;\\s*` +
+              `${escapedKey}` +
+              `\\s*&#125;\\s*&#125;\\1`,
+            "gi",
+        );
+        const hrefNamedEncodedPattern = new RegExp(
+            `href=(["'])&lbrace;\\s*&lbrace;\\s*` +
+              `${escapedKey}` +
+              `\\s*&rbrace;\\s*&rbrace;\\1`,
+            "gi",
+        );
+        result = result.replace(hrefPattern, `href="${hrefValue}"`);
+        result = result.replace(hrefEncodedPattern, `href="${hrefValue}"`);
+        result = result.replace(hrefNamedEncodedPattern, `href="${hrefValue}"`);
+      }
+    }
     const pattern = new RegExp(`{{\\s*${escapedKey}\\s*}}`, "gi");
     const encodedPattern = new RegExp(
         `&#123;\\s*&#123;\\s*${escapedKey}\\s*&#125;\\s*&#125;`,
@@ -221,6 +247,41 @@ const applyTemplate = (value, replacements) => {
   });
   return result;
 };
+
+const getProjectId = () => {
+  const direct = process.env.GCLOUD_PROJECT;
+  if (direct) return direct;
+  try {
+    const config = JSON.parse(process.env.FIREBASE_CONFIG || "{}");
+    return config.projectId || config.project_id || "";
+  } catch (error) {
+    return "";
+  }
+};
+
+const getFunctionRegion = () =>
+  process.env.FUNCTION_REGION || "us-central1";
+
+const buildUnsubscribeUrl = (patient) => {
+  if (!patient || !patient.id || !patient.email) return "";
+  const projectId = getProjectId();
+  if (!projectId) return "";
+  const region = getFunctionRegion();
+  const baseUrl =
+    `https://${region}-${projectId}.cloudfunctions.net/unsubscribeEmail`;
+  const patientIdValue = encodeURIComponent(patient.id);
+  const emailValue = encodeURIComponent(patient.email);
+  return `${baseUrl}?patientId=${patientIdValue}&email=${emailValue}`;
+};
+
+const isNotificationsDisabled = (patient) => (
+  !!(
+    patient &&
+    (patient.disableNotifications ||
+      patient.doNotSendNotifications ||
+      patient.dontSendNotifications)
+  )
+);
 
 exports.sendContactEmail = onRequest(
     {secrets: [SMTP_PASS]},
@@ -359,6 +420,8 @@ const buildWelcomeEmail = async (doctor, template = {}) => {
     doctorIdBarcode,
     referralUrl,
     referralQr,
+    unsubscribeUrl: "",
+    unsubscribeLink: "",
   };
 
   const defaultSubject = "Welcome to Prescribe";
@@ -455,6 +518,11 @@ const buildPatientWelcomeEmail = async (patient, doctorName, template = {}) => {
     }
   }
 
+  const unsubscribeUrl = buildUnsubscribeUrl(patient);
+  const unsubscribeLink = unsubscribeUrl ?
+    `<a href="${unsubscribeUrl}" style="color:#2563eb;">Unsubscribe</a>` :
+    "";
+
   const defaultSubject = "Welcome to M-Prescribe";
   const defaultText = `
 Hi ${patientName},
@@ -469,6 +537,10 @@ If you have any questions, reply to this email.
 Thanks,
 M-Prescribe Team
   `.trim();
+
+  const unsubscribeText = unsubscribeUrl ?
+    `\n\nUnsubscribe: ${unsubscribeUrl}` :
+    "";
 
   const barcodeHtml = patientIdBarcode ?
     `<p style="margin: 16px 0;">
@@ -486,6 +558,11 @@ M-Prescribe Team
       ${barcodeHtml}
       <p>If you have any questions, reply to this email.</p>
       <p style="margin-top: 24px;">Thanks,<br/>M-Prescribe Team</p>
+      ${unsubscribeLink ?
+    `<p style="margin-top: 16px; font-size: 12px; color: #6b7280;">
+        If you no longer want these emails, ${unsubscribeLink}.
+      </p>` :
+    ""}
     </div>
   `;
 
@@ -500,9 +577,12 @@ M-Prescribe Team
   const subjectSource = hasAnyCustomContent ?
     (template.subject || defaultSubject) :
     defaultSubject;
-  const textSource = hasAnyCustomContent ?
+  let textSource = hasAnyCustomContent ?
     (hasCustomText ? template.text : defaultText) :
     defaultText;
+  textSource = textSource && !/unsubscribe/i.test(textSource) ?
+    `${textSource}${unsubscribeText}` :
+    textSource;
   let htmlSource;
   if (forceTextOnly) {
     htmlSource = undefined;
@@ -516,6 +596,14 @@ M-Prescribe Team
     }
   } else {
     htmlSource = defaultHtml;
+  }
+  if (htmlSource && !/unsubscribe/i.test(htmlSource)) {
+    const footer = unsubscribeLink ?
+      `<p style="margin-top: 16px; font-size: 12px; color: #6b7280;">
+        If you no longer want these emails, ${unsubscribeLink}.
+      </p>` :
+      "";
+    htmlSource = footer ? `${htmlSource}${footer}` : htmlSource;
   }
 
   const ensureBarcodeImage = (html) => {
@@ -579,6 +667,8 @@ M-Prescribe Team
     patientIdBarcode,
     barcodeValue: barcodeText || patientIdShort || rawPatientId || "",
     barcodeText: barcodeText || patientIdShort || rawPatientId || "",
+    unsubscribeUrl,
+    unsubscribeLink,
     doctorName: doctorName || "",
   };
 
@@ -609,6 +699,10 @@ const buildAppointmentReminderEmail = async (
         .filter(Boolean)
         .join(" ") ||
     "Patient";
+  const unsubscribeUrl = buildUnsubscribeUrl(patient);
+  const unsubscribeLink = unsubscribeUrl ?
+    `<a href="${unsubscribeUrl}" style="color:#2563eb;">Unsubscribe</a>` :
+    "";
   const defaultSubject = "Appointment reminder";
   const defaultText = `
 Hi ${patientName},
@@ -622,6 +716,9 @@ If you need to reschedule, please contact your clinic.
 Thanks,
 M-Prescribe Team
   `.trim();
+  const unsubscribeText = unsubscribeUrl ?
+    `\n\nUnsubscribe: ${unsubscribeUrl}` :
+    "";
 
   const defaultHtml = `
     <div style="font-family: Arial, sans-serif; color: #111827;">
@@ -634,6 +731,11 @@ M-Prescribe Team
       </p>
       <p>If you need to reschedule, please contact your clinic.</p>
       <p style="margin-top: 24px;">Thanks,<br/>M-Prescribe Team</p>
+      ${unsubscribeLink ?
+    `<p style="margin-top: 16px; font-size: 12px; color: #6b7280;">
+        If you no longer want these emails, ${unsubscribeLink}.
+      </p>` :
+    ""}
     </div>
   `;
 
@@ -648,9 +750,12 @@ M-Prescribe Team
   const subjectSource = hasAnyCustomContent ?
     (template.subject || defaultSubject) :
     defaultSubject;
-  const textSource = hasAnyCustomContent ?
+  let textSource = hasAnyCustomContent ?
     (hasCustomText ? template.text : defaultText) :
     defaultText;
+  textSource = textSource && !/unsubscribe/i.test(textSource) ?
+    `${textSource}${unsubscribeText}` :
+    textSource;
   let htmlSource;
   if (forceTextOnly) {
     htmlSource = undefined;
@@ -665,12 +770,22 @@ M-Prescribe Team
   } else {
     htmlSource = defaultHtml;
   }
+  if (htmlSource && !/unsubscribe/i.test(htmlSource)) {
+    const footer = unsubscribeLink ?
+      `<p style="margin-top: 16px; font-size: 12px; color: #6b7280;">
+        If you no longer want these emails, ${unsubscribeLink}.
+      </p>` :
+      "";
+    htmlSource = footer ? `${htmlSource}${footer}` : htmlSource;
+  }
 
   const replacements = {
     name: patientName,
     patientName,
     doctorName: doctorName || "",
     date: appointmentDate || "",
+    unsubscribeUrl,
+    unsubscribeLink,
   };
 
   const subject = applyTemplate(subjectSource, replacements);
@@ -902,6 +1017,18 @@ exports.sendPatientWelcomeEmail = onDocumentCreated(
       const template = await getPatientWelcomeTemplate();
       if (template && template.enabled === false) {
         logger.info("Patient welcome disabled. Skipping:", patient.email);
+        return;
+      }
+      if (isNotificationsDisabled(patient)) {
+        logger.info("Patient notifications disabled. Skipping:", patient.email);
+        await logEmailEvent({
+          type: "patient-welcome",
+          status: "skipped",
+          to: patient.email,
+          doctorId: patient.doctorId || "",
+          patientId: patient.id || event.params.patientId,
+          error: "notifications-disabled",
+        });
         return;
       }
       const {subject, text, html, attachments} =
@@ -1324,6 +1451,18 @@ exports.sendPatientTemplateEmail = onRequest(
             lastName: "Patient",
           };
         }
+        if (isNotificationsDisabled(patient)) {
+          await logEmailEvent({
+            type: templateId,
+            status: "skipped",
+            to: patient.email || "",
+            doctorId: patient.doctorId || "",
+            patientId: patient.id || "",
+            error: "notifications-disabled",
+          });
+          res.status(200).send("Notifications disabled");
+          return;
+        }
         if (!patient.email) {
           res.status(400).send("Patient email missing");
           return;
@@ -1464,6 +1603,16 @@ exports.sendAppointmentReminderTemplateEmail = onRequest(
         const patient =
           patientData ||
           {firstName: "Test", lastName: "Patient", email: patientEmail};
+        if (isNotificationsDisabled(patient)) {
+          await logEmailEvent({
+            type: templateId,
+            status: "skipped",
+            to: patientEmail,
+            error: "notifications-disabled",
+          });
+          res.status(200).send("Notifications disabled");
+          return;
+        }
         const reminderDate = appointmentDate || "2026-01-01";
         const reminderDoctorName = doctorName || "Dr. Test";
 
@@ -1575,6 +1724,17 @@ exports.sendAppointmentReminders = onSchedule(
             logger.error("Failed to load patient for reminder:", error);
           }
           if (!patient || !patient.email) continue;
+          if (isNotificationsDisabled(patient)) {
+            await logEmailEvent({
+              type: "appointment-reminder",
+              status: "skipped",
+              to: patient.email || "",
+              doctorId: doctorId,
+              patientId: patient.id || prescription.patientId,
+              error: "notifications-disabled",
+            });
+            continue;
+          }
 
           const doctorName =
             doctor.name ||
@@ -1633,6 +1793,65 @@ exports.sendAppointmentReminders = onSchedule(
       }
     },
 );
+
+exports.unsubscribeEmail = onRequest(async (req, res) => {
+  setCors(req, res);
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+  if (req.method !== "GET" && req.method !== "POST") {
+    res.status(405).send("Method Not Allowed");
+    return;
+  }
+
+  const params = req.method === "POST" ? req.body || {} : req.query || {};
+  const patientId = String(params.patientId || "").trim();
+  const email = String(params.email || "").trim().toLowerCase();
+
+  if (!patientId || !email) {
+    res.status(400).send("Missing patientId or email");
+    return;
+  }
+
+  try {
+    const patientRef = admin.firestore().collection("patients").doc(patientId);
+    const patientDoc = await patientRef.get();
+    if (!patientDoc.exists) {
+      res.status(404).send("Patient not found");
+      return;
+    }
+    const patient = patientDoc.data() || {};
+    const patientEmail = String(patient.email || "").trim().toLowerCase();
+    if (!patientEmail || patientEmail !== email) {
+      res.status(403).send("Email mismatch");
+      return;
+    }
+
+    await patientRef.set(
+        {
+          disableNotifications: true,
+          updatedAt: new Date().toISOString(),
+        },
+        {merge: true},
+    );
+
+    res
+        .status(200)
+        .set("Content-Type", "text/html")
+        .send(`
+          <html>
+            <body style="font-family: Arial, sans-serif; padding: 24px;">
+              <h2>You are unsubscribed</h2>
+              <p>Email notifications for this patient have been disabled.</p>
+            </body>
+          </html>
+        `);
+  } catch (error) {
+    logger.error("Failed to unsubscribe:", error);
+    res.status(500).send("Failed to unsubscribe");
+  }
+});
 
 exports.openaiProxy = onRequest(
     {secrets: [OPENAI_API_KEY]},

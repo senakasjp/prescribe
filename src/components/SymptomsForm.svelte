@@ -3,6 +3,7 @@
   import openaiService from '../services/openaiService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import authService from '../services/doctor/doctorAuthService.js'
+  import DateInput from './DateInput.svelte'
 
   export let visible = true
 
@@ -257,13 +258,11 @@
       
       <div class="mb-4">
         <label for="symptomsOnsetDate" class="block text-sm font-medium text-gray-700 mb-1">Onset Date</label>
-        <input 
-          type="date" 
+        <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
           class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="symptomsOnsetDate" 
           bind:value={onsetDate}
-          disabled={loading}
-        />
+          disabled={loading} />
       </div>
       
       <div class="mb-4">

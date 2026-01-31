@@ -12,6 +12,8 @@
   let email = ''
   let password = ''
   let confirmPassword = ''
+  let showPassword = false
+  let showConfirmPassword = false
   let country = ''
   let isRegistering = false
   let error = ''
@@ -263,16 +265,41 @@
   
   <div>
     <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-    <input 
-      type="password" 
-      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-      id="password" 
-      bind:value={password}
-      placeholder="Enter password"
-      minlength="8"
-      required
-      disabled={loading}
-    >
+    <div class="relative">
+      {#if showPassword}
+        <input 
+          type="text" 
+          class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          id="password" 
+          bind:value={password}
+          placeholder="Enter password"
+          minlength="8"
+          required
+          disabled={loading}
+        >
+      {:else}
+        <input 
+          type="password" 
+          class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          id="password" 
+          bind:value={password}
+          placeholder="Enter password"
+          minlength="8"
+          required
+          disabled={loading}
+        >
+      {/if}
+      <button
+        type="button"
+        class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700"
+        on:click={() => (showPassword = !showPassword)}
+        aria-label={showPassword ? 'Hide password' : 'Show password'}
+        aria-pressed={showPassword}
+        disabled={loading}
+      >
+        <i class={showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'}></i>
+      </button>
+    </div>
     {#if isRegistering}
       <div class="mt-1 text-xs text-gray-600">
         <i class="fas fa-shield-alt mr-1"></i>
@@ -284,15 +311,39 @@
   {#if isRegistering}
     <div>
       <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-      <input 
-        type="password" 
-        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-        id="confirmPassword" 
-        bind:value={confirmPassword}
-        placeholder="Confirm password"
-        required
-        disabled={loading}
-      >
+      <div class="relative">
+        {#if showConfirmPassword}
+          <input 
+            type="text" 
+            class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="confirmPassword" 
+            bind:value={confirmPassword}
+            placeholder="Confirm password"
+            required
+            disabled={loading}
+          >
+        {:else}
+          <input 
+            type="password" 
+            class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="confirmPassword" 
+            bind:value={confirmPassword}
+            placeholder="Confirm password"
+            required
+            disabled={loading}
+          >
+        {/if}
+        <button
+          type="button"
+          class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700"
+          on:click={() => (showConfirmPassword = !showConfirmPassword)}
+          aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+          aria-pressed={showConfirmPassword}
+          disabled={loading}
+        >
+          <i class={showConfirmPassword ? 'fas fa-eye-slash' : 'fas fa-eye'}></i>
+        </button>
+      </div>
     </div>
   {/if}
   

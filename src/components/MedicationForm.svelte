@@ -6,6 +6,7 @@
   import { MEDICATION_FREQUENCIES } from '../utils/constants.js'
   import openaiService from '../services/openaiService.js'
   import authService from '../services/doctor/doctorAuthService.js'
+  import DateInput from './DateInput.svelte'
 
   export let visible = true
   export let editingMedication = null
@@ -24,6 +25,16 @@
   let instructions = ''
   let frequency = ''
   let prnAmount = '' // Amount for PRN medications
+  let timing = ''
+  const TIMING_OPTIONS = [
+    'Before meals (AC)',
+    'After meals (PC)',
+    'At bedtime (HS)',
+    'Noon'
+  ]
+  $: frequencyOptions = MEDICATION_FREQUENCIES.filter(
+    (freq) => !TIMING_OPTIONS.includes(freq),
+  )
   let duration = ''
   let startDate = ''
   let endDate = ''
@@ -106,10 +117,12 @@
     instructions = ''
     frequency = ''
     prnAmount = ''
+    timing = ''
     duration = ''
     startDate = ''
     endDate = ''
     notes = ''
+    timing = ''
     error = ''
     formInitialized = false
     formKey++ // Increment key to force DrugAutocomplete reset
@@ -146,6 +159,7 @@
     
     route = editingMedication.route || ''
     instructions = editingMedication.instructions || ''
+    timing = editingMedication.timing || ''
     frequency = editingMedication.frequency || ''
     prnAmount = editingMedication.prnAmount || ''
     // Remove 'days' suffix if present for editing
@@ -258,14 +272,9 @@
       name = ''
     }
     
-    // Set generic name
+    // Set generic name and dosage form from selected drug
     genericName = s.genericName || ''
-    dosageForm = s.dosageForm || dosageForm || ''
-    
-    // If pharmacy has a dosage form, prefer it
-    if (s.dosageForm && !dosageForm) {
-      dosageForm = s.dosageForm
-    }
+    dosageForm = s.dosageForm || s.form || ''
 
     // If the suggestion has a numeric strength like "500 mg", try to prefill dosage
     if (s.strength && !dosage) {
@@ -286,8 +295,14 @@
     
     try {
       // Validate required fields
-      if (!name || !dosage || !instructions || !frequency || !duration) {
+      if (!name || !dosage || !frequency || !duration) {
         throw new Error('Please fill in all required fields')
+      }
+      if (frequency && frequency.includes('PRN') && !String(prnAmount || '').trim()) {
+        throw new Error('Please enter the PRN amount')
+      }
+      if (!timing) {
+        throw new Error('Please select when to take')
       }
 
       const enforcePharmacyOnly = !allowNonPharmacyDrugs
@@ -365,6 +380,7 @@
         route: String(route ?? '').trim(),
         instructions: String(instructions ?? '').trim(),
         frequency,
+        timing,
         prnAmount: frequency.includes('PRN') ? String(prnAmount ?? '').trim() : '', // Include PRN amount if frequency is PRN
         duration: String(duration ?? '').trim() + ' days',
         startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
@@ -387,14 +403,15 @@
         drugDatabase.addDrug(doctorId, {
           name: String(name ?? '').trim(),
           brandName: String(name ?? '').trim(),
-          genericName: String(genericName ?? '').trim(),
-          dosage: String(dosage ?? '').trim() + dosageUnit,
-          dosageUnit: dosageUnit,
-          dosageForm: String(dosageForm ?? '').trim(),
-          instructions: String(instructions ?? '').trim(),
-          frequency,
-          duration: String(duration ?? '').trim() + ' days',
-          notes: String(notes ?? '').trim()
+        genericName: String(genericName ?? '').trim(),
+        dosage: String(dosage ?? '').trim() + dosageUnit,
+        dosageUnit: dosageUnit,
+        dosageForm: String(dosageForm ?? '').trim(),
+        instructions: String(instructions ?? '').trim(),
+        frequency,
+        timing,
+        duration: String(duration ?? '').trim() + ' days',
+        notes: String(notes ?? '').trim()
         })
         
         // Show notification
@@ -746,27 +763,52 @@
               disabled={loading}
             >
               <option value="">Select frequency</option>
-              {#each MEDICATION_FREQUENCIES as freq}
+              {#each frequencyOptions as freq}
                 <option value={freq}>{freq}</option>
               {/each}
             </select>
             {#if frequency && frequency.includes('PRN')}
-              <input 
-                type="text" 
-                class="w-24 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-                placeholder="Amount"
-                bind:value={prnAmount}
-                disabled={loading}
-              >
+              <div class="w-24">
+                <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-1">
+                  Amount <span class="text-red-500">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                  placeholder="Amount"
+                  bind:value={prnAmount}
+                  required
+                  aria-required="true"
+                  disabled={loading}
+                >
+              </div>
             {/if}
           </div>
         </div>
       </div>
       
       <div>
+        <label for="medicationTiming" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          When to take <span class="text-red-500">*</span>
+        </label>
+        <select
+          id="medicationTiming"
+          bind:value={timing}
+          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+          required
+          disabled={loading}
+        >
+          <option value="">Select timing</option>
+          {#each TIMING_OPTIONS as option}
+            <option value={option}>{option}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div>
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
           <label for="medicationInstructions" class="text-xs sm:text-sm font-medium text-gray-700">
-            Instructions <span class="text-red-500">*</span>
+            Instructions
             {#if instructionsImproved}
               <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                 <i class="fas fa-check-circle mr-1"></i>
@@ -798,7 +840,6 @@
           id="medicationInstructions" 
           rows="2" 
           bind:value={instructions}
-          required
           disabled={loading || improvingInstructions}
           placeholder="e.g., Take with food, Take before bedtime"
         ></textarea>
@@ -819,23 +860,19 @@
         </div>
         <div>
           <label for="medicationStartDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Start Date <span class="text-gray-500 text-xs">(Optional)</span></label>
-          <input 
-            type="date" 
+          <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
             class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationStartDate" 
             bind:value={startDate}
-            disabled={loading}
-          >
+            disabled={loading} />
         </div>
         <div>
           <label for="medicationEndDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">End Date</label>
-          <input 
-            type="date" 
+          <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
             class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationEndDate" 
             bind:value={endDate}
-            disabled={loading}
-          >
+            disabled={loading} />
         </div>
       </div>
       

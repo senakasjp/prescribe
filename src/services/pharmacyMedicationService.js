@@ -197,8 +197,15 @@ class PharmacyMedicationService {
             quantity: typeof item.currentStock === 'number'
               ? item.currentStock
               : parseInt(item.currentStock || item.quantity || 0, 10),
+            currentStock: typeof item.currentStock === 'number'
+              ? item.currentStock
+              : parseInt(item.currentStock || item.quantity || 0, 10),
+            sellingPrice: item.sellingPrice ?? item.unitCost ?? item.costPrice ?? null,
+            unitCost: item.unitCost ?? item.sellingPrice ?? item.costPrice ?? null,
+            costPrice: item.costPrice ?? null,
             packUnit: item.packUnit || '',
             expiryDate: item.expiryDate || '',
+            batches: item.batches || [],
             rawItem: item
           }))
 

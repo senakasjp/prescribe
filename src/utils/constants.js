@@ -67,11 +67,17 @@ export const MEDICATION_FREQUENCIES = [
   'Every 6 hours (Q6H)',
   'Every 8 hours (Q8H)',
   'Every 12 hours (Q12H)',
-  'As needed (PRN)',
+  'Every other day (EOD)',
+  'Noon',
+  'STAT',
+  'Nocte',
+  'Mane',
+  'Vesper',
+  'Weekly',
+  'As needed (PRN-SOS)',
   'Before meals (AC)',
   'After meals (PC)',
   'At bedtime (HS)',
-  'Weekly',
   'Monthly'
 ]
 

@@ -10,7 +10,6 @@
   import PharmacistAuth from './components/PharmacistAuth.svelte'
   import PharmacistDashboard from './components/PharmacistDashboard.svelte'
   import PatientManagement from './components/PatientManagement.svelte'
-  import PrescriptionList from './components/PrescriptionList.svelte'
   import AdminPanel from './components/AdminPanel.svelte'
   import SettingsPage from './components/SettingsPage.svelte'
   import ReportsDashboard from './components/ReportsDashboard.svelte'
@@ -26,6 +25,7 @@
   import PricingPage from './components/PricingPage.svelte'
   import RegisterPage from './components/RegisterPage.svelte'
   import PublicHeader from './components/PublicHeader.svelte'
+  import { resolveCurrencyFromCountry } from './utils/currencyByCountry.js'
   
   let user = null
   let loading = true
@@ -43,9 +43,12 @@
   let faqOnly = false
   let pricingOnly = false
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
-  let currentView = 'home' // Navigation state: 'home', 'patients', 'prescriptions', 'pharmacies', 'reports', 'settings'
-  let prescriptions = [] // All prescriptions for the doctor
+  let currentView = 'home' // Navigation state: 'home', 'patients', 'pharmacies', 'reports', 'settings'
   let settingsDoctor = null
+  $: effectiveCurrency = settingsDoctor?.currency
+    || user?.currency
+    || resolveCurrencyFromCountry(settingsDoctor?.country || user?.country || user?.doctorCountry)
+    || 'USD'
 
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
@@ -154,13 +157,7 @@
   // Handle menu navigation
   const handleMenuNavigation = async (view) => {
     console.log('🔍 App.svelte: handleMenuNavigation called with view:', view)
-    currentView = view
-    
-    // Load prescriptions when navigating to prescriptions page
-    if (view === 'prescriptions' && user && user.role === 'doctor') {
-      console.log('🔍 App.svelte: Loading prescriptions for prescriptions page')
-      await loadPrescriptions()
-    }
+    currentView = view === 'prescriptions' ? 'patients' : view
   }
   
   // Handle settings click from menubar
@@ -171,25 +168,6 @@
     currentView = 'settings'
   }
   
-  // Load prescriptions for doctor
-  const loadPrescriptions = async () => {
-    if (user && user.role === 'doctor') {
-      try {
-        const effectiveDoctorId = isExternalDoctor ? user.invitedByDoctorId : user.id
-        console.log('🔍 App.svelte: Loading prescriptions for doctor:', effectiveDoctorId)
-        console.log('🔍 App.svelte: User object:', user)
-        prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(effectiveDoctorId)
-        console.log('🔍 App.svelte: Loaded prescriptions:', prescriptions.length)
-        console.log('🔍 App.svelte: Prescriptions data:', prescriptions)
-      } catch (error) {
-        console.error('❌ App.svelte: Error loading prescriptions:', error)
-        prescriptions = []
-      }
-    } else {
-      console.log('🔍 App.svelte: Not loading prescriptions - user role:', user?.role)
-    }
-  }
-
   $: if (currentView === 'settings' && isExternalDoctor) {
     currentView = 'home'
   }
@@ -258,20 +236,12 @@
         if (existingUser.authProvider === 'email-password' && !existingUser.uid) {
           console.log('✅ Email/password user found, using local storage only')
           user = existingUser
-          // Load prescriptions for doctor
-          if (user.role === 'doctor') {
-            await loadPrescriptions()
-          }
           loading = false
           return // Skip Firebase auth listener for email/password users
         }
         
         // For Google users, still use Firebase auth listener for better sync
         user = existingUser
-        // Load prescriptions for doctor
-        if (user.role === 'doctor') {
-          await loadPrescriptions()
-        }
         loading = false
         console.log('✅ User loaded from localStorage, continuing with Firebase auth listener for sync')
       }
@@ -399,8 +369,6 @@
             // Save to appropriate decoupled service based on role
             if (user.role === 'doctor') {
               doctorAuthService.saveCurrentDoctor(user)
-              // Load prescriptions for doctor
-              await loadPrescriptions()
             } else if (user.role === 'pharmacist') {
               pharmacistAuthService.saveCurrentPharmacist(user)
             } else if (user.role === 'admin') {
@@ -415,8 +383,6 @@
           
           if (fallbackDoctor) {
             user = fallbackDoctor
-            // Load prescriptions for doctor
-            await loadPrescriptions()
           } else if (fallbackPharmacist) {
             user = fallbackPharmacist
           } else if (fallbackAdmin) {
@@ -440,7 +406,7 @@
         doctorUsageStats = aiTokenTracker.getDoctorUsageStats(user.id)
         doctorQuotaStatus = aiTokenTracker.getDoctorQuotaStatus(user.id)
       }
-      
+
       console.log('Setting loading to false')
       loading = false
     } catch (error) {
@@ -876,20 +842,10 @@
                   type="button"
                   class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'patients' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
                   on:click={() => handleMenuNavigation('patients')}
+                  data-guide="patients-nav"
                 >
                   <i class="fas fa-users mr-1 sm:mr-2"></i>
                   <span class="hidden xs:inline">Patients</span>
-                </button>
-              </li>
-              <li>
-                <button 
-                  type="button"
-                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'prescriptions' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
-                  on:click={() => handleMenuNavigation('prescriptions')}
-                >
-                  <i class="fas fa-prescription-bottle-alt mr-1 sm:mr-2"></i>
-                  <span class="hidden sm:inline">Prescriptions</span>
-                  <span class="sm:hidden hidden xs:inline">Rx</span>
                 </button>
               </li>
               <li>
@@ -922,6 +878,7 @@
                     type="button"
                     class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
                     on:click={handleSettingsClick}
+                    data-guide="settings-nav"
                   >
                     <i class="fas fa-user-cog mr-1 sm:mr-2"></i>
                     <span class="hidden xs:inline">Settings</span>
@@ -953,39 +910,6 @@
           on:user-updated={handleUserUpdate}
           on:back-to-app={() => currentView = 'home'}
         />
-      {:else if currentView === 'prescriptions'}
-        <!-- Dedicated Prescriptions View -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="text-lg font-semibold text-gray-900">
-              <i class="fas fa-prescription-bottle-alt mr-2 text-teal-600"></i>
-              All Prescriptions
-            </h2>
-            <div class="text-sm text-gray-500">
-              Total: {prescriptions.length} prescription{prescriptions.length !== 1 ? 's' : ''}
-            </div>
-          </div>
-          
-          {#if prescriptions.length === 0}
-            <div class="text-center py-12">
-              <i class="fas fa-prescription-bottle-alt text-6xl text-gray-300 mb-4"></i>
-              <h3 class="text-lg font-semibold text-gray-500 mb-2">No Prescriptions Yet</h3>
-              <p class="text-gray-400 mb-6">Start by creating prescriptions for your patients.</p>
-              <button 
-                class="bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200"
-                on:click={() => currentView = 'patients'}
-              >
-                <i class="fas fa-users mr-2"></i>
-                Go to Patients
-              </button>
-            </div>
-          {:else}
-            <PrescriptionList 
-              {prescriptions}
-              currency={settingsDoctor?.currency || user?.currency || 'USD'}
-            />
-          {/if}
-        </div>
       {:else if currentView === 'reports'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <ReportsDashboard user={effectiveUser} />
@@ -1204,6 +1128,17 @@
             </div>
             <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <div class="flex flex-col items-center text-center gap-3">
+                <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 text-3xl">
+                  <i class="fas fa-spell-check"></i>
+                </span>
+                <div>
+                  <p class="text-base font-semibold text-gray-900">AI spelling and grammar corrections</p>
+                  <p class="text-sm text-gray-500">Clean medicine names and patient notes with automatic English fixes</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 text-3xl">
                   <i class="fas fa-file-prescription"></i>
                 </span>
@@ -1286,6 +1221,5 @@
   :global(.font-hero) {
     font-family: 'Merriweather', 'Space Grotesk', 'Inter', system-ui, sans-serif;
   }
-  
-  
+
 </style>

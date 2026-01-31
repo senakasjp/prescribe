@@ -3,6 +3,7 @@
   import { formatDate, calculateAge } from '../../utils/dataProcessing.js'
   import { getIconClass, getBadgeClasses } from '../../utils/uiHelpers.js'
   import { GENDER_OPTIONS, BLOOD_TYPES } from '../../utils/constants.js'
+  import DateInput from '../DateInput.svelte'
   
   const dispatch = createEventDispatcher()
   
@@ -117,12 +118,10 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label for="editDateOfBirth" class="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-          <input
-            id="editDateOfBirth"
-            type="date"
+          <DateInput id="editDateOfBirth"
+            type="date" lang="en-GB" placeholder="dd/mm/yyyy"
             bind:value={editPatientData.dateOfBirth}
-            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-          />
+            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" />
         </div>
         <div>
           <label for="editGender" class="block text-sm font-medium text-gray-700 mb-1">Gender</label>

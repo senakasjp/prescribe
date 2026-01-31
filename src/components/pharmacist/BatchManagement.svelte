@@ -6,6 +6,7 @@
   import inventoryService from '../../services/pharmacist/inventoryService.js'
   import { notifySuccess, notifyError } from '../../stores/notifications.js'
   import ConfirmationModal from '../ConfirmationModal.svelte'
+  import DateInput from '../DateInput.svelte'
   
   export let item
   export let onClose
@@ -454,12 +455,10 @@
               
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date *</label>
-                <input 
-                  type="date" 
+                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                   bind:value={newBatchForm.expiryDate}
                   required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               
               <div>
@@ -485,11 +484,9 @@
               
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Purchase Date</label>
-                <input 
-                  type="date" 
+                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                   bind:value={newBatchForm.purchaseDate}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
             

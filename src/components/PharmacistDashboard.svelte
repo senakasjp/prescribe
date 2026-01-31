@@ -17,6 +17,7 @@
   import inventoryService from '../services/pharmacist/inventoryService.js'
   import { formatDoctorId, formatPrescriptionId, formatPharmacyId, formatPatientId } from '../utils/idFormat.js'
   import BrandName from './BrandName.svelte'
+  import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
   
   export let pharmacist
   let pharmacyId = null
@@ -67,7 +68,10 @@
     loadDoctorDeleteCode()
   }
 
-  $: displayCurrency = (isDoctorOwnedPharmacy ? doctorOwnerProfile?.currency : pharmacist?.currency) || pharmacist?.currency || 'USD'
+  $: displayCurrency = (isDoctorOwnedPharmacy ? doctorOwnerProfile?.currency : pharmacist?.currency)
+    || pharmacist?.currency
+    || resolveCurrencyFromCountry(doctorOwnerProfile?.country || pharmacist?.doctorCountry || pharmacist?.country)
+    || 'USD'
   
   // Pagination for prescriptions
   let currentPrescriptionPage = 1
@@ -1606,7 +1610,7 @@
       dailyFrequency = 3 // 24/8 = 3 times per day
     } else if (medication.frequency.includes('Every 12 hours') || medication.frequency.includes('(Q12H)')) {
       dailyFrequency = 2 // 24/12 = 2 times per day
-    } else if (medication.frequency.includes('As needed') || medication.frequency.includes('(PRN)')) {
+    } else if (medication.frequency.includes('As needed') || medication.frequency.includes('PRN')) {
       // For PRN medications, use the prnAmount directly if available, otherwise show "As needed"
       return medication.prnAmount ? `${medication.prnAmount}` : 'As needed'
     } else if (medication.frequency.includes('Weekly')) {
@@ -1723,7 +1727,8 @@
       const prescriptionForCharge = buildPrescriptionWithEditableAmounts()
       const effectivePharmacist = {
         ...pharmacist,
-        currency: displayCurrency
+        currency: displayCurrency,
+        pharmacyId: pharmacist?.pharmacyId || pharmacyId || pharmacist?.id || pharmacist?.uid || null
       }
       chargeBreakdown = await chargeCalculationService.calculatePrescriptionCharge(prescriptionForCharge, effectivePharmacist)
       console.log('✅ Charge calculation completed:', chargeBreakdown)
@@ -2194,7 +2199,7 @@
             {/if}
           {:else if activeTab === 'inventory'}
             <!-- Advanced Inventory System -->
-            <InventoryDashboard {pharmacist} />
+            <InventoryDashboard {pharmacist} currency={displayCurrency} />
           {:else if activeTab === 'registrations'}
             <div class="space-y-4">
               <div class="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">

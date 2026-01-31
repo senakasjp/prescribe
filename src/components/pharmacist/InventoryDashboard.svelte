@@ -7,8 +7,10 @@
   import firebaseStorage from '../../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../../stores/notifications.js'
   import ConfirmationModal from '../ConfirmationModal.svelte'
+  import DateInput from '../DateInput.svelte'
   
   export let pharmacist
+  export let currency = 'USD'
   let pharmacyId = null
   $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
   
@@ -329,9 +331,9 @@
   
   // Format currency
   const formatCurrency = (amount) => {
-    const currency = pharmacist?.currency || 'USD'
+    const resolvedCurrency = currency || pharmacist?.currency || 'USD'
     
-    if (currency === 'LKR') {
+    if (resolvedCurrency === 'LKR') {
       // Format the number without currency style (icon shows currency)
       const numberFormatted = new Intl.NumberFormat('en-US', {
         minimumFractionDigits: 2,
@@ -342,14 +344,14 @@
       // For other currencies, use the standard currency formatting
       const formatted = new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: currency
+        currency: resolvedCurrency
       }).format(amount)
       
-      if (currency === 'USD') {
+      if (resolvedCurrency === 'USD') {
         return formatted.replace('$', 'USD $')
-      } else if (currency === 'EUR') {
+      } else if (resolvedCurrency === 'EUR') {
         return formatted.replace('€', 'EUR €')
-      } else if (currency === 'GBP') {
+      } else if (resolvedCurrency === 'GBP') {
         return formatted.replace('£', 'GBP £')
       }
       
@@ -1105,12 +1107,10 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date *</label>
-                <input 
-                  type="date" 
+                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                   bind:value={newItemForm.expiryDate}
                   required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed after creation</p>
               </div>
               
@@ -1404,15 +1404,13 @@
               
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date *</label>
-                <input 
-                  type="date"
+                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy"
                   bind:value={selectedItem.expiryDate}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                   disabled
                   readonly
-                  title="Expiry Date cannot be changed (Primary Key)"
-                />
+                  title="Expiry Date cannot be changed (Primary Key)" />
                 <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
               </div>
               
