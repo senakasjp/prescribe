@@ -297,7 +297,7 @@
           Need an account? Register
         </button>
       {:else}
-        <a class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200" href="/#signin">
+        <a class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200" href="/?register=1#signin">
           Need an account? Register
         </a>
       {/if}

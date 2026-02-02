@@ -37,17 +37,17 @@
   
   // Get appropriate colors based on type
   $: confirmButtonClass = {
-    warning: 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-300',
+    warning: 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-300',
     danger: 'bg-red-600 hover:bg-red-700 focus:ring-red-300',
     info: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-300',
-    success: 'bg-green-600 hover:bg-green-700 focus:ring-green-300'
+    success: 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-300'
   }[type] || 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-300'
   
   $: iconClass = {
     warning: 'fas fa-exclamation-triangle text-yellow-600',
     danger: 'fas fa-exclamation-circle text-red-600',
     info: 'fas fa-info-circle text-blue-600',
-    success: 'fas fa-check-circle text-green-600'
+    success: 'fas fa-check-circle text-teal-600'
   }[type] || 'fas fa-info-circle text-blue-600'
 
   $: isCodeValid = !requireCode || (codeInput && codeInput === String(expectedCode || ''))
@@ -66,7 +66,7 @@
     aria-modal="true"
   >
     <!-- Flowbite Modal Container -->
-    <div class="relative w-full max-w-md max-h-full mx-auto flex items-center justify-center min-h-screen">
+    <div class="relative w-full max-w-sm max-h-full mx-auto flex items-center justify-center min-h-screen">
       <!-- Flowbite Modal Content -->
       <div 
         class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
@@ -117,10 +117,10 @@
         </div>
         
         <!-- Flowbite Modal Footer -->
-        <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b-lg dark:border-gray-600 space-x-3">
+        <div class="action-buttons p-4 md:p-5 border-t border-gray-200 rounded-b-lg dark:border-gray-600">
           <button
             type="button"
-            class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-600 dark:text-white dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-500 transition-colors duration-200"
+            class="action-button action-button-secondary dark:bg-gray-600 dark:text-white dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-500"
             on:click={handleCancel}
             disabled={loading}
           >
@@ -129,7 +129,7 @@
           </button>
           <button
             type="button"
-            class="text-white {confirmButtonClass} hover:bg-opacity-90 focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:focus:ring-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            class="action-button text-white {confirmButtonClass} dark:focus:ring-800 disabled:opacity-50 disabled:cursor-not-allowed"
             on:click={handleConfirm}
             disabled={loading || !isCodeValid}
           >
@@ -147,4 +147,3 @@
     </div>
   </div>
 {/if}
-

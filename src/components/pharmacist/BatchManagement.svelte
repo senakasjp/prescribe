@@ -432,7 +432,7 @@
           <form on:submit|preventDefault={addBatch} class="space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Batch Number *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   bind:value={newBatchForm.batchNumber}
@@ -443,7 +443,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Quantity *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="number" 
                   bind:value={newBatchForm.quantity}
@@ -454,7 +454,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                   bind:value={newBatchForm.expiryDate}
                   required
@@ -500,17 +500,17 @@
               ></textarea>
             </div>
             
-            <div class="flex justify-end space-x-3">
+            <div class="action-buttons">
               <button 
                 type="button"
-                class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                class="action-button action-button-secondary"
                 on:click={() => showAddBatchModal = false}
               >
                 Cancel
               </button>
               <button 
                 type="submit"
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                class="action-button action-button-primary"
               >
                 Add Batch
               </button>

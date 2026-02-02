@@ -1,7 +1,10 @@
 <!-- Settings Page - Full page settings interface -->
 <script>
   
-  import { createEventDispatcher, onMount } from 'svelte'
+  import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte'
+  import Shepherd from 'shepherd.js'
+  import { offset } from '@floating-ui/dom'
+  import 'shepherd.js/dist/css/shepherd.css'
   import authService from '../services/authService.js'
   import firebaseAuthService from '../services/firebaseAuth.js'
   import { countries } from '../data/countries.js'
@@ -13,6 +16,7 @@
   import backupService from '../services/backupService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+  import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
 
   const dispatch = createEventDispatcher()
   export let user
@@ -24,6 +28,8 @@
   let city = ''
   let consultationCharge = ''
   let hospitalCharge = ''
+  let phoneCountryCode = ''
+  let phoneNumber = ''
   let currency = 'USD' // New state variable
   let roundingPreference = 'none'
   let loading = false
@@ -70,14 +76,462 @@
 
   // Tab management
   let activeTab = 'edit-profile'
+
+  const TOUR_STORAGE_PREFIX = 'settings-tour-seen'
+  let settingsTour = null
+  let lastTourUserKey = ''
   
   // Available cities based on selected country
   let availableCities = []
 
   // Debug: Log initial state
+  const getSettingsTourKey = () => {
+    const userKey = user?.id || user?.uid || user?.email || 'unknown'
+    return `${TOUR_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const hasSeenSettingsTour = () => {
+    if (typeof localStorage === 'undefined') return false
+    return localStorage.getItem(getSettingsTourKey()) === 'true'
+  }
+
+  const markSettingsTourSeen = () => {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(getSettingsTourKey(), 'true')
+  }
+
+  const isNewDoctorForTour = () => {
+    if (!user) return false
+    const missingProfile = !user.firstName || !user.lastName || !user.country || !user.city
+    if (missingProfile) return true
+    if (!user.createdAt) return false
+    const createdAt = new Date(user.createdAt)
+    if (Number.isNaN(createdAt.getTime())) return false
+    const daysSinceCreated = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+    return daysSinceCreated <= 14
+  }
+
+  const buildSettingsTour = () => {
+    const findVisibleTourTarget = (name) => {
+      if (typeof document === 'undefined') return null
+      const nodes = Array.from(document.querySelectorAll(`[data-tour="${name}"]`))
+      const visible = nodes.find((el) => el.offsetParent !== null && el.getClientRects().length > 0)
+      return visible || nodes[0] || null
+    }
+
+    const updateStepTarget = (step, name, fallback) => {
+      const target = findVisibleTourTarget(name) || (fallback ? findVisibleTourTarget(fallback) : null)
+      if (target && step?.updateStepOptions) {
+        step.updateStepOptions({ attachTo: { element: target, on: 'bottom' } })
+      }
+    }
+
+    const tour = new Shepherd.Tour({
+      useModalOverlay: true,
+      defaultStepOptions: {
+        cancelIcon: { enabled: true },
+        scrollTo: { behavior: 'smooth', block: 'center' },
+        modalOverlayOpeningPadding: 12,
+        modalOverlayOpeningRadius: 8,
+        floatingUIOptions: {
+          middleware: [offset(12)]
+        }
+      }
+    })
+
+    tour.addStep({
+      id: 'settings-menu',
+      text: 'Open Settings from the menu anytime.',
+      attachTo: { element: '[data-tour="settings-menu"]', on: 'bottom' },
+      buttons: [
+        { text: 'Skip', action: tour.cancel, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-edit-profile',
+      text: 'Start in Edit Profile to set your details.',
+      attachTo: { element: '[data-tour="settings-tab-edit-profile"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        activeTab = 'edit-profile'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-save-profile',
+      text: 'Save your profile changes.',
+      attachTo: { element: '[data-tour="settings-save-profile"]', on: 'top' },
+      beforeShowPromise: async () => {
+        activeTab = 'edit-profile'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-prescription-template',
+      text: 'Next, configure your prescription template.',
+      attachTo: { element: '[data-tour="settings-tab-prescription-template"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        activeTab = 'prescription-template'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-save-template',
+      text: 'Save your template settings.',
+      attachTo: { element: '[data-tour="settings-save-template"]', on: 'top' },
+      beforeShowPromise: async () => {
+        activeTab = 'prescription-template'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-procedures',
+      text: 'Set your procedures pricing here.',
+      attachTo: { element: '[data-tour="settings-tab-procedures"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        activeTab = 'procedures'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-save-procedures',
+      text: 'Save your procedure prices when you are done.',
+      attachTo: { element: '[data-tour="settings-save-procedures"]', on: 'top' },
+      beforeShowPromise: async () => {
+        activeTab = 'procedures'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patients-menu',
+      text: 'Go to Patients to add your first patient.',
+      attachTo: { element: '[data-tour="patients-menu"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patients-add',
+      text: 'Click Add New Patient to create a record.',
+      attachTo: { element: '[data-tour="patients-add"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patient-save',
+      text: 'Save the new patient once the form is complete.',
+      attachTo: { element: '[data-tour="patient-save"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patients-list',
+      text: 'All patients appear here.',
+      attachTo: { element: '[data-tour="patients-list"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const patientsViewStep = tour.addStep({
+      id: 'patients-view',
+      text: 'Use View to open the patient record.',
+      attachTo: { element: '[data-tour="patients-view"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+        updateStepTarget(patientsViewStep, 'patients-view', 'patients-list')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        {
+          text: 'Next',
+          action: async () => {
+            if (typeof document !== 'undefined') {
+              const viewButton = document.querySelector('[data-tour="patients-view"]')
+              viewButton?.click?.()
+            }
+            if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+              window.__setAppView('prescriptions')
+            }
+            if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+              window.__setPatientDetailsTab('overview')
+            }
+            await tick()
+            tour.next()
+          }
+        }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patient-overview',
+      text: 'This is the patient overview screen.',
+      attachTo: { element: '[data-tour="patient-overview-panel"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+          window.__setPatientDetailsTab('overview')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionsTabStep = tour.addStep({
+      id: 'patient-prescriptions-tab',
+      text: 'Now go to Prescriptions.',
+      attachTo: { element: '[data-tour="patient-prescriptions-tab"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionsTabStep, 'patient-prescriptions-tab', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        {
+          text: 'Next',
+          action: async () => {
+            if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+              window.__setPatientDetailsTab('prescriptions')
+            }
+            await tick()
+            tour.next()
+          }
+        }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patient-prescriptions-panel',
+      text: 'This is the prescriptions area.',
+      attachTo: { element: '[data-tour="patient-prescriptions-panel"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+          window.__setPatientDetailsTab('prescriptions')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionNewStep = tour.addStep({
+      id: 'prescription-new',
+      text: 'Start a new prescription.',
+      attachTo: { element: '[data-tour="prescription-new"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionNewStep, 'prescription-new', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionAddDrugStep = tour.addStep({
+      id: 'prescription-add-drug',
+      text: 'Add drugs to the prescription.',
+      attachTo: { element: '[data-tour="prescription-add-drug"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionAddDrugStep, 'prescription-add-drug', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionAiStep = tour.addStep({
+      id: 'prescription-ai-analysis',
+      text: 'Run AI Analysis.',
+      attachTo: { element: '[data-tour="prescription-ai-analysis"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionAiStep, 'prescription-ai-analysis', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionFinalizeStep = tour.addStep({
+      id: 'prescription-finalize',
+      text: 'Finalize the prescription.',
+      attachTo: { element: '[data-tour="prescription-finalize"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionFinalizeStep, 'prescription-finalize', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionPrintStep = tour.addStep({
+      id: 'prescription-print',
+      text: 'Print the prescription.',
+      attachTo: { element: '[data-tour="prescription-print"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionPrintStep, 'prescription-print', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Done', action: tour.complete }
+      ]
+    })
+
+    tour.on('complete', markSettingsTourSeen)
+    tour.on('cancel', markSettingsTourSeen)
+
+    return tour
+  }
+
+  const startSettingsTour = async () => {
+    const userKey = user?.id || user?.uid || user?.email || ''
+    if (!userKey) return
+    if (activeTab !== 'edit-profile') {
+      activeTab = 'edit-profile'
+      await tick()
+    }
+    await tick()
+    if (settingsTour) {
+      settingsTour.cancel()
+      settingsTour = null
+    }
+    settingsTour = buildSettingsTour()
+    settingsTour.start()
+  }
+
+  const startSettingsTourIfNeeded = async () => {
+    const userKey = user?.id || user?.uid || user?.email || ''
+    if (!userKey || userKey === lastTourUserKey) return
+    if (hasSeenSettingsTour()) return
+    if (!isNewDoctorForTour()) return
+    lastTourUserKey = userKey
+    await startSettingsTour()
+  }
+
   onMount(() => {
-    // Component mounted
     loadDeleteCode()
+    startSettingsTourIfNeeded()
+    if (typeof window !== 'undefined') {
+      window.__startSettingsTour = startSettingsTour
+    }
+  })
+
+  $: if (user?.email) {
+    startSettingsTourIfNeeded()
+  }
+
+  onDestroy(() => {
+    if (settingsTour) {
+      settingsTour.cancel()
+      settingsTour = null
+    }
+    if (typeof window !== 'undefined' && window.__startSettingsTour === startSettingsTour) {
+      delete window.__startSettingsTour
+    }
   })
 
   // Add debugging to template type reactive statement
@@ -134,6 +588,28 @@
     { code: 'QAR', name: 'Qatari Riyal', symbol: '﷼' },
     { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'د.ك' }
   ]
+
+  const resolvePhoneDialCode = (countryName) => {
+    if (!countryName) return ''
+    const match = phoneCountryCodes.find((entry) => entry.name === countryName)
+    return match?.dialCode || ''
+  }
+
+  const isSriLankaPhone = () => {
+    return country === 'Sri Lanka' || phoneCountryCode === '+94'
+  }
+
+  const isPrimaryDoctor = () => {
+    return !user?.externalDoctor
+  }
+
+  const normalizePhoneInput = (value) => {
+    const digitsOnly = String(value || '').replace(/\D/g, '')
+    if (isSriLankaPhone()) {
+      return digitsOnly.slice(0, 9)
+    }
+    return digitsOnly
+  }
 
   const procedureOptions = [
     'C&D- type -A',
@@ -229,6 +705,16 @@
     lastName = user?.lastName || ''
     country = user?.country || ''
     city = user?.city || ''
+    phoneCountryCode = user?.phoneCountryCode || resolvePhoneDialCode(user?.country) || ''
+    if (user?.phone) {
+      const normalizedPhone = String(user.phone)
+      phoneNumber = phoneCountryCode && normalizedPhone.startsWith(phoneCountryCode)
+        ? normalizedPhone.slice(phoneCountryCode.length).trim()
+        : normalizedPhone
+      phoneNumber = normalizePhoneInput(phoneNumber)
+    } else {
+      phoneNumber = ''
+    }
     consultationCharge = String(user?.consultationCharge || '')
     hospitalCharge = String(user?.hospitalCharge || '')
     currency = user?.currency || resolveCurrencyFromCountry(user?.country) || 'USD'
@@ -255,6 +741,9 @@
     country = event.target.value
     const resolvedCurrency = resolveCurrencyFromCountry(country)
     currency = resolvedCurrency || 'USD'
+    if (!phoneCountryCode) {
+      phoneCountryCode = resolvePhoneDialCode(country)
+    }
   }
 
   const handleCurrencyChange = (event) => {
@@ -554,6 +1043,18 @@
       if (!city.trim()) {
         throw new Error('City is required')
       }
+
+      if (isPrimaryDoctor()) {
+        if (!phoneCountryCode.trim()) {
+          throw new Error('Country code is required')
+        }
+        if (!phoneNumber.trim()) {
+          throw new Error('Mobile number is required')
+        }
+        if (isSriLankaPhone() && normalizePhoneInput(phoneNumber).length !== 9) {
+          throw new Error('Sri Lanka mobile numbers must be 9 digits')
+        }
+      }
       
       // Import firebaseStorage service to get correct doctor ID
       const firebaseModule = await import('../services/firebaseStorage.js')
@@ -573,6 +1074,10 @@
         lastName: lastName.trim(),
         country: country.trim(),
         city: city.trim(),
+        phoneCountryCode: phoneCountryCode.trim(),
+        phone: phoneNumber.trim()
+          ? `${phoneCountryCode.trim()} ${phoneNumber.trim()}`.trim()
+          : '',
         consultationCharge: String(consultationCharge || '').trim(),
         hospitalCharge: String(hospitalCharge || '').trim(),
         currency: currency,
@@ -866,6 +1371,7 @@
           <button 
             class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'edit-profile' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
             on:click={() => switchTab('edit-profile')}
+            data-tour="settings-tab-edit-profile"
           >
             <i class="fas fa-user-edit mr-2"></i>
             Edit Profile
@@ -873,6 +1379,7 @@
           <button 
             class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'prescription-template' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
             on:click={() => switchTab('prescription-template')}
+            data-tour="settings-tab-prescription-template"
           >
             <i class="fas fa-file-medical mr-2"></i>
             Prescription Template
@@ -887,6 +1394,7 @@
           <button 
             class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'procedures' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
             on:click={() => switchTab('procedures')}
+            data-tour="settings-tab-procedures"
           >
             <i class="fas fa-list-check mr-2"></i>
             Procedures
@@ -920,7 +1428,7 @@
           <form id="edit-profile-form" on:submit={handleSubmit}>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label for="firstName" class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   id="firstName"
@@ -932,7 +1440,7 @@
               </div>
               
               <div>
-                <label for="lastName" class="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   id="lastName"
@@ -944,7 +1452,7 @@
               </div>
               
               <div>
-                <label for="country" class="block text-sm font-medium text-gray-700 mb-2">Country *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <select 
                   id="country"
                   value={country}
@@ -960,7 +1468,7 @@
               </div>
               
               <div>
-                <label for="city" class="block text-sm font-medium text-gray-700 mb-2">City *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <select 
                   id="city"
                   value={city}
@@ -974,6 +1482,43 @@
                     <option value={cityOption.name}>{cityOption.name}</option>
                   {/each}
                 </select>
+              </div>
+
+              <div>
+                <label for="phoneNumber" class="block text-sm font-medium text-gray-700 mb-2">
+                  Mobile Number{#if isPrimaryDoctor()} <span class="text-red-500">*</span>{/if}
+                </label>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div class="md:col-span-1">
+                    <select 
+                      id="phoneCountryCode"
+                      value={phoneCountryCode}
+                      on:change={(e) => phoneCountryCode = e.target.value}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      required={isPrimaryDoctor()}
+                      aria-label="Country code"
+                    >
+                      <option value="">Code</option>
+                      {#each phoneCountryCodes as entry}
+                        <option value={entry.dialCode}>{entry.name} ({entry.dialCode})</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <div class="md:col-span-2">
+                    <input 
+                      type="tel" 
+                      id="phoneNumber"
+                      value={phoneNumber}
+                      on:input={(e) => phoneNumber = normalizePhoneInput(e.target.value)}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="Enter mobile number"
+                      inputmode="numeric"
+                      maxlength={isSriLankaPhone() ? 9 : undefined}
+                      required={isPrimaryDoctor()}
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Select country code, then enter number.</p>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -1005,7 +1550,7 @@
               
               <!-- Currency Selection -->
               <div>
-                <label for="currency" class="block text-sm font-medium text-gray-700 mb-2">Currency *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <select 
                   id="currency"
                   value={currency}
@@ -1410,7 +1955,7 @@
           <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input
                   type="text"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
@@ -1418,7 +1963,7 @@
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input
                   type="text"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
@@ -1426,7 +1971,7 @@
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Username *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input
                   type="text"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
@@ -1435,7 +1980,7 @@
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Password *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input
                   type="password"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
@@ -1443,7 +1988,7 @@
                 />
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Confirm Password *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input
                   type="password"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
@@ -1576,6 +2121,7 @@
               class="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center transition-colors duration-200"
               style="background-color: #dc2626 !important;"
               disabled={loading}
+              data-tour="settings-save-profile"
             >
               {#if loading}
                 <ThreeDots size="small" color="white" />
@@ -1589,6 +2135,7 @@
               class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center transition-colors duration-200"
               on:click={saveTemplateSettings}
               disabled={!templateType}
+              data-tour="settings-save-template"
             >
               <i class="fas fa-save mr-1 fa-sm"></i>
               Save Template Settings
@@ -1598,6 +2145,7 @@
               type="button" 
               class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center transition-colors duration-200"
               on:click={saveTemplateSettings}
+              data-tour="settings-save-procedures"
             >
               <i class="fas fa-save mr-1 fa-sm"></i>
               Save Procedure Prices

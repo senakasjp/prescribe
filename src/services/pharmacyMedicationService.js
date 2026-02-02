@@ -200,6 +200,9 @@ class PharmacyMedicationService {
             currentStock: typeof item.currentStock === 'number'
               ? item.currentStock
               : parseInt(item.currentStock || item.quantity || 0, 10),
+            minimumStock: typeof item.minimumStock === 'number'
+              ? item.minimumStock
+              : parseInt(item.minimumStock || 0, 10),
             sellingPrice: item.sellingPrice ?? item.unitCost ?? item.costPrice ?? null,
             unitCost: item.unitCost ?? item.sellingPrice ?? item.costPrice ?? null,
             costPrice: item.costPrice ?? null,

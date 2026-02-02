@@ -1,5 +1,5 @@
 <script>
-  import { onMount, tick } from 'svelte'
+  import { onMount, onDestroy, tick } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
   import openaiService from '../services/openaiService.js'
   import authService from '../services/authService.js'
@@ -3449,6 +3449,17 @@
       loadPatientData()
     }
     loadDeleteCode()
+    if (typeof window !== 'undefined') {
+      window.__setPatientDetailsTab = (tab) => {
+        handleTabChange(tab, false)
+      }
+    }
+  })
+
+  onDestroy(() => {
+    if (typeof window !== 'undefined' && window.__setPatientDetailsTab) {
+      delete window.__setPatientDetailsTab
+    }
   })
 
   const loadDeleteCode = async () => {
@@ -3663,6 +3674,7 @@
             on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}
             disabled={!enabledTabs.includes('prescriptions')}
             title={enabledTabs.includes('prescriptions') ? 'View prescriptions' : 'Complete previous steps to unlock'}
+            data-tour="patient-prescriptions-tab"
           >
             <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-semibold mb-1 {activeTab === 'prescriptions' ? 'bg-teal-600' : enabledTabs.includes('prescriptions') ? 'bg-rose-500' : 'bg-gray-300'}">
               <i class="fas fa-pills text-xs sm:text-sm"></i>
@@ -3675,8 +3687,11 @@
       <!-- Desktop: Full progress bar with connectors -->
       <div class="hidden sm:block">
         <div class="flex justify-between items-center">
-          <div class="flex items-center cursor-pointer {enabledTabs.includes('overview') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
-             on:click={() => enabledTabs.includes('overview') && handleTabChange('overview')}>
+          <div
+            class="flex items-center cursor-pointer {enabledTabs.includes('overview') ? 'cursor-pointer' : 'cursor-not-allowed'}"
+            on:click={() => enabledTabs.includes('overview') && handleTabChange('overview')}
+            data-tour="patient-overview-tab"
+          >
             <div class="flex flex-col items-center">
               <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'overview' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('overview') ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-gray-300'}">
                 <i class="fas fa-user text-sm sm:text-base md:text-lg"></i>
@@ -3723,8 +3738,11 @@
         
           <div class="flex-1 h-0.5 mx-2 sm:mx-4 {enabledTabs.includes('prescriptions') ? 'bg-rose-500' : 'bg-gray-300'}"></div>
         
-          <div class="flex items-center cursor-pointer {enabledTabs.includes('prescriptions') ? 'cursor-pointer' : 'cursor-not-allowed'}" 
-             on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}>
+          <div
+            class="flex items-center cursor-pointer {enabledTabs.includes('prescriptions') ? 'cursor-pointer' : 'cursor-not-allowed'}"
+            on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}
+            data-tour="patient-prescriptions-tab"
+          >
             <div class="flex flex-col items-center">
               <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-white font-semibold transition-all duration-200 {activeTab === 'prescriptions' ? 'bg-teal-600 shadow-lg' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 hover:bg-rose-600' : 'bg-gray-300'}">
                 <i class="fas fa-pills text-sm sm:text-base md:text-lg"></i>
@@ -3740,7 +3758,7 @@
     <div class="mt-3 sm:mt-4">
       <!-- Overview Tab -->
       {#if activeTab === 'overview'}
-        <div>
+        <div data-tour="patient-overview-panel">
           <div class="bg-white border border-gray-200 rounded-lg shadow-sm mb-3 sm:mb-4">
             <div class="bg-gray-50 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200">
               <h6 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0">
@@ -4102,10 +4120,10 @@
                     </div>
                   {/if}
                   
-                  <div class="flex flex-col sm:flex-row gap-3">
+                  <div class="action-buttons">
                     <button 
                       type="submit" 
-                      class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200" 
+                      class="action-button action-button-primary disabled:bg-gray-400 disabled:cursor-not-allowed" 
                       disabled={savingPatient || deletingPatient}
                     >
                       {#if savingPatient}
@@ -4118,7 +4136,7 @@
                     </button>
                     <button 
                       type="button" 
-                      class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors duration-200" 
+                      class="action-button action-button-secondary disabled:bg-gray-100 disabled:cursor-not-allowed" 
                       on:click={cancelEditingPatient}
                       disabled={savingPatient || deletingPatient}
                     >
@@ -4298,17 +4316,17 @@
                             <small class="text-gray-500 text-xs mt-1">List medications the patient is currently taking on a regular basis</small>
                           </div>
                           
-                        <div class="flex flex-col sm:flex-row gap-2">
+                        <div class="action-buttons">
                             <button 
                               type="button" 
-                            class="flex-1 inline-flex items-center justify-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                            class="action-button action-button-primary" 
                               on:click={handleSaveLongTermMedications}
                             >
                             <i class="fas fa-save mr-1"></i>Save
                             </button>
                             <button 
                               type="button" 
-                            class="flex-1 inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                            class="action-button action-button-secondary" 
                               on:click={handleCancelLongTermMedications}
                             >
                             <i class="fas fa-times mr-1"></i>Cancel
@@ -4763,15 +4781,15 @@
             </div>
           {/if}
           
-                <div class="flex gap-3">
+                <div class="action-buttons">
             <button 
-                    class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                    class="action-button action-button-primary" 
                     on:click={addReport}
                   >
                     <i class="fas fa-save mr-1"></i>Save Report
                   </button>
                   <button 
-                    class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                    class="action-button action-button-secondary" 
                     on:click={() => {
                       showReportForm = false
                       reportTitle = ''
@@ -5052,9 +5070,9 @@
                 </div>
             
                 <!-- Responsive button layout: stacked on mobile, side-by-side on tablet+ -->
-                <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <div class="action-buttons">
                 <button 
-                    class="flex-1 inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                    class="action-button action-button-primary" 
                     on:click={addDiagnosis}
                     >
                     <i class="fas fa-save mr-1 text-xs sm:text-sm"></i>
@@ -5062,7 +5080,7 @@
                     <span class="sm:hidden">Save</span>
                 </button>
                     <button 
-                    class="flex-1 inline-flex items-center justify-center px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                    class="action-button action-button-secondary" 
                     on:click={() => {
                       showDiagnosticForm = false
                       diagnosticTitle = ''
@@ -5244,7 +5262,7 @@
       
       <!-- Prescriptions Tab -->
       {#if activeTab === 'prescriptions'}
-        <div class="tab-pane active">
+        <div class="tab-pane active" data-tour="patient-prescriptions-panel">
           <PrescriptionsTab 
           {selectedPatient}
           {showMedicationForm}

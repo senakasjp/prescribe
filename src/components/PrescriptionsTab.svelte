@@ -1,6 +1,7 @@
 <script>
   import PatientForms from './PatientForms.svelte'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import { notifyWarning } from '../stores/notifications.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import DateInput from './DateInput.svelte'
@@ -71,6 +72,8 @@
   let improvingNotes = false
   let notesImproved = false
   let lastImprovedNotes = ''
+  let lastLowStockSignature = ''
+  let pharmacyNameCache = new Map()
   
   $: if (!prescriptionProcedures?.includes('Other')) {
     otherProcedurePrice = ''
@@ -200,6 +203,78 @@
 
       const stockData = await pharmacyMedicationService.getPharmacyStock(resolvedDoctorId)
       pharmacyStock = stockData
+
+      const lowStockByPharmacy = new Map()
+      pharmacyStock.forEach(item => {
+        if (!Number.isFinite(item?.minimumStock)) return
+        if ((item?.currentStock ?? 0) > item.minimumStock) return
+
+        const name = (item.drugName || item.genericName || '').trim() || 'Unknown drug'
+        const pharmacyId = item.pharmacyId || 'unknown'
+        if (!lowStockByPharmacy.has(pharmacyId)) {
+          lowStockByPharmacy.set(pharmacyId, new Set())
+        }
+        lowStockByPharmacy.get(pharmacyId).add(name)
+      })
+
+      const allLowStockNames = Array.from(lowStockByPharmacy.values())
+        .flatMap(set => Array.from(set))
+      const uniqueLowStock = Array.from(new Set(allLowStockNames)).sort()
+
+      if (uniqueLowStock.length > 0) {
+        const signatureParts = []
+        lowStockByPharmacy.forEach((names, pharmacyId) => {
+          const sortedNames = Array.from(names).sort()
+          signatureParts.push(`${pharmacyId}:${sortedNames.join('|')}`)
+        })
+        const signature = signatureParts.sort().join('||')
+
+        if (signature !== lastLowStockSignature) {
+          lastLowStockSignature = signature
+          const preview = uniqueLowStock.slice(0, 6).join(', ')
+          const extraCount = uniqueLowStock.length - 6
+          const suffix = extraCount > 0 ? ` (+${extraCount} more)` : ''
+
+          let pharmacyLabel = 'connected pharmacies'
+          if (lowStockByPharmacy.size === 1) {
+            const onlyPharmacyId = Array.from(lowStockByPharmacy.keys())[0]
+            const cachedName = pharmacyNameCache.get(onlyPharmacyId)
+            if (cachedName) {
+              pharmacyLabel = cachedName
+            }
+          } else {
+            const nameFetches = Array.from(lowStockByPharmacy.keys())
+              .filter(id => id && id !== 'unknown' && !pharmacyNameCache.has(id))
+              .map(async id => {
+                try {
+                  const pharmacy = await firebaseStorage.getPharmacistById(id)
+                  if (pharmacy?.businessName) {
+                    pharmacyNameCache.set(id, pharmacy.businessName)
+                  }
+                } catch (error) {
+                  console.warn('⚠️ Unable to resolve pharmacy name for low stock notification:', id, error)
+                }
+              })
+            if (nameFetches.length > 0) {
+              await Promise.all(nameFetches)
+            }
+
+            const pharmacyNames = Array.from(lowStockByPharmacy.keys())
+              .map(id => pharmacyNameCache.get(id))
+              .filter(Boolean)
+            if (pharmacyNames.length > 0) {
+              pharmacyLabel = pharmacyNames.join(', ')
+            }
+          }
+
+          notifyWarning(
+            `Low stock (${uniqueLowStock.length}) in ${pharmacyLabel}: ${preview}${suffix}`,
+            7000
+          )
+        }
+      } else {
+        lastLowStockSignature = ''
+      }
 
       console.log('📦 Total loaded pharmacy stock:', pharmacyStock.length)
       if (pharmacyStock.length === 0 && attempt < MAX_STOCK_ATTEMPTS - 1) {
@@ -465,7 +540,8 @@
             || doctorProfileFallback?.roundingPreference
             || 'none',
           currency: expectedPharmacist?.currency || doctorCurrency || 'USD',
-          ignoreAvailability: true
+          ignoreAvailability: false,
+          assumeDispensedForAvailable: true
         }
       )
       if (requestId !== expectedPriceRequestId) {
@@ -567,6 +643,7 @@
             class="text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-all duration-200" 
             on:click={onNewPrescription}
             title="Create a new prescription"
+            data-tour="prescription-new"
           >
             <i class="fas fa-plus mr-1"></i>New Prescription
           </button>
@@ -577,6 +654,7 @@
               on:click={onAddDrug}
               disabled={showMedicationForm || !currentPrescription}
               title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
+              data-tour="prescription-add-drug"
           >
             <i class="fas fa-plus mr-1"></i>Add Drug
           </button>
@@ -587,6 +665,7 @@
               on:click={onGenerateAIAnalysis}
               disabled={loadingAIAnalysis || !currentPrescription || !openaiService.isConfigured() || !currentMedications || currentMedications.length === 0}
               title={!currentPrescription ? "Create a prescription first" : (!currentMedications || currentMedications.length === 0) ? "Add medications first" : "Run AI analysis for this prescription"}
+              data-tour="prescription-ai-analysis"
           >
             {#if loadingAIAnalysis}
               <svg class="animate-spin -ml-1 mr-1 h-3 w-3 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -931,6 +1010,7 @@
                   on:click={onFinalizePrescription}
                   disabled={currentMedications.length === 0}
                   title="Finalize this prescription"
+                  data-tour="prescription-finalize"
                 >
                   <i class="fas fa-check mr-1"></i>Finalize Prescription
                 </button>
@@ -950,6 +1030,7 @@
                   class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                   on:click={onPrintPrescriptions}
                   title="Generate and download full prescription PDF"
+                  data-tour="prescription-print"
                 >
                   <i class="fas fa-file-pdf mr-1"></i>Print (Full)
                 </button>

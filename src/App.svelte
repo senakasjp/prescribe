@@ -45,6 +45,7 @@
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
   let currentView = 'home' // Navigation state: 'home', 'patients', 'pharmacies', 'reports', 'settings'
   let settingsDoctor = null
+
   $: effectiveCurrency = settingsDoctor?.currency
     || user?.currency
     || resolveCurrencyFromCountry(settingsDoctor?.country || user?.country || user?.doctorCountry)
@@ -157,7 +158,7 @@
   // Handle menu navigation
   const handleMenuNavigation = async (view) => {
     console.log('🔍 App.svelte: handleMenuNavigation called with view:', view)
-    currentView = view === 'prescriptions' ? 'patients' : view
+    currentView = view
   }
   
   // Handle settings click from menubar
@@ -167,10 +168,37 @@
     }
     currentView = 'settings'
   }
-  
+
+  const handleStartSettingsTour = async () => {
+    if (isExternalDoctor) {
+      return
+    }
+    currentView = 'settings'
+    if (typeof window === 'undefined') {
+      return
+    }
+    const startTour = () => {
+      if (typeof window.__startSettingsTour === 'function') {
+        window.__startSettingsTour()
+      } else {
+        console.warn('Settings tour is not available yet.')
+      }
+    }
+    if (typeof window.__startSettingsTour === 'function') {
+      startTour()
+    } else {
+      setTimeout(startTour, 200)
+    }
+  }
+
+  const setAppView = (view) => {
+    currentView = view
+  }
+
   $: if (currentView === 'settings' && isExternalDoctor) {
     currentView = 'home'
   }
+
 
   $: if (currentView === 'reports' && isExternalDoctor) {
     currentView = 'home'
@@ -188,6 +216,11 @@
   
   onMount(async () => {
     console.log('🚀 App.svelte: onMount called!')
+    if (typeof window !== 'undefined') {
+      window.__setAppView = setAppView
+      window.__openSettingsView = () => handleSettingsClick()
+      window.__openPatientsView = () => handleMenuNavigation('patients')
+    }
     try {
       // Initialize Flowbite components
       if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initDropdowns === 'function') {
@@ -236,12 +269,16 @@
         if (existingUser.authProvider === 'email-password' && !existingUser.uid) {
           console.log('✅ Email/password user found, using local storage only')
           user = existingUser
+          if (user.role === 'doctor') {
+          }
           loading = false
           return // Skip Firebase auth listener for email/password users
         }
         
         // For Google users, still use Firebase auth listener for better sync
         user = existingUser
+        if (user.role === 'doctor') {
+        }
         loading = false
         console.log('✅ User loaded from localStorage, continuing with Firebase auth listener for sync')
       }
@@ -268,6 +305,8 @@
           if (localStorageUser) {
             console.log('No Firebase user but localStorage user exists, keeping localStorage user')
             user = localStorageUser
+            if (user.role === 'doctor') {
+            }
             loading = false
             return
           } else {
@@ -389,6 +428,9 @@
             user = fallbackAdmin
           }
           
+          if (user) {
+          }
+
           console.log('Current user in App:', user)
           console.log('User ID:', user?.id)
           console.log('User UID:', user?.uid)
@@ -432,7 +474,7 @@
   })
   
   // Handle user authentication events
-  const handleUserAuthenticated = (event) => {
+  const handleUserAuthenticated = async (event) => {
     console.log('🔐 handleUserAuthenticated called with:', event.detail)
     const authenticatedUser = event.detail
     
@@ -689,6 +731,17 @@
     if (refreshInterval) {
       clearInterval(refreshInterval)
     }
+    if (typeof window !== 'undefined') {
+      if (window.__setAppView === setAppView) {
+        delete window.__setAppView
+      }
+      if (window.__openSettingsView) {
+        delete window.__openSettingsView
+      }
+      if (window.__openPatientsView) {
+        delete window.__openPatientsView
+      }
+    }
   })
 
   $: if (typeof window !== 'undefined') {
@@ -821,7 +874,7 @@
     </nav>
     
     <!-- Menubar under header -->
-    <nav class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+    <nav class="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm dark:bg-gray-800 dark:border-gray-700">
       <div class="max-w-screen-xl mx-auto px-2 sm:px-4">
         <div class="flex items-center h-12">
           <!-- Menu Items - Responsive -->
@@ -842,7 +895,7 @@
                   type="button"
                   class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'patients' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
                   on:click={() => handleMenuNavigation('patients')}
-                  data-guide="patients-nav"
+                  data-tour="patients-menu"
                 >
                   <i class="fas fa-users mr-1 sm:mr-2"></i>
                   <span class="hidden xs:inline">Patients</span>
@@ -874,12 +927,12 @@
               {/if}
               {#if !isExternalDoctor}
                 <li>
-                  <button 
-                    type="button"
-                    class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
-                    on:click={handleSettingsClick}
-                    data-guide="settings-nav"
-                  >
+                <button 
+                  type="button"
+                  class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
+                  on:click={handleSettingsClick}
+                  data-tour="settings-menu"
+                >
                     <i class="fas fa-user-cog mr-1 sm:mr-2"></i>
                     <span class="hidden xs:inline">Settings</span>
                   </button>
@@ -897,6 +950,36 @@
                 </button>
               </li>
             </ul>
+          </div>
+          <div class="flex items-center gap-2 pl-2">
+            {#if !isExternalDoctor}
+              <button
+                type="button"
+                class="hidden sm:inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-teal-700 bg-white border border-teal-200 rounded-full hover:bg-teal-100 transition-colors duration-200"
+                on:click={handleStartSettingsTour}
+                title="Start Settings Tour"
+              >
+                <i class="fas fa-route"></i>
+                Start tour
+              </button>
+              <button
+                type="button"
+                class="inline-flex sm:hidden items-center justify-center p-2 text-teal-700 bg-white border border-teal-200 rounded-full hover:bg-teal-100 transition-colors duration-200"
+                on:click={handleStartSettingsTour}
+                aria-label="Start Settings Tour"
+                title="Start Settings Tour"
+              >
+                <i class="fas fa-route"></i>
+              </button>
+            {/if}
+            <button
+              type="button"
+              class="p-2 text-gray-600 hover:text-teal-600 hover:bg-gray-50 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              aria-label="Notifications"
+              title="Notifications"
+            >
+              <i class="fas fa-bell"></i>
+            </button>
           </div>
         </div>
       </div>
@@ -960,7 +1043,7 @@
                       One month free access for new registrations
                     </span>
                     <a
-                      href="/?register=1"
+                      href="https://www.mprescribe.net/?register=1#signin"
                       class="inline-flex items-center gap-2 rounded-full bg-teal-600 px-4 py-2 text-white font-semibold shadow-sm hover:bg-teal-700 transition-colors duration-200"
                     >
                       <i class="fas fa-user-plus"></i>

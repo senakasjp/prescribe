@@ -51,7 +51,7 @@ export function responsiveClasses(config) {
  */
 export function getStatusColor(status, colorMap = {}) {
   const defaultColorMap = {
-    active: 'green',
+    active: 'teal',
     inactive: 'gray',
     pending: 'yellow',
     completed: 'green',
@@ -59,7 +59,7 @@ export function getStatusColor(status, colorMap = {}) {
     error: 'red',
     warning: 'yellow',
     info: 'blue',
-    success: 'green'
+    success: 'teal'
   }
   
   const color = colorMap[status] || defaultColorMap[status] || 'gray'
@@ -129,7 +129,7 @@ export function getButtonClasses(variant = 'primary', options = {}) {
     secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
     warning: 'bg-yellow-600 text-white hover:bg-yellow-700 focus:ring-yellow-500',
-    success: 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500',
+    success: 'bg-teal-600 text-white hover:bg-teal-700 focus:ring-teal-500',
     outline: 'border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500',
     ghost: 'text-gray-700 hover:bg-gray-100 focus:ring-gray-500'
   }
@@ -237,7 +237,7 @@ export function getBadgeClasses(variant = 'default', options = {}) {
     default: 'bg-gray-100 text-gray-800',
     primary: 'bg-teal-100 text-teal-800',
     secondary: 'bg-gray-100 text-gray-800',
-    success: 'bg-green-100 text-green-800',
+    success: 'bg-teal-100 text-teal-800',
     warning: 'bg-yellow-100 text-yellow-800',
     danger: 'bg-red-100 text-red-800',
     info: 'bg-blue-100 text-blue-800'
@@ -280,7 +280,7 @@ export function getSpinnerClasses(options = {}) {
     gray: 'border-gray-600',
     white: 'border-white',
     blue: 'border-blue-600',
-    green: 'border-green-600',
+    teal: 'border-teal-600',
     red: 'border-red-600'
   }
   

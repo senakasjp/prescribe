@@ -164,7 +164,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="mb-4">
           <label for="medicationName" class="block text-sm font-medium text-gray-700 mb-1">
-            <i class="fas fa-capsules mr-1"></i>Medication Name *
+            <i class="fas fa-capsules mr-1"></i>Medication Name <span class="text-red-500">*</span>
           </label>
           <input 
             type="text" 
@@ -178,7 +178,7 @@
         </div>
         <div class="mb-4">
           <label for="dosage" class="block text-sm font-medium text-gray-700 mb-1">
-            <i class="fas fa-weight mr-1"></i>Dosage *
+            <i class="fas fa-weight mr-1"></i>Dosage <span class="text-red-500">*</span>
           </label>
           <input 
             type="text" 
@@ -196,7 +196,7 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="mb-4">
           <label for="frequency" class="block text-sm font-medium text-gray-700 mb-1">
-            <i class="fas fa-clock mr-1"></i>Frequency *
+            <i class="fas fa-clock mr-1"></i>Frequency <span class="text-red-500">*</span>
           </label>
           <div class="flex gap-2">
             <select 
@@ -281,10 +281,10 @@
         </div>
       {/if}
       
-      <div class="flex flex-col sm:flex-row gap-3">
+      <div class="action-buttons">
         <button 
           type="submit" 
-          class="flex-1 inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200" 
+          class="action-button action-button-primary disabled:bg-gray-400 disabled:cursor-not-allowed" 
           disabled={loading}
         >
           {#if loading}
@@ -294,7 +294,7 @@
         </button>
         <button 
           type="button" 
-          class="flex-1 inline-flex items-center justify-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors duration-200" 
+          class="action-button action-button-secondary disabled:bg-gray-100 disabled:cursor-not-allowed" 
           on:click={handleCancel}
           disabled={loading}
         >

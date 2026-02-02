@@ -148,6 +148,7 @@ class ChargeCalculationService {
     let missingPriceCount = 0
     let missingQuantityCount = 0
     const ignoreAvailability = !!options.ignoreAvailability
+    const assumeDispensedForAvailable = !!options.assumeDispensedForAvailable
 
     const prescriptions = Array.isArray(prescription?.prescriptions) && prescription.prescriptions.length > 0
       ? prescription.prescriptions
@@ -169,7 +170,9 @@ class ChargeCalculationService {
         )
 
         if (!pricingSources.length) {
-          missingPriceCount += 1
+          if (!assumeDispensedForAvailable) {
+            missingPriceCount += 1
+          }
           return
         }
 
@@ -177,7 +180,9 @@ class ChargeCalculationService {
           const source = pricingSources[0]
           const unitCost = source.unitCost ?? 0
           if (!unitCost) {
-            missingPriceCount += 1
+            if (!assumeDispensedForAvailable) {
+              missingPriceCount += 1
+            }
             return
           }
           const lineCost = requestedQuantity * unitCost
@@ -208,7 +213,9 @@ class ChargeCalculationService {
 
         const allocation = this.allocateQuantityAcrossSources(requestedQuantity, pricingSources)
         if (allocation.totalPricedQuantity <= 0) {
-          missingPriceCount += 1
+          if (!assumeDispensedForAvailable) {
+            missingPriceCount += 1
+          }
           return
         }
 
@@ -251,7 +258,10 @@ class ChargeCalculationService {
     const drugCharges = this.calculateExpectedDrugChargesFromInventory(
       prescription,
       inventoryItems || [],
-      { ignoreAvailability: !!options.ignoreAvailability }
+      { 
+        ignoreAvailability: !!options.ignoreAvailability,
+        assumeDispensedForAvailable: !!options.assumeDispensedForAvailable
+      }
     )
 
     const totalChargeBeforeRounding = doctorCharges.totalAfterDiscount + drugCharges.totalCost

@@ -1546,7 +1546,7 @@
     if (isApprovalPending(doctor)) {
       return 'bg-amber-100 text-amber-700'
     }
-    return isEffectivelyDisabled(doctor) ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+    return isEffectivelyDisabled(doctor) ? 'bg-red-100 text-red-700' : 'bg-teal-100 text-teal-700'
   }
 
   const canToggleDoctor = (doctor) => {
@@ -2068,6 +2068,7 @@
                         <tr>
                           <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                           <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                           <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                           <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
                           <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patients</th>
@@ -2118,11 +2119,16 @@
                               {/if}
                               {#if doctor.referralBonusAppliedAt}
                                 <div class="mt-1">
-                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-700">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-700">
                                     Referral bonus applied on {formatDate(doctor.referralBonusAppliedAt)}
                                   </span>
                                 </div>
                               {/if}
+                            </td>
+                            <td class="px-4 py-4 text-sm text-gray-900">
+                              <div class="truncate" title={doctor.phone || 'N/A'}>
+                                {doctor.phone || 'N/A'}
+                              </div>
                             </td>
                             <td class="px-4 py-4 text-sm text-gray-900">
                               <div class="flex flex-wrap gap-1">
@@ -2145,7 +2151,7 @@
                                   <span class="truncate">{formatCompactNumber(doctor.tokenUsage?.total?.tokens || 0)} tokens</span>
                                 </div>
                                 <div class="flex items-center text-xs text-gray-500">
-                                  <i class="fas fa-bolt text-green-600 mr-1 flex-shrink-0"></i>
+                                  <i class="fas fa-bolt text-teal-600 mr-1 flex-shrink-0"></i>
                                   <span class="truncate">{doctor.tokenUsage?.total?.requests || 0} requests</span>
                                 </div>
                               </div>
@@ -2171,7 +2177,7 @@
                                     </button>
                                   {:else}
                                     <button
-                                      class="inline-flex items-center px-2 py-1 border {isEffectivelyDisabled(doctor) ? 'border-green-300 text-green-700 hover:bg-green-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                      class="inline-flex items-center px-2 py-1 border {isEffectivelyDisabled(doctor) ? 'border-teal-300 text-teal-700 hover:bg-teal-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                       on:click={() => toggleDoctorStatus(doctor)}
                                       disabled={!canToggleDoctor(doctor)}
                                     >
@@ -2245,7 +2251,7 @@
                                 </span>
                               {/if}
                               {#if doctor.referralBonusAppliedAt}
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-700 mt-1">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-700 mt-1">
                                   Referral bonus applied on {formatDate(doctor.referralBonusAppliedAt)}
                                 </span>
                               {/if}
@@ -2264,6 +2270,10 @@
                               <span class="text-gray-500">Created:</span>
                               <div class="font-medium text-gray-900">{formatDate(doctor.createdAt)}</div>
             </div>
+                            <div>
+                              <span class="text-gray-500">Phone:</span>
+                              <div class="font-medium text-gray-900">{doctor.phone || 'N/A'}</div>
+                            </div>
                             <div>
                               <span class="text-gray-500">Patients:</span>
                               <div class="font-medium text-gray-900">{doctor.patientCount || 0}</div>
@@ -2290,7 +2300,7 @@
                     </div>
                               <div class="flex items-center justify-between">
                                 <div class="flex items-center">
-                                  <i class="fas fa-bolt text-green-600 mr-1"></i>
+                                  <i class="fas fa-bolt text-teal-600 mr-1"></i>
                                   <span class="text-gray-500">Requests:</span>
                   </div>
                                 <span class="font-medium text-gray-900">{doctor.tokenUsage?.total?.requests || 0}</span>
@@ -2315,7 +2325,7 @@
                                 </button>
                               {:else}
                                 <button
-                                  class="w-full inline-flex items-center justify-center px-3 py-2 border {isEffectivelyDisabled(doctor) ? 'border-green-300 text-green-700 hover:bg-green-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                  class="w-full inline-flex items-center justify-center px-3 py-2 border {isEffectivelyDisabled(doctor) ? 'border-teal-300 text-teal-700 hover:bg-teal-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                   on:click={() => toggleDoctorStatus(doctor)}
                                   disabled={!canToggleDoctor(doctor)}
                                 >
@@ -2728,7 +2738,7 @@
                                         <i class="fas fa-exclamation-circle mr-1"></i>Warning
                                       </span>
                                     {:else}
-                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
                                         <i class="fas fa-check-circle mr-1"></i>Good
                                       </span>
                                     {/if}
@@ -2783,7 +2793,7 @@
                                       <i class="fas fa-exclamation-circle mr-1"></i>Warning
                                     </span>
                                   {:else}
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
                                       <i class="fas fa-check-circle mr-1"></i>Good
                                     </span>
                                   {/if}
@@ -2964,7 +2974,7 @@
                               <td class="px-3 py-2 text-gray-900">{formatDateTime(log.createdAt)}</td>
                               <td class="px-3 py-2 text-gray-700">{log.type || '-'}</td>
                               <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {log.status === 'sent' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {log.status === 'sent' ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'}">
                                   {log.status || 'unknown'}
                                 </span>
                               </td>
@@ -3429,6 +3439,7 @@ firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
                   <div class="space-y-2">
                     <div><span class="text-gray-500">Email:</span> <span class="text-gray-900">{selectedDoctorView.email}</span></div>
                     <div><span class="text-gray-500">Doctor ID:</span> <span class="text-gray-900">{formatDoctorId(selectedDoctorView.id)}</span></div>
+                    <div><span class="text-gray-500">Phone:</span> <span class="text-gray-900">{selectedDoctorView.phone || 'N/A'}</span></div>
                     <div><span class="text-gray-500">Created:</span> <span class="text-gray-900">{formatDate(selectedDoctorView.createdAt)}</span></div>
                     <div><span class="text-gray-500">Status:</span> <span class="text-gray-900">{getDoctorStatusLabel(selectedDoctorView)}</span></div>
                     <div><span class="text-gray-500">Trial:</span> <span class="text-gray-900">{selectedDoctorView.accessExpiresAt ? formatDate(selectedDoctorView.accessExpiresAt) : 'N/A'}</span></div>
@@ -4801,7 +4812,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
     aria-modal="true"
     aria-labelledby="quota-modal-title"
   >
-    <div class="relative w-full max-w-md max-h-full mx-auto flex items-center justify-center min-h-screen">
+    <div class="relative w-full max-w-sm max-h-full mx-auto flex items-center justify-center min-h-screen">
       <div 
         class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
         on:click|stopPropagation

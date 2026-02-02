@@ -30,10 +30,16 @@
     'Before meals (AC)',
     'After meals (PC)',
     'At bedtime (HS)',
-    'Noon'
+    'Mane',
+    'Vesper'
+  ]
+  const TIMING_EXCLUSIONS = [
+    'Before meals (AC)',
+    'After meals (PC)',
+    'At bedtime (HS)'
   ]
   $: frequencyOptions = MEDICATION_FREQUENCIES.filter(
-    (freq) => !TIMING_OPTIONS.includes(freq),
+    (freq) => !TIMING_EXCLUSIONS.includes(freq),
   )
   let duration = ''
   let startDate = ''
@@ -923,10 +929,10 @@
         </div>
       {/if}
       
-      <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+      <div class="action-buttons">
         <button 
           type="submit" 
-          class="flex-1 text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-xs sm:text-sm px-3 sm:px-5 py-2 sm:py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center" 
+          class="action-button action-button-primary dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed" 
           disabled={loading}
         >
           {#if loading}
@@ -939,7 +945,7 @@
         </button>
         <button 
           type="button" 
-          class="flex-1 py-2 sm:py-2.5 px-3 sm:px-5 text-xs sm:text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 transition-all duration-200 flex items-center justify-center" 
+          class="action-button action-button-secondary dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={handleCancel}
           disabled={loading}
         >

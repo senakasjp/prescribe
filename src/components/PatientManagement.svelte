@@ -1,7 +1,5 @@
 <script>
   import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte'
-  import { driver } from 'driver.js'
-  import 'driver.js/dist/driver.css'
   import firebaseStorage from '../services/firebaseStorage.js'
   import authService from '../services/authService.js'
   import PatientForm from './PatientForm.svelte'
@@ -121,118 +119,6 @@
   let searchQuery = ''
   let filteredPatients = []
   let showAllLastPrescriptionMeds = false // Track if last prescription medications are expanded
-
-  let guideDriver = null
-  let showSaveProfileHint = false
-
-  const openSettingsForGuide = async () => {
-    currentView = 'home'
-    if (isExternalDoctor) return
-    handleEditProfile()
-    editingProfile = true
-    activeTab = 'edit-profile'
-    showSaveProfileHint = true
-    await tick()
-  }
-
-  const openPatientsForGuide = async () => {
-    currentView = 'patients'
-    await tick()
-  }
-
-  const startGuideAt = (stepIndex = 0) => {
-    const steps = buildGuideSteps()
-    if (!steps.length) return
-    if (guideDriver) {
-      guideDriver.destroy()
-    }
-    guideDriver = driver({
-      showProgress: true,
-      allowClose: true,
-      overlayClick: true,
-      nextBtnText: 'Next',
-      prevBtnText: 'Back',
-      doneBtnText: 'Done',
-      steps
-    })
-    guideDriver.drive(stepIndex)
-  }
-
-  const buildGuideSteps = () => {
-    const steps = []
-    if (!isExternalDoctor) {
-      steps.push({
-        element: '[data-guide="settings-nav"]',
-        popover: {
-          title: 'Update your settings',
-          description: 'Open your clinic settings and confirm your details. Settings is the 6th item from Home in the top menu.'
-        }
-      })
-      steps.push({
-        element: '[data-guide="save-profile"]',
-        popover: {
-          title: 'Save your profile',
-          description: 'Click Save Changes to store your clinic details.'
-        },
-        onHighlightStarted: async () => {
-          await openSettingsForGuide()
-          const saveButton = document.querySelector('[data-guide="save-profile"]')
-          saveButton?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-        }
-      })
-    }
-    steps.push({
-      element: '[data-guide="patients-nav"]',
-      popover: {
-        title: 'Go to patients',
-        description: 'Open the Patients list to search or add a patient.'
-      },
-      onHighlightStarted: async () => {
-        await openPatientsForGuide()
-      }
-    })
-    steps.push({
-      element: '[data-guide="patient-search"]',
-      popover: {
-        title: 'Search patients',
-        description: 'Find patients by name, ID, phone, or email.'
-      },
-      onHighlightStarted: async () => {
-        await openPatientsForGuide()
-        const searchInput = document.querySelector('[data-guide="patient-search"]')
-        searchInput?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-      }
-    })
-    steps.push({
-      element: '[data-guide="patient-add"]',
-      popover: {
-        title: 'Add a new patient',
-        description: 'Create a new patient record before writing a prescription.'
-      },
-      onHighlightStarted: async () => {
-        await openPatientsForGuide()
-        const addButton = document.querySelector('[data-guide="patient-add"]')
-        addButton?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-      }
-    })
-    steps.push({
-      element: '[data-guide="patient-list"]',
-      popover: {
-        title: 'Open a patient',
-        description: 'Select a patient to view prescriptions, reports, and history.'
-      },
-      onHighlightStarted: async () => {
-        await openPatientsForGuide()
-        const listPanel = document.querySelector('[data-guide="patient-list"]')
-        listPanel?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-      }
-    })
-    return steps
-  }
-
-  const startGuide = () => {
-    startGuideAt(0)
-  }
   
   // Medical data for selected patient
   let illnesses = []
@@ -491,7 +377,7 @@
   $: if (prescriptions) {
     prescriptions = prescriptions || []
   }
-  
+
   // Update chart when patients data changes
   $: if (patients.length > 0) {
     setTimeout(() => {
@@ -1676,9 +1562,6 @@
     }
     
     window.addEventListener('prescriptionSaved', handlePrescriptionSaved)
-    setTimeout(() => {
-      startGuide()
-    }, 700)
 
     // Cleanup function
     return () => {
@@ -1716,7 +1599,7 @@
   })
 </script>
 
-
+<div>
 {#if currentView === 'home'}
 <!-- Home Dashboard - Quick Stats and Chart -->
 <div class="space-y-3 sm:space-y-4">
@@ -1734,14 +1617,7 @@
       {/if}
       <h2 class="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-1 sm:mb-2">Welcome, Dr. {doctorName}!</h2>
       <p class="text-sm sm:text-base text-gray-600">{doctorCountry}{doctorCity !== 'Not specified' ? `, ${doctorCity}` : ''}</p>
-      <button
-        type="button"
-        class="mt-3 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-teal-700 bg-white border border-teal-200 rounded-full hover:bg-teal-100 transition-colors duration-200"
-        on:click={startGuide}
-      >
-        <i class="fas fa-route"></i>
-        Start guide
-      </button>
+      
     </div>
   </div>
   
@@ -1859,14 +1735,7 @@
         <i class="fas fa-search text-teal-600 mr-1 sm:mr-2"></i>
         Search Patient
       </h3>
-        <button
-          type="button"
-          class="inline-flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm font-semibold text-teal-700 bg-white border border-teal-200 rounded-full hover:bg-teal-100 transition-colors duration-200"
-          on:click={startGuide}
-        >
-          <i class="fas fa-route"></i>
-          Start guide
-        </button>
+        
     </div>
     <div class="p-4">
       <div class="relative">
@@ -1878,7 +1747,6 @@
           class="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
           placeholder="Search patients by name, ID, phone, or email..."
           bind:value={searchQuery}
-          data-guide="patient-search"
         >
         {#if searchQuery}
         <button 
@@ -1913,7 +1781,7 @@
   {/if}
 
   <!-- All Patients Table Card -->
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200" data-guide="patient-list">
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200" data-tour="patients-list">
     <div class="p-3 sm:p-6 border-b border-gray-200">
       <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <h3 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">
@@ -1923,7 +1791,7 @@
         <button 
           class="bg-teal-600 hover:bg-teal-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 w-full sm:w-auto"
           on:click={showAddPatientForm}
-          data-guide="patient-add"
+          data-tour="patients-add"
         >
           <i class="fas fa-plus mr-2"></i>
           Add New Patient
@@ -1945,7 +1813,7 @@
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
           {#if (searchQuery ? filteredPatients : patients).length > 0}
-            {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient (patient.id)}
+            {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient, index (patient.id)}
               <tr 
                 class="hover:bg-gray-50 transition-colors duration-150 cursor-pointer"
                 on:click={() => {
@@ -1988,6 +1856,7 @@
                       selectPatient(patient)
                       currentView = 'prescriptions' // Change view to show sidebar layout
                     }}
+                    data-tour={index === 0 ? 'patients-view' : undefined}
                   >
                     <i class="fas fa-eye mr-1"></i>
                     View
@@ -2023,7 +1892,7 @@
     <!-- Mobile Card View -->
     <div class="md:hidden space-y-3 p-4">
       {#if (searchQuery ? filteredPatients : patients).length > 0}
-        {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient (patient.id)}
+        {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient, index (patient.id)}
           <div 
             class="bg-gray-50 border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors duration-200"
             on:click={() => {
@@ -2051,6 +1920,7 @@
                     selectPatient(patient)
                     currentView = 'prescriptions' // Change view to show sidebar layout
                   }}
+                  data-tour={index === 0 ? 'patients-view' : undefined}
                 >
                   <i class="fas fa-eye mr-1"></i>
                   View
@@ -2112,7 +1982,7 @@
   </div>
 </div>
 
-{:else if currentView === 'prescriptions' || selectedPatient}
+{:else if currentView === 'prescriptions'}
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
   <!-- Patient List Sidebar -->
   <div class="lg:col-span-4">
@@ -2233,23 +2103,23 @@
   </div>
   
     <!-- Main Content Area -->
-    <div class="lg:col-span-8">
+    <div class="lg:col-span-8" data-tour="patient-prescriptions-window">
       
       {#if showPatientForm}
         <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
       {:else if selectedPatient}
-        <PatientDetails 
-          {selectedPatient} 
-          {addToPrescription} 
-          {refreshTrigger} 
-          {doctorId}
-          {settingsDoctor}
-          currentUser={user}
-          authUser={authUser}
-          on:dataUpdated={handleDataUpdated}
-          on:view-patient={handleViewPatient}
-          on:view-change={(e) => dispatch('view-change', e.detail)}
-        />
+          <PatientDetails 
+            selectedPatient={selectedPatient}
+            {addToPrescription} 
+            {refreshTrigger} 
+            {doctorId}
+            {settingsDoctor}
+            currentUser={user}
+            authUser={authUser}
+            on:dataUpdated={handleDataUpdated}
+            on:view-patient={handleViewPatient}
+            on:view-change={(e) => dispatch('view-change', e.detail)}
+          />
       {:else}
       <!-- Welcome Dashboard -->
       <div class="space-y-4">
@@ -2279,7 +2149,7 @@
                                </h4>
                              </div>
                              {#if !isExternalDoctor}
-                               <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings" data-guide="settings-button">
+                               <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                  <i class="fas fa-cog text-sm text-red-600"></i>
                                  <span class="text-sm font-medium">Settings</span>
                                </button>
@@ -2293,7 +2163,7 @@
                                   Welcome, Dr. {doctorName}!
                                </h4>
                                {#if !isExternalDoctor}
-                                 <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings" data-guide="settings-button">
+                                 <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                    <i class="fas fa-cog text-xs text-red-600"></i>
                                    <span class="text-xs font-medium">Settings</span>
                                  </button>
@@ -2492,7 +2362,7 @@
                 <!-- Edit Profile Tab -->
                 {#if activeTab === 'edit-profile'}
               <div class="p-4 rounded-lg bg-white" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
-                  <form on:submit={handleProfileSubmit} data-guide="profile-form">
+                  <form on:submit={handleProfileSubmit}>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                       <div>
                         <label for="editFirstName" class="block text-sm font-medium text-gray-700 mb-1">
@@ -2619,7 +2489,6 @@
                         type="submit" 
                         class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                         disabled={profileLoading}
-                        data-guide="save-profile"
                       >
                         {#if profileLoading}
                           <ThreeDots size="small" color="white" />
@@ -3087,6 +2956,7 @@
   on:cancel={handleConfirmationCancel}
   on:close={handleConfirmationCancel}
 />
+</div>
 
 <style>
   /* Template Preview Styles */

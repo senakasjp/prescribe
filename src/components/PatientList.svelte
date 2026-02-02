@@ -115,7 +115,7 @@
       {:else}
         <!-- Desktop List View -->
         <div class="hidden md:block list-group list-group-flush">
-          {#each paginatedPatients as patient}
+          {#each paginatedPatients as patient, index}
             <button 
               class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
               on:click={() => onSelectPatient(patient)}
@@ -158,7 +158,7 @@
 
         <!-- Mobile Card View -->
         <div class="md:hidden space-y-3 p-3">
-          {#each paginatedPatients as patient}
+          {#each paginatedPatients as patient, index}
             <div 
               class="bg-gray-50 border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors duration-200 {selectedPatient?.id === patient.id ? 'ring-2 ring-blue-500 bg-blue-50' : ''}"
               on:click={() => onSelectPatient(patient)}

@@ -64,7 +64,7 @@ describe('Patient Management Integration Tests', () => {
       expect(firebaseStorage.createPatient).toBeDefined()
       
       // Step 2: Add symptoms to patient
-      expect(firebaseStorage.createSymptom).toBeDefined()
+      expect(firebaseStorage.createSymptoms).toBeDefined()
       
       // Step 3: Create prescription for patient
       expect(firebaseStorage.createPrescription).toBeDefined()
@@ -139,7 +139,7 @@ describe('Patient Management Integration Tests', () => {
         onsetDate: new Date().toISOString()
       }
       
-      expect(firebaseStorage.createSymptom).toBeDefined()
+      expect(firebaseStorage.createSymptoms).toBeDefined()
       expect(firebaseStorage.getSymptomsByPatientId).toBeDefined()
     })
 
@@ -163,7 +163,7 @@ describe('Patient Management Integration Tests', () => {
 
   describe('Data Persistence and Retrieval', () => {
     it('should persist patient data across sessions', async () => {
-      expect(firebaseStorage.getPatient).toBeDefined()
+      expect(firebaseStorage.getPatientById).toBeDefined()
       expect(firebaseStorage.updatePatient).toBeDefined()
     })
 
@@ -194,7 +194,7 @@ describe('Patient Management Integration Tests', () => {
       // All create/update methods should validate
       expect(firebaseStorage.createPatient).toBeDefined()
       expect(firebaseStorage.createPrescription).toBeDefined()
-      expect(firebaseStorage.createSymptom).toBeDefined()
+      expect(firebaseStorage.createSymptoms).toBeDefined()
     })
   })
 })
@@ -315,4 +315,3 @@ describe('HIPAA Compliance Integration', () => {
     expect(typeof firebaseStorage.getPatientsByDoctorId).toBe('function')
   })
 })
-

@@ -136,7 +136,8 @@
           {
             roundingPreference: effectiveDoctor?.roundingPreference || 'none',
             currency,
-            ignoreAvailability: true
+            ignoreAvailability: false,
+            assumeDispensedForAvailable: true
           }
         )
 

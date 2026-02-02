@@ -230,6 +230,7 @@ class FirebaseAuthService {
         console.log('🏥 Creating doctor with data:', doctorData)
         const newDoctor = await firebaseStorage.createDoctor(doctorData)
         console.log('✅ Doctor created in Firebase:', newDoctor)
+        await this.createSamplePatientForNewDoctor(newDoctor)
         if (!isSuperAdmin && newDoctor.isApproved === false) {
           await firebaseSignOut(auth)
           throw new Error(pendingApprovalMessage)
@@ -240,6 +241,69 @@ class FirebaseAuthService {
         console.error('❌ Error creating doctor:', error)
         throw error
       }
+    }
+  }
+
+  async createSamplePatientForNewDoctor(doctor) {
+    if (!doctor?.id) return
+    try {
+      const samplePatient = {
+        firstName: 'Sample',
+        lastName: 'Patient',
+        dateOfBirth: '1990-01-01',
+        age: '35',
+        ageType: 'years',
+        gender: 'Male',
+        doctorId: doctor.id,
+        doctorEmail: doctor.email || ''
+      }
+      const createdPatient = await firebaseStorage.createPatient(samplePatient)
+      console.log('✅ Sample patient created for new doctor:', doctor.email)
+      await this.createSamplePrescriptionForNewDoctor(doctor, createdPatient)
+    } catch (error) {
+      console.error('❌ Error creating sample patient for new doctor:', error)
+    }
+  }
+
+  async createSamplePrescriptionForNewDoctor(doctor, patient) {
+    if (!doctor?.id || !patient?.id) return
+    try {
+      const samplePrescription = {
+        patientId: patient.id,
+        doctorId: doctor.id,
+        doctorEmail: doctor.email || '',
+        patient: {
+          id: patient.id,
+          firstName: patient.firstName || '',
+          lastName: patient.lastName || '',
+          age: patient.age || '',
+          gender: patient.gender || '',
+          email: patient.email || '',
+          phone: patient.phone || ''
+        },
+        name: 'Sample Prescription',
+        notes: 'Sample prescription for onboarding.',
+        nextAppointmentDate: '',
+        medications: [
+          {
+            name: 'Paracetamol',
+            dosage: '500 mg',
+            frequency: 'Every 6 hours',
+            duration: '5 days',
+            instructions: 'Take after meals'
+          }
+        ],
+        procedures: [],
+        otherProcedurePrice: '',
+        excludeConsultationCharge: false,
+        status: 'draft',
+        createdAt: new Date().toISOString()
+      }
+
+      await firebaseStorage.createPrescription(samplePrescription)
+      console.log('✅ Sample prescription created for new doctor:', doctor.email)
+    } catch (error) {
+      console.error('❌ Error creating sample prescription for new doctor:', error)
     }
   }
 

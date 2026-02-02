@@ -263,11 +263,14 @@
 </script>
 
 <div class="bg-white rounded-lg shadow-lg border border-gray-200">
-  <div class="bg-teal-600 text-white px-6 py-4 rounded-t-lg">
+  <div class="bg-teal-600 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
     <h5 class="text-lg font-semibold mb-0">
       <i class="fas fa-user-plus mr-2"></i>
       Add New Patient
     </h5>
+    <button on:click={handleCancel} class="text-white hover:text-gray-200">
+      <i class="fas fa-times"></i>
+    </button>
   </div>
   <div class="p-4">
     <form on:submit={handleSubmit}>
@@ -648,11 +651,12 @@
         </div>
       {/if}
       
-      <div class="flex flex-col sm:flex-row gap-2">
+      <div class="action-buttons">
         <button 
           type="submit" 
-          class="w-full bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2" 
+          class="action-button action-button-primary disabled:bg-gray-400 disabled:cursor-not-allowed" 
           disabled={loading}
+          data-tour="patient-save"
         >
           {#if loading}
             <ThreeDots size="small" color="white" />
@@ -661,7 +665,7 @@
         </button>
         <button 
           type="button" 
-          class="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2" 
+          class="action-button action-button-secondary disabled:bg-gray-100 disabled:cursor-not-allowed" 
           on:click={handleCancel}
           disabled={loading}
         >

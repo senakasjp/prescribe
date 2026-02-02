@@ -62,11 +62,11 @@
     switch (type) {
       case 'success':
         return {
-          bg: 'bg-green-50 border-green-200',
-          icon: 'fas fa-check-circle text-green-600',
-          title: 'text-green-800',
-          text: 'text-green-700',
-          button: 'text-green-400 hover:text-green-600'
+          bg: 'bg-teal-50 border-teal-200',
+          icon: 'fas fa-check-circle text-teal-600',
+          title: 'text-teal-800',
+          text: 'text-teal-700',
+          button: 'text-teal-400 hover:text-teal-600'
         }
       case 'error':
         return {
@@ -137,7 +137,7 @@
       
       <!-- Progress bar -->
       <div class="h-1 bg-gray-200">
-        <div class="h-full {type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'} transition-all duration-300 ease-linear" style="width: 100%; animation: shrink {duration}ms linear forwards;"></div>
+        <div class="h-full {type === 'success' ? 'bg-teal-500' : type === 'error' ? 'bg-red-500' : type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500'} transition-all duration-300 ease-linear" style="width: 100%; animation: shrink {duration}ms linear forwards;"></div>
       </div>
     </div>
   </div>

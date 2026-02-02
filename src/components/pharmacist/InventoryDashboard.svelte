@@ -967,7 +967,7 @@
             <!-- Basic Information -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Brand Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   bind:value={newItemForm.brandName}
@@ -978,7 +978,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Generic Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   bind:value={newItemForm.genericName}
@@ -1013,7 +1013,7 @@
             <!-- Pharmaceutical Details -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Strength *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   bind:value={newItemForm.strength}
@@ -1058,7 +1058,7 @@
             <!-- Stock Information -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Initial Stock *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="number" 
                   bind:value={newItemForm.initialStock}
@@ -1069,7 +1069,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="number" 
                   bind:value={newItemForm.minimumStock}
@@ -1091,7 +1091,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Selling Price *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="number" 
                   bind:value={newItemForm.sellingPrice}
@@ -1106,7 +1106,7 @@
             <!-- Expiry Date -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Expiry Date *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
                   bind:value={newItemForm.expiryDate}
                   required
@@ -1138,7 +1138,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Storage Conditions *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <select 
                   bind:value={newItemForm.storageConditions}
                   required
@@ -1162,17 +1162,17 @@
               ></textarea>
             </div>
             
-            <div class="flex justify-end space-x-3">
+            <div class="action-buttons">
               <button 
                 type="button"
-                class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                class="action-button action-button-secondary"
                 on:click={() => showAddItemModal = false}
               >
                 Cancel
               </button>
               <button 
                 type="submit"
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                class="action-button action-button-primary"
               >
                 Add Item
               </button>
@@ -1209,7 +1209,7 @@
               <h4 class="text-md font-medium text-gray-900 border-b pb-2">Drug Information</h4>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Brand Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text"
                   value={selectedItem?.brandName || selectedItem?.drugName || ''}
@@ -1223,7 +1223,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Generic Name *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <input 
                   type="text"
                   bind:value={selectedItem.genericName}
@@ -1243,7 +1243,7 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Strength *</label>
+                  <label> <span class="text-red-500">*</span></label>
                   <input 
                     type="text"
                     bind:value={selectedItem.strength}
@@ -1254,7 +1254,7 @@
                   <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Strength Unit *</label>
+                  <label> <span class="text-red-500">*</span></label>
                   <select 
                     bind:value={selectedItem.strengthUnit}
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
@@ -1335,7 +1335,7 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Minimum Stock *</label>
+                  <label> <span class="text-red-500">*</span></label>
                   <input 
                     type="number"
                     bind:value={selectedItem.minimumStock}
@@ -1388,7 +1388,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Storage Conditions *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <select 
                   bind:value={selectedItem.storageConditions}
                   required
@@ -1403,7 +1403,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date *</label>
+                <label> <span class="text-red-500">*</span></label>
                 <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy"
                   bind:value={selectedItem.expiryDate}
                   required
@@ -1449,17 +1449,17 @@
             </div>
           </div>
           
-          <div class="flex justify-end space-x-3 mt-6">
+          <div class="action-buttons mt-6">
             <button 
               type="button"
-              class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+              class="action-button action-button-secondary"
               on:click={() => showEditItemModal = false}
             >
               Cancel
             </button>
             <button 
               type="submit"
-              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+              class="action-button action-button-primary"
             >
               <i class="fas fa-save mr-2"></i>
               Save Changes
