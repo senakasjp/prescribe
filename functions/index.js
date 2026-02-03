@@ -9,7 +9,10 @@
 
 const {setGlobalOptions} = require("firebase-functions");
 const {onRequest} = require("firebase-functions/v2/https");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated,
+  onDocumentUpdated,
+} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {defineSecret} = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -28,6 +31,7 @@ const TWILIO_AUTH_TOKEN = defineSecret("TWILIO_AUTH_TOKEN");
 const TWILIO_WHATSAPP_FROM = defineSecret("TWILIO_WHATSAPP_FROM");
 const NOTIFY_USER_ID = defineSecret("NOTIFY_USER_ID");
 const NOTIFY_API_KEY = defineSecret("NOTIFY_API_KEY");
+const DEFAULT_APP_URL = "https://prescribe-7e1e8.web.app";
 
 const setCors = (req, res) => {
   const origin = req.headers.origin || "*";
@@ -57,6 +61,88 @@ const logEmailEvent = async (event) => {
   } catch (error) {
     logger.error("Failed to log email event:", error);
   }
+};
+
+const normalizeNotifyRecipient = (input) => {
+  const digits = String(input || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 11) return digits;
+  if (digits.startsWith("0") && digits.length === 10) {
+    return `94${digits.slice(1)}`;
+  }
+  return digits;
+};
+
+const renderTemplate = (template, data) => {
+  const safe = String(template || "");
+  return safe.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const value = data[key];
+    return value !== undefined && value !== null ? String(value) : "";
+  });
+};
+
+const sendNotifySms = async ({recipient, senderId, message, type}) => {
+  const userId = NOTIFY_USER_ID.value();
+  const apiKey = NOTIFY_API_KEY.value();
+  if (!userId || !apiKey) {
+    logger.warn("Notify.lk configuration missing");
+    return {ok: false, error: "Notify.lk configuration missing"};
+  }
+
+  const formattedRecipient = normalizeNotifyRecipient(recipient);
+  if (!/^\d{11}$/.test(formattedRecipient)) {
+    return {ok: false, error: "Recipient format invalid"};
+  }
+
+  const payload = new URLSearchParams({
+    user_id: String(userId),
+    api_key: String(apiKey),
+    sender_id: String(senderId),
+    to: formattedRecipient,
+    message: String(message || ""),
+  });
+  if (String(type || "").toLowerCase() === "unicode") {
+    payload.set("type", "unicode");
+  }
+
+  try {
+    const response = await fetch("https://app.notify.lk/api/v1/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+      },
+      body: payload.toString(),
+    });
+    const raw = await response.text();
+    if (!response.ok) {
+      return {ok: false, error: raw || "Failed to send SMS"};
+    }
+    return {ok: true};
+  } catch (error) {
+    logger.error("SMS API send failed:", error);
+    return {ok: false, error: error.message || "Failed to send SMS"};
+  }
+};
+
+const getMessagingTemplates = async () => {
+  const docRef = admin.firestore()
+      .collection("systemSettings")
+      .doc("messagingTemplates");
+  const docSnap = await docRef.get();
+  return docSnap.exists ? docSnap.data() : {};
+};
+
+const getAppUrl = async () => {
+  const templates = await getMessagingTemplates();
+  return (templates && templates.appUrl) || DEFAULT_APP_URL;
+};
+
+const buildDoctorName = (doctor) => {
+  return doctor.name ||
+    `${doctor.firstName || ""} ${doctor.lastName || ""}`.trim() ||
+    doctor.email ||
+    "Doctor";
 };
 
 // For cost control, you can set the maximum number of containers that can be
@@ -366,7 +452,7 @@ exports.sendContactEmail = onRequest(
     },
 );
 
-const buildWelcomeEmail = async (doctor, template = {}) => {
+const buildWelcomeEmail = async (doctor, template = {}, appUrl = "") => {
   const name =
     (doctor && doctor.name) ||
     [doctor && doctor.firstName, doctor && doctor.lastName]
@@ -422,6 +508,7 @@ const buildWelcomeEmail = async (doctor, template = {}) => {
     referralQr,
     unsubscribeUrl: "",
     unsubscribeLink: "",
+    appUrl: appUrl || DEFAULT_APP_URL,
   };
 
   const defaultSubject = "Welcome to Prescribe";
@@ -488,7 +575,12 @@ Prescribe Team`;
   return {subject, text, html};
 };
 
-const buildPatientWelcomeEmail = async (patient, doctorName, template = {}) => {
+const buildPatientWelcomeEmail = async (
+    patient,
+    doctorName,
+    template = {},
+    appUrl = "",
+) => {
   const patientName =
     (patient && patient.name) ||
     [patient && patient.firstName, patient && patient.lastName]
@@ -670,6 +762,7 @@ M-Prescribe Team
     unsubscribeUrl,
     unsubscribeLink,
     doctorName: doctorName || "",
+    appUrl: appUrl || DEFAULT_APP_URL,
   };
 
   const subject = applyTemplate(subjectSource, replacements);
@@ -692,6 +785,7 @@ const buildAppointmentReminderEmail = async (
     doctorName,
     appointmentDate,
     template = {},
+    appUrl = "",
 ) => {
   const patientName =
     (patient && patient.name) ||
@@ -786,6 +880,7 @@ M-Prescribe Team
     date: appointmentDate || "",
     unsubscribeUrl,
     unsubscribeLink,
+    appUrl: appUrl || DEFAULT_APP_URL,
   };
 
   const subject = applyTemplate(subjectSource, replacements);
@@ -922,9 +1017,11 @@ exports.sendDoctorWelcomeEmail = onDocumentCreated(
         logger.info("Welcome email disabled. Skipping:", doctor.email);
         return;
       }
+      const appUrl = await getAppUrl();
       const {subject, text, html} = await buildWelcomeEmail(
           doctor,
           template || {},
+          appUrl,
       );
       const fromEmail = (template && template.fromEmail) || from;
       const fromName = (template && template.fromName) || "";
@@ -1031,12 +1128,14 @@ exports.sendPatientWelcomeEmail = onDocumentCreated(
         });
         return;
       }
+      const appUrl = await getAppUrl();
       const {subject, text, html, attachments} =
-          await buildPatientWelcomeEmail(
-              patient,
-              doctorName,
-              template || {},
-          );
+        await buildPatientWelcomeEmail(
+            patient,
+            doctorName,
+            template || {},
+            appUrl,
+        );
       const fromEmail = (template && template.fromEmail) || from;
       const fromName = (template && template.fromName) || "";
       const replyTo = (template && template.replyTo) || undefined;
@@ -1121,12 +1220,14 @@ exports.sendDoctorBroadcastEmail = onRequest(
       }
 
       const template = await getDoctorBroadcastTemplate();
+      const appUrl = await getAppUrl();
       const transporter = nodemailer.createTransport(smtpConfig);
 
       const sendOne = async (doctor) => {
         const {subject, text, html} = await buildWelcomeEmail(
             doctor,
             template || {},
+            appUrl,
         );
         const fromEmail = (template && template.fromEmail) || from;
         const fromName = (template && template.fromName) || "";
@@ -1298,9 +1399,11 @@ exports.sendDoctorTemplateEmail = onRequest(
         targetDoctor = doctor;
 
         const transporter = nodemailer.createTransport(smtpConfig);
+        const appUrl = await getAppUrl();
         const {subject, text, html} = await buildWelcomeEmail(
             doctor,
             template || {},
+            appUrl,
         );
         const fromEmail = (template && template.fromEmail) || from;
         const fromName = (template && template.fromName) || "";
@@ -1492,11 +1595,13 @@ exports.sendPatientTemplateEmail = onRequest(
         }
 
         const transporter = nodemailer.createTransport(smtpConfig);
+        const appUrl = await getAppUrl();
         const {subject, text, html, attachments} =
           await buildPatientWelcomeEmail(
               patient,
               resolvedDoctorName,
               template || {},
+              appUrl,
           );
         const fromEmail = (template && template.fromEmail) || from;
         const fromName = (template && template.fromName) || "";
@@ -1617,11 +1722,13 @@ exports.sendAppointmentReminderTemplateEmail = onRequest(
         const reminderDoctorName = doctorName || "Dr. Test";
 
         const transporter = nodemailer.createTransport(smtpConfig);
+        const appUrl = await getAppUrl();
         const {subject, text, html} = await buildAppointmentReminderEmail(
             patient,
             reminderDoctorName,
             reminderDate,
             template || {},
+            appUrl,
         );
         const fromEmail = (template && template.fromEmail) || from;
         const fromName = (template && template.fromName) || "";
@@ -1671,6 +1778,7 @@ exports.sendAppointmentReminders = onSchedule(
         logger.info("Appointment reminders disabled. Skipping run.");
         return;
       }
+      const appUrl = await getAppUrl();
       const transporter = nodemailer.createTransport(smtpConfig);
       const doctorsSnapshot = await admin
           .firestore()
@@ -1747,6 +1855,7 @@ exports.sendAppointmentReminders = onSchedule(
               doctorName,
               reminderDate,
               template || {},
+              appUrl,
           );
           const fromEmail = (template && template.fromEmail) || from;
           const fromName = (template && template.fromName) || "";
@@ -2163,6 +2272,102 @@ exports.sendSmsApi = onRequest(
             (error && error.message) || "Failed to send SMS",
         );
         res.status(500).send(message);
+      }
+    },
+);
+
+exports.sendDoctorRegistrationSms = onDocumentCreated(
+    {
+      document: "doctors/{doctorId}",
+      secrets: [NOTIFY_USER_ID, NOTIFY_API_KEY],
+    },
+    async (event) => {
+      const doctor = event.data && event.data.data ? event.data.data() : null;
+      if (!doctor) return;
+      if (doctor.isApproved === true) return;
+
+      const templates = await getMessagingTemplates();
+      if (!templates.doctorRegistrationTemplateEnabled) return;
+      const senderId = templates.smsSenderId || "";
+      if (!senderId) {
+        logger.warn("SMS sender ID missing; skip doctor registration SMS");
+        return;
+      }
+
+      const phone = doctor.phone || doctor.phoneNumber || "";
+      if (!phone) return;
+
+      const message = renderTemplate(templates.doctorRegistrationTemplate, {
+        doctorName: buildDoctorName(doctor),
+        appUrl: templates.appUrl || DEFAULT_APP_URL,
+      });
+
+      const result = await sendNotifySms({
+        recipient: phone,
+        senderId,
+        message,
+      });
+      if (!result.ok) {
+        logger.warn("Doctor registration SMS failed:", result.error);
+      }
+
+      if (templates.doctorRegistrationCopyToTestEnabled === true) {
+        const testRecipient = templates.smsTestRecipient || "";
+        const normalizedMain = normalizeNotifyRecipient(phone);
+        const normalizedTest = normalizeNotifyRecipient(testRecipient);
+        if (normalizedTest && normalizedTest !== normalizedMain) {
+          const testResult = await sendNotifySms({
+            recipient: testRecipient,
+            senderId,
+            message,
+          });
+          if (!testResult.ok) {
+            logger.warn(
+                "Doctor registration test SMS failed:",
+                testResult.error,
+            );
+          }
+        }
+      }
+    },
+);
+
+exports.sendDoctorApprovedSms = onDocumentUpdated(
+    {
+      document: "doctors/{doctorId}",
+      secrets: [NOTIFY_USER_ID, NOTIFY_API_KEY],
+    },
+    async (event) => {
+      const before =
+        event.data && event.data.before ? event.data.before.data() : null;
+      const after =
+        event.data && event.data.after ? event.data.after.data() : null;
+      if (!before || !after) return;
+      if (before.isApproved === true || after.isApproved !== true) return;
+
+      const templates = await getMessagingTemplates();
+      if (!templates.doctorApprovedTemplateEnabled) return;
+      const senderId = templates.smsSenderId || "";
+      if (!senderId) {
+        logger.warn("SMS sender ID missing; skip doctor approved SMS");
+        return;
+      }
+
+      const phone = after.phone || after.phoneNumber || "";
+      if (!phone) return;
+
+      const message = renderTemplate(templates.doctorApprovedTemplate, {
+        doctorName: buildDoctorName(after),
+        appUrl: templates.appUrl || DEFAULT_APP_URL,
+      });
+
+      const result = await sendNotifySms({
+        recipient: phone,
+        senderId,
+        message,
+      });
+      if (!result.ok) {
+        logger.warn("Doctor approved SMS failed:", result.error);
       }
     },
 );

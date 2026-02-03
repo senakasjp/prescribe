@@ -426,10 +426,7 @@
           doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
           
-          let medicationDetails = `Frequency: ${medication.frequency}`
-          if (medication.timing) {
-            medicationDetails += ` | When: ${medication.timing}`
-          }
+          let medicationDetails = `${medication.frequency}`
           if (medication.duration) {
             medicationDetails += ` | Duration: ${medication.duration}`
           }
@@ -439,6 +436,14 @@
           doc.text(detailsLines, margin, yPos)
           yPos += detailsLines.length * 3
           
+          if (medication.timing) {
+            yPos += 2
+            const timingText = `${medication.timing}`
+            const timingLines = doc.splitTextToSize(timingText, contentWidth)
+            doc.text(timingLines, margin, yPos)
+            yPos += timingLines.length * 3
+          }
+
           if (medication.instructions) {
             yPos += 2
             const instructionText = `Instructions: ${medication.instructions}`
@@ -581,7 +586,7 @@
                       <div class="text-sm text-gray-600 dark:text-gray-300 space-y-1">
                         <p><span class="font-medium">Frequency:</span> {medication.frequency}</p>
                         {#if medication.timing}
-                          <p><span class="font-medium">When:</span> {medication.timing}</p>
+                          <p>{medication.timing}</p>
                         {/if}
                         {#if medication.instructions}
                           <p><span class="font-medium">Instructions:</span> {medication.instructions}</p>

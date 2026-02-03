@@ -197,6 +197,7 @@
   
   // Medical summary tab state
   let activeMedicalTab = 'prescriptions'
+  let editPatientTrigger = 0
   
   // Prescription state
   let currentPrescription = []
@@ -560,6 +561,12 @@
     
     console.log('👁️ Current view after:', currentView)
     console.log('👁️ Selected patient after:', selectedPatient)
+  }
+
+  const handleEditPatientFromList = (patient) => {
+    selectPatient(patient)
+    currentView = 'prescriptions'
+    editPatientTrigger += 1
   }
   
   // Handle data updates from PatientDetails
@@ -1935,6 +1942,13 @@
                     View
                   </button>
                   <button
+                    class="inline-flex items-center px-3 py-1.5 border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
+                    on:click|stopPropagation={() => handleEditPatientFromList(patient)}
+                  >
+                    <i class="fas fa-edit mr-1"></i>
+                    Edit
+                  </button>
+                  <button
                     class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
                     on:click|stopPropagation={() => handleDeletePatientFromList(patient)}
                   >
@@ -1997,6 +2011,13 @@
                 >
                   <i class="fas fa-eye mr-1"></i>
                   View
+                </button>
+                <button
+                  class="inline-flex items-center px-3 py-1.5 border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => handleEditPatientFromList(patient)}
+                >
+                  <i class="fas fa-edit mr-1"></i>
+                  Edit
                 </button>
                 <button
                   class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
@@ -2185,6 +2206,7 @@
             selectedPatient={selectedPatient}
             {addToPrescription} 
             {refreshTrigger} 
+            {editPatientTrigger}
             {doctorId}
             {settingsDoctor}
             currentUser={user}

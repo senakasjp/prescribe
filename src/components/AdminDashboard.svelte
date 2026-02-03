@@ -193,12 +193,28 @@
   let smsTestStatus = ''
   let smsSenderIdSaving = false
   let smsSenderIdStatus = ''
+  let smsTestRecipientSaving = false
+  let smsTestRecipientStatus = ''
+  let registrationTestStatus = ''
+  let appointmentReminderTestStatus = ''
+  let doctorRegistrationTestStatus = ''
+  let doctorApprovedTestStatus = ''
+  let appUrl = ''
+  let appUrlSaving = false
+  let appUrlStatus = ''
   let registrationTemplate =
     'Welcome {{name}} to Prescribe! Your account is ready with Dr. {{doctorName}}. Sign in at {{appUrl}}.'
   let registrationTemplateEnabled = true
   let appointmentReminderTemplate =
     'Reminder: your appointment with {{doctorName}} is on {{date}} at {{time}}. Reply if you need to reschedule.'
   let appointmentReminderTemplateEnabled = true
+  let doctorRegistrationTemplate =
+    'Hi Dr. {{doctorName}}, your registration is received. We will review and approve soon. — M-Prescribe'
+  let doctorRegistrationTemplateEnabled = true
+  let doctorRegistrationCopyToTestEnabled = false
+  let doctorApprovedTemplate =
+    'Hi Dr. {{doctorName}}, your account is approved. You can sign in at {{appUrl}}. — M-Prescribe'
+  let doctorApprovedTemplateEnabled = true
   let registrationChannel = 'sms'
   let appointmentReminderChannel = 'sms'
   let messagingTemplatesLoading = false
@@ -641,10 +657,21 @@
         appointmentReminderTemplate =
           templates.appointmentReminderTemplate || appointmentReminderTemplate
         appointmentReminderTemplateEnabled = templates.appointmentReminderTemplateEnabled !== false
+        doctorRegistrationTemplate =
+          templates.doctorRegistrationTemplate || doctorRegistrationTemplate
+        doctorRegistrationTemplateEnabled =
+          templates.doctorRegistrationTemplateEnabled !== false
+        doctorRegistrationCopyToTestEnabled =
+          templates.doctorRegistrationCopyToTestEnabled === true
+        doctorApprovedTemplate =
+          templates.doctorApprovedTemplate || doctorApprovedTemplate
+        doctorApprovedTemplateEnabled = templates.doctorApprovedTemplateEnabled !== false
         registrationChannel = templates.registrationChannel || registrationChannel
         appointmentReminderChannel =
           templates.appointmentReminderChannel || appointmentReminderChannel
         smsTestSenderId = templates.smsSenderId || smsTestSenderId
+        smsTestRecipient = templates.smsTestRecipient || smsTestRecipient
+        appUrl = templates.appUrl || appUrl
       }
     } catch (error) {
       console.error('❌ Error loading messaging templates:', error)
@@ -662,9 +689,15 @@
         appointmentReminderTemplate: appointmentReminderTemplate.trim(),
         registrationTemplateEnabled,
         appointmentReminderTemplateEnabled,
+        doctorRegistrationTemplate: doctorRegistrationTemplate.trim(),
+        doctorRegistrationTemplateEnabled,
+        doctorRegistrationCopyToTestEnabled,
+        doctorApprovedTemplate: doctorApprovedTemplate.trim(),
+        doctorApprovedTemplateEnabled,
         registrationChannel,
         appointmentReminderChannel,
-        smsSenderId: smsTestSenderId.trim()
+        smsSenderId: smsTestSenderId.trim(),
+        smsTestRecipient: smsTestRecipient.trim()
       })
       messagingTemplatesStatus = 'Saved'
     } catch (error) {
@@ -693,6 +726,44 @@
       smsSenderIdSaving = false
       setTimeout(() => {
         smsSenderIdStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveSmsTestRecipient = async () => {
+    try {
+      smsTestRecipientSaving = true
+      smsTestRecipientStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        smsTestRecipient: smsTestRecipient.trim()
+      })
+      smsTestRecipientStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving SMS test recipient:', error)
+      smsTestRecipientStatus = 'Save failed'
+    } finally {
+      smsTestRecipientSaving = false
+      setTimeout(() => {
+        smsTestRecipientStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveAppUrl = async () => {
+    try {
+      appUrlSaving = true
+      appUrlStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        appUrl: appUrl.trim()
+      })
+      appUrlStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving app URL:', error)
+      appUrlStatus = 'Save failed'
+    } finally {
+      appUrlSaving = false
+      setTimeout(() => {
+        appUrlStatus = ''
       }, 2500)
     }
   }
@@ -840,6 +911,88 @@
         smsTestStatus = ''
       }, 12000)
     }
+  }
+
+  const sendTemplateSmsTest = async (message, statusSetter) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    if (!smsTestSenderId.trim()) {
+      statusSetter('Sender ID is required')
+      return
+    }
+    if (!smsTestRecipient.trim()) {
+      statusSetter('Test phone number is required')
+      return
+    }
+    try {
+      statusSetter('Sending...')
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendSmsApi`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipient: smsTestRecipient,
+          senderId: smsTestSenderId,
+          type: smsTestType === 'unicode' ? smsTestType : undefined,
+          message
+        })
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'SMS send failed')
+      }
+      statusSetter('SMS sent')
+    } catch (error) {
+      statusSetter(error?.message || 'SMS send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 12000)
+    }
+  }
+
+  const handleRegistrationSmsTest = () => {
+    const resolvedAppUrl = appUrl || 'https://prescribe-7e1e8.web.app'
+    const message = (registrationTemplate || '')
+      .replace(/\{\{name\}\}/g, 'Kamal')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{patientShortId\}\}/g, 'PT12345')
+      .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
+    sendTemplateSmsTest(message, (msg) => registrationTestStatus = msg)
+  }
+
+  const handleAppointmentReminderSmsTest = () => {
+    const message = (appointmentReminderTemplate || '')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{patientShortId\}\}/g, 'PT12345')
+      .replace(/\{\{date\}\}/g, '10/02/2026')
+      .replace(/\{\{time\}\}/g, '10:30 AM')
+    sendTemplateSmsTest(message, (msg) => appointmentReminderTestStatus = msg)
+  }
+
+  const handleDoctorRegistrationSmsTest = () => {
+    const resolvedAppUrl = appUrl || 'https://prescribe-7e1e8.web.app'
+    const message = (doctorRegistrationTemplate || '')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
+    sendTemplateSmsTest(message, (msg) => doctorRegistrationTestStatus = msg)
+  }
+
+  const handleDoctorApprovedSmsTest = () => {
+    const resolvedAppUrl = appUrl || 'https://prescribe-7e1e8.web.app'
+    const message = (doctorApprovedTemplate || '')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
+    sendTemplateSmsTest(message, (msg) => doctorApprovedTestStatus = msg)
   }
 
   const getFunctionsBaseUrl = () => {
@@ -1952,16 +2105,17 @@
                   <i class="fas fa-comment-dots mr-3"></i>Messaging
             </button>
             <button
-                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'system' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
-              on:click={() => handleTabChange('system')}
-            >
-                  <i class="fas fa-cog mr-3"></i>System
-            </button>
-            <button
                   class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'email' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
               on:click={() => handleTabChange('email')}
             >
                   <i class="fas fa-envelope mr-3"></i>Email
+            </button>
+            <hr class="border-gray-200" />
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'system' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('system')}
+            >
+                  <i class="fas fa-cog mr-3"></i>System
             </button>
               </nav>
             </div>
@@ -3147,6 +3301,19 @@
                       bind:value={registrationTemplate}
                     ></textarea>
                     <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;name&#125;&#125;, &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleRegistrationSmsTest}
+                        disabled={!registrationTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if registrationTestStatus}
+                        <span class="text-xs text-gray-500">{registrationTestStatus}</span>
+                      {/if}
+                    </div>
                   </div>
                   <div class="border border-gray-200 rounded-lg p-4 space-y-3">
                     <div class="flex items-center gap-2">
@@ -3182,6 +3349,102 @@
                       bind:value={appointmentReminderTemplate}
                     ></textarea>
                     <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleAppointmentReminderSmsTest}
+                        disabled={!appointmentReminderTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if appointmentReminderTestStatus}
+                        <span class="text-xs text-gray-500">{appointmentReminderTestStatus}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-user-check text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Doctor Registration Confirm</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="doctorRegistrationTemplateEnabled"
+                        type="checkbox"
+                        bind:checked={doctorRegistrationTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="doctorRegistrationTemplateEnabled" class="text-sm text-gray-700">
+                        Enable doctor registration SMS
+                      </label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="doctorRegistrationCopyToTestEnabled"
+                        type="checkbox"
+                        bind:checked={doctorRegistrationCopyToTestEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="doctorRegistrationCopyToTestEnabled" class="text-sm text-gray-700">
+                        Send a copy to test number
+                      </label>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={doctorRegistrationTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleDoctorRegistrationSmsTest}
+                        disabled={!doctorRegistrationTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if doctorRegistrationTestStatus}
+                        <span class="text-xs text-gray-500">{doctorRegistrationTestStatus}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-check-circle text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Doctor Approved</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="doctorApprovedTemplateEnabled"
+                        type="checkbox"
+                        bind:checked={doctorApprovedTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="doctorApprovedTemplateEnabled" class="text-sm text-gray-700">
+                        Enable doctor approved SMS
+                      </label>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={doctorApprovedTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleDoctorApprovedSmsTest}
+                        disabled={!doctorApprovedTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if doctorApprovedTestStatus}
+                        <span class="text-xs text-gray-500">{doctorApprovedTestStatus}</span>
+                      {/if}
+                    </div>
                   </div>
                 </div>
                 <div class="flex items-center gap-3">
@@ -3305,7 +3568,7 @@ exports.sendWelcomeWhatsapp = functions
                       placeholder="YourName"
                     />
                     <button
-                      class="inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                      class="inline-flex w-full sm:w-[170px] items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
                       on:click={saveSmsSenderId}
                       disabled={smsSenderIdSaving}
                     >
@@ -3317,16 +3580,37 @@ exports.sendWelcomeWhatsapp = functions
                     </button>
                   </div>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Recipient</label>
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm font-semibold text-gray-800">Test SMS phone number</p>
+                    {#if smsTestRecipientStatus}
+                      <span class="text-xs text-gray-500">{smsTestRecipientStatus}</span>
+                    {/if}
+                  </div>
+                  <div class="flex flex-col sm:flex-row gap-3">
                     <input
                       type="text"
                       class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
                       bind:value={smsTestRecipient}
                       placeholder="94712345678"
                     />
+                    <button
+                      class="inline-flex w-full sm:w-[170px] items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                      on:click={saveSmsTestRecipient}
+                      disabled={smsTestRecipientSaving}
+                    >
+                      {#if smsTestRecipientSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save Test Number
+                      {/if}
+                    </button>
                   </div>
+                  <p class="text-xs text-gray-500 mt-2">
+                    Used for Send Test SMS buttons and optional copy of doctor registration SMS.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Sender ID</label>
                     <input
@@ -3489,6 +3773,39 @@ firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
                       </div>
                     </dl>
                   </div>
+                </div>
+              </div>
+
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">App URL</h5>
+                </div>
+                <div class="p-4 space-y-3">
+                  <p class="text-sm text-gray-600">
+                    Used in SMS and email templates for &#123;&#123;appUrl&#125;&#125;.
+                  </p>
+                  <div class="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={appUrl}
+                      placeholder="https://your-domain.com"
+                    />
+                    <button
+                      class="inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                      on:click={saveAppUrl}
+                      disabled={appUrlSaving}
+                    >
+                      {#if appUrlSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save App URL
+                      {/if}
+                    </button>
+                  </div>
+                  {#if appUrlStatus}
+                    <span class="text-xs text-gray-500">{appUrlStatus}</span>
+                  {/if}
                 </div>
               </div>
               

@@ -757,7 +757,9 @@
                       {/if}
                     </div>
                     <div class="text-gray-500 text-sm">
-                      {medication.dosage} • {medication.frequency} • {medication.duration}{#if medication.dosageForm} • {medication.dosageForm}{/if}
+                      {medication.dosage} • {medication.frequency}
+                      {#if medication.timing} • {medication.timing}{/if}
+                      • {medication.duration}{#if medication.dosageForm} • {medication.dosageForm}{/if}
                     </div>
                     {#if medication.instructions}
                       <div class="mt-1">

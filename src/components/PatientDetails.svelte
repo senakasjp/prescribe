@@ -19,11 +19,24 @@
   export let selectedPatient
   export const addToPrescription = null
   export let refreshTrigger = 0
+  export let editPatientTrigger = 0
   export let doctorId = null
   export let currentUser = null
   export let authUser = null
   export let settingsDoctor = null
   export let initialTab = 'overview' // Allow parent to set initial tab
+
+  const TITLE_OPTIONS = ['Mr', 'Ms', 'Master', 'Baby']
+
+  const splitTitleFromName = (name) => {
+    const trimmed = String(name || '').trim()
+    for (const title of TITLE_OPTIONS) {
+      if (trimmed.startsWith(`${title} `)) {
+        return { title, firstName: trimmed.slice(title.length + 1).trim() }
+      }
+    }
+    return { title: '', firstName: trimmed }
+  }
 
   const formatPhoneDisplay = (patient) => {
     const code = (patient?.phoneCountryCode || '').trim()
@@ -84,6 +97,9 @@
     }
   }
   $: effectiveDoctorSettings = getDoctorSettingsFallback()
+  $: if (editPatientTrigger && selectedPatient && !isEditingPatient) {
+    startEditingPatient()
+  }
 
   const getDisplayDoctorName = (doctorProfile) => {
     if (currentUser?.firstName || currentUser?.lastName) {
@@ -2826,7 +2842,10 @@
           doc.setFont('helvetica', 'normal')
           
           // Build horizontal medication details string (excluding dosage since it's now on header line)
-          let medicationDetails = `Frequency: ${medication.frequency}`
+          let medicationDetails = `${medication.frequency}`
+          if (medication.timing) {
+            medicationDetails += ` | ${medication.timing}`
+          }
           
           // Add duration if available
           if (medication.duration) {
@@ -2964,8 +2983,10 @@
     console.log('🖊️ Current isEditingPatient state:', isEditingPatient)
     
     // Populate edit form with current patient data
+    const parsedName = splitTitleFromName(selectedPatient.firstName || '')
     editPatientData = {
-      firstName: selectedPatient.firstName || '',
+      title: selectedPatient.title || parsedName.title,
+      firstName: parsedName.firstName || selectedPatient.firstName || '',
       lastName: selectedPatient.lastName || '',
       email: selectedPatient.email || '',
       phone: selectedPatient.phone || '',
@@ -2998,6 +3019,7 @@
     isEditingPatient = false
     editError = ''
     editPatientData = {
+      title: '',
       firstName: '',
       lastName: '',
       email: '',
@@ -3056,9 +3078,14 @@
       }
       
       // Update patient data
+      const firstNameWithTitle = editPatientData.title
+        ? `${editPatientData.title} ${editPatientData.firstName}`.trim()
+        : editPatientData.firstName
       const updatedPatient = {
         ...selectedPatient,
         ...editPatientData,
+        title: editPatientData.title || '',
+        firstName: firstNameWithTitle,
         age: calculatedAge
       }
       
@@ -3780,17 +3807,30 @@
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
                       <div class="mb-3 sm:mb-4">
-                        <label for="editFirstName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                        <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                           <i class="fas fa-user mr-1"></i>First Name <span class="text-red-500">*</span>
                         </label>
-                        <input 
-                          type="text" 
-                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
-                          id="editFirstName" 
-                          bind:value={editPatientData.firstName}
-                          required
-                          disabled={savingPatient}
-                        >
+                        <div class="flex gap-2">
+                          <select
+                            id="editTitle"
+                            class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            bind:value={editPatientData.title}
+                            disabled={savingPatient}
+                          >
+                            <option value="">Title</option>
+                            {#each TITLE_OPTIONS as option}
+                              <option value={option}>{option}</option>
+                            {/each}
+                          </select>
+                          <input 
+                            type="text" 
+                            class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                            id="editFirstName" 
+                            bind:value={editPatientData.firstName}
+                            required
+                            disabled={savingPatient}
+                          >
+                        </div>
                       </div>
                     </div>
                     <div>
