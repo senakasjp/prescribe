@@ -12,6 +12,7 @@
   
   let firstName = ''
   let lastName = ''
+  let title = ''
   let email = ''
   let phone = ''
   let phoneCountryCode = ''
@@ -45,6 +46,22 @@
     address: '',
     allergies: '',
     longTermMedications: ''
+  }
+
+  const focusField = (id) => {
+    const el = document.getElementById(id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus()
+    }
+  }
+
+  const normalizePhoneInput = (value, dialCode) => {
+    const digitsOnly = String(value || '').replace(/\D/g, '')
+    if (dialCode === '+94') {
+      return digitsOnly.slice(0, 9)
+    }
+    return digitsOnly
   }
 
   $: if (defaultCountry && !phoneCodeTouched && !phoneCountryCode) {
@@ -122,6 +139,7 @@
     try {
       // Validate required fields - only first name and age are mandatory
       if (!firstName.trim()) {
+        focusField('firstName')
         throw new Error('First name is required')
       }
       
@@ -136,6 +154,7 @@
       }
       
       if (!calculatedAge || calculatedAge === '') {
+        focusField('age')
         throw new Error('Age is required. Please provide either age or date of birth')
       }
 
@@ -149,6 +168,7 @@
       if (email && email.trim()) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(email)) {
+          focusField('email')
           throw new Error('Please enter a valid email address')
         }
       }
@@ -158,12 +178,14 @@
         const birthDate = new Date(dateOfBirth)
         const today = new Date()
         if (birthDate >= today) {
+          focusField('dateOfBirth')
           throw new Error('Date of birth must be in the past')
         }
       }
       
       const patientData = {
-        firstName: firstName.trim(),
+        title: title.trim() || '',
+        firstName: (title.trim() ? `${title.trim()} ${firstName.trim()}` : firstName.trim()),
         lastName: lastName.trim() || '',
         email: email.trim() || '',
         phone: phone.trim() || '',
@@ -188,6 +210,7 @@
       // Reset form
       firstName = ''
       lastName = ''
+      title = ''
       email = ''
       phone = ''
       phoneCountryCode = ''
@@ -277,17 +300,31 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label for="firstName" class="block text-sm font-medium text-gray-700 mb-1">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
               <i class="fas fa-user mr-1"></i>First Name <span class="text-red-600">*</span>
             </label>
-            <input 
-              type="text" 
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-              id="firstName" 
-              bind:value={firstName}
-              required
-              disabled={loading}
-            >
+            <div class="flex gap-2">
+              <select
+                id="title"
+                class="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                bind:value={title}
+                disabled={loading}
+              >
+                <option value="">Title</option>
+                <option value="Mr">Mr</option>
+                <option value="Ms">Ms</option>
+                <option value="Master">Master</option>
+                <option value="Baby">Baby</option>
+              </select>
+              <input 
+                type="text" 
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                id="firstName" 
+                bind:value={firstName}
+                required
+                disabled={loading}
+              >
+            </div>
           </div>
         </div>
         <div class="col-span-full md:col-span-1">
@@ -321,7 +358,7 @@
         </div>
         <div class="col-span-full md:col-span-1">
           <div class="mb-3">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+            <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
             <div class="grid grid-cols-3 gap-2">
               <select
                 class="col-span-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -338,7 +375,9 @@
                 type="tel" 
                 class="col-span-2 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
                 id="phone" 
-                bind:value={phone}
+                value={phone}
+                on:input={(e) => phone = normalizePhoneInput(e.target.value, phoneCountryCode)}
+                maxlength={phoneCountryCode === '+94' ? 9 : undefined}
                 disabled={loading}
               >
             </div>

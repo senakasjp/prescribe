@@ -1,8 +1,9 @@
 /**
  * Unit tests for charge calculation service (memory-based)
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import chargeCalculationService from '../../services/pharmacist/chargeCalculationService.js'
+import { resolveCurrencyFromCountry } from '../../utils/currencyByCountry.js'
 
 describe('chargeCalculationService', () => {
   describe('roundTotalCharge', () => {
@@ -89,6 +90,38 @@ describe('chargeCalculationService', () => {
     })
   })
 
+  describe('calculatePrescriptionCharge', () => {
+    it('should apply doctor rounding preference to total bill', async () => {
+      const doctor = {
+        id: 'doc-1',
+        consultationCharge: 120,
+        hospitalCharge: 30,
+        roundingPreference: 'nearest100'
+      }
+      const prescription = {
+        id: 'rx-1',
+        doctorId: 'doc-1'
+      }
+      const pharmacist = {
+        currency: 'LKR'
+      }
+
+      const doctorSpy = vi.spyOn(chargeCalculationService, 'getDoctorById')
+        .mockResolvedValue(doctor)
+      const drugSpy = vi.spyOn(chargeCalculationService, 'calculateDrugCharges')
+        .mockResolvedValue({ totalCost: 0 })
+
+      const breakdown = await chargeCalculationService.calculatePrescriptionCharge(prescription, pharmacist)
+
+      expect(breakdown.roundingPreference).toBe('nearest100')
+      expect(breakdown.totalBeforeRounding).toBe(150)
+      expect(breakdown.totalCharge).toBe(200)
+
+      doctorSpy.mockRestore()
+      drugSpy.mockRestore()
+    })
+  })
+
   describe('parseMedicationQuantity', () => {
     it('should parse numeric quantities from strings', () => {
       expect(chargeCalculationService.parseMedicationQuantity('10 tablets')).toBe(10)
@@ -102,16 +135,20 @@ describe('chargeCalculationService', () => {
   })
 
   describe('formatCurrency', () => {
-    it('should format LKR without currency symbol', () => {
-      const formatted = chargeCalculationService.formatCurrency(1234.5, 'LKR')
+    it('should format LKR without currency symbol when doctor country is Sri Lanka', () => {
+      const currency = resolveCurrencyFromCountry('Sri Lanka')
+      const formatted = chargeCalculationService.formatCurrency(1234.5, currency)
+      expect(currency).toBe('LKR')
       expect(formatted).toContain('1,234.50')
       expect(formatted).not.toContain('LKR')
       expect(formatted).not.toContain('$')
     })
 
-    it('should format USD with currency symbol', () => {
-      const formatted = chargeCalculationService.formatCurrency(1234.5, 'USD')
-      expect(formatted).toMatch(/\$/)
+    it('should format currency with symbol when doctor country is not Sri Lanka', () => {
+      const currency = resolveCurrencyFromCountry('United States')
+      const formatted = chargeCalculationService.formatCurrency(1234.5, currency)
+      expect(currency).toBe('USD')
+      expect(formatted).toBe('USD 1,234.50')
     })
   })
 })

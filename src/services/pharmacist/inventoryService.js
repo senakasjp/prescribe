@@ -72,27 +72,58 @@ class InventoryService {
   /**
    * One-time migration: copy legacy drugStock items into pharmacistInventory
    */
-  async migrateDrugStockToInventory(pharmacistId) {
+  async migrateDrugStockToInventory(pharmacistId, legacyId = null) {
     try {
       if (!pharmacistId) return { migrated: 0 }
 
-      const legacyQuery = query(
+      const legacyByPharmacist = query(
         collection(db, 'drugStock'),
         where('pharmacistId', '==', pharmacistId)
       )
-      const legacySnapshot = await getDocs(legacyQuery)
-      if (legacySnapshot.empty) {
+      const legacyByPharmacy = query(
+        collection(db, 'drugStock'),
+        where('pharmacyId', '==', pharmacistId)
+      )
+      const legacyByNumber = legacyId
+        ? query(collection(db, 'drugStock'), where('pharmacistNumber', '==', legacyId))
+        : null
+      const [legacySnapshot, legacyPharmacySnapshot, legacyNumberSnapshot] = await Promise.all([
+        getDocs(legacyByPharmacist),
+        getDocs(legacyByPharmacy),
+        legacyByNumber ? getDocs(legacyByNumber) : Promise.resolve({ empty: true, docs: [] })
+      ])
+
+      if (legacySnapshot.empty && legacyPharmacySnapshot.empty && legacyNumberSnapshot.empty) {
         return { migrated: 0 }
       }
 
       let migrated = 0
       const batch = writeBatch(db)
 
+      const legacyDocs = new Map()
       for (const docSnap of legacySnapshot.docs) {
+        legacyDocs.set(docSnap.id, docSnap)
+      }
+      for (const docSnap of legacyPharmacySnapshot.docs) {
+        if (!legacyDocs.has(docSnap.id)) {
+          legacyDocs.set(docSnap.id, docSnap)
+        }
+      }
+      for (const docSnap of legacyNumberSnapshot.docs) {
+        if (!legacyDocs.has(docSnap.id)) {
+          legacyDocs.set(docSnap.id, docSnap)
+        }
+      }
+
+      for (const docSnap of legacyDocs.values()) {
         const targetRef = doc(db, this.collections.inventory, docSnap.id)
         const targetSnap = await getDoc(targetRef)
         if (!targetSnap.exists()) {
-          batch.set(targetRef, docSnap.data())
+          batch.set(targetRef, {
+            ...docSnap.data(),
+            pharmacistId,
+            pharmacyId: pharmacistId
+          })
           migrated += 1
         }
       }
@@ -130,6 +161,10 @@ class InventoryService {
       const inventoryItem = {
         id: itemId,
         pharmacistId,
+        pharmacyId: itemData.pharmacyId || pharmacistId,
+        pharmacistNumber: itemData.pharmacistNumber || null,
+        isTestData: !!itemData.isTestData,
+        testTag: itemData.testTag || '',
         barcode,
         
         // Basic Information
@@ -223,6 +258,80 @@ class InventoryService {
       console.error('❌ InventoryService: Error creating inventory item:', error)
       throw error
     }
+  }
+
+  /**
+   * Create sample inventory items (admin/testing)
+   */
+  async createTestInventoryItems(pharmacistId, count = 10, options = {}) {
+    const total = Number.isFinite(count) && count > 0 ? count : 10
+    const pharmacyId = options.pharmacyId || pharmacistId
+    const pharmacistNumber = options.pharmacistNumber || null
+    const created = []
+
+    for (let i = 0; i < total; i += 1) {
+      const index = i + 1
+      const expiryDate = new Date()
+      expiryDate.setMonth(expiryDate.getMonth() + 6)
+      const costPrice = Math.floor(20 + Math.random() * 180)
+      const sellingPrice = costPrice + Math.floor(10 + Math.random() * 90)
+      const payload = {
+        brandName: `Test Drug ${index}`,
+        genericName: `test-generic-${index}`,
+        strength: '500',
+        strengthUnit: 'mg',
+        dosageForm: 'tablet',
+        packUnit: 'tablets',
+        packSize: '',
+        initialStock: 20,
+        minimumStock: 5,
+        maximumStock: 200,
+        costPrice,
+        sellingPrice,
+        expiryDate: expiryDate.toISOString().slice(0, 10),
+        storageConditions: 'room temperature',
+        category: 'prescription',
+        pharmacyId,
+        pharmacistNumber,
+        isTestData: true,
+        testTag: 'TEST_DATA',
+        notes: 'TEST_DATA'
+      }
+      created.push(await this.createInventoryItem(pharmacistId, payload))
+    }
+
+    return created
+  }
+
+  /**
+   * Remove sample inventory items (admin/testing)
+   */
+  async deleteTestInventoryItems(pharmacistId) {
+    const stockRef = collection(db, this.collections.inventory)
+    const q = query(stockRef, where('pharmacistId', '==', pharmacistId))
+    const snapshot = await getDocs(q)
+    if (snapshot.empty) return { removed: 0 }
+
+    const batch = writeBatch(db)
+    let removed = 0
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data() || {}
+      const isTest =
+        data.isTestData === true ||
+        data.testTag === 'TEST_DATA' ||
+        (typeof data.notes === 'string' && data.notes.includes('TEST_DATA')) ||
+        (typeof data.brandName === 'string' && data.brandName.startsWith('Test Drug '))
+      if (isTest) {
+        batch.delete(docSnap.ref)
+        removed += 1
+      }
+    })
+
+    if (removed > 0) {
+      await batch.commit()
+    }
+
+    return { removed }
   }
 
   /**
@@ -766,6 +875,26 @@ class InventoryService {
           ...doc.data()
         })
       })
+
+      if (items.length === 0) {
+        const legacyQueries = [
+          query(collection(db, this.collections.inventory), where('pharmacyId', '==', pharmacistId))
+        ]
+        if (filters.legacyId) {
+          legacyQueries.push(query(collection(db, this.collections.inventory), where('pharmacyId', '==', filters.legacyId)))
+          legacyQueries.push(query(collection(db, this.collections.inventory), where('pharmacistId', '==', filters.legacyId)))
+          legacyQueries.push(query(collection(db, this.collections.inventory), where('pharmacistNumber', '==', filters.legacyId)))
+        }
+
+        const snapshots = await Promise.all(legacyQueries.map(qry => getDocs(qry)))
+        const legacyMap = new Map()
+        snapshots.forEach(snapshot => {
+          snapshot.forEach((doc) => {
+            legacyMap.set(doc.id, { id: doc.id, ...doc.data() })
+          })
+        })
+        items = Array.from(legacyMap.values())
+      }
       
       // Apply filters client-side to avoid composite index requirements
       if (filters.category && filters.category !== 'all') {

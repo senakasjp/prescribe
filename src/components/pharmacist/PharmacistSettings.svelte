@@ -366,6 +366,7 @@
       restoreSummary = summary
       restoreSuccess = 'Backup restored successfully.'
       notifySuccess(restoreSuccess)
+      dispatch('data-restored', summary)
     } catch (err) {
       restoreError = err.message || 'Failed to restore backup.'
       notifyError(restoreError)
@@ -805,6 +806,10 @@
             {#if restoreSummary}
               <div class="mt-3 text-xs text-gray-600">
                 Restored: {restoreSummary.inventoryItems} inventory items, {restoreSummary.receivedPrescriptions} prescriptions.
+                <div class="mt-1 text-[11px] text-gray-500">
+                  Stored now: {restoreSummary.inventoryStored ?? 0} inventory items,
+                  {restoreSummary.drugStockStored ?? 0} drug stock.
+                </div>
               </div>
             {/if}
           </div>

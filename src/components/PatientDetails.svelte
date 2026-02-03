@@ -32,6 +32,14 @@
     if (!number) return code
     return `${code} ${number}`
   }
+
+  const normalizePhoneInput = (value, dialCode) => {
+    const digitsOnly = String(value || '').replace(/\D/g, '')
+    if (dialCode === '+94') {
+      return digitsOnly.slice(0, 9)
+    }
+    return digitsOnly
+  }
   
   // Event dispatcher to notify parent of data changes
   import { createEventDispatcher } from 'svelte'
@@ -3841,7 +3849,9 @@
                             type="tel" 
                             class="col-span-2 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                             id="editPhone" 
-                            bind:value={editPatientData.phone}
+                            value={editPatientData.phone}
+                            on:input={(e) => editPatientData.phone = normalizePhoneInput(e.target.value, editPatientData.phoneCountryCode)}
+                            maxlength={editPatientData.phoneCountryCode === '+94' ? 9 : undefined}
                             disabled={savingPatient}
                           >
                         </div>

@@ -1828,7 +1828,12 @@
   {#if showProfileSettings}
     <div class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" on:click={handleBackToDashboard}></div>
+        <button
+          type="button"
+          class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+          aria-label="Close profile settings"
+          on:click={handleBackToDashboard}
+        ></button>
         <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
           <PharmacistSettings 
             {pharmacist}
@@ -1880,21 +1885,21 @@
         </div>
         <div class="p-4">
           <div class="mb-3">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Business Name:</label>
+            <p class="block text-sm font-medium text-gray-700 mb-1">Business Name:</p>
             <p class="text-gray-900">{pharmacist.businessName || pharmacist.name || 'Not specified'}</p>
           </div>
           <div class="mb-3">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Pharmacist ID:</label>
+            <p class="block text-sm font-medium text-gray-700 mb-1">Pharmacist ID:</p>
             <p class="text-blue-600 font-semibold">
               {pharmacist.pharmacistNumber || formatPharmacyId(pharmacyId || pharmacist.id) || 'Not specified'}
             </p>
           </div>
           <div class="mb-3">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Connected Doctors:</label>
+            <p class="block text-sm font-medium text-gray-700 mb-1">Connected Doctors:</p>
             <p class="text-gray-900">{connectedDoctors.length}</p>
           </div>
           <div class="mb-0">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Total Prescriptions:</label>
+            <p class="block text-sm font-medium text-gray-700 mb-1">Total Prescriptions:</p>
             <p class="mb-0">{prescriptions.length}</p>
           </div>
         </div>
@@ -2245,8 +2250,9 @@
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <div class="lg:col-span-1 space-y-3">
                     <div class="rounded-lg border border-gray-200 bg-white p-3">
-                      <label class="block text-xs font-semibold text-gray-600 mb-2">Search patient</label>
+                      <label for="registrationPatientSearch" class="block text-xs font-semibold text-gray-600 mb-2">Search patient</label>
                       <input
+                        id="registrationPatientSearch"
                         type="text"
                         class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                         placeholder="Name, email, phone, ID"
@@ -2458,6 +2464,11 @@
                                   </div>
 
                                   <div class="col-span-1">
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">When</div>
+                                    <div class="text-gray-900">{medication.timing || '-'}</div>
+                                  </div>
+
+                                  <div class="col-span-1">
                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Duration</div>
                                     <div class="text-gray-900">{medication.duration}</div>
                                   </div>
@@ -2587,6 +2598,10 @@
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Frequency:</span>
                                 <span class="text-gray-900">{medication.frequency}</span>
+                              </div>
+                              <div class="flex justify-between">
+                                <span class="text-gray-600">When:</span>
+                                <span class="text-gray-900">{medication.timing || '-'}</span>
                               </div>
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Duration:</span>

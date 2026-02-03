@@ -59,19 +59,21 @@
     id="confirmationModal" 
     tabindex="-1" 
     aria-hidden="true" 
-    class="fixed top-0 left-0 right-0 z-[60] w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50"
-    on:click={handleClose}
+    class="fixed top-0 left-0 right-0 z-[60] w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50 relative"
     on:keydown={(e) => { if (e.key === 'Escape') handleClose() }}
     role="dialog"
     aria-modal="true"
   >
+    <button
+      type="button"
+      class="absolute inset-0 w-full h-full cursor-default"
+      aria-label="Close modal"
+      on:click={handleClose}
+    ></button>
     <!-- Flowbite Modal Container -->
-    <div class="relative w-full max-w-sm max-h-full mx-auto flex items-center justify-center min-h-screen">
+    <div class="relative z-10 w-full max-w-sm max-h-full mx-auto flex items-center justify-center min-h-screen">
       <!-- Flowbite Modal Content -->
-      <div 
-        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
-        on:click|stopPropagation
-      >
+      <div class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100">
         <!-- Flowbite Modal Header -->
         <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
@@ -98,10 +100,11 @@
           </p>
           {#if requireCode}
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+              <label for="confirmationCodeInput" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
                 {codeLabel}
               </label>
               <input
+                id="confirmationCodeInput"
                 type="text"
                 inputmode="numeric"
                 maxlength="6"

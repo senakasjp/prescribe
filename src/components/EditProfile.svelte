@@ -73,12 +73,12 @@
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
   let procedurePricing = []
+  let availableCities = []
 
   // Reactive variable for cities based on selected country
   $: {
     console.log('🔍 Debug - Reactive statement triggered:')
     console.log('  country:', country, typeof country)
-    console.log('  city:', city, typeof city)
     
     try {
       availableCities = (country && typeof country === 'string' && country.trim()) ? getCitiesByCountry(country.trim()) : []
@@ -741,7 +741,7 @@
             <!-- Template Type Selection -->
             <div class="row mb-4">
               <div class="col-span-full">
-                <label class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</label>
+                <p class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</p>
                 
                 <!-- Option 1: Printed Letterheads -->
                 {#if templateType !== 'upload'}
@@ -772,11 +772,12 @@
                     
                     {#if templateType === 'printed'}
                     <div class="mt-4">
-                      <label class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
+                      <label for="headerSizeRange" class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
                       <div class="flex items-center">
                         <div class="flex-1 mr-4">
                           <input 
                             type="range" 
+                            id="headerSizeRange"
                             class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
                             min="50" 
                             max="300" 
@@ -880,7 +881,7 @@
                       
                       {#if templatePreview && templatePreview.type === 'system'}
                       <div class="mt-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">System Header Preview:</label>
+                        <p class="block text-sm font-medium text-gray-700 mb-2">System Header Preview:</p>
                         <div class="border rounded p-3 bg-gray-50">
                           <div class="text-center">
                             <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>

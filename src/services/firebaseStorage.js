@@ -1677,6 +1677,30 @@ class FirebaseStorageService {
     }
   }
 
+  onPharmacistPrescriptionsChange(pharmacistId, callback) {
+    if (!pharmacistId) {
+      return () => {}
+    }
+
+    const pharmacistRef = doc(db, this.collections.pharmacists, pharmacistId)
+    const prescriptionsRef = collection(pharmacistRef, 'receivedPrescriptions')
+
+    return onSnapshot(prescriptionsRef, (querySnapshot) => {
+      const prescriptions = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+
+      const sorted = prescriptions.sort((a, b) => {
+        const dateA = new Date(a.receivedAt || a.sentAt || 0)
+        const dateB = new Date(b.receivedAt || b.sentAt || 0)
+        return dateB - dateA
+      })
+
+      callback(sorted)
+    })
+  }
+
   async getAllPrescriptions() {
     try {
       // Get all prescriptions without orderBy to avoid index requirement

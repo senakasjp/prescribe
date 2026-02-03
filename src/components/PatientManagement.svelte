@@ -1211,6 +1211,7 @@
   let profileLoading = false
   let profileError = ''
   let activeTab = 'edit-profile'
+  let showSaveProfileHint = false
   
   // Prescription template variables
   let templateType = 'printed' // 'printed', 'upload', 'system'
@@ -1303,6 +1304,13 @@
       profileError = err.message
     } finally {
       profileLoading = false
+    }
+  }
+
+  const handleCardKeydown = (event, action) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      action()
     }
   }
   
@@ -1622,8 +1630,14 @@
   </div>
   
   <!-- Desktop Grid Layout -->
-  <div class="hidden md:grid grid-cols-3 gap-4">
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPatients}>
+  <div class="hidden md:grid grid-cols-4 gap-4">
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPatients}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPatients)}
+    >
       <div class="flex items-center justify-between">
         <div>
           <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Patients</p>
@@ -1634,7 +1648,9 @@
         </div>
       </div>
     </div>
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPrescriptions}>
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6"
+    >
       <div class="flex items-center justify-between">
         <div>
           <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Prescriptions</p>
@@ -1645,7 +1661,30 @@
         </div>
       </div>
     </div>
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPharmacies}>
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPrescriptions}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+    >
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Drug Count</p>
+          <p class="text-2xl sm:text-3xl font-bold text-emerald-600">{totalDrugs}</p>
+        </div>
+        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+          <i class="fas fa-capsules text-emerald-600 text-lg sm:text-xl"></i>
+        </div>
+      </div>
+    </div>
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPharmacies}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPharmacies)}
+    >
       <div class="flex items-center justify-between">
         <div>
           <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Connected Pharmacies</p>
@@ -1660,7 +1699,13 @@
 
   <!-- Mobile Card Layout -->
   <div class="md:hidden space-y-3">
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPatients}>
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPatients}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPatients)}
+    >
       <div class="flex items-center justify-between">
         <div class="flex items-center">
           <div class="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center mr-3">
@@ -1675,7 +1720,9 @@
       </div>
     </div>
     
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPrescriptions}>
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
+    >
       <div class="flex items-center justify-between">
         <div class="flex items-center">
           <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center mr-3">
@@ -1686,11 +1733,37 @@
             <p class="text-xl font-bold text-rose-600">{totalPrescriptions}</p>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPrescriptions}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+    >
+      <div class="flex items-center justify-between">
+        <div class="flex items-center">
+          <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mr-3">
+            <i class="fas fa-capsules text-emerald-600 text-lg"></i>
+          </div>
+          <div>
+            <p class="text-xs font-medium text-gray-600">Drug Count</p>
+            <p class="text-xl font-bold text-emerald-600">{totalDrugs}</p>
+          </div>
+        </div>
         <i class="fas fa-chevron-right text-gray-400"></i>
       </div>
     </div>
     
-    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200" on:click={navigateToPharmacies}>
+    <div
+      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPharmacies}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPharmacies)}
+    >
       <div class="flex items-center justify-between">
         <div class="flex items-center">
           <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mr-3">
@@ -2144,9 +2217,9 @@
                            <!-- Desktop Layout -->
                            <div class="hidden sm:flex justify-between items-center">
                              <div class="flex items-center">
-                               <h4 class="text-xl font-bold text-gray-900 mb-1 mr-3 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
+                               <button type="button" class="text-xl font-bold text-gray-900 mb-1 mr-3 hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
                                  Welcome, Dr. {doctorName}!
-                               </h4>
+                               </button>
                              </div>
                              {#if !isExternalDoctor}
                                <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
@@ -2159,9 +2232,9 @@
                            <!-- Mobile Layout -->
                            <div class="sm:hidden">
                              <div class="flex items-center justify-between mb-2">
-                               <h4 class="text-lg font-bold text-gray-900 cursor-pointer hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
+                               <button type="button" class="text-lg font-bold text-gray-900 hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
                                   Welcome, Dr. {doctorName}!
-                               </h4>
+                               </button>
                                {#if !isExternalDoctor}
                                  <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
                                    <i class="fas fa-cog text-xs text-red-600"></i>
@@ -2188,7 +2261,13 @@
         <!-- Statistics Cards -->
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
         <!-- Patients Card - Ocean Blue Outline -->
-        <div class="bg-white border-2 border-blue-500 text-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-blue-50 cursor-pointer" on:click={navigateToPatients}>
+        <div
+          class="bg-white border-2 border-blue-500 text-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-blue-50 cursor-pointer"
+          role="button"
+          tabindex="0"
+          on:click={navigateToPatients}
+          on:keydown={(e) => handleCardKeydown(e, navigateToPatients)}
+        >
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
@@ -2206,7 +2285,13 @@
         </div>
         
         <!-- Prescriptions Card - Sunset Orange Outline -->
-        <div class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-orange-50 cursor-pointer" on:click={navigateToPrescriptions}>
+        <div
+          class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-orange-50 cursor-pointer"
+          role="button"
+          tabindex="0"
+          on:click={navigateToPrescriptions}
+          on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+        >
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
@@ -2224,7 +2309,13 @@
         </div>
         
         <!-- Drugs Card - Forest Green Outline -->
-        <div class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-green-50 cursor-pointer" on:click={navigateToPrescriptions}>
+        <div
+          class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-green-50 cursor-pointer"
+          role="button"
+          tabindex="0"
+          on:click={navigateToPrescriptions}
+          on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+        >
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
@@ -2242,7 +2333,13 @@
         </div>
         
         <!-- Pharmacies Card - Royal Purple Outline -->
-        <div class="bg-white border-2 border-purple-500 text-purple-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-purple-50 cursor-pointer" on:click={navigateToPharmacies}>
+        <div
+          class="bg-white border-2 border-purple-500 text-purple-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-purple-50 cursor-pointer"
+          role="button"
+          tabindex="0"
+          on:click={navigateToPharmacies}
+          on:keydown={(e) => handleCardKeydown(e, navigateToPharmacies)}
+        >
           <div class="p-4">
             <div class="flex items-center">
                 <div class="flex-shrink-0">
@@ -2515,7 +2612,7 @@
                   <!-- Template Type Selection -->
                   <div class="row mb-4">
                     <div class="col-span-full">
-                      <label class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</label>
+                      <p class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</p>
                       
                       <!-- Option 1: Printed Letterheads -->
                       {#if templateType !== 'upload'}
@@ -2546,7 +2643,7 @@
                           
                           {#if templateType === 'printed'}
                           <div class="mt-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
+                            <p class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</p>
                             <div class="flex items-center">
                               <div class="flex-1 mr-4">
                                 <input 
@@ -2569,7 +2666,7 @@
                             
                             <!-- Template Preview -->
                             <div class="mt-4">
-                              <label class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</label>
+                              <p class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</p>
                               <div class="border rounded p-2 bg-gray-50">
                                 <div class="template-preview">
                                   <!-- Header Space (representing printed letterhead) -->
@@ -2676,7 +2773,9 @@
                             
                             {#if uploadedHeader}
                             <div class="mt-4">
-                              <label class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
+                              <label class="block text-sm font-medium text-gray-700 mb-2" for="uploadHeaderSize">
+                                Header Size Adjustment:
+                              </label>
                               <div class="flex items-center">
                                 <div class="flex-1 mr-4">
                                   <input 
@@ -2685,6 +2784,7 @@
                                     min="50" 
                                     max="300" 
                                     step="10"
+                                    id="uploadHeaderSize"
                                     bind:value={headerSize}
                                   />
                                 </div>
@@ -2699,7 +2799,7 @@
                               
                               <!-- Template Preview with Uploaded Image -->
                               <div class="mt-4">
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</label>
+                                <p class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</p>
                                 <div class="border rounded p-2 bg-gray-50">
                                   <div class="template-preview">
                                     <!-- Header Space with Uploaded Image -->
@@ -2799,11 +2899,11 @@
                             {/if}
                             
                             <div class="mt-4">
-                              <label class="block text-sm font-medium text-gray-700 mb-2">System Header Text Editor:</label>
+                              <p class="block text-sm font-medium text-gray-700 mb-2">System Header Text Editor:</p>
                               
                               <!-- Inline Text Editor -->
                               <div class="border rounded p-3 bg-gray-50">
-                                <label class="block text-xs font-medium text-gray-600 mb-2">Click and edit the text directly:</label>
+                                <p class="block text-xs font-medium text-gray-600 mb-2">Click and edit the text directly:</p>
                                 <div class="text-center bg-white p-4 rounded border min-h-[200px] focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
                                   <div contenteditable="true" class="outline-none" 
                                        bind:innerHTML={headerText}

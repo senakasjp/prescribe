@@ -207,9 +207,9 @@
   
   // Force cache refresh for v2.2.7 with timestamp
   if (typeof window !== 'undefined') {
-    window.appVersion = '2.2.24'
+    window.appVersion = '2.2.25-title'
     window.buildTime = new Date().toISOString()
-        console.log('🚀 M-Prescribe v2.2.24 loaded with doctor profile save fix!')
+        console.log('🚀 M-Prescribe v2.2.25-title loaded with title field!')
     console.log('📅 Build Time:', window.buildTime)
     console.log('🔄 Cache bust timestamp:', Date.now())
   }

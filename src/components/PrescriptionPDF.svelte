@@ -350,7 +350,8 @@
         }
       }
       
-      doc.text(`Name: ${selectedPatient.firstName} ${selectedPatient.lastName}`, margin, contentYStart + 7)
+      const patientTitle = selectedPatient.title ? `${selectedPatient.title} ` : ''
+      doc.text(`Name: ${patientTitle}${selectedPatient.firstName} ${selectedPatient.lastName}`, margin, contentYStart + 7)
       doc.text(`Date: ${currentDate}`, pageWidth - margin, contentYStart + 7, { align: 'right' })
       
       doc.text(`Age: ${patientAge}`, margin, contentYStart + 13)
@@ -418,13 +419,17 @@
           
           doc.setFontSize(10)
           doc.setFont('helvetica', 'bold')
-          doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
+          const medName = medication.genericName ? `${medication.name} (${medication.genericName})` : medication.name
+          doc.text(`${index + 1}. ${medName}`, margin, yPos)
           doc.text(`${medication.dosage}`, pageWidth - margin, yPos, { align: 'right' })
           
           doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
           
           let medicationDetails = `Frequency: ${medication.frequency}`
+          if (medication.timing) {
+            medicationDetails += ` | When: ${medication.timing}`
+          }
           if (medication.duration) {
             medicationDetails += ` | Duration: ${medication.duration}`
           }
@@ -482,20 +487,22 @@
   id="prescriptionPDFModal" 
   tabindex="-1" 
   aria-hidden="true" 
-  class="fixed top-0 left-0 right-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50"
-  on:click={handleClose}
+  class="fixed top-0 left-0 right-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50 relative"
   on:keydown={(e) => { if (e.key === 'Escape') handleClose() }}
   role="dialog"
   aria-modal="true"
   aria-labelledby="prescription-modal-title"
 >
+  <button
+    type="button"
+    class="absolute inset-0 w-full h-full cursor-default"
+    aria-label="Close modal"
+    on:click={handleClose}
+  ></button>
   <!-- Flowbite Modal Container -->
-  <div class="relative w-full max-w-4xl max-h-full mx-auto flex items-center justify-center min-h-screen">
+  <div class="relative z-10 w-full max-w-4xl max-h-full mx-auto flex items-center justify-center min-h-screen">
     <!-- Flowbite Modal Content -->
-    <div 
-      class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
-      on:click|stopPropagation
-    >
+    <div class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100">
       <!-- Flowbite Modal Header -->
       <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
         <h3 id="prescription-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
@@ -522,7 +529,7 @@
           <div class="space-y-3">
             <h6 class="text-lg font-semibold text-gray-900 dark:text-white">Patient Information</h6>
             <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-              <p><span class="font-medium">Name:</span> {selectedPatient.firstName} {selectedPatient.lastName}</p>
+              <p><span class="font-medium">Name:</span> {selectedPatient.title ? `${selectedPatient.title} ` : ''}{selectedPatient.firstName} {selectedPatient.lastName}</p>
               <p><span class="font-medium">ID:</span> {selectedPatient.idNumber}</p>
               <p><span class="font-medium">DOB:</span> {selectedPatient.dateOfBirth}</p>
             </div>
@@ -568,9 +575,14 @@
                 <div class="bg-gray-50 dark:bg-gray-600 p-3 rounded-lg">
                   <div class="flex justify-between items-start">
                     <div class="flex-1">
-                      <div class="font-medium text-gray-900 dark:text-white">{medication.name}</div>
+                      <div class="font-medium text-gray-900 dark:text-white">
+                        {medication.name}{#if medication.genericName} ({medication.genericName}){/if}
+                      </div>
                       <div class="text-sm text-gray-600 dark:text-gray-300 space-y-1">
                         <p><span class="font-medium">Frequency:</span> {medication.frequency}</p>
+                        {#if medication.timing}
+                          <p><span class="font-medium">When:</span> {medication.timing}</p>
+                        {/if}
                         {#if medication.instructions}
                           <p><span class="font-medium">Instructions:</span> {medication.instructions}</p>
                         {/if}

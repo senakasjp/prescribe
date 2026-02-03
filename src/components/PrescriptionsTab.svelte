@@ -52,6 +52,17 @@
   
   // Debug AI analysis
   $: console.log('🔍 PrescriptionsTab - showAIAnalysis:', showAIAnalysis)
+
+  // Preserve unused external props for parent bindings.
+  $: {
+    showAIDrugSuggestions
+    aiDrugSuggestions
+    onGenerateAIDrugSuggestions
+    onAddAISuggestedDrug
+    onRemoveAISuggestedDrug
+    loadingAIDrugSuggestions
+    symptoms
+  }
   
   // Pharmacy stock availability
   let pharmacyStock = []
@@ -724,7 +735,7 @@
                 <div class="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
                   <div class="flex-1">
                     <div class="font-semibold text-gray-900">
-                      {medication.name}
+                      {medication.name}{#if medication.genericName} ({medication.genericName}){/if}
                       {#if medication.aiSuggested}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ml-2">
                           <i class="fas fa-brain mr-1 text-red-600"></i>AI Suggested

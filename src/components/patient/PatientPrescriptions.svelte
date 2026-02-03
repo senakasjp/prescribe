@@ -16,6 +16,10 @@
   export let prescriptionNotes = ''
   export let prescriptionDiscount = 0 // New discount field
   export const prescriptionsFinalized = false
+
+  // Preserve unused external props for parent bindings.
+  $: selectedPatient
+  $: doctorId
   
   // Sort prescriptions by date (newest first)
   $: sortedPrescriptions = sortByDate(prescriptions, 'createdAt')

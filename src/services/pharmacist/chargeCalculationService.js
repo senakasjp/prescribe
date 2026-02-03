@@ -775,11 +775,12 @@ class ChargeCalculationService {
           maximumFractionDigits: 2
         }).format(amount)
       } else {
-        // For other currencies, use standard formatting
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: currency
+        // For other currencies, use currency code prefix (e.g., "USD 1,234.50")
+        const formatted = new Intl.NumberFormat('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
         }).format(amount)
+        return `${currency} ${formatted}`
       }
     } catch (error) {
       console.error('❌ Error formatting currency:', error)

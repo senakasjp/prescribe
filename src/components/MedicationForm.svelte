@@ -57,6 +57,14 @@
   let notesImproved = false
   let lastImprovedNotes = ''
 
+  const focusField = (id) => {
+    const el = document.getElementById(id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus()
+    }
+  }
+
   // Mapping for routes to their full display names
   const routeDisplayMap = {
     'IM': 'Intramuscular (IM)',
@@ -302,12 +310,18 @@
     try {
       // Validate required fields
       if (!name || !dosage || !frequency || !duration) {
+        if (!name) focusField('brandName')
+        else if (!dosage) focusField('medicationDosage')
+        else if (!frequency) focusField('medicationFrequency')
+        else if (!duration) focusField('medicationDuration')
         throw new Error('Please fill in all required fields')
       }
       if (frequency && frequency.includes('PRN') && !String(prnAmount || '').trim()) {
+        focusField('prnAmount')
         throw new Error('Please enter the PRN amount')
       }
       if (!timing) {
+        focusField('medicationTiming')
         throw new Error('Please select when to take')
       }
 
@@ -775,10 +789,11 @@
             </select>
             {#if frequency && frequency.includes('PRN')}
               <div class="w-24">
-                <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-1">
+                <label for="prnAmount" class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-1">
                   Amount <span class="text-red-500">*</span>
                 </label>
                 <input 
+                  id="prnAmount"
                   type="text" 
                   class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                   placeholder="Amount"

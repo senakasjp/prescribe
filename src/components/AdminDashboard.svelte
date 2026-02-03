@@ -3812,6 +3812,8 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                 <select
                   id="singleDoctorSelect"
                   bind:value={selectedDoctorForEmail}
+                  data-testid="single-doctor-select"
+                  on:change={(event) => { selectedDoctorForEmail = event.target.value }}
                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
                 >
                   <option value="">Choose a doctor...</option>

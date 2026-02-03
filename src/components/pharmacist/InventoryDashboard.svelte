@@ -4,6 +4,7 @@
 <script>
   import { onMount } from 'svelte'
   import inventoryService from '../../services/pharmacist/inventoryService.js'
+  import adminAuthService from '../../services/adminAuthService.js'
   import firebaseStorage from '../../services/firebaseStorage.js'
   import { notifySuccess, notifyError } from '../../stores/notifications.js'
   import ConfirmationModal from '../ConfirmationModal.svelte'
@@ -45,6 +46,10 @@
   let lastPharmacistId = null
   let doctorDeleteCode = ''
   let isDoctorOwnedPharmacy = false
+  let resolvedPharmacistNumber = null
+  let testDataLoading = false
+  $: isAdminUser = !!pharmacist?.isAdmin
+    || adminAuthService.isAdminEmail(pharmacist?.email || '')
   
   // Form data
   let newItemForm = {
@@ -73,6 +78,8 @@
   // Load data on mount
   onMount(async () => {
     if (pharmacyId) {
+      const pharmacistRecord = await firebaseStorage.getPharmacistById(pharmacyId)
+      resolvedPharmacistNumber = pharmacistRecord?.pharmacistNumber || pharmacist?.pharmacistNumber || null
       lastPharmacistId = pharmacyId
       await loadDashboardData()
     }
@@ -113,7 +120,7 @@
       loading = false
     }
   }
-  
+
   // Load inventory items
   const loadInventoryItems = async () => {
     try {
@@ -129,10 +136,18 @@
         category: categoryFilter !== 'all' ? categoryFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
         sortBy,
-        sortOrder
+        sortOrder,
+        legacyId: resolvedPharmacistNumber || undefined
       }
       
       inventoryItems = await inventoryService.getInventoryItems(pharmacyId, filters)
+
+      if (inventoryItems.length === 0) {
+        const migration = await inventoryService.migrateDrugStockToInventory(pharmacyId, resolvedPharmacistNumber)
+        if (migration?.migrated > 0) {
+          inventoryItems = await inventoryService.getInventoryItems(pharmacyId, filters)
+        }
+      }
       
       console.log('📦 Loaded inventory items:', inventoryItems.length)
       
@@ -437,6 +452,41 @@
     lastPharmacistId = pharmacyId
     loadDashboardData()
   }
+
+  const handleAddTestDrugs = async () => {
+    if (!pharmacyId) return
+    if (!confirm('Add 5 test drugs to this inventory?')) return
+    try {
+      testDataLoading = true
+      await inventoryService.createTestInventoryItems(pharmacyId, 5, {
+        pharmacyId,
+        pharmacistNumber: resolvedPharmacistNumber || null
+      })
+      notifySuccess('Added 5 test drugs.')
+      await loadDashboardData()
+    } catch (error) {
+      console.error('❌ Error adding test drugs:', error)
+      notifyError(error.message || 'Failed to add test drugs.')
+    } finally {
+      testDataLoading = false
+    }
+  }
+
+  const handleRemoveTestDrugs = async () => {
+    if (!pharmacyId) return
+    if (!confirm('Remove all test drugs from this inventory?')) return
+    try {
+      testDataLoading = true
+      const result = await inventoryService.deleteTestInventoryItems(pharmacyId)
+      notifySuccess(`Removed ${result?.removed || 0} test drugs.`)
+      await loadDashboardData()
+    } catch (error) {
+      console.error('❌ Error removing test drugs:', error)
+      notifyError(error.message || 'Failed to remove test drugs.')
+    } finally {
+      testDataLoading = false
+    }
+  }
 </script>
 
 <div class="min-h-screen bg-gray-50">
@@ -451,14 +501,34 @@
           </h1>
           <p class="text-sm sm:text-base text-gray-600 mt-1">Comprehensive pharmaceutical inventory system</p>
         </div>
-        <button 
-          class="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-sm sm:text-base"
-          on:click={() => showAddItemModal = true}
-        >
-          <i class="fas fa-plus mr-1 sm:mr-2"></i>
-          <span class="hidden sm:inline">Add Inventory Item</span>
-          <span class="sm:hidden">Add Item</span>
-        </button>
+        <div class="flex flex-wrap gap-2">
+          {#if isAdminUser}
+            <button
+              class="bg-amber-100 text-amber-800 hover:bg-amber-200 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors duration-200 disabled:opacity-60"
+              on:click={handleAddTestDrugs}
+              disabled={testDataLoading}
+            >
+              <i class="fas fa-flask mr-1"></i>
+              Add 5 Test Drugs
+            </button>
+            <button
+              class="bg-amber-50 text-amber-700 hover:bg-amber-100 px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors duration-200 disabled:opacity-60"
+              on:click={handleRemoveTestDrugs}
+              disabled={testDataLoading}
+            >
+              <i class="fas fa-trash-alt mr-1"></i>
+              Remove Test Drugs
+            </button>
+          {/if}
+          <button 
+            class="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors duration-200 text-sm sm:text-base"
+            on:click={() => showAddItemModal = true}
+          >
+            <i class="fas fa-plus mr-1 sm:mr-2"></i>
+            <span class="hidden sm:inline">Add Inventory Item</span>
+            <span class="sm:hidden">Add Item</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -605,8 +675,9 @@
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Search</label>
+              <label for="inventorySearch" class="block text-sm font-medium text-gray-700 mb-2">Search</label>
               <input 
+                id="inventorySearch"
                 type="text" 
                 bind:value={searchQuery}
                 placeholder="Search drugs..."
@@ -615,8 +686,9 @@
             </div>
             
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+              <label for="inventoryCategory" class="block text-sm font-medium text-gray-700 mb-2">Category</label>
               <select 
+                id="inventoryCategory"
                 bind:value={categoryFilter}
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -629,8 +701,9 @@
             </div>
             
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              <label for="inventoryStatus" class="block text-sm font-medium text-gray-700 mb-2">Status</label>
               <select 
+                id="inventoryStatus"
                 bind:value={statusFilter}
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -644,8 +717,9 @@
             </div>
             
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+              <label for="inventorySort" class="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
               <select 
+                id="inventorySort"
                 bind:value={sortBy}
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -949,7 +1023,12 @@
 {#if showAddItemModal}
   <div class="fixed inset-0 z-50 overflow-y-auto">
     <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-      <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" on:click={() => showAddItemModal = false}></div>
+      <button
+        type="button"
+        class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+        aria-label="Close add item modal"
+        on:click={() => showAddItemModal = false}
+      ></button>
       
       <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
         <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
@@ -967,8 +1046,9 @@
             <!-- Basic Information -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="newItemBrandName" class="block text-sm font-medium text-gray-700 mb-2">Brand Name <span class="text-red-500">*</span></label>
                 <input 
+                  id="newItemBrandName"
                   type="text" 
                   bind:value={newItemForm.brandName}
                   required
@@ -978,8 +1058,9 @@
               </div>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="newItemGenericName" class="block text-sm font-medium text-gray-700 mb-2">Generic Name <span class="text-red-500">*</span></label>
                 <input 
+                  id="newItemGenericName"
                   type="text" 
                   bind:value={newItemForm.genericName}
                   required
@@ -988,8 +1069,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Manufacturer</label>
+                <label for="newItemManufacturer" class="block text-sm font-medium text-gray-700 mb-2">Manufacturer</label>
                 <input 
+                  id="newItemManufacturer"
                   type="text" 
                   bind:value={newItemForm.manufacturer}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -997,8 +1079,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <label for="newItemCategory" class="block text-sm font-medium text-gray-700 mb-2">Category</label>
                 <select 
+                  id="newItemCategory"
                   bind:value={newItemForm.category}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -1013,8 +1096,9 @@
             <!-- Pharmaceutical Details -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="newItemStrength" class="block text-sm font-medium text-gray-700 mb-2">Strength <span class="text-red-500">*</span></label>
                 <input 
+                  id="newItemStrength"
                   type="text" 
                   bind:value={newItemForm.strength}
                   required
@@ -1024,8 +1108,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Strength Unit</label>
+                <label for="newItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-2">Strength Unit</label>
                 <select 
+                  id="newItemStrengthUnit"
                   bind:value={newItemForm.strengthUnit}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -1038,8 +1123,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Dosage Form</label>
+                <label for="newItemDosageForm" class="block text-sm font-medium text-gray-700 mb-2">Dosage Form</label>
                 <select 
+                  id="newItemDosageForm"
                   bind:value={newItemForm.dosageForm}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1051,6 +1137,8 @@
                   <option value="cream">Cream</option>
                   <option value="ointment">Ointment</option>
                   <option value="suppository">Suppository</option>
+                  <option value="packet">Packet</option>
+                  <option value="roll">Roll</option>
                 </select>
               </div>
             </div>
@@ -1058,8 +1146,9 @@
             <!-- Stock Information -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="newItemInitialStock" class="block text-sm font-medium text-gray-700 mb-2">Initial Stock <span class="text-red-500">*</span></label>
                 <input 
+                  id="newItemInitialStock"
                   type="number" 
                   bind:value={newItemForm.initialStock}
                   required
@@ -1069,8 +1158,9 @@
               </div>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="newItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock <span class="text-red-500">*</span></label>
                 <input 
+                  id="newItemMinimumStock"
                   type="number" 
                   bind:value={newItemForm.minimumStock}
                   required
@@ -1080,8 +1170,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
+                <label for="newItemCostPrice" class="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
                 <input 
+                  id="newItemCostPrice"
                   type="number" 
                   bind:value={newItemForm.costPrice}
                   min="0"
@@ -1091,8 +1182,9 @@
               </div>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="newItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-2">Selling Price <span class="text-red-500">*</span></label>
                 <input 
+                  id="newItemSellingPrice"
                   type="number" 
                   bind:value={newItemForm.sellingPrice}
                   required
@@ -1106,8 +1198,13 @@
             <!-- Expiry Date -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label> <span class="text-red-500">*</span></label>
-                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
+                <label for="newItemExpiryDate" class="block text-sm font-medium text-gray-700 mb-2">Expiry Date <span class="text-red-500">*</span></label>
+                <DateInput
+                  id="newItemExpiryDate"
+                  name="newItemExpiryDate"
+                  type="date"
+                  lang="en-GB"
+                  placeholder="dd/mm/yyyy"
                   bind:value={newItemForm.expiryDate}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -1115,8 +1212,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
+                <label for="newItemBatchNumber" class="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
                 <input 
+                  id="newItemBatchNumber"
                   type="text" 
                   bind:value={newItemForm.batchNumber}
                   placeholder="e.g., BATCH001"
@@ -1128,8 +1226,9 @@
             <!-- Additional Information -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Storage Location</label>
+                <label for="newItemStorageLocation" class="block text-sm font-medium text-gray-700 mb-2">Storage Location</label>
                 <input 
+                  id="newItemStorageLocation"
                   type="text" 
                   bind:value={newItemForm.storageLocation}
                   placeholder="e.g., Shelf A1, Refrigerator"
@@ -1138,8 +1237,9 @@
               </div>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="newItemStorageConditions" class="block text-sm font-medium text-gray-700 mb-2">Storage Conditions <span class="text-red-500">*</span></label>
                 <select 
+                  id="newItemStorageConditions"
                   bind:value={newItemForm.storageConditions}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1154,8 +1254,9 @@
             </div>
             
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+              <label for="newItemDescription" class="block text-sm font-medium text-gray-700 mb-2">Description</label>
               <textarea 
+                id="newItemDescription"
                 bind:value={newItemForm.description}
                 rows="3"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1209,8 +1310,9 @@
               <h4 class="text-md font-medium text-gray-900 border-b pb-2">Drug Information</h4>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="editItemBrandName" class="block text-sm font-medium text-gray-700 mb-1">Brand Name <span class="text-red-500">*</span></label>
                 <input 
+                  id="editItemBrandName"
                   type="text"
                   value={selectedItem?.brandName || selectedItem?.drugName || ''}
                   required
@@ -1223,8 +1325,9 @@
               </div>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="editItemGenericName" class="block text-sm font-medium text-gray-700 mb-1">Generic Name <span class="text-red-500">*</span></label>
                 <input 
+                  id="editItemGenericName"
                   type="text"
                   bind:value={selectedItem.genericName}
                   required
@@ -1233,8 +1336,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
+                <label for="editItemManufacturer" class="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
                 <input 
+                  id="editItemManufacturer"
                   type="text"
                   bind:value={selectedItem.manufacturer}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1243,8 +1347,9 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label> <span class="text-red-500">*</span></label>
+                  <label for="editItemStrength" class="block text-sm font-medium text-gray-700 mb-1">Strength <span class="text-red-500">*</span></label>
                   <input 
+                    id="editItemStrength"
                     type="text"
                     bind:value={selectedItem.strength}
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
@@ -1254,8 +1359,9 @@
                   <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
                 </div>
                 <div>
-                  <label> <span class="text-red-500">*</span></label>
+                  <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-1">Strength Unit <span class="text-red-500">*</span></label>
                   <select 
+                    id="editItemStrengthUnit"
                     bind:value={selectedItem.strengthUnit}
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                     disabled
@@ -1273,23 +1379,26 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
-                <select 
-                  bind:value={selectedItem.dosageForm}
-                  required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="tablet">Tablet</option>
-                  <option value="capsule">Capsule</option>
-                  <option value="syrup">Syrup</option>
-                  <option value="injection">Injection</option>
-                  <option value="cream">Cream</option>
-                  <option value="gel">Gel</option>
-                  <option value="drops">Drops</option>
-                  <option value="spray">Spray</option>
-                  <option value="suppository">Suppository</option>
-                </select>
-              </div>
+                <label for="editItemDosageForm" class="block text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
+                  <select 
+                    id="editItemDosageForm"
+                    bind:value={selectedItem.dosageForm}
+                    required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="tablet">Tablet</option>
+                    <option value="capsule">Capsule</option>
+                    <option value="syrup">Syrup</option>
+                    <option value="injection">Injection</option>
+                    <option value="cream">Cream</option>
+                    <option value="gel">Gel</option>
+                    <option value="drops">Drops</option>
+                    <option value="spray">Spray</option>
+                    <option value="suppository">Suppository</option>
+                    <option value="packet">Packet</option>
+                    <option value="roll">Roll</option>
+                  </select>
+                </div>
             </div>
             
             <!-- Stock & Pricing -->
@@ -1298,16 +1407,18 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Pack Size</label>
+                  <label for="editItemPackSize" class="block text-sm font-medium text-gray-700 mb-1">Pack Size</label>
                   <input 
+                    id="editItemPackSize"
                     type="text"
                     bind:value={selectedItem.packSize}
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Pack Unit</label>
+                  <label for="editItemPackUnit" class="block text-sm font-medium text-gray-700 mb-1">Pack Unit</label>
                   <select 
+                    id="editItemPackUnit"
                     bind:value={selectedItem.packUnit}
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
@@ -1319,13 +1430,16 @@
                     <option value="tube">tube</option>
                     <option value="bottle">bottle</option>
                     <option value="suppository">suppository</option>
+                    <option value="packet">packet</option>
+                    <option value="roll">roll</option>
                   </select>
                 </div>
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Current Stock</label>
+                <label for="editItemCurrentStock" class="block text-sm font-medium text-gray-700 mb-1">Current Stock</label>
                 <input 
+                  id="editItemCurrentStock"
                   type="number"
                   bind:value={selectedItem.currentStock}
                   min="0"
@@ -1335,8 +1449,9 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label> <span class="text-red-500">*</span></label>
+                  <label for="editItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-1">Minimum Stock <span class="text-red-500">*</span></label>
                   <input 
+                    id="editItemMinimumStock"
                     type="number"
                     bind:value={selectedItem.minimumStock}
                     required
@@ -1345,8 +1460,9 @@
                   />
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Maximum Stock</label>
+                  <label for="editItemMaximumStock" class="block text-sm font-medium text-gray-700 mb-1">Maximum Stock</label>
                   <input 
+                    id="editItemMaximumStock"
                     type="number"
                     bind:value={selectedItem.maximumStock}
                     min="0"
@@ -1357,8 +1473,9 @@
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
+                  <label for="editItemCostPrice" class="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
                   <input 
+                    id="editItemCostPrice"
                     type="number"
                     bind:value={selectedItem.costPrice}
                     min="0"
@@ -1367,8 +1484,9 @@
                   />
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Selling Price</label>
+                  <label for="editItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-1">Selling Price</label>
                   <input 
+                    id="editItemSellingPrice"
                     type="number"
                     bind:value={selectedItem.sellingPrice}
                     min="0"
@@ -1379,8 +1497,9 @@
               </div>
               
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Storage Location</label>
+                <label for="editItemStorageLocation" class="block text-sm font-medium text-gray-700 mb-1">Storage Location</label>
                 <input 
+                  id="editItemStorageLocation"
                   type="text"
                   bind:value={selectedItem.storageLocation}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1388,8 +1507,9 @@
               </div>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
+                <label for="editItemStorageConditions" class="block text-sm font-medium text-gray-700 mb-1">Storage Conditions <span class="text-red-500">*</span></label>
                 <select 
+                  id="editItemStorageConditions"
                   bind:value={selectedItem.storageConditions}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1403,8 +1523,13 @@
               </div>
               
               <div>
-                <label> <span class="text-red-500">*</span></label>
-                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy"
+                <label for="editItemExpiryDate" class="block text-sm font-medium text-gray-700 mb-1">Expiry Date <span class="text-red-500">*</span></label>
+                <DateInput
+                  id="editItemExpiryDate"
+                  name="editItemExpiryDate"
+                  type="date"
+                  lang="en-GB"
+                  placeholder="dd/mm/yyyy"
                   bind:value={selectedItem.expiryDate}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"

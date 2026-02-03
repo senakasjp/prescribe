@@ -1,4 +1,4 @@
-import { collection, doc, setDoc } from 'firebase/firestore'
+import { collection, doc, setDoc, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase-config.js'
 import firebaseStorage from './firebaseStorage.js'
 import inventoryService from './pharmacist/inventoryService.js'
@@ -185,6 +185,9 @@ const restorePharmacistBackup = async (pharmacistId, backup, options = {}) => {
   }
 
   const writeOptions = options.merge === false ? undefined : { merge: true }
+  const currentPharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
+  const currentPharmacistNumber =
+    currentPharmacist?.pharmacistNumber || backup?.pharmacist?.pharmacistNumber || null
 
   if (backup.pharmacist) {
     await setDoc(
@@ -204,7 +207,30 @@ const restorePharmacistBackup = async (pharmacistId, backup, options = {}) => {
 
   const inventoryItems = Array.isArray(backup.inventoryItems) ? backup.inventoryItems : []
   for (const item of inventoryItems) {
-    await writeDoc('drugStock', item, { pharmacistId }, writeOptions)
+    if (item?.id) {
+      await writeDoc(
+        'pharmacistInventory',
+        item,
+        { pharmacistId, pharmacyId: pharmacistId, pharmacistNumber: currentPharmacistNumber },
+        writeOptions
+      )
+      await writeDoc(
+        'drugStock',
+        item,
+        { pharmacistId, pharmacyId: pharmacistId, pharmacistNumber: currentPharmacistNumber },
+        writeOptions
+      )
+      continue
+    }
+
+    const payload = {
+      ...sanitizeDocData(item),
+      pharmacistId,
+      pharmacyId: pharmacistId,
+      pharmacistNumber: currentPharmacistNumber
+    }
+    await setDoc(doc(collection(db, 'pharmacistInventory')), payload, writeOptions)
+    await setDoc(doc(collection(db, 'drugStock')), payload, writeOptions)
   }
 
   const receivedPrescriptions = Array.isArray(backup.receivedPrescriptions) ? backup.receivedPrescriptions : []
@@ -213,10 +239,19 @@ const restorePharmacistBackup = async (pharmacistId, backup, options = {}) => {
     await writeSubDoc(pharmacistRef, 'receivedPrescriptions', prescription, {}, writeOptions)
   }
 
+  const inventoryQuery = query(collection(db, 'pharmacistInventory'), where('pharmacistId', '==', pharmacistId))
+  const drugStockQuery = query(collection(db, 'drugStock'), where('pharmacistId', '==', pharmacistId))
+  const [inventorySnap, drugStockSnap] = await Promise.all([
+    getDocs(inventoryQuery),
+    getDocs(drugStockQuery)
+  ])
+
   return {
     pharmacyUsers: pharmacyUsers.length,
     inventoryItems: inventoryItems.length,
-    receivedPrescriptions: receivedPrescriptions.length
+    receivedPrescriptions: receivedPrescriptions.length,
+    inventoryStored: inventorySnap.size,
+    drugStockStored: drugStockSnap.size
   }
 }
 

@@ -205,7 +205,7 @@
                 <h3 class="text-sm font-medium text-teal-600 mb-2">Total Patients</h3>
                 <p class="text-2xl font-bold text-teal-700">{patients.length}</p>
               </div>
-              <div class="bg-blue-50 rounded-lg p-4 cursor-pointer hover:bg-blue-100 transition-colors duration-200" on:click={navigateToPrescriptions}>
+              <div class="bg-blue-50 rounded-lg p-4">
                 <h3 class="text-sm font-medium text-blue-600 mb-2">Total Prescriptions</h3>
                 <p class="text-2xl font-bold text-blue-700">{prescriptions.length}</p>
               </div>

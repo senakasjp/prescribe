@@ -3,6 +3,7 @@
   import firebaseStorage from '../services/firebaseStorage.js'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
+  import { formatDate } from '../utils/dataProcessing.js'
 
   export let user
   
@@ -294,7 +295,7 @@
     doc.setFontSize(9)
     const doctorLabel = `Doctor: ${user?.name || user?.email || 'Doctor'}`
     doc.text(doctorLabel, margin, y)
-    const generatedLabel = `Generated: ${new Date().toLocaleString()}`
+    const generatedLabel = `Generated: ${formatDate(new Date(), { includeTime: true })}`
     doc.text(generatedLabel, pageWidth - margin, y, { align: 'right' })
     y += 10
 

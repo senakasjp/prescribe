@@ -2,10 +2,11 @@
 <!-- This component handles ONLY pharmacist module routing and should never interact with doctor components -->
 
 <script>
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import pharmacistAuthService from '../../services/pharmacist/pharmacistAuthService.js'
   import firebaseAuthService from '../../services/firebaseAuth.js'
   import pharmacistStorageService from '../../services/pharmacist/pharmacistStorageService.js'
+  import firebaseStorage from '../../services/firebaseStorage.js'
   import PharmacistDashboard from '../PharmacistDashboard.svelte'
   import PharmacistSettings from './PharmacistSettings.svelte'
   import NotificationContainer from '../NotificationContainer.svelte'
@@ -23,6 +24,7 @@
   let connectedDoctors = []
   let pharmacyId = null
   $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
+  let prescriptionsUnsubscribe = null
   
   onMount(async () => {
     try {
@@ -39,6 +41,7 @@
       
       // Load pharmacist-specific data
       await loadPharmacistData()
+      startPrescriptionsListener()
       
     } catch (error) {
       console.error('PharmacistModuleRouter: Error initializing:', error)
@@ -52,7 +55,7 @@
       if (!pharmacyId) return
       
       // Load prescriptions for this pharmacist only
-      prescriptions = await pharmacistStorageService.getPrescriptionsByPharmacistId(pharmacyId)
+      prescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacyId)
       
       // Load drug stock for this pharmacist only
       drugStock = await pharmacistStorageService.getDrugStockByPharmacistId(pharmacyId)
@@ -70,6 +73,18 @@
       console.error('PharmacistModuleRouter: Error loading pharmacist data:', error)
     }
   }
+
+  function startPrescriptionsListener() {
+    if (!pharmacyId) return
+    if (prescriptionsUnsubscribe) prescriptionsUnsubscribe()
+
+    prescriptionsUnsubscribe = firebaseStorage.onPharmacistPrescriptionsChange(
+      pharmacyId,
+      (updatedPrescriptions) => {
+        prescriptions = updatedPrescriptions
+      }
+    )
+  }
   
   function handleViewChange(view) {
     currentView = view
@@ -86,7 +101,17 @@
   function handleProfileUpdate(updatedPharmacist) {
     pharmacist = updatedPharmacist
     console.log('PharmacistModuleRouter: Pharmacist profile updated')
+    startPrescriptionsListener()
   }
+
+  async function handleDataRestored() {
+    await loadPharmacistData()
+    startPrescriptionsListener()
+  }
+
+  onDestroy(() => {
+    if (prescriptionsUnsubscribe) prescriptionsUnsubscribe()
+  })
   
   function handleBackToDashboard() {
     currentView = 'dashboard'
@@ -210,6 +235,7 @@
         <PharmacistSettings 
           {pharmacist}
           on:profile-updated={(e) => handleProfileUpdate(e.detail)}
+          on:data-restored={handleDataRestored}
           on:back-to-dashboard={handleBackToDashboard}
         />
       {/if}
