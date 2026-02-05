@@ -25,7 +25,7 @@
   export let currentUser = null
   export let authUser = null
   export let settingsDoctor = null
-  export let initialTab = 'overview' // Allow parent to set initial tab
+export let initialTab = 'overview' // Allow parent to set initial tab
 
   const TITLE_OPTIONS = ['Mr', 'Ms', 'Master', 'Baby']
 

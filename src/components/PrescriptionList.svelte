@@ -311,25 +311,34 @@
     {#each paginatedPrescriptions as prescription, prescriptionIndex}
       <div class="bg-white rounded-lg shadow-sm border-2 {prescriptionIndex % 2 === 0 ? 'border-teal-200' : 'border-teal-200'}">
         <!-- Prescription Header -->
-        <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
-          <div class="flex items-center">
-            <i class="fas fa-prescription-bottle-alt mr-2"></i>
-            <h6 class="text-lg font-semibold mb-0">
-              Prescription #{prescriptionIndex + 1} on {formatPrescriptionDate(prescription.createdAt)}
-            </h6>
-          </div>
-          <div class="text-sm opacity-90 mt-1">
-            <i class="fas fa-user-md mr-1"></i>
-            {prescription.doctorName || prescription.doctor?.name || 'Doctor'}
-          </div>
-          <div class="text-xs opacity-80 mt-1">
-            <i class="fas fa-hashtag mr-1"></i>
-            {formatPrescriptionId(prescription.id)}
+        <div class="bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-4 py-4 rounded-t-lg">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
+                <i class="fas fa-prescription-bottle-alt text-sm"></i>
+              </span>
+              <div>
+                <h6 class="text-lg font-semibold leading-tight">
+                  Prescription #{prescriptionIndex + 1}
+                </h6>
+                <p class="text-sm text-white/80">Date: {formatPrescriptionDate(prescription.createdAt)}</p>
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <span class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1">
+                <i class="fas fa-user-md"></i>
+                {prescription.doctorName || prescription.doctor?.name || 'Doctor'}
+              </span>
+              <span class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1">
+                <i class="fas fa-hashtag"></i>
+                {formatPrescriptionId(prescription.id)}
+              </span>
+            </div>
           </div>
           {#if prescription.notes}
-            <div class="text-sm opacity-90 mt-1">
-              <i class="fas fa-sticky-note mr-1"></i>
-              {prescription.notes}
+            <div class="mt-3 flex items-start gap-2 text-sm text-white/90">
+              <i class="fas fa-sticky-note mt-0.5 text-white/80"></i>
+              <span>{prescription.notes}</span>
             </div>
           {/if}
         </div>

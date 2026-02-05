@@ -1074,7 +1074,7 @@
   const togglePrescriptionsNotes = () => {
     showPrescriptionsNotes = !showPrescriptionsNotes
   }
-  
+
   // Check if notes are available
   const hasNotes = (items, field = 'notes') => {
     return items && items.some(item => item[field] && item[field].trim())
@@ -2088,6 +2088,28 @@
   <!-- Patient List Sidebar -->
   <div class="lg:col-span-4">
     
+    <!-- Medical Summary (No Card Wrapper) -->
+    {#if selectedPatient}
+      <MedicalSummary 
+        {selectedPatient}
+        {illnesses}
+        {prescriptions}
+        {symptoms}
+        {activeMedicalTab}
+        {showSymptomsNotes}
+        {showIllnessesNotes}
+        {showPrescriptionsNotes}
+        {addToPrescription}
+        {hasNotes}
+        {toggleSymptomsNotes}
+        {toggleIllnessesNotes}
+        {togglePrescriptionsNotes}
+        {groupByDate}
+        {doctorId}
+        on:tabChange={(e) => activeMedicalTab = e.detail.tab}
+      />
+    {/if}
+
     <!-- Last Prescription Card -->
     {#if selectedPatient}
       <div class="bg-white border-2 border-rose-200 rounded-lg shadow-sm mt-3">
@@ -2178,28 +2200,6 @@
           {/if}
         </div>
       </div>
-    {/if}
-    
-    <!-- Medical Summary (No Card Wrapper) -->
-    {#if selectedPatient}
-      <MedicalSummary 
-        {selectedPatient}
-        {illnesses}
-        {prescriptions}
-        {symptoms}
-        {activeMedicalTab}
-        {showSymptomsNotes}
-        {showIllnessesNotes}
-        {showPrescriptionsNotes}
-        {addToPrescription}
-        {hasNotes}
-        {toggleSymptomsNotes}
-        {toggleIllnessesNotes}
-        {togglePrescriptionsNotes}
-        {groupByDate}
-        {doctorId}
-        on:tabChange={(e) => activeMedicalTab = e.detail.tab}
-      />
     {/if}
   </div>
   

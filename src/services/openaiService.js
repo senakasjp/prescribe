@@ -1274,6 +1274,59 @@ Concise medical info only.`
 
       const userId = doctorId || 'default-user'
 
+      const formatDaysAgo = (value) => {
+        if (!value) return 'unknown time'
+        const timestamp = new Date(value).getTime()
+        if (Number.isNaN(timestamp)) return 'unknown time'
+        const days = Math.floor((Date.now() - timestamp) / (1000 * 60 * 60 * 24))
+        if (days <= 0) return 'today'
+        if (days === 1) return '1 day ago'
+        return `${days} days ago`
+      }
+
+      const resolveMedicationName = (medication) => (
+        medication?.name || medication?.drugName || medication?.brandName || 'Unnamed medication'
+      )
+
+      const resolveMedicationFrequency = (medication) => (
+        medication?.frequency || medication?.frequencyLabel || medication?.dosageFrequency || ''
+      )
+
+      const resolveMedicationDuration = (medication) => (
+        medication?.duration || medication?.durationLabel || medication?.days || ''
+      )
+
+      const resolveMedicationDate = (medication) => (
+        medication?.updatedAt || medication?.createdAt || medication?.prescriptionDate || medication?.date
+      )
+
+      const resolveIllnessName = (illness) => (
+        illness?.name || illness?.illness || illness?.diagnosis || 'Unknown condition'
+      )
+
+      const resolveIllnessStatus = (illness) => (
+        illness?.status || illness?.stage || illness?.conditionStatus || ''
+      )
+
+      const resolveIllnessDate = (illness) => (
+        illness?.updatedAt || illness?.createdAt || illness?.date
+      )
+
+      const resolveSymptomText = (symptom) => (
+        symptom?.symptom || symptom?.description || 'Unnamed symptom'
+      )
+
+      const resolveSymptomDate = (symptom) => (
+        symptom?.updatedAt || symptom?.createdAt || symptom?.date
+      )
+
+      const ongoingMedications = (patientData.prescriptions || [])
+        .flatMap(prescription => prescription?.medications || [])
+        .filter(medication => !['completed', 'stopped', 'discontinued'].includes((medication?.status || '').toLowerCase()))
+
+      const chronicConditions = (patientData.illnesses || [])
+        .filter(illness => (resolveIllnessStatus(illness) || '').toLowerCase().includes('chronic'))
+
       // Prepare patient context
       const patientContext = `
 Patient: ${patientData.name || `${patientData.firstName} ${patientData.lastName}`}
@@ -1291,20 +1344,49 @@ Long-term Medications: ${patientData.longTermMedications || 'None'}
 
 Recent Symptoms (last recorded):
 ${patientData.symptoms && patientData.symptoms.length > 0
-  ? patientData.symptoms.slice(0, 5).map(s => `- ${s.symptom || s.description} (${s.severity || 'N/A'})`).join('\n')
+  ? patientData.symptoms
+      .slice(0, 5)
+      .map(s => `- ${resolveSymptomText(s)} (${s.severity || 'N/A'}, ${formatDaysAgo(resolveSymptomDate(s))})`)
+      .join('\n')
   : 'No recent symptoms recorded'}
 
 Recent Diagnoses:
 ${patientData.illnesses && patientData.illnesses.length > 0
-  ? patientData.illnesses.slice(0, 3).map(i => `- ${i.illness || i.diagnosis}`).join('\n')
+  ? patientData.illnesses
+      .slice(0, 3)
+      .map(i => `- ${resolveIllnessName(i)}${resolveIllnessStatus(i) ? ` (${resolveIllnessStatus(i)})` : ''} · ${formatDaysAgo(resolveIllnessDate(i))}`)
+      .join('\n')
   : 'No recent diagnoses recorded'}
 
 Current Prescriptions:
 ${patientData.prescriptions && patientData.prescriptions.length > 0
-  ? patientData.prescriptions.slice(0, 3).map(p =>
-      p.medications ? p.medications.map(m => `- ${m.name} (${m.dosage}, ${m.frequency})`).join('\n') : ''
-    ).join('\n')
+  ? patientData.prescriptions
+      .slice(0, 3)
+      .map(p =>
+        p.medications
+          ? p.medications
+              .map(m => `- ${resolveMedicationName(m)} (${m.dosage || m.dose || 'dose N/A'}${resolveMedicationFrequency(m) ? `, ${resolveMedicationFrequency(m)}` : ''}${resolveMedicationDuration(m) ? `, ${resolveMedicationDuration(m)}` : ''}) · ${formatDaysAgo(resolveMedicationDate(m))}`)
+              .join('\n')
+          : ''
+      )
+      .join('\n')
   : 'No active prescriptions'}
+
+Ongoing Medications:
+${ongoingMedications.length > 0
+  ? ongoingMedications
+      .slice(0, 5)
+      .map(m => `- ${resolveMedicationName(m)} (${m.dosage || m.dose || 'dose N/A'}${resolveMedicationFrequency(m) ? `, ${resolveMedicationFrequency(m)}` : ''})`)
+      .join('\n')
+  : 'No ongoing medications identified'}
+
+Chronic Conditions:
+${chronicConditions.length > 0
+  ? chronicConditions
+      .slice(0, 5)
+      .map(c => `- ${resolveIllnessName(c)}${resolveIllnessStatus(c) ? ` (${resolveIllnessStatus(c)})` : ''}`)
+      .join('\n')
+  : 'No chronic conditions recorded'}
 
 Recent Reports:
 ${patientData.recentReports && patientData.recentReports.length > 0
