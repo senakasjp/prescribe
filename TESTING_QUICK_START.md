@@ -1,14 +1,12 @@
-# Testing Quick Start Guide
+# Testing Quick Start
 
-## 🚀 Get Started in 2 Minutes
-
-### 1. Install Dependencies (Already Done)
+## 1. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 2. Run Tests
+## 2. Run Tests
 
 ```bash
 # Watch mode (recommended for development)
@@ -24,7 +22,7 @@ npm run test:coverage
 npm run test:ui
 ```
 
-### 3. Write Your First Test
+## 3. Write Your First Test
 
 Create a file: `src/tests/unit/myService.test.js`
 
@@ -46,7 +44,7 @@ describe('MyService', () => {
 })
 ```
 
-## 📁 File Structure
+## File Structure
 
 ```
 src/tests/
@@ -58,7 +56,7 @@ src/tests/
 └── components/                 # Component tests
 ```
 
-## 🎯 Common Test Patterns
+## Common Test Patterns
 
 ### Unit Test Template
 
@@ -116,7 +114,7 @@ describe('Feature Integration', () => {
 })
 ```
 
-## 🛠️ Test Utilities
+## Test Utilities
 
 ### Mock Data Helpers
 
@@ -147,7 +145,7 @@ beforeEach(() => {
 })
 ```
 
-## ✅ Testing Checklist
+## Testing Checklist
 
 Before committing code, ensure:
 
@@ -160,7 +158,7 @@ Before committing code, ensure:
 - [ ] Mock data is used
 - [ ] Accessibility tested
 
-## 🎨 Flowbite Testing
+## Flowbite Testing
 
 When testing components with Flowbite:
 
@@ -172,7 +170,7 @@ it('should use Flowbite small theme', () => {
 })
 ```
 
-## 🔒 HIPAA Compliance Tests
+## HIPAA Compliance Tests
 
 Always test:
 
@@ -185,13 +183,13 @@ it('should enforce doctor-patient isolation', async () => {
 })
 ```
 
-## 📊 Coverage Goals
+## Coverage Goals
 
 - **Unit Tests**: 80%+ coverage
 - **Integration Tests**: Critical workflows
 - **Component Tests**: All user-facing components
 
-## 🐛 Debugging Tests
+## Debugging Tests
 
 ```javascript
 // Log component output
@@ -207,7 +205,7 @@ await vi.waitFor(() => {
 })
 ```
 
-## 🚦 CI/CD Integration
+## CI/CD Integration
 
 In your CI pipeline:
 
@@ -222,14 +220,15 @@ In your CI pipeline:
   uses: codecov/codecov-action@v3
 ```
 
-## 📚 Learn More
+## Learn More
 
 - [Full Testing Guide](./TESTING_BEST_PRACTICES.md)
 - [HIPAA Compliance](./HIPAA_COMPLIANCE_CHECKLIST.md)
 - [Vitest Docs](https://vitest.dev/)
 - [Testing Library](https://testing-library.com/)
+- [Manual Testing Checklist](./MANUAL_TESTING_CHECKLIST.md)
 
-## 💡 Pro Tips
+## Pro Tips
 
 1. **Run tests in watch mode** while developing
 2. **Use descriptive test names** - they're documentation
@@ -239,7 +238,7 @@ In your CI pipeline:
 6. **Test error cases too**
 7. **Follow AAA pattern** (Arrange, Act, Assert)
 
-## 🎯 Example: Complete Test Suite
+## Example: Complete Test Suite
 
 ```javascript
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -293,8 +292,3 @@ describe('PatientForm', () => {
 ```
 
 ---
-
-**Happy Testing! 🎉**
-
-Remember: Good tests make good code. They're not just a safety net—they're documentation, design feedback, and confidence builders.
-

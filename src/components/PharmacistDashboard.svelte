@@ -1816,7 +1816,7 @@
           <div class="min-w-0 flex-1">
             <h1 class="text-sm sm:text-base font-bold text-teal-600 truncate">
               <BrandName className="text-teal-600" />
-              <span class="text-xs bg-teal-100 text-teal-800 px-1 py-0.5 rounded ml-1">v2.2.24</span>
+              <span class="text-xs bg-teal-100 text-teal-800 px-1 py-0.5 rounded ml-1">v2.3</span>
             </h1>
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
           </div>

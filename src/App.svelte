@@ -205,11 +205,11 @@
   }
   
   
-  // Force cache refresh for v2.2.7 with timestamp
+  // Force cache refresh for v2.3 with timestamp
   if (typeof window !== 'undefined') {
-    window.appVersion = '2.2.25-title'
+    window.appVersion = '2.3'
     window.buildTime = new Date().toISOString()
-        console.log('🚀 M-Prescribe v2.2.25-title loaded with title field!')
+        console.log('🚀 M-Prescribe v2.3 loaded')
     console.log('📅 Build Time:', window.buildTime)
     console.log('🔄 Cache bust timestamp:', Date.now())
   }
@@ -788,7 +788,7 @@
           <span class="self-center text-xl font-semibold whitespace-nowrap text-white font-hero inline-flex items-center gap-2">
             <img src="/favicon-32x32.png" alt="M-Prescribe" class="h-6 w-6" loading="lazy" />
             <BrandName className="text-teal-100" />
-            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.2.24</span>
+            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded ml-2">v2.3</span>
           </span>
         </a>
           

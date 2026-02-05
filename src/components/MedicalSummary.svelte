@@ -205,10 +205,15 @@
         </h6>
         <button 
           class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg transition-colors duration-200" 
-          on:click={() => selectedPatient = null}
-          title="Back to patient list"
+          on:click={() => generateMedicalSummary()}
+          title="Refresh summary"
+          disabled={isLoadingSummary}
         >
-          <i class="fas fa-arrow-left mr-1"></i>Back
+          {#if isLoadingSummary}
+            <i class="fas fa-spinner fa-spin mr-1"></i>Refreshing...
+          {:else}
+            <i class="fas fa-rotate mr-1"></i>Refresh
+          {/if}
         </button>
       </div>
     </div>
@@ -222,19 +227,10 @@
           <i class="fas fa-exclamation-circle mr-2"></i>{summaryError}
         </div>
       {:else if aiSummary}
-        <div class="flex items-center justify-between mb-3">
-          <div class="flex items-center gap-2 text-blue-700 font-semibold text-sm">
-            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-100 text-blue-600">
-              <i class="fas fa-robot text-sm"></i>
-            </span>
-            <span>AI Medical Summary</span>
+        <div class="rounded-lg border border-blue-200 bg-blue-50/80 p-4">
+          <div class="prose max-w-none text-sm text-slate-800 prose-headings:text-slate-900 prose-strong:text-slate-900 prose-li:marker:text-blue-500">
+            {@html aiSummary}
           </div>
-          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-            Auto‑generated
-          </span>
-        </div>
-        <div class="prose max-w-none text-sm text-slate-700">
-          {@html aiSummary}
         </div>
       {:else}
         <div class="text-sm text-gray-500">

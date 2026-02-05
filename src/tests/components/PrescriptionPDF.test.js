@@ -193,4 +193,32 @@ describe('PrescriptionPDF', () => {
 
     expect(hasUnit).toBe(true)
   })
+
+  it('includes current version label in PDF footer', async () => {
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions: [],
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const textCalls = lastPdfProxy?._fns?.text?.mock?.calls || []
+    const flattened = textCalls.flat()
+    const hasVersion = flattened.some(value =>
+      typeof value === 'string' && /M-Prescribe v2\.3/i.test(value)
+    )
+
+    expect(hasVersion).toBe(true)
+  })
 })

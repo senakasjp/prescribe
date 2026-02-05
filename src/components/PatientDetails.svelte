@@ -42,9 +42,14 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   const formatPhoneDisplay = (patient) => {
     const code = (patient?.phoneCountryCode || '').trim()
     const number = (patient?.phone || '').trim()
+    if (!number) return ''
     if (!code) return number
-    if (!number) return code
     return `${code} ${number}`
+  }
+
+  const hasValidPhone = (patient) => {
+    const digits = String(patient?.phone || '').replace(/\D/g, '')
+    return digits.length > 0
   }
 
   const normalizePhoneInput = (value, dialCode) => {
@@ -53,6 +58,63 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       return digitsOnly.slice(0, 9)
     }
     return digitsOnly
+  }
+
+  const getPatientAgeDisplay = (patient) => {
+    if (!patient) return ''
+    if (patient.age && patient.age !== '' && !isNaN(patient.age)) {
+      return `${patient.age} years`
+    }
+    if (patient.dateOfBirth) {
+      const birthDate = new Date(patient.dateOfBirth)
+      if (!isNaN(birthDate)) {
+        const today = new Date()
+        const age = today.getFullYear() - birthDate.getFullYear()
+        const monthDiff = today.getMonth() - birthDate.getMonth()
+        const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+        if (!isNaN(calculatedAge) && calculatedAge >= 0) {
+          return `${calculatedAge} years`
+        }
+      }
+    }
+    return ''
+  }
+
+  const getPatientBioLines = (patient) => {
+    if (!patient) return []
+    const lines = []
+    const splitName = splitTitleFromName(patient.firstName || '')
+    const title = patient.title || splitName.title
+    const firstName = splitName.firstName || patient.firstName || ''
+    const nameParts = [title, firstName, patient.lastName].filter(Boolean)
+    const displayName = nameParts.join(' ').trim()
+    const ageDisplay = getPatientAgeDisplay(patient)
+    const gender = patient.gender || patient.sex || ''
+    const descriptorParts = [ageDisplay, gender].filter(Boolean)
+    if (displayName || descriptorParts.length) {
+      const intro = displayName || 'Patient'
+      lines.push(descriptorParts.length ? `${intro} (${descriptorParts.join(', ')})` : intro)
+    }
+
+    const contactParts = []
+    const phoneDisplay = formatPhoneDisplay(patient)
+    if (phoneDisplay && hasValidPhone(patient)) contactParts.push(`Phone: ${phoneDisplay}`)
+    if (patient.email) contactParts.push(`Email: ${patient.email}`)
+    if (patient.address) contactParts.push(`Address: ${patient.address}`)
+    if (contactParts.length) lines.push(contactParts.join(' · '))
+
+    const emergencyParts = []
+    if (patient.emergencyContact) emergencyParts.push(patient.emergencyContact)
+    if (patient.emergencyPhone) emergencyParts.push(patient.emergencyPhone)
+    if (emergencyParts.length) {
+      lines.push(`Emergency contact: ${emergencyParts.join(' · ')}`)
+    }
+
+    if (patient.allergies) {
+      lines.push(`Allergies: ${patient.allergies}`)
+    }
+
+    return lines
   }
   
   // Event dispatcher to notify parent of data changes
@@ -63,6 +125,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let improvingFields = {}
   let improvedFields = {}
   let lastImprovedValues = {}
+  let patientBioLines = []
 
   const getDoctorSettingsFallback = () => settingsDoctor || currentUser || {}
 
@@ -98,6 +161,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     }
   }
   $: effectiveDoctorSettings = getDoctorSettingsFallback()
+  $: patientBioLines = getPatientBioLines(selectedPatient)
   $: if (editPatientTrigger && selectedPatient && !isEditingPatient) {
     startEditingPatient()
   }
@@ -571,6 +635,24 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let savingPatient = false
   let deletingPatient = false
   let editLongTermMedications = null // For editing long-term medications in overview
+  let editAllergiesOverview = null // For editing allergies in overview
+  let isEditingBio = false
+  let bioEditData = {
+    title: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    phoneCountryCode: '',
+    gender: '',
+    dateOfBirth: '',
+    age: '',
+    address: '',
+    emergencyContact: '',
+    emergencyPhone: ''
+  }
+  let bioError = ''
+  let savingBio = false
   
   // AI analysis state
   let aiCheckComplete = false
@@ -2756,7 +2838,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             // Add version number to PDF for tracking
             doc.setFontSize(8)
             doc.setFont('helvetica', 'normal')
-            doc.text('M-Prescribe v2.2.24', pageWidth - margin, pageHeight - 5, { align: 'right' })
+            doc.text('M-Prescribe v2.3', pageWidth - margin, pageHeight - 5, { align: 'right' })
             
             doc.setFontSize(10)
             doc.setFont('helvetica', 'normal')
@@ -2783,7 +2865,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         // Add version number to PDF for tracking
         doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
-        doc.text('M-Prescribe v2.2.22', pageWidth - margin, pageHeight - 5, { align: 'right' })
+        doc.text('M-Prescribe v2.3', pageWidth - margin, pageHeight - 5, { align: 'right' })
         
         // Clinic details
         doc.setFontSize(10)
@@ -3087,6 +3169,101 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     editError = ''
     console.log('Edit mode enabled, isEditingPatient:', isEditingPatient)
   }
+
+  const startEditingBio = () => {
+    const parsedName = splitTitleFromName(selectedPatient.firstName || '')
+    bioEditData = {
+      title: selectedPatient.title || parsedName.title,
+      firstName: parsedName.firstName || selectedPatient.firstName || '',
+      lastName: selectedPatient.lastName || '',
+      email: selectedPatient.email || '',
+      phone: selectedPatient.phone || '',
+      phoneCountryCode: selectedPatient.phoneCountryCode || getDialCodeForCountry(currentUser?.country || ''),
+      gender: selectedPatient.gender || '',
+      dateOfBirth: selectedPatient.dateOfBirth || '',
+      age: selectedPatient.age || calculateAge(selectedPatient.dateOfBirth) || '',
+      address: selectedPatient.address || '',
+      emergencyContact: selectedPatient.emergencyContact || '',
+      emergencyPhone: selectedPatient.emergencyPhone || ''
+    }
+    bioError = ''
+    isEditingBio = true
+  }
+
+  const cancelEditingBio = () => {
+    isEditingBio = false
+    bioError = ''
+    bioEditData = {
+      title: '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      phoneCountryCode: '',
+      gender: '',
+      dateOfBirth: '',
+      age: '',
+      address: '',
+      emergencyContact: '',
+      emergencyPhone: ''
+    }
+  }
+
+  const saveBioChanges = async () => {
+    if (savingBio || !selectedPatient?.id) return
+    savingBio = true
+    bioError = ''
+    try {
+      if (!bioEditData.firstName.trim()) {
+        throw new Error('First name is required')
+      }
+
+      let calculatedAge = bioEditData.age
+      if (bioEditData.dateOfBirth && !bioEditData.age) {
+        calculatedAge = calculateAge(bioEditData.dateOfBirth)
+      }
+      if (!calculatedAge || calculatedAge === '') {
+        throw new Error('Age is required. Please provide either age or date of birth')
+      }
+
+      if (bioEditData.email && bioEditData.email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(bioEditData.email.trim())) {
+          throw new Error('Please enter a valid email address')
+        }
+      }
+
+      if (bioEditData.dateOfBirth) {
+        const birthDate = new Date(bioEditData.dateOfBirth)
+        const today = new Date()
+        if (birthDate >= today) {
+          throw new Error('Date of birth must be in the past')
+        }
+      }
+
+      const firstNameWithTitle = bioEditData.title
+        ? `${bioEditData.title} ${bioEditData.firstName}`.trim()
+        : bioEditData.firstName
+
+      const updatedPatient = {
+        ...selectedPatient,
+        ...bioEditData,
+        title: bioEditData.title || '',
+        firstName: firstNameWithTitle,
+        age: calculatedAge
+      }
+
+      await firebaseStorage.updatePatient(selectedPatient.id, updatedPatient)
+      Object.assign(selectedPatient, updatedPatient)
+      dispatch('dataUpdated', { type: 'patient', data: updatedPatient })
+      isEditingBio = false
+    } catch (error) {
+      bioError = error.message
+      console.error('❌ Error updating patient bio:', error)
+    } finally {
+      savingBio = false
+    }
+  }
   
   const cancelEditingPatient = () => {
     isEditingPatient = false
@@ -3239,6 +3416,31 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   const handleCancelLongTermMedications = () => {
     editLongTermMedications = null
     console.log('❌ Cancelled editing long-term medications')
+  }
+
+  const handleSaveAllergiesOverview = async () => {
+    try {
+      console.log('💾 Saving allergies:', editAllergiesOverview)
+
+      const updatedPatient = {
+        ...selectedPatient,
+        allergies: editAllergiesOverview || '',
+        updatedAt: new Date().toISOString()
+      }
+
+      await firebaseStorage.updatePatient(selectedPatient.id, updatedPatient)
+      selectedPatient.allergies = editAllergiesOverview || ''
+      editAllergiesOverview = null
+
+      console.log('✅ Allergies saved successfully')
+    } catch (error) {
+      console.error('❌ Error saving allergies:', error)
+    }
+  }
+
+  const handleCancelAllergiesOverview = () => {
+    editAllergiesOverview = null
+    console.log('❌ Cancelled editing allergies')
   }
   
   // Handle prescription actions
@@ -3877,11 +4079,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               {#if isEditingPatient}
                 <!-- Edit Patient Form -->
                 <div
-                  class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+                  class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-start justify-center p-4 overflow-y-auto"
                   on:click={cancelEditingPatient}
                 >
                   <div class="w-full max-w-4xl" on:click|stopPropagation>
-                    <div class="bg-white border border-gray-200 rounded-lg shadow-lg">
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-lg max-h-[85vh] flex flex-col">
                       <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
                         <h6 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0">
                           <i class="fas fa-user-edit mr-2 text-teal-600"></i>Edit Patient
@@ -3895,7 +4097,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           <i class="fas fa-times"></i>
                         </button>
                       </div>
-                      <div class="p-3 sm:p-4">
+                      <div class="p-3 sm:p-4 overflow-y-auto">
                         <form on:submit|preventDefault={savePatientChanges}>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
@@ -4311,64 +4513,283 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                   </div>
                 </div>
               {:else}
-                <!-- AI Patient Management Summary -->
+                <!-- Patient Bio -->
               <div class="rounded-lg border border-teal-200 bg-teal-50 p-4">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <p class="text-sm font-semibold text-teal-800">AI Patient Management Summary</p>
-                    <p class="text-xs text-teal-700">Generate an AI summary of patient management insights.</p>
+                    <p class="text-sm font-semibold text-teal-800">Patient Bio</p>
+                    <p class="text-xs text-teal-700">Quick snapshot of demographics and contact details.</p>
                   </div>
                   <button
-                    class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
-                    on:click={generatePatientSummary}
-                    disabled={loadingPatientSummary}
+                    type="button"
+                    class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-teal-300 text-teal-800 bg-teal-100 hover:bg-teal-200 transition-colors"
+                    on:click={startEditingBio}
                   >
-                    {#if loadingPatientSummary}
-                      <svg class="animate-spin h-4 w-4 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Generating...
-                    {:else}
-                      <i class="fas fa-sparkles mr-1.5"></i>
-                      Generate Summary
-                    {/if}
+                    <i class="fas fa-pen mr-1"></i>
+                    {patientBioLines.length ? 'Edit' : 'Add'}
                   </button>
                 </div>
 
-                <div class="mt-4">
-                  {#if loadingPatientSummary}
-                    <div class="flex flex-col items-center justify-center py-6">
-                      <svg class="animate-spin h-8 w-8 text-teal-600 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <p class="text-sm text-teal-700">Analyzing patient data...</p>
-                    </div>
-                  {:else if patientSummary}
-                    <div class="bg-white rounded-lg p-4 shadow-inner">
-                      <div class="prose prose-sm max-w-none">
-                        {@html patientSummary}
-                      </div>
-                      <div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500 flex items-center">
-                        <i class="fas fa-info-circle mr-1.5"></i>
-                        AI-generated summary. Please review before clinical use.
-                      </div>
-                    </div>
-                  {:else}
-                    <p class="text-sm text-teal-800">No summary generated yet.</p>
+                <div class="mt-4 space-y-2">
+                  {#each patientBioLines as line}
+                    <p class="text-sm text-teal-800">{line}</p>
+                  {/each}
+                  {#if patientBioLines.length === 0}
+                    <p class="text-sm text-teal-800">No patient details available yet.</p>
                   {/if}
                 </div>
               </div>
+
+              {#if isEditingBio}
+                <div
+                  class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-start justify-center p-4 overflow-y-auto"
+                  on:click={cancelEditingBio}
+                >
+                  <div class="w-full max-w-3xl" on:click|stopPropagation>
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-lg max-h-[85vh] flex flex-col">
+                      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                        <h6 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0">
+                          <i class="fas fa-user mr-2 text-teal-600"></i>Edit Patient Bio
+                        </h6>
+                        <button
+                          type="button"
+                          class="text-gray-400 hover:text-gray-600"
+                          on:click={cancelEditingBio}
+                          aria-label="Close"
+                        >
+                          <i class="fas fa-times"></i>
+                        </button>
+                      </div>
+                      <div class="p-3 sm:p-4 overflow-y-auto">
+                        <form on:submit|preventDefault={saveBioChanges}>
+                          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                                  <i class="fas fa-user mr-1"></i>First Name <span class="text-red-500">*</span>
+                                </label>
+                                <div class="flex gap-2">
+                                  <select
+                                    id="bioTitle"
+                                    class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    bind:value={bioEditData.title}
+                                    disabled={savingBio}
+                                  >
+                                    <option value="">Title</option>
+                                    {#each TITLE_OPTIONS as option}
+                                      <option value={option}>{option}</option>
+                                    {/each}
+                                  </select>
+                                  <input
+                                    type="text"
+                                    class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    id="bioFirstName"
+                                    bind:value={bioEditData.firstName}
+                                    required
+                                    disabled={savingBio}
+                                  >
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioLastName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                                <input
+                                  type="text"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  id="bioLastName"
+                                  bind:value={bioEditData.lastName}
+                                  disabled={savingBio}
+                                >
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioEmail" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                                  <i class="fas fa-envelope mr-1"></i>Email Address
+                                </label>
+                                <input
+                                  type="email"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  id="bioEmail"
+                                  bind:value={bioEditData.email}
+                                  disabled={savingBio}
+                                >
+                              </div>
+                            </div>
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioPhone" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                                  <i class="fas fa-phone mr-1"></i>Phone
+                                </label>
+                                <div class="flex gap-2">
+                                  <select
+                                    id="bioPhoneCountryCode"
+                                    class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    bind:value={bioEditData.phoneCountryCode}
+                                    disabled={savingBio}
+                                  >
+                                    <option value="">Code</option>
+                                    {#each phoneCountryCodes as country}
+                                      <option value={country.dialCode}>{country.dialCode} {country.name}</option>
+                                    {/each}
+                                  </select>
+                                  <input
+                                    type="tel"
+                                    class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    id="bioPhone"
+                                    value={bioEditData.phone}
+                                    on:input={(e) => bioEditData.phone = normalizePhoneInput(e.target.value, bioEditData.phoneCountryCode)}
+                                    maxlength={bioEditData.phoneCountryCode === '+94' ? 9 : undefined}
+                                    disabled={savingBio}
+                                  >
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioGender" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                                  <i class="fas fa-venus-mars mr-1"></i>Gender
+                                </label>
+                                <select
+                                  id="bioGender"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  bind:value={bioEditData.gender}
+                                  disabled={savingBio}
+                                >
+                                  <option value="">Select gender</option>
+                                  <option value="Male">Male</option>
+                                  <option value="Female">Female</option>
+                                  <option value="Other">Other</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioDateOfBirth" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                                  <i class="fas fa-calendar mr-1"></i>Date of Birth
+                                </label>
+                                <DateInput
+                                  id="bioDateOfBirth"
+                                  bind:value={bioEditData.dateOfBirth}
+                                  disabled={savingBio}
+                                  on:change={() => {
+                                    if (bioEditData.dateOfBirth) {
+                                      bioEditData.age = calculateAge(bioEditData.dateOfBirth)
+                                    }
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioAge" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                                  <i class="fas fa-birthday-cake mr-1"></i>Age <span class="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  id="bioAge"
+                                  min="0"
+                                  bind:value={bioEditData.age}
+                                  required
+                                  disabled={savingBio}
+                                >
+                              </div>
+                            </div>
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioAddress" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                                  <i class="fas fa-map-marker-alt mr-1"></i>Address
+                                </label>
+                                <input
+                                  type="text"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  id="bioAddress"
+                                  bind:value={bioEditData.address}
+                                  disabled={savingBio}
+                                >
+                              </div>
+                            </div>
+                          </div>
+
+                          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioEmergencyContact" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Emergency Contact</label>
+                                <input
+                                  type="text"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  id="bioEmergencyContact"
+                                  bind:value={bioEditData.emergencyContact}
+                                  disabled={savingBio}
+                                >
+                              </div>
+                            </div>
+                            <div>
+                              <div class="mb-3 sm:mb-4">
+                                <label for="bioEmergencyPhone" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Emergency Phone</label>
+                                <input
+                                  type="tel"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  id="bioEmergencyPhone"
+                                  bind:value={bioEditData.emergencyPhone}
+                                  disabled={savingBio}
+                                >
+                              </div>
+                            </div>
+                          </div>
+
+                          {#if bioError}
+                            <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4" role="alert">
+                              <i class="fas fa-exclamation-triangle mr-2 text-red-600"></i><span class="text-red-800">{bioError}</span>
+                            </div>
+                          {/if}
+
+                          <div class="action-buttons">
+                            <button
+                              type="submit"
+                              class="action-button action-button-primary disabled:bg-gray-400 disabled:cursor-not-allowed"
+                              disabled={savingBio}
+                            >
+                              {#if savingBio}
+                                <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              {/if}
+                              <i class="fas fa-save mr-1"></i>Save Changes
+                            </button>
+                            <button
+                              type="button"
+                              class="action-button action-button-secondary disabled:bg-gray-100 disabled:cursor-not-allowed"
+                              on:click={cancelEditingBio}
+                              disabled={savingBio}
+                            >
+                              <i class="fas fa-times mr-1"></i>Cancel
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {/if}
 
               <!-- Patient Information -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                 <div>
                                     {#if selectedPatient.email}
                     <p class="mb-2"><span class="font-semibold text-gray-900">Email:</span> <span class="text-gray-700">{selectedPatient.email}</span></p>
-                  {/if}
-                  {#if selectedPatient.phone || selectedPatient.phoneCountryCode}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Phone:</span> <span class="text-gray-700">{formatPhoneDisplay(selectedPatient)}</span></p>
                   {/if}
                                     {#if selectedPatient.dateOfBirth}
                     <p class="mb-2"><span class="font-semibold text-gray-900">Date of Birth:</span> <span class="text-gray-700">{selectedPatient.dateOfBirth}</span></p>
@@ -4395,18 +4816,74 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
               <div class="mt-4">
                 <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <h6 class="text-sm font-semibold text-yellow-800 mb-2">
-                    <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
-                  </h6>
+                  <div class="flex items-center justify-between mb-2">
+                    <h6 class="text-sm font-semibold text-yellow-800 mb-0">
+                      <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
+                    </h6>
+                    <button
+                      type="button"
+                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-yellow-300 text-yellow-800 bg-yellow-100 hover:bg-yellow-200 transition-colors"
+                      on:click={() => editAllergiesOverview = selectedPatient.allergies || ''}
+                    >
+                      <i class="fas fa-pen mr-1"></i>
+                      {selectedPatient.allergies ? 'Edit' : 'Add'}
+                    </button>
+                  </div>
                   <p class="text-sm text-yellow-700 mb-0">{selectedPatient.allergies || 'None recorded'}</p>
                 </div>
               </div>
 
+              {#if editAllergiesOverview !== null}
+                <div class="mt-4">
+                  <div class="bg-white border-2 border-yellow-200 rounded-lg shadow-sm">
+                    <div class="bg-yellow-500 text-white px-3 py-2 rounded-t-lg">
+                      <h6 class="text-sm font-semibold text-white mb-0">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        {selectedPatient.allergies ? 'Edit Allergies' : 'Add Allergies'}
+                      </h6>
+                    </div>
+                    <div class="p-3">
+                      <div class="mb-3">
+                        <label for="editAllergiesOverviewField" class="block text-sm font-medium text-gray-700 mb-1">
+                          Allergies
+                        </label>
+                        <textarea
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                          id="editAllergiesOverviewField"
+                          rows="3"
+                          bind:value={editAllergiesOverview}
+                          placeholder="List any known allergies (e.g., Penicillin, Shellfish, Latex, etc.)"
+                        ></textarea>
+                        <small class="text-xs text-gray-500">List all known allergies to medications, foods, or other substances</small>
+                      </div>
+                      <div class="action-buttons">
+                        <button type="button" class="action-button action-button-primary" on:click={handleSaveAllergiesOverview}>
+                          <i class="fas fa-save mr-1"></i>Save
+                        </button>
+                        <button type="button" class="action-button action-button-secondary" on:click={handleCancelAllergiesOverview}>
+                          <i class="fas fa-times mr-1"></i>Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {/if}
+
               <div class="mt-4">
                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <h6 class="text-sm font-semibold text-blue-800 mb-2">
-                    <i class="fas fa-pills mr-2"></i>Long Term Medications
-                  </h6>
+                  <div class="flex items-center justify-between mb-2">
+                    <h6 class="text-sm font-semibold text-blue-800 mb-0">
+                      <i class="fas fa-pills mr-2"></i>Long Term Medications
+                    </h6>
+                    <button
+                      type="button"
+                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-blue-300 text-blue-800 bg-blue-100 hover:bg-blue-200 transition-colors"
+                      on:click={() => editLongTermMedications = selectedPatient.longTermMedications || ''}
+                    >
+                      <i class="fas fa-pen mr-1"></i>
+                      {selectedPatient.longTermMedications ? 'Edit' : 'Add'}
+                    </button>
+                  </div>
                   <p class="text-sm text-blue-700 mb-0">{selectedPatient.longTermMedications || 'None recorded'}</p>
                 </div>
               </div>

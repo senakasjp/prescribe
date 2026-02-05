@@ -417,7 +417,7 @@
         
         doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
-        doc.text('M-Prescribe v2.2.24', pageWidth - margin, pageHeight - 5, { align: 'right' })
+        doc.text('M-Prescribe v2.3', pageWidth - margin, pageHeight - 5, { align: 'right' })
         
         doc.setFontSize(10)
         doc.setFont('helvetica', 'normal')
