@@ -4788,10 +4788,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               <!-- Patient Information -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                 <div>
-                                    {#if selectedPatient.email}
-                    <p class="mb-2"><span class="font-semibold text-gray-900">Email:</span> <span class="text-gray-700">{selectedPatient.email}</span></p>
-                  {/if}
-                                    {#if selectedPatient.dateOfBirth}
+                  {#if selectedPatient.dateOfBirth}
                     <p class="mb-2"><span class="font-semibold text-gray-900">Date of Birth:</span> <span class="text-gray-700">{selectedPatient.dateOfBirth}</span></p>
                   {/if}
                                                       {#if selectedPatient.bloodGroup}
