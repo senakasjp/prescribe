@@ -860,81 +860,73 @@
             </div>
           {/if}
 
-          <!-- Procedures / Treatments -->
-          <div class="mt-4">
-            <div class="flex items-center gap-2 mb-2">
-              <input
-                class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
-                type="checkbox"
-                id="toggleProcedures"
-                bind:checked={showProcedures}
-                disabled={!currentPrescription}
-              >
-              <label class="text-sm font-medium text-gray-700" for="toggleProcedures">
-                Procedures / Treatments
-              </label>
-            </div>
-            {#if showProcedures}
-              <div class="mb-2">
-                <label class="flex items-center gap-2 text-sm font-medium text-red-600">
-                  <input
-                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
-                    type="checkbox"
-                    bind:checked={excludeConsultationCharge}
-                    disabled={!currentPrescription}
-                  >
-                  Exclude consultation charge
+          <!-- Procedures / Treatments (only after new prescription) -->
+          {#if currentPrescription}
+            <div class="mt-4">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                  type="checkbox"
+                  id="toggleProcedures"
+                  bind:checked={showProcedures}
+                >
+                <label class="text-sm font-medium text-gray-700" for="toggleProcedures">
+                  Procedures / Treatments
                 </label>
               </div>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {#each procedureOptions as option}
-                  {#if option === 'Other'}
-                    <div class="flex items-center justify-between gap-2 p-2 border border-gray-200 rounded-lg bg-white">
-                      <label class="flex items-start gap-2">
+              {#if showProcedures}
+                <div class="mb-2">
+                  <label class="flex items-center gap-2 text-sm font-medium text-red-600">
+                    <input
+                      class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                      type="checkbox"
+                      bind:checked={excludeConsultationCharge}
+                    >
+                    Exclude consultation charge
+                  </label>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {#each procedureOptions as option}
+                    {#if option === 'Other'}
+                      <div class="flex items-center justify-between gap-2 p-2 border border-gray-200 rounded-lg bg-white">
+                        <label class="flex items-start gap-2">
+                          <input
+                            class="w-4 h-4 mt-0.5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                            type="checkbox"
+                            value={option}
+                            bind:group={prescriptionProcedures}
+                          >
+                          <span class="text-sm text-gray-700">Other</span>
+                        </label>
+                        <div class="flex items-center gap-2">
+                          <span class="text-xs text-gray-500">{doctorCurrency}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            class="w-24 px-2 py-1 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                            placeholder="Price"
+                            bind:value={otherProcedurePrice}
+                            disabled={!prescriptionProcedures.includes('Other')}
+                          />
+                        </div>
+                      </div>
+                    {:else}
+                      <label class="flex items-start gap-2 p-2 border border-gray-200 rounded-lg bg-white">
                         <input
                           class="w-4 h-4 mt-0.5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
                           type="checkbox"
                           value={option}
                           bind:group={prescriptionProcedures}
-                          disabled={!currentPrescription}
                         >
-                        <span class="text-sm text-gray-700">Other</span>
+                        <span class="text-sm text-gray-700">{option}</span>
                       </label>
-                      <div class="flex items-center gap-2">
-                        <span class="text-xs text-gray-500">{doctorCurrency}</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          class="w-24 px-2 py-1 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                          placeholder="Price"
-                          bind:value={otherProcedurePrice}
-                          disabled={!currentPrescription || !prescriptionProcedures.includes('Other')}
-                        />
-                      </div>
-                    </div>
-                  {:else}
-                    <label class="flex items-start gap-2 p-2 border border-gray-200 rounded-lg bg-white">
-                      <input
-                        class="w-4 h-4 mt-0.5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
-                        type="checkbox"
-                        value={option}
-                        bind:group={prescriptionProcedures}
-                        disabled={!currentPrescription}
-                      >
-                      <span class="text-sm text-gray-700">{option}</span>
-                    </label>
-                  {/if}
-                {/each}
-              </div>
-            {/if}
-            {#if !currentPrescription}
-              <div class="text-xs text-gray-500 mt-2">
-                <i class="fas fa-info-circle mr-1"></i>
-                Create a new prescription to select procedures.
-              </div>
-            {/if}
-          </div>
+                    {/if}
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           {#if currentMedications && currentMedications.length > 0}
             <!-- Prescription Notes Toggle -->
