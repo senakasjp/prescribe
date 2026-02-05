@@ -1414,18 +1414,19 @@ STRICT RULES:
 2. DO NOT rephrase or reword anything
 3. DO NOT add or remove medical facts
 4. Add missing punctuation, including full stops at the end of sentences
-5. Preserve the original meaning and word order as much as possible
-6. Keep the exact same word order and sentence structure
-7. Maintain all medical terminology accurately
-8. Return ONLY the corrected text with spelling fixes, nothing else
-9. If there are no errors, return the exact same text unchanged
+5. Capitalize the first letter of the text if it is a letter
+6. Preserve the original meaning and word order as much as possible
+7. Keep the exact same word order and sentence structure
+8. Maintain all medical terminology accurately
+9. Return ONLY the corrected text with spelling fixes, nothing else
+10. If there are no errors, return the exact same text unchanged
 
 Example:
 Input: "patient has chest paing and shortnes of breth"
 Output: "patient has chest pain and shortness of breath."
 (Spelling fixed, punctuation added, meaning unchanged)`
 
-      const userMessage = `Fix spelling and grammar mistakes and add missing punctuation (including full stops):\n\n${text}`
+      const userMessage = `Fix spelling and grammar mistakes and add missing punctuation (including full stops). Capitalize the first letter if it is a letter:\n\n${text}`
 
       // Prepare request body
       const requestBody = {

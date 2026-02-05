@@ -11,10 +11,33 @@
 
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
+import { connectFirestoreEmulator } from 'firebase/firestore'
+import { connectAuthEmulator } from 'firebase/auth'
+import { auth, db } from '../firebase-config.js'
 
 // Mock environment variables
-import.meta.env.VITE_USE_FIREBASE = 'false'
+import.meta.env.VITE_USE_FIREBASE = 'true'
 import.meta.env.VITE_ENABLE_MIGRATION = 'false'
+
+const firestoreEmulatorHost = process.env.FIRESTORE_EMULATOR_HOST || ''
+if (firestoreEmulatorHost) {
+  const [host, portString] = firestoreEmulatorHost.split(':')
+  const port = Number(portString) || 8080
+  try {
+    connectFirestoreEmulator(db, host || 'localhost', port)
+  } catch (error) {
+    // Ignore if already connected
+  }
+}
+
+const authEmulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || ''
+if (authEmulatorHost) {
+  try {
+    connectAuthEmulator(auth, `http://${authEmulatorHost}`, { disableWarnings: true })
+  } catch (error) {
+    // Ignore if already connected
+  }
+}
 
 // Global test utilities
 global.testUtils = {
@@ -95,4 +118,3 @@ global.console = {
 afterEach(() => {
   vi.clearAllMocks()
 })
-

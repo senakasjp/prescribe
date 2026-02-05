@@ -287,7 +287,11 @@ class ChargeCalculationService {
    */
   async getDoctorById(doctorId) {
     try {
-      return await firebaseStorage.getDoctorById(doctorId)
+      let doctor = await firebaseStorage.getDoctorById(doctorId)
+      if (!doctor && typeof doctorId === 'string' && doctorId.toUpperCase().startsWith('DR')) {
+        doctor = await firebaseStorage.getDoctorByShortId(doctorId)
+      }
+      return doctor
     } catch (error) {
       console.error('❌ Error getting doctor by ID:', error)
       throw error

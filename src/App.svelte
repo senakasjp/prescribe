@@ -763,7 +763,7 @@
     <LoadingSpinner 
       size="large" 
       color="teal" 
-        text="Loading M-Prescribe v2.2.24..."
+      showText={false}
       fullScreen={true}
     />
   {:else if privacyOnly}

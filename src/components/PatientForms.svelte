@@ -20,32 +20,80 @@
 </script>
 
 {#if showIllnessForm}
-  <IllnessForm 
-    {selectedPatient}
-    visible={showIllnessForm}
-    on:illness-added={onIllnessAdded}
-    on:cancel={onCancelIllness}
-  />
+  <div
+    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+    on:click={onCancelIllness}
+    role="button"
+    tabindex="0"
+    on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && onCancelIllness?.()}
+  >
+    <div
+      class="w-full max-w-3xl"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="presentation"
+      tabindex="-1"
+    >
+      <IllnessForm 
+        {selectedPatient}
+        visible={showIllnessForm}
+        on:illness-added={onIllnessAdded}
+        on:cancel={onCancelIllness}
+      />
+    </div>
+  </div>
 {/if}
 
 {#if showSymptomsForm}
-  <SymptomsForm 
-    {selectedPatient}
-    visible={showSymptomsForm}
-    on:symptoms-added={onSymptomsAdded}
-    on:cancel={onCancelSymptoms}
-  />
+  <div
+    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+    on:click={onCancelSymptoms}
+    role="button"
+    tabindex="0"
+    on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && onCancelSymptoms?.()}
+  >
+    <div
+      class="w-full max-w-3xl"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="presentation"
+      tabindex="-1"
+    >
+      <SymptomsForm 
+        {selectedPatient}
+        visible={showSymptomsForm}
+        on:symptoms-added={onSymptomsAdded}
+        on:cancel={onCancelSymptoms}
+      />
+    </div>
+  </div>
 {/if}
 
 {#if showMedicationForm}
-  <MedicationForm 
-    {selectedPatient}
-    {editingMedication}
-    {doctorId}
-    {allowNonPharmacyDrugs}
-    {excludePharmacyDrugs}
-    visible={showMedicationForm}
-    on:medication-added={onMedicationAdded}
-    on:cancel={onCancelMedication}
-  />
+  <div
+    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+    on:click={onCancelMedication}
+    role="button"
+    tabindex="0"
+    on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && onCancelMedication?.()}
+  >
+    <div
+      class="w-full max-w-3xl"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="presentation"
+      tabindex="-1"
+    >
+      <MedicationForm 
+        {selectedPatient}
+        {editingMedication}
+        {doctorId}
+        {allowNonPharmacyDrugs}
+        {excludePharmacyDrugs}
+        visible={showMedicationForm}
+        on:medication-added={onMedicationAdded}
+        on:cancel={onCancelMedication}
+      />
+    </div>
+  </div>
 {/if}

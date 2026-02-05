@@ -1,5 +1,4 @@
 <script>
-  import drugDatabase from '../services/drugDatabase.js'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { pharmacyInventoryIntegration } from '../services/pharmacyInventoryIntegration.js'
   import { notifyInfo, notifySuccess, notifyError } from '../stores/notifications.js'
@@ -59,25 +58,13 @@
     console.log('Searching drugs for doctor:', doctorId, 'brandName:', brandName, 'genericName:', genericName)
     
     try {
-      // Search in doctor's local database
-      const localDrugs = drugDatabase.searchDrugs(doctorId, searchTerm)
-      
       // Search in connected pharmacy inventories with expanded results for autofill
       const pharmacyDrugs = await pharmacyMedicationService.searchMedicationsFromPharmacies(doctorId, searchTerm, 20) // Increased limit for better autofill
-      
-      // Process local drugs with enhanced display names
-      const processedLocalDrugs = localDrugs.map(drug => ({
-        ...drug,
-        source: 'local',
-        displayName: drug.displayName || createDisplayName(drug.brandName, drug.genericName),
-        strength: drug.strength || '',
-        dosageForm: drug.dosageForm || ''
-      }))
       
       // Process pharmacy drugs with enhanced information
       const processedPharmacyDrugs = pharmacyDrugs.map(drug => ({
         ...drug,
-        source: 'pharmacy',
+        source: 'inventory',
         displayName: createDisplayName(drug.brandName, drug.genericName),
         // Ensure all required fields are present
         brandName: drug.brandName || '',
@@ -89,17 +76,8 @@
         expiryDate: drug.expiryDate || ''
       }))
       
-      // Combine results (local drugs first, then pharmacy drugs)
-      const combinedResults = [
-        ...processedLocalDrugs,
-        ...processedPharmacyDrugs.filter(pharmacyDrug => 
-          // Avoid duplicates - check if pharmacy drug already exists in local results
-          !processedLocalDrugs.find(localDrug => 
-            localDrug.brandName?.toLowerCase() === pharmacyDrug.brandName?.toLowerCase() &&
-            localDrug.genericName?.toLowerCase() === pharmacyDrug.genericName?.toLowerCase()
-          )
-        )
-      ]
+      // Use only inventory results
+      const combinedResults = [...processedPharmacyDrugs]
       
       // Sort results by relevance (exact matches first, then partial matches)
       combinedResults.sort((a, b) => {
@@ -111,17 +89,12 @@
         if (aExact && !bExact) return -1
         if (!aExact && bExact) return 1
         
-        // Then by source (local first)
-        if (a.source === 'local' && b.source === 'pharmacy') return -1
-        if (a.source === 'pharmacy' && b.source === 'local') return 1
-        
         return a.displayName.localeCompare(b.displayName)
       })
       
       searchResults = combinedResults
       console.log('Enhanced autofill search results:', { 
-        local: processedLocalDrugs.length, 
-        pharmacy: processedPharmacyDrugs.length, 
+        inventory: processedPharmacyDrugs.length, 
         combined: combinedResults.length 
       })
       showDropdown = searchResults.length > 0
@@ -129,43 +102,16 @@
       
     } catch (error) {
       console.error('Error searching drugs:', error)
-      // Fallback to local search only
-      searchResults = drugDatabase.searchDrugs(doctorId, searchTerm).map(drug => ({
-        ...drug,
-        source: 'local',
-        displayName: drug.displayName || createDisplayName(drug.brandName, drug.genericName)
-      }))
-      showDropdown = searchResults.length > 0
+      searchResults = []
+      showDropdown = false
       selectedIndex = -1
     }
   }
   
   // Check for exact match and populate the other field (debounced)
   const checkAndPopulateOtherField = (inputField, inputValue) => {
-    clearTimeout(matchTimeout)
-    matchTimeout = setTimeout(() => {
-      if (!doctorId || !inputValue.trim()) return
-      
-      const allDrugs = drugDatabase.getDoctorDrugs(doctorId)
-      const exactMatch = allDrugs.find(drug => {
-        if (inputField === 'brand' && drug.brandName) {
-          return drug.brandName.toLowerCase() === inputValue.toLowerCase().trim()
-        } else if (inputField === 'generic' && drug.genericName) {
-          return drug.genericName.toLowerCase() === inputValue.toLowerCase().trim()
-        }
-        return false
-      })
-      
-      if (exactMatch) {
-        if (inputField === 'brand' && exactMatch.genericName && genericName !== exactMatch.genericName) {
-          genericName = exactMatch.genericName
-          console.log('Found matching generic name:', exactMatch.genericName)
-        } else if (inputField === 'generic' && exactMatch.brandName && brandName !== exactMatch.brandName) {
-          brandName = exactMatch.brandName
-          console.log('Found matching brand name:', exactMatch.brandName)
-        }
-      }
-    }, 500) // Debounce for 500ms
+    // Inventory-only mode: no local database to cross-populate from.
+    return
   }
 
   // Handle input focus
@@ -345,9 +291,9 @@
                 {#if drug.strength}
                   <span class="inline-flex items-center px-2 py-1 rounded bg-gray-100">
                     <i class="fas fa-weight-hanging mr-1"></i>{drug.strength}
-                    {#if drug.source === 'pharmacy' && drug.currentStock !== undefined}
-                      <span class="ml-1 text-blue-600 font-medium">({drug.currentStock} {drug.packUnit || 'units'})</span>
-                    {/if}
+                {#if drug.currentStock !== undefined}
+                  <span class="ml-1 text-blue-600 font-medium">({drug.currentStock} {drug.packUnit || 'units'})</span>
+                {/if}
                   </span>
                 {/if}
                 {#if drug.dosageForm}
@@ -373,15 +319,9 @@
             
             <div class="flex flex-col items-end gap-2 ml-3">
               <!-- Source indicator -->
-              {#if drug.source === 'pharmacy'}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  <i class="fas fa-store mr-1"></i>Inventory
-                </span>
-              {:else}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  <i class="fas fa-database mr-1"></i>Local
-                </span>
-              {/if}
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-store mr-1"></i>Inventory
+              </span>
               
               <!-- Quick action indicator -->
               <div class="text-gray-400 text-xs">

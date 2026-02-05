@@ -108,6 +108,7 @@ class FirebaseStorageService {
         country: doctorData.country,
         city: doctorData.city,
         currency: doctorData.currency || resolveCurrencyFromCountry(doctorData.country) || 'USD',
+        roundingPreference: doctorData.roundingPreference,
         role: doctorData.role,
         isAdmin: doctorData.isAdmin,
         permissions: doctorData.permissions,
@@ -249,6 +250,41 @@ class FirebaseStorageService {
     }
   }
 
+  async getDoctorByShortId(shortId) {
+    try {
+      const normalized = String(shortId || '').trim().toUpperCase()
+      if (!normalized) return null
+      const q = query(
+        collection(db, this.collections.doctors),
+        where('doctorIdShort', '==', normalized),
+        limit(1)
+      )
+      const snapshot = await getDocs(q)
+      if (snapshot.empty) return null
+      const docSnap = snapshot.docs[0]
+      const data = docSnap.data()
+      if (!data.doctorIdShort) {
+        data.doctorIdShort = this.formatDoctorId(docSnap.id)
+        await updateDoc(docSnap.ref, { doctorIdShort: data.doctorIdShort })
+      }
+      if (!data.deleteCode) {
+        const deleteCode = this.generateDeleteCode()
+        await updateDoc(docSnap.ref, { deleteCode })
+        data.deleteCode = deleteCode
+      }
+      if (!data.currency) {
+        const resolvedCurrency = resolveCurrencyFromCountry(data.country)
+        if (resolvedCurrency) {
+          data.currency = resolvedCurrency
+        }
+      }
+      return { id: docSnap.id, ...data }
+    } catch (error) {
+      console.error('Error getting doctor by short ID:', error)
+      throw error
+    }
+  }
+
   async getDoctorByReferralCode(code) {
     try {
       const normalized = String(code || '').trim().toUpperCase()
@@ -285,6 +321,7 @@ class FirebaseStorageService {
         consultationCharge: updatedDoctor.consultationCharge,
         hospitalCharge: updatedDoctor.hospitalCharge,
         currency: updatedDoctor.currency,
+        roundingPreference: updatedDoctor.roundingPreference,
         role: updatedDoctor.role,
         isAdmin: updatedDoctor.isAdmin,
         permissions: updatedDoctor.permissions,

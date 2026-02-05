@@ -459,13 +459,59 @@
     return { available: false, quantity: 0, stockItem: null }
   }
 
+  const resolveDailyFrequency = (frequency = '') => {
+    const value = String(frequency).toLowerCase()
+    if (value.includes('once daily') || value.includes('(od)') || value.includes('mane') || value.includes('nocte') || value.includes('noon') || value.includes('vesper')) return 1
+    if (value.includes('twice daily') || value.includes('(bd)')) return 2
+    if (value.includes('three times daily') || value.includes('(tds)')) return 3
+    if (value.includes('four times daily') || value.includes('(qds)')) return 4
+    if (value.includes('every 4 hours') || value.includes('(q4h)')) return 6
+    if (value.includes('every 6 hours') || value.includes('(q6h)')) return 4
+    if (value.includes('every 8 hours') || value.includes('(q8h)')) return 3
+    if (value.includes('every 12 hours') || value.includes('(q12h)')) return 2
+    if (value.includes('every other day') || value.includes('(eod)')) return 0.5
+    if (value.includes('weekly')) return 1 / 7
+    if (value.includes('monthly')) return 1 / 30
+    if (value.includes('stat')) return 1
+    return 0
+  }
+
+  const parseDosageMultiplier = (dosageValue) => {
+    const raw = String(dosageValue || '').trim()
+    if (!raw) return 1
+    const parts = raw.split(' ')
+    let total = 0
+    parts.forEach(part => {
+      const piece = part.trim()
+      if (!piece) return
+      if (piece.includes('/')) {
+        const [num, den] = piece.split('/')
+        const n = Number(num)
+        const d = Number(den)
+        if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) {
+          total += n / d
+        }
+      } else {
+        const n = Number(piece)
+        if (Number.isFinite(n)) {
+          total += n
+        }
+      }
+    })
+    return total > 0 ? total : 1
+  }
+
   const calculateMedicationQuantity = (medication) => {
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
-      return chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
+      const base = chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
+      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+      return Math.ceil(base * dosageMultiplier)
     }
 
-    if (medication?.frequency && medication.frequency.includes('PRN') && medication?.prnAmount) {
-      return chargeCalculationService.parseMedicationQuantity(medication.prnAmount) || 0
+    if (medication?.frequency && medication.frequency.includes('PRN')) {
+      const base = chargeCalculationService.parseMedicationQuantity(medication.prnAmount) || 0
+      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+      return Math.ceil(base * dosageMultiplier)
     }
 
     if (!medication?.frequency || !medication?.duration) {
@@ -477,8 +523,13 @@
       return 0
     }
     const days = parseInt(durationMatch[1], 10)
+    if (!Number.isFinite(days) || days <= 0) return 0
 
-    return days > 0 ? days : 0
+    const dailyFrequency = resolveDailyFrequency(medication.frequency)
+    if (!dailyFrequency) return 0
+    const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+    const totalAmount = days * dailyFrequency * dosageMultiplier
+    return Math.ceil(totalAmount)
   }
 
   const buildExpectedPrescriptionForCharge = () => {

@@ -987,12 +987,13 @@
     }
   }
 
-  // Initialize form when user changes (but only once per user ID)
-  let lastUserId = null
-  $: if (user && user.id && user.id !== lastUserId && !isSaving) {
+  // Initialize form when user changes (but only once per user key)
+  let lastUserKey = null
+  const resolveUserKey = (currentUser) => currentUser?.id || currentUser?.uid || currentUser?.email || null
+  $: if (user && resolveUserKey(user) && resolveUserKey(user) !== lastUserKey && !isSaving) {
     try {
       initializeForm()
-      lastUserId = user.id
+      lastUserKey = resolveUserKey(user)
     } catch (error) {
       console.error('❌ SettingsPage: Error initializing form:', error)
       // Set default values to prevent errors
@@ -1004,6 +1005,7 @@
       consultationCharge = ''
       hospitalCharge = ''
       currency = 'USD'
+      roundingPreference = 'none'
     }
   }
 

@@ -1,5 +1,17 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.3 - Messaging Templates & App URL (February 3, 2026)
+
+### 📩 SMS + Email Template Upgrades
+- **App URL setting**: Admins can set a custom `{{appUrl}}` under System Settings
+- **Template support**: `{{appUrl}}` now works in SMS and email templates
+- **SMS test number**: Configurable test phone number with inline save
+- **Test buttons**: Send test SMS for Registration, Appointment Reminder, Doctor Registration, and Doctor Approved templates
+
+### ✅ Doctor Registration SMS Enhancements
+- **Auto SMS triggers**: New doctor registration + approval messages
+- **Copy to test**: Optional checkbox to copy registration SMS to the test number
+
 ## Version 2.3.2 - Workflow & Billing Enhancements (January 24, 2026)
 
 ### ✅ Prescriptions: Procedures + Consultation Controls

@@ -21,6 +21,7 @@
   let consultationCharge = ''
   let hospitalCharge = ''
   let currency = 'USD'
+  let roundingPreference = 'none'
   let loading = false
   let error = ''
   let deleteCode = ''
@@ -174,6 +175,7 @@
       consultationCharge = String(user.consultationCharge || '')
       hospitalCharge = String(user.hospitalCharge || '')
       currency = String(user.currency || resolveCurrencyFromCountry(user.country) || 'USD')
+      roundingPreference = user?.roundingPreference || 'none'
       deleteCode = String(user.deleteCode || '')
       templateType = String(user?.templateSettings?.templateType || templateType)
       headerSize = user?.templateSettings?.headerSize || headerSize
@@ -239,6 +241,7 @@
       consultationCharge = ''
       hospitalCharge = ''
       currency = 'USD'
+      roundingPreference = 'none'
       deleteCode = ''
       procedurePricing = normalizeProcedurePricing(null)
     }
@@ -290,6 +293,7 @@
         consultationCharge: String(consultationCharge || '').trim(),
         hospitalCharge: String(hospitalCharge || '').trim(),
         currency: currency,
+        roundingPreference: roundingPreference || 'none',
         name: `${safeFirstName} ${safeLastName}`
       }
       
@@ -660,6 +664,23 @@
                 <option value={currencyOption.code}>{currencyOption.symbol} {currencyOption.name} ({currencyOption.code})</option>
               {/each}
             </select>
+          </div>
+
+          <div class="mb-3">
+            <label for="editRoundingPreference" class="block text-sm font-medium text-gray-700 mb-1">
+              Total Amount Rounding
+            </label>
+            <select
+              id="editRoundingPreference"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              bind:value={roundingPreference}
+              disabled={loading}
+            >
+              <option value="none">No Rounding</option>
+              <option value="nearest50">Round to Nearest 50</option>
+              <option value="nearest100">Round to Nearest 100</option>
+            </select>
+            <p class="text-xs text-gray-500 mt-1">Applies to final totals for prescriptions.</p>
           </div>
           
           <!-- Charges Section -->

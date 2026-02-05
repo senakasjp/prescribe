@@ -4,6 +4,7 @@
   import JsBarcode from 'jsbarcode'
   import firebaseStorage from '../services/firebaseStorage.js'
   import doctorAuthService from '../services/doctor/doctorAuthService.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
   
   const dispatch = createEventDispatcher()
@@ -14,6 +15,75 @@
   export let symptoms
   
   let loading = false
+  let pharmacyStrengthLookup = new Map()
+
+  const normalizeName = (value) => (value || '')
+    .toString()
+    .toLowerCase()
+    .replace(/[\u3000\s]+/g, ' ')
+    .replace(/[\(\)（）]/g, '')
+    .trim()
+
+
+  const findInventoryStrengthText = (medication) => {
+    if (!pharmacyStrengthLookup || pharmacyStrengthLookup.size === 0) return ''
+
+    const nameKey = normalizeName(medication?.name)
+    const genericKey = normalizeName(medication?.genericName)
+    const keysToTry = [nameKey, genericKey].filter(Boolean)
+
+    for (const key of keysToTry) {
+      if (pharmacyStrengthLookup.has(key)) {
+        return pharmacyStrengthLookup.get(key) || ''
+      }
+    }
+
+    return ''
+  }
+
+  const parseStrengthParts = (medication) => {
+    const rawStrength = medication?.strength ?? medication?.dosage ?? ''
+    const rawUnit = medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? ''
+
+    if (!rawStrength) {
+      return { strength: '', strengthUnit: rawUnit || '' }
+    }
+
+    if (typeof rawStrength === 'number') {
+      return { strength: String(rawStrength), strengthUnit: rawUnit || '' }
+    }
+
+    const normalized = String(rawStrength).trim()
+    const match = normalized.match(/^(\d+(?:\.\d+)?)([a-zA-Z%]+)?$/)
+    if (match) {
+      return { strength: match[1], strengthUnit: match[2] || rawUnit || '' }
+    }
+
+    return { strength: normalized, strengthUnit: rawUnit || '' }
+  }
+
+  const getStrengthText = (rawStrength, rawUnit = '') => {
+    const parsed = parseStrengthParts({ strength: rawStrength ?? '', strengthUnit: rawUnit ?? '' })
+    return [parsed.strength, parsed.strengthUnit].filter(Boolean).join(' ').trim()
+  }
+
+  const getPdfDosageLabel = (medication) => {
+    const base = String(medication?.dosage ?? '').trim()
+    const { strength, strengthUnit } = parseStrengthParts(medication)
+    const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
+    if (strengthText && strengthUnit) return strengthText
+
+    const fromInventory = findInventoryStrengthText(medication)
+    if (fromInventory) return fromInventory
+
+    if (strengthText) return strengthText
+
+    const fallbackUnit = String(medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? '').trim()
+    if (base && fallbackUnit) {
+      return `${base} ${fallbackUnit}`.trim()
+    }
+    return base
+  }
   
   // Generate PDF prescription
   const generatePDF = async () => {
@@ -53,6 +123,38 @@
         }
       } catch (error) {
         console.warn('⚠️ Could not load template settings:', error)
+      }
+
+      // Load pharmacy inventory strengths for dosage units
+      try {
+        const currentDoctor = doctorAuthService.getCurrentDoctor()
+        let doctorId = currentDoctor?.id || currentDoctor?.uid || null
+        if (currentDoctor?.externalDoctor && currentDoctor?.invitedByDoctorId) {
+          doctorId = currentDoctor.invitedByDoctorId
+        }
+        if (!doctorId && selectedPatient?.doctorId) {
+          doctorId = selectedPatient.doctorId
+        }
+        if (!doctorId && currentDoctor?.email) {
+          const doctor = await firebaseStorage.getDoctorByEmail(currentDoctor.email)
+          doctorId = doctor?.id || null
+        }
+
+        if (doctorId) {
+          const stock = await pharmacyMedicationService.getPharmacyStock(doctorId)
+          const lookup = new Map()
+          stock.forEach(item => {
+            const strengthText = getStrengthText(item.strength, item.strengthUnit)
+            if (!strengthText) return
+            const nameKey = normalizeName(item.drugName || item.brandName)
+            const genericKey = normalizeName(item.genericName)
+            if (nameKey && !lookup.has(nameKey)) lookup.set(nameKey, strengthText)
+            if (genericKey && !lookup.has(genericKey)) lookup.set(genericKey, strengthText)
+          })
+          pharmacyStrengthLookup = lookup
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not load pharmacy inventory strengths:', error)
       }
       
       let headerYStart = 5
@@ -421,7 +523,7 @@
           doc.setFont('helvetica', 'bold')
           const medName = medication.genericName ? `${medication.name} (${medication.genericName})` : medication.name
           doc.text(`${index + 1}. ${medName}`, margin, yPos)
-          doc.text(`${medication.dosage}`, pageWidth - margin, yPos, { align: 'right' })
+          doc.text(getPdfDosageLabel(medication), pageWidth - margin, yPos, { align: 'right' })
           
           doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
@@ -594,7 +696,7 @@
                       </div>
                     </div>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">
-                      {medication.dosage}
+                      {getPdfDosageLabel(medication)}
                     </span>
                   </div>
                 </div>

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run",
+    "test:run": "firebase emulators:exec --only firestore,auth \"vitest run\"",
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {

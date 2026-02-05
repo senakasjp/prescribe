@@ -2,7 +2,7 @@
 <!-- Implements pharmaceutical industry best practices -->
 
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import inventoryService from '../../services/pharmacist/inventoryService.js'
   import adminAuthService from '../../services/adminAuthService.js'
   import firebaseStorage from '../../services/firebaseStorage.js'
@@ -212,6 +212,46 @@
       suppliers = []
     }
   }
+
+  const isFilled = (value) => String(value ?? '').trim().length > 0
+
+  const coerceDateToIso = (raw) => {
+    const value = String(raw || '').trim()
+    if (!value) return ''
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+    const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+    if (!match) return ''
+    const [, partA, partB, year] = match
+    const numA = Number(partA)
+    const numB = Number(partB)
+    const day = numA > 12 ? partA : (numB > 12 ? partB : partA)
+    const month = numA > 12 ? partB : (numB > 12 ? partA : partB)
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+
+  const focusFieldById = async (id) => {
+    await tick()
+    const el = typeof document !== 'undefined' ? document.getElementById(id) : null
+    if (el && typeof el.focus === 'function') {
+      el.focus()
+      if (typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }
+    }
+  }
+
+  const requiredNewItemFields = [
+    { key: 'brandName', id: 'newItemBrandName', label: 'Brand Name' },
+    { key: 'genericName', id: 'newItemGenericName', label: 'Generic Name' },
+    { key: 'strength', id: 'newItemStrength', label: 'Strength' },
+    { key: 'strengthUnit', id: 'newItemStrengthUnit', label: 'Strength Unit' },
+    { key: 'dosageForm', id: 'newItemDosageForm', label: 'Dosage Form' },
+    { key: 'initialStock', id: 'newItemInitialStock', label: 'Initial Stock' },
+    { key: 'minimumStock', id: 'newItemMinimumStock', label: 'Minimum Stock' },
+    { key: 'sellingPrice', id: 'newItemSellingPrice', label: 'Selling Price' },
+    { key: 'expiryDate', id: 'newItemExpiryDate', label: 'Expiry Date' },
+    { key: 'storageConditions', id: 'newItemStorageConditions', label: 'Storage Conditions' }
+  ]
   
   // Add new inventory item
   const addInventoryItem = async () => {
@@ -220,9 +260,20 @@
         notifyError('Pharmacist information not available')
         return
       }
+
+      if (!isFilled(newItemForm.expiryDate)) {
+        const expiryInput = typeof document !== 'undefined'
+          ? document.getElementById('newItemExpiryDate')
+          : null
+        if (expiryInput?.value) {
+          newItemForm.expiryDate = coerceDateToIso(expiryInput.value) || expiryInput.value
+        }
+      }
       
-      if (!newItemForm.brandName || !newItemForm.genericName || !newItemForm.strength || !newItemForm.strengthUnit || !newItemForm.dosageForm || !newItemForm.initialStock || !newItemForm.minimumStock || !newItemForm.sellingPrice || !newItemForm.expiryDate || !newItemForm.storageConditions) {
-        notifyError('Please fill in all required fields including dosage form')
+      const missingField = requiredNewItemFields.find(field => !isFilled(newItemForm[field.key]))
+      if (missingField) {
+        notifyError(`Please fill in ${missingField.label}`)
+        await focusFieldById(missingField.id)
         return
       }
       
@@ -254,7 +305,6 @@
       
       showAddItemModal = false
       await loadDashboardData()
-      notifySuccess('Inventory item added successfully')
       
     } catch (error) {
       console.error('Error adding inventory item:', error)
@@ -1295,9 +1345,12 @@
             <i class="fas fa-edit mr-2 text-blue-600"></i>
             Edit Inventory Item
           </h3>
-          <button 
-            class="text-gray-400 hover:text-gray-600"
+          <button
+            type="button"
+            class="p-2 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
             on:click={() => showEditItemModal = false}
+            aria-label="Close edit item"
+            title="Close"
           >
             <i class="fas fa-times text-xl"></i>
           </button>

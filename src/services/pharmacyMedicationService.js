@@ -142,6 +142,7 @@ class PharmacyMedicationService {
           genericName: item.genericName || '',
           displayName: this.createDisplayName(item.brandName || item.drugName, item.genericName),
           strength: item.strength || '',
+          strengthUnit: item.strengthUnit || '',
           dosageForm: item.dosageForm || '',
           manufacturer: item.manufacturer || '',
           pharmacyId: pharmacyId,

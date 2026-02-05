@@ -57,6 +57,9 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 - **Error Handling**: Silent error handling without user interruption
 - **Patient Opt-Out**: Patients can disable automated emails and reminders
 - **Unsubscribe Links**: Email templates support unsubscribe URLs and links
+- **App URL Placeholder**: `{{appUrl}}` supported in SMS and email templates
+- **SMS Testing Tools**: Configurable test number + per-template test send buttons
+- **Doctor Registration SMS**: Auto sends registration + approval SMS with optional test copy
 
 ## File Structure
 ```
@@ -118,4 +121,3 @@ src/
 - Mobile responsive design
 - Progressive Web App features
 - Offline capability for basic functions
-

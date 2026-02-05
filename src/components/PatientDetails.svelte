@@ -14,6 +14,7 @@
   import { formatPrescriptionId } from '../utils/idFormat.js'
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
   import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
+  import { notifySuccess, notifyError } from '../stores/notifications.js'
   import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
@@ -164,6 +165,13 @@
     return { strength: normalized, strengthUnit: rawUnit || '' }
   }
 
+  const getPdfDosageLabel = (medication) => {
+    const base = String(medication?.dosage ?? '').trim()
+    const { strength, strengthUnit } = parseStrengthParts(medication)
+    const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
+    return strengthText || base
+  }
+
   const buildMedicationKeyForPharmacy = (medication) => {
     if (!medication) return ''
     const { strength, strengthUnit } = parseStrengthParts(medication)
@@ -176,6 +184,70 @@
       normalizeKeyPart(dosageForm)
     ].filter(Boolean)
     return parts.join('|')
+  }
+
+  const resolveDailyFrequency = (frequency = '') => {
+    const value = String(frequency).toLowerCase()
+    if (value.includes('once daily') || value.includes('(od)') || value.includes('mane') || value.includes('nocte') || value.includes('noon') || value.includes('vesper')) return 1
+    if (value.includes('twice daily') || value.includes('(bd)')) return 2
+    if (value.includes('three times daily') || value.includes('(tds)')) return 3
+    if (value.includes('four times daily') || value.includes('(qds)')) return 4
+    if (value.includes('every 4 hours') || value.includes('(q4h)')) return 6
+    if (value.includes('every 6 hours') || value.includes('(q6h)')) return 4
+    if (value.includes('every 8 hours') || value.includes('(q8h)')) return 3
+    if (value.includes('every 12 hours') || value.includes('(q12h)')) return 2
+    if (value.includes('every other day') || value.includes('(eod)')) return 0.5
+    if (value.includes('weekly')) return 1 / 7
+    if (value.includes('monthly')) return 1 / 30
+    if (value.includes('stat')) return 1
+    return 0
+  }
+
+  const parseDosageMultiplier = (dosageValue) => {
+    const raw = String(dosageValue || '').trim()
+    if (!raw) return 1
+    const parts = raw.split(' ')
+    let total = 0
+    parts.forEach(part => {
+      const piece = part.trim()
+      if (!piece) return
+      if (piece.includes('/')) {
+        const [num, den] = piece.split('/')
+        const n = Number(num)
+        const d = Number(den)
+        if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) {
+          total += n / d
+        }
+      } else {
+        const n = Number(piece)
+        if (Number.isFinite(n)) {
+          total += n
+        }
+      }
+    })
+    return total > 0 ? total : 1
+  }
+
+  const calculateMedicationQuantity = (medication) => {
+    if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
+      const base = Number(medication.amount) || 0
+      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+      return Math.ceil(base * dosageMultiplier)
+    }
+    if (medication?.frequency && medication.frequency.includes('PRN')) {
+      const base = Number(medication.prnAmount) || 0
+      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+      return Math.ceil(base * dosageMultiplier)
+    }
+    if (!medication?.frequency || !medication?.duration) return 0
+    const durationMatch = medication.duration.match(/(\d+)\s*days?/i)
+    if (!durationMatch) return 0
+    const days = parseInt(durationMatch[1], 10)
+    if (!Number.isFinite(days) || days <= 0) return 0
+    const dailyFrequency = resolveDailyFrequency(medication.frequency)
+    if (!dailyFrequency) return 0
+    const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+    return Math.ceil(days * dailyFrequency * dosageMultiplier)
   }
 
   const enrichMedicationForPharmacy = (medication) => {
@@ -193,7 +265,8 @@
       strength,
       strengthUnit,
       dosageForm,
-      medicationKey
+      medicationKey,
+      amount: calculateMedicationQuantity(medication)
     }
   }
   
@@ -2835,7 +2908,7 @@
           doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
           
           // Dosage on the right (bold and right-aligned)
-          doc.text(`${medication.dosage}`, pageWidth - margin, yPos, { align: 'right' })
+          doc.text(getPdfDosageLabel(medication), pageWidth - margin, yPos, { align: 'right' })
           
           // Other medication details on next line
           doc.setFontSize(9)
@@ -3803,7 +3876,27 @@
             <div class="p-3 sm:p-4">
               {#if isEditingPatient}
                 <!-- Edit Patient Form -->
-                <form on:submit|preventDefault={savePatientChanges}>
+                <div
+                  class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+                  on:click={cancelEditingPatient}
+                >
+                  <div class="w-full max-w-4xl" on:click|stopPropagation>
+                    <div class="bg-white border border-gray-200 rounded-lg shadow-lg">
+                      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                        <h6 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0">
+                          <i class="fas fa-user-edit mr-2 text-teal-600"></i>Edit Patient
+                        </h6>
+                        <button
+                          type="button"
+                          class="text-gray-400 hover:text-gray-600"
+                          on:click={cancelEditingPatient}
+                          aria-label="Close"
+                        >
+                          <i class="fas fa-times"></i>
+                        </button>
+                      </div>
+                      <div class="p-3 sm:p-4">
+                        <form on:submit|preventDefault={savePatientChanges}>
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     <div>
                       <div class="mb-3 sm:mb-4">
@@ -4212,7 +4305,11 @@
                       {/if}
                     </button>
                   </div>
-                </form>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               {:else}
                 <!-- AI Patient Management Summary -->
               <div class="rounded-lg border border-teal-200 bg-teal-50 p-4">
@@ -4702,73 +4799,78 @@
           
           <!-- Add Report Form -->
           {#if showReportForm}
-            <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mb-4">
-              <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 rounded-t-lg">
-                <h6 class="text-sm font-semibold text-gray-800 mb-0">
-                  <i class="fas fa-plus mr-2 text-teal-600"></i>Add New Report
-            </h6>
-              </div>
-              <div class="p-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Report Title</label>
-                    <input 
-                      type="text" 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
-                      bind:value={reportTitle}
-                      placeholder="e.g., Blood Test Results, X-Ray Report"
-                    />
-                    {#if reportError}
-                      <div class="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
-                        {reportError}
-                      </div>
-                    {/if}
-                </div>
-                  <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Report Date</label>
-                    <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
-                      bind:value={reportDate} />
-              </div>
-                </div>
-                
-                <div class="mb-4">
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Report Type</label>
-                  <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1">
-                    <input 
-                      type="radio" 
-                      class="sr-only" 
-                      id="report-text" 
-                      bind:group={reportType} 
-                      value="text"
-                    />
-                    <label class="flex-1 flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 {reportType === 'text' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" for="report-text" role="tab">
-                      <i class="fas fa-keyboard mr-2"></i>Text Entry
-                    </label>
-                    
-                    <input 
-                      type="radio" 
-                      class="sr-only" 
-                      id="report-pdf" 
-                      bind:group={reportType} 
-                      value="pdf"
-                    />
-                    <label class="flex-1 flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 {reportType === 'pdf' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" for="report-pdf" role="tab">
-                      <i class="fas fa-file-pdf mr-2"></i>PDF Upload
-                    </label>
-                    
-                    <input 
-                      type="radio" 
-                      class="sr-only" 
-                      id="report-image" 
-                      bind:group={reportType} 
-                      value="image"
-                    />
-                    <label class="flex-1 flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 {reportType === 'image' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" for="report-image" role="tab">
-                      <i class="fas fa-image mr-2"></i>Image Upload
-                    </label>
+            <div
+              class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+              on:click={() => showReportForm = false}
+            >
+              <div class="w-full max-w-3xl" on:click|stopPropagation>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mb-4">
+                  <div class="bg-gray-100 px-4 py-3 border-b border-gray-200 rounded-t-lg">
+                    <h6 class="text-sm font-semibold text-gray-800 mb-0">
+                      <i class="fas fa-plus mr-2 text-teal-600"></i>Add New Report
+                    </h6>
                   </div>
-                </div>
+                  <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Report Title</label>
+                        <input 
+                          type="text" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                          bind:value={reportTitle}
+                          placeholder="e.g., Blood Test Results, X-Ray Report"
+                        />
+                        {#if reportError}
+                          <div class="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+                            {reportError}
+                          </div>
+                        {/if}
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Report Date</label>
+                        <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                          bind:value={reportDate} />
+                      </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                      <label class="block text-sm font-medium text-gray-700 mb-2">Report Type</label>
+                      <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1">
+                        <input 
+                          type="radio" 
+                          class="sr-only" 
+                          id="report-text" 
+                          bind:group={reportType} 
+                          value="text"
+                        />
+                        <label class="flex-1 flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 {reportType === 'text' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" for="report-text" role="tab">
+                          <i class="fas fa-keyboard mr-2"></i>Text Entry
+                        </label>
+                        
+                        <input 
+                          type="radio" 
+                          class="sr-only" 
+                          id="report-pdf" 
+                          bind:group={reportType} 
+                          value="pdf"
+                        />
+                        <label class="flex-1 flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 {reportType === 'pdf' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" for="report-pdf" role="tab">
+                          <i class="fas fa-file-pdf mr-2"></i>PDF Upload
+                        </label>
+                        
+                        <input 
+                          type="radio" 
+                          class="sr-only" 
+                          id="report-image" 
+                          bind:group={reportType} 
+                          value="image"
+                        />
+                        <label class="flex-1 flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 {reportType === 'image' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" for="report-image" role="tab">
+                          <i class="fas fa-image mr-2"></i>Image Upload
+                        </label>
+                      </div>
+                    </div>
                 
                 {#if reportType === 'text'}
                   <div class="mb-4">
@@ -4853,6 +4955,8 @@
                   >
                     <i class="fas fa-times mr-1"></i>Cancel
             </button>
+                </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -5034,13 +5138,18 @@
           
           <!-- Add Diagnosis Form -->
           {#if showDiagnosticForm}
-            <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mb-4">
-              <div class="bg-gray-100 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 rounded-t-lg">
-                <h6 class="text-xs sm:text-sm font-semibold text-gray-800 mb-0">
-                  <i class="fas fa-plus mr-1 sm:mr-2 text-teal-600"></i>Add New Diagnosis
-                </h6>
-              </div>
-              <div class="p-3 sm:p-4">
+            <div
+              class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+              on:click={() => showDiagnosticForm = false}
+            >
+              <div class="w-full max-w-3xl" on:click|stopPropagation>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mb-4">
+                  <div class="bg-gray-100 px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-200 rounded-t-lg">
+                    <h6 class="text-xs sm:text-sm font-semibold text-gray-800 mb-0">
+                      <i class="fas fa-plus mr-1 sm:mr-2 text-teal-600"></i>Add New Diagnosis
+                    </h6>
+                  </div>
+                  <div class="p-3 sm:p-4">
                 <!-- Responsive grid: single column on mobile, two columns on tablet+ -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
                   <div>
@@ -5144,6 +5253,8 @@
                     <span class="hidden sm:inline">Cancel</span>
                     <span class="sm:hidden">Cancel</span>
                     </button>
+                </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte'
-  import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore'
+  import { doc, updateDoc, getDoc, setDoc, collection, query, where, getDocs } from 'firebase/firestore'
   import { db } from '../firebase-config.js'
   import authService from '../services/authService.js'
   import pharmacistAuthService from '../services/pharmacist/pharmacistAuthService.js'
@@ -654,9 +654,7 @@
         Array.from(itemNames).some(invName => invName && (invName === medName || invName.includes(medName) || medName.includes(invName)))
       )
 
-      const shouldMatchByName = !medicationKey
-
-      if (keyMatch || (shouldMatchByName && hasNameMatch)) {
+      if (keyMatch || hasNameMatch) {
         console.log('✅ Found matching inventory item:', {
           medicationNames: Array.from(medicationNames),
           medicationKey,
@@ -1225,7 +1223,7 @@
         dispensedMedications: Array.from(dispensedMedications)
       })
       
-      // First, check if the prescription document exists
+      // First, update the top-level pharmacistPrescriptions collection (used by doctor status checks)
       const prescriptionRef = doc(db, 'pharmacistPrescriptions', selectedPrescription.id)
       const prescriptionDoc = await getDoc(prescriptionRef)
       
@@ -1269,6 +1267,31 @@
           })
         })
         console.log('✅ Updated existing prescription record as dispensed')
+      }
+
+      // Also update the pharmacist subcollection so the pharmacy UI persists status after refresh
+      const pharmacistRef = doc(db, 'pharmacists', pharmacyId)
+      const prescriptionsRef = collection(pharmacistRef, 'receivedPrescriptions')
+      const matches = await getDocs(query(prescriptionsRef, where('id', '==', selectedPrescription.id)))
+
+      const dispensePayload = {
+        status: 'dispensed',
+        dispensedAt: new Date().toISOString(),
+        dispensedBy: pharmacist.id,
+        dispensedMedications: Array.from(dispensedMedications).map(key => {
+          const [prescriptionId, medicationId] = key.split('-')
+          return { prescriptionId, medicationId, isDispensed: true }
+        })
+      }
+
+      if (matches.empty) {
+        await setDoc(doc(prescriptionsRef, selectedPrescription.id), dispensePayload, { merge: true })
+        console.log('✅ Created subcollection dispensed status entry')
+      } else {
+        for (const docSnap of matches.docs) {
+          await updateDoc(docSnap.ref, dispensePayload)
+        }
+        console.log('✅ Updated subcollection dispensed status')
       }
       
     } catch (error) {
@@ -1835,6 +1858,18 @@
           on:click={handleBackToDashboard}
         ></button>
         <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+          <div class="flex items-center justify-between px-4 py-3 border-b">
+            <h3 class="text-base font-semibold text-gray-900">Profile Settings</h3>
+            <button
+              type="button"
+              class="p-2 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+              aria-label="Close profile settings"
+              title="Close"
+              on:click={handleBackToDashboard}
+            >
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
           <PharmacistSettings 
             {pharmacist}
             on:profile-updated={handleProfileUpdate}
@@ -2245,7 +2280,27 @@
                 </div>
               </div>
               {#if registrationTab === 'add'}
-                <PatientForm on:patient-added={handleRegisterPatient} defaultCountry={connectedDoctors[0]?.country || pharmacist?.country || ''} />
+                <div
+                  class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+                  on:click={() => registrationTab = 'search'}
+                  role="button"
+                  tabindex="0"
+                  on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && (registrationTab = 'search')}
+                >
+                  <div
+                    class="w-full max-w-3xl"
+                    on:click|stopPropagation
+                    on:keydown|stopPropagation
+                    role="presentation"
+                    tabindex="-1"
+                  >
+                    <PatientForm
+                      on:patient-added={handleRegisterPatient}
+                      on:cancel={() => registrationTab = 'search'}
+                      defaultCountry={connectedDoctors[0]?.country || pharmacist?.country || ''}
+                    />
+                  </div>
+                </div>
               {:else}
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
                   <div class="lg:col-span-1 space-y-3">

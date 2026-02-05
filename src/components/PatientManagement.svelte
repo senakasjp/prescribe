@@ -1857,7 +1857,14 @@
 
   
   {#if showPatientForm}
-    <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
+    <div
+      class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+      on:click={() => showPatientForm = false}
+    >
+      <div class="w-full max-w-3xl" on:click|stopPropagation>
+        <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
+      </div>
+    </div>
   {/if}
 
   <!-- All Patients Table Card -->
@@ -2200,7 +2207,14 @@
     <div class="lg:col-span-8" data-tour="patient-prescriptions-window">
       
       {#if showPatientForm}
-        <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
+        <div
+          class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+          on:click={() => showPatientForm = false}
+        >
+          <div class="w-full max-w-3xl" on:click|stopPropagation>
+            <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
+          </div>
+        </div>
       {:else if selectedPatient}
           <PatientDetails 
             selectedPatient={selectedPatient}
