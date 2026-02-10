@@ -13,6 +13,7 @@
   export let allowNonPharmacyDrugs = true
   export let excludePharmacyDrugs = false
   export let currentMedications
+  export let savingMedication = false
   export let prescriptionsFinalized
   export let showAIDrugSuggestions
   export let aiDrugSuggestions
@@ -532,8 +533,9 @@
     return Math.ceil(totalAmount)
   }
 
-  const buildExpectedPrescriptionForCharge = () => {
-    if (!currentPrescription || !currentMedications || currentMedications.length === 0) {
+  const buildExpectedPrescriptionForCharge = (medicationsOverride = null) => {
+    const medicationsSource = Array.isArray(medicationsOverride) ? medicationsOverride : currentMedications
+    if (!currentPrescription || !medicationsSource) {
       return null
     }
 
@@ -546,7 +548,7 @@
       || currentPrescription?.discountScope
       || 'consultation'
 
-    const medicationsForCharge = currentMedications.map(medication => ({
+    const medicationsForCharge = medicationsSource.map(medication => ({
       ...medication,
       amount: calculateMedicationQuantity(medication),
       isDispensed: true
@@ -554,6 +556,10 @@
 
     const doctorIdentifier = currentPrescription?.doctorId || doctorProfile?.id || doctorId || null
     const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+    const hasChargeableItems = medicationsForCharge.length > 0 || procedures.length > 0 || !excludeConsultationCharge
+    if (!hasChargeableItems) {
+      return null
+    }
 
     return {
       id: currentPrescription.id,
@@ -577,7 +583,7 @@
     }
   }
 
-  const recomputeExpectedPrice = async () => {
+  const recomputeExpectedPrice = async (medicationsOverride = null) => {
     const requestId = ++expectedPriceRequestId
     expectedPriceLoading = true
 
@@ -587,7 +593,7 @@
         return
       }
 
-      const prescriptionForCharge = buildExpectedPrescriptionForCharge()
+      const prescriptionForCharge = buildExpectedPrescriptionForCharge(medicationsOverride)
       if (!prescriptionForCharge) {
         expectedPrice = null
         return
@@ -644,8 +650,38 @@
 
     return currentMedications.filter(medication => {
       const availability = isMedicationAvailable(medication)
-      return availability?.available === false
+      return availability?.available === false || medication?.sendToExternalPharmacy
     })
+  }
+
+  const getExternalMedications = () => {
+    if (!currentMedications || currentMedications.length === 0) {
+      return []
+    }
+    return currentMedications.filter(medication => {
+      const availability = isMedicationAvailable(medication)
+      return medication?.sendToExternalPharmacy || availability?.available === false || availability === null
+    })
+  }
+
+  const getInternalMedications = () => {
+    if (!currentMedications || currentMedications.length === 0) {
+      return []
+    }
+    return currentMedications.filter(medication => {
+      const availability = isMedicationAvailable(medication)
+      const isUnavailable = availability?.available === false || availability === null
+      return !medication?.sendToExternalPharmacy && !isUnavailable
+    })
+  }
+
+  const toggleExternalMedication = (medication, checked) => {
+    if (!medication) return
+    medication.sendToExternalPharmacy = checked
+    currentMedications = [...currentMedications]
+    if (currentPrescription?.medications) {
+      currentPrescription.medications = currentMedications
+    }
   }
   
   // Determine doctor identifier reactively and load stock
@@ -684,7 +720,8 @@
   }
 
   $: if (prescriptionsFinalized && currentMedications && currentMedications.length > 0) {
-    recomputeExpectedPrice()
+    const internalMedications = getInternalMedications()
+    recomputeExpectedPrice(internalMedications)
   } else {
     expectedPrice = null
   }
@@ -751,6 +788,7 @@
             {doctorId}
             {allowNonPharmacyDrugs}
             {excludePharmacyDrugs}
+            {savingMedication}
             onMedicationAdded={onMedicationAdded}
             onCancelMedication={onCancelMedication}
           />
@@ -812,6 +850,20 @@
                       {#if medication.timing} • {medication.timing}{/if}
                       • {medication.duration}{#if medication.dosageForm} • {medication.dosageForm}{/if}
                     </div>
+                    {#if !stockLoading}
+                      {@const availability = isMedicationAvailable(medication)}
+                      {#if availability !== null && availability.available}
+                        <label class="mt-1 inline-flex items-center gap-2 text-xs text-gray-500">
+                          <input
+                            type="checkbox"
+                            class="h-3 w-3 rounded border-gray-300 text-gray-600 focus:ring-gray-400"
+                            checked={Boolean(medication?.sendToExternalPharmacy)}
+                            on:change={(event) => toggleExternalMedication(medication, event.target.checked)}
+                          />
+                          Send to external pharmacy
+                        </label>
+                      {/if}
+                    {/if}
                     {#if medication.instructions}
                       <div class="mt-1">
                         <div class="text-gray-500 text-sm">{medication.instructions}</div>
@@ -1073,7 +1125,14 @@
               {:else}
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200"
-                  on:click={onShowPharmacyModal}
+                  on:click={() => {
+                    const internalMedications = getInternalMedications()
+                    if (!internalMedications || internalMedications.length === 0) {
+                      notifyWarning('All medications are marked for external pharmacy or not in stock.')
+                      return
+                    }
+                    onShowPharmacyModal && onShowPharmacyModal(internalMedications)
+                  }}
                   title="Send to pharmacy"
                 >
                   <i class="fas fa-paper-plane mr-1"></i>Send to Pharmacy
@@ -1090,17 +1149,15 @@
                 >
                   <i class="fas fa-file-pdf mr-1"></i>Print (Full)
                 </button>
-                {#if hasConnectedPharmacies}
-                  {@const unavailableMedications = getUnavailableMedications()}
-                  <button 
-                    class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    on:click={() => onPrintExternalPrescriptions && onPrintExternalPrescriptions(unavailableMedications)}
-                    disabled={unavailableMedications.length === 0}
-                    title={unavailableMedications.length === 0 ? 'All medications are available in connected pharmacies' : 'Generate PDF for external pharmacy'}
-                  >
-                    <i class="fas fa-print mr-1"></i>Print (External)
-                  </button>
-                {/if}
+                {@const unavailableMedications = getExternalMedications()}
+                <button 
+                  class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  on:click={() => onPrintExternalPrescriptions && onPrintExternalPrescriptions(unavailableMedications)}
+                  disabled={unavailableMedications.length === 0}
+                  title={unavailableMedications.length === 0 ? 'No medications marked for external pharmacy' : 'Generate PDF for external pharmacy'}
+                >
+                  <i class="fas fa-print mr-1"></i>Print (External)
+                </button>
               {/if}
             </div>
 

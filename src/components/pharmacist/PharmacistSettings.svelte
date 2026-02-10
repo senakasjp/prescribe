@@ -22,6 +22,7 @@
   let pharmacyId = null
   let isPrimaryPharmacy = false
   let canEditProfile = false
+  let isTeamMember = false
   let doctorDeleteCode = ''
   let isDoctorOwnedPharmacy = false
   let availableCities = []
@@ -103,7 +104,8 @@
 
   $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
   $: isPrimaryPharmacy = !!(pharmacist?.id && pharmacyId === pharmacist.id)
-  $: canEditProfile = isPrimaryPharmacy
+  $: isTeamMember = !!pharmacist?.isPharmacyUser
+  $: canEditProfile = isPrimaryPharmacy && !isTeamMember
 
   // Team management state
   let teamFirstName = ''
@@ -394,46 +396,54 @@
     </div>
   </div>
   
-  <!-- Navigation Tabs -->
-  <div class="border-b border-gray-200">
-    <nav class="flex space-x-8 px-6" aria-label="Tabs">
-      <button 
-        class="py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 {activeTab === 'edit-profile' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
-        on:click={() => activeTab = 'edit-profile'}
-      >
-        <i class="fas fa-user-edit mr-2"></i>
-        Edit Profile
-      </button>
-      <button 
-        class="py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 {activeTab === 'team' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} {isPrimaryPharmacy ? '' : 'opacity-60 cursor-not-allowed'}"
-        on:click={() => {
-          if (isPrimaryPharmacy) activeTab = 'team'
-        }}
-        disabled={!isPrimaryPharmacy}
-      >
-        <i class="fas fa-user-plus mr-2"></i>
-        Team
-      </button>
-      <button 
-        class="py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 {activeTab === 'backup-restore' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
-        on:click={() => activeTab = 'backup-restore'}
-      >
-        <i class="fas fa-database mr-2"></i>
-        Backup & Restore
-      </button>
-    </nav>
-  </div>
-  
-  <!-- Tab Content -->
-  <div class="p-6">
-    {#if activeTab === 'edit-profile'}
-      <div id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
-        {#if !canEditProfile}
-          <div class="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg mb-4" role="alert">
-            <i class="fas fa-exclamation-triangle mr-2"></i>
-            Only the primary pharmacy account can edit this profile.
-          </div>
-        {/if}
+  {#if isTeamMember}
+    <div class="p-6">
+      <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg" role="alert">
+        <i class="fas fa-lock mr-2"></i>
+        Settings access is restricted for pharmacy team members. Please contact the pharmacy owner.
+      </div>
+    </div>
+  {:else}
+    <!-- Navigation Tabs -->
+    <div class="border-b border-gray-200">
+      <nav class="flex space-x-8 px-6" aria-label="Tabs">
+        <button 
+          class="py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 {activeTab === 'edit-profile' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+          on:click={() => activeTab = 'edit-profile'}
+        >
+          <i class="fas fa-user-edit mr-2"></i>
+          Edit Profile
+        </button>
+        <button 
+          class="py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 {activeTab === 'team' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} {isPrimaryPharmacy ? '' : 'opacity-60 cursor-not-allowed'}"
+          on:click={() => {
+            if (isPrimaryPharmacy) activeTab = 'team'
+          }}
+          disabled={!isPrimaryPharmacy}
+        >
+          <i class="fas fa-user-plus mr-2"></i>
+          Team
+        </button>
+        <button 
+          class="py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 {activeTab === 'backup-restore' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+          on:click={() => activeTab = 'backup-restore'}
+        >
+          <i class="fas fa-database mr-2"></i>
+          Backup & Restore
+        </button>
+      </nav>
+    </div>
+    
+    <!-- Tab Content -->
+    <div class="p-6">
+      {#if activeTab === 'edit-profile'}
+        <div id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
+          {#if !canEditProfile}
+            <div class="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg mb-4" role="alert">
+              <i class="fas fa-exclamation-triangle mr-2"></i>
+              Only the primary pharmacy account can edit this profile.
+            </div>
+          {/if}
         <form id="edit-profile-form" on:submit={handleSubmit}>
           <!-- Business Information -->
           <div class="mb-6">
@@ -587,7 +597,7 @@
           </div>
         </form>
       </div>
-    {:else if activeTab === 'team'}
+      {:else if activeTab === 'team'}
       <div id="team" role="tabpanel" aria-labelledby="team-tab">
         <div class="mb-6">
           <h6 class="text-sm font-semibold text-gray-700 mb-2">
@@ -742,7 +752,7 @@
           {/if}
         </div>
       </div>
-    {:else if activeTab === 'backup-restore'}
+      {:else if activeTab === 'backup-restore'}
       <div id="backup-restore" role="tabpanel" aria-labelledby="backup-restore-tab">
         <div class="mb-4">
           <h6 class="text-sm font-semibold text-gray-800 mb-2">
@@ -815,6 +825,7 @@
           </div>
         </div>
       </div>
-    {/if}
-  </div>
+      {/if}
+    </div>
+  {/if}
 </div>

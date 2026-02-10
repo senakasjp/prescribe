@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte'
   import openaiService from '../services/openaiService.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   
   const dispatch = createEventDispatcher()
   
@@ -8,6 +9,7 @@
   export let illnesses = []
   export let prescriptions = []
   export let symptoms = []
+  export let reports = []
   export let activeMedicalTab = 'prescriptions'
   export let showSymptomsNotes = false
   export let showIllnessesNotes = false
@@ -25,6 +27,10 @@
   let summaryError = ''
   let summaryCacheKey = ''
   let lastSummarySignature = ''
+  let storedSummary = ''
+  let storedSummarySignature = ''
+  let isLoadingStoredSummary = false
+  let summaryLoadRequestId = 0
 
   const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 
@@ -46,18 +52,53 @@
     return Math.abs(hash).toString(36)
   }
 
+  const getFinalizedPrescriptions = () => {
+    if (!Array.isArray(prescriptions)) return []
+    return prescriptions.filter((prescription) => {
+      if (!prescription?.medications || prescription.medications.length === 0) return false
+      return Boolean(
+        prescription.status === 'finalized' ||
+        prescription.sentToPharmacy ||
+        prescription.printedAt ||
+        prescription.endDate
+      )
+    })
+  }
+
+  const buildMedicationsSignature = () => {
+    const finalizedPrescriptions = getFinalizedPrescriptions()
+    if (finalizedPrescriptions.length === 0) return ''
+    const parts = finalizedPrescriptions.flatMap(prescription => (
+      (prescription?.medications || []).map(medication => (
+        `${medication?.id || medication?.name || ''}:${medication?.updatedAt || medication?.createdAt || ''}:${medication?.duration || ''}:${medication?.frequency || ''}`
+      ))
+    ))
+    return hashString(parts.join('|'))
+  }
+
   const buildSummarySignature = () => {
     const base = {
       patientId: selectedPatient?.id || '',
       patientUpdatedAt: selectedPatient?.updatedAt || selectedPatient?.createdAt || '',
+      patientAllergies: selectedPatient?.allergies || '',
+      patientLongTermMedications: selectedPatient?.longTermMedications || '',
       symptomsCount,
       illnessesCount,
       prescriptionsCount,
+      medicationsCount,
+      reportsCount: reports?.length || 0,
+      medicationsSignature: buildMedicationsSignature(),
       symptomsLatest: getLatestTimestamp(symptoms),
       illnessesLatest: getLatestTimestamp(illnesses),
-      prescriptionsLatest: getLatestTimestamp(prescriptions)
+      prescriptionsLatest: getLatestTimestamp(getFinalizedPrescriptions()),
+      reportsLatest: getLatestTimestamp(reports)
     }
     return JSON.stringify(base)
+  }
+
+  const stripRiskFactorsSection = (html) => {
+    if (!html) return ''
+    return html.replace(/<h[34][^>]*>\s*Risk Factors\s*<\/h[34]>\s*([\s\S]*?)(?=<h[34][^>]*>|$)/gi, '').trim()
   }
 
   const getCachedSummary = (key) => {
@@ -88,11 +129,58 @@
     }
   }
 
-  const generateMedicalSummary = async () => {
+  const loadStoredSummary = async () => {
+    if (!selectedPatient?.id) return
+    const requestId = ++summaryLoadRequestId
+    isLoadingStoredSummary = true
+    try {
+      if (selectedPatient?.medicalSummary?.content) {
+        storedSummary = selectedPatient.medicalSummary.content || ''
+        storedSummarySignature = selectedPatient.medicalSummary.signature || ''
+        return
+      }
+      const patientRecord = await firebaseStorage.getPatientById(selectedPatient.id)
+      if (requestId !== summaryLoadRequestId) return
+      storedSummary = patientRecord?.medicalSummary?.content || ''
+      storedSummarySignature = patientRecord?.medicalSummary?.signature || ''
+    } catch (error) {
+      console.warn('Failed to load stored medical summary', error)
+    } finally {
+      if (requestId === summaryLoadRequestId) {
+        isLoadingStoredSummary = false
+      }
+    }
+  }
+
+  const saveMedicalSummary = async (signature, summary) => {
+    if (!selectedPatient?.id) return
+    try {
+      const payload = {
+        medicalSummary: {
+          content: summary,
+          signature,
+          updatedAt: new Date().toISOString(),
+          source: 'ai'
+        }
+      }
+      await firebaseStorage.updatePatient(selectedPatient.id, payload)
+      storedSummary = summary
+      storedSummarySignature = signature
+    } catch (error) {
+      console.warn('Failed to save medical summary', error)
+    }
+  }
+
+  const generateMedicalSummary = async (signature) => {
     if (!selectedPatient) return
     if (!openaiService.isConfigured()) {
-      summaryError = 'AI summary is unavailable because OpenAI is not configured.'
-      aiSummary = ''
+      if (storedSummary) {
+        aiSummary = storedSummary
+        summaryError = ''
+      } else {
+        summaryError = 'AI summary is unavailable because OpenAI is not configured.'
+        aiSummary = ''
+      }
       isLoadingSummary = false
       return
     }
@@ -101,6 +189,7 @@
     summaryError = ''
 
     try {
+      const finalizedPrescriptions = getFinalizedPrescriptions()
       const patientData = {
         name: `${selectedPatient.firstName || ''} ${selectedPatient.lastName || ''}`.trim(),
         firstName: selectedPatient.firstName,
@@ -115,13 +204,16 @@
         medicalHistory: selectedPatient.medicalHistory,
         symptoms: symptoms || [],
         illnesses: illnesses || [],
-        prescriptions: prescriptions || [],
-        recentReports: [],
+        prescriptions: finalizedPrescriptions,
+        recentReports: reports || [],
         reportAnalyses: []
       }
 
       const result = await openaiService.generatePatientSummary(patientData, doctorId)
-      aiSummary = result.summary
+      aiSummary = stripRiskFactorsSection(result.summary)
+      if (signature) {
+        await saveMedicalSummary(signature, aiSummary)
+      }
       if (summaryCacheKey) {
         setCachedSummary(summaryCacheKey, aiSummary)
       }
@@ -136,7 +228,12 @@
   // Reactive tab counts
   $: symptomsCount = symptoms?.length || 0
   $: illnessesCount = illnesses?.length || 0
-  $: prescriptionsCount = prescriptions?.length || 0
+  $: finalizedPrescriptions = getFinalizedPrescriptions()
+  $: prescriptionsCount = finalizedPrescriptions?.length || 0
+  $: medicationsCount = finalizedPrescriptions?.reduce((total, prescription) => {
+    const meds = Array.isArray(prescription?.medications) ? prescription.medications.length : 0
+    return total + meds
+  }, 0) || 0
 
   
   // Track if prescription medications are expanded
@@ -149,7 +246,7 @@
 
   
   // Extract all medications from prescriptions and group by drug name
-  $: groupedMedications = prescriptions?.flatMap(prescription => 
+  $: groupedMedications = finalizedPrescriptions?.flatMap(prescription => 
     prescription.medications?.map(medication => ({
       ...medication,
       prescriptionId: prescription.id,
@@ -179,18 +276,23 @@
   }
 
   $: if (selectedPatient) {
+    loadStoredSummary()
     const signature = buildSummarySignature()
     if (signature !== lastSummarySignature) {
       lastSummarySignature = signature
       summaryCacheKey = `medicalSummary:${selectedPatient.id || 'unknown'}:${hashString(signature)}`
       const cached = getCachedSummary(summaryCacheKey)
       if (cached) {
-        aiSummary = cached
+        aiSummary = stripRiskFactorsSection(cached)
+        summaryError = ''
+        isLoadingSummary = false
+      } else if (storedSummary && storedSummarySignature === signature) {
+        aiSummary = stripRiskFactorsSection(storedSummary)
         summaryError = ''
         isLoadingSummary = false
       } else {
         aiSummary = ''
-        generateMedicalSummary()
+        generateMedicalSummary(signature)
       }
     }
   }
@@ -205,7 +307,7 @@
         </h6>
         <button 
           class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg transition-colors duration-200" 
-          on:click={() => generateMedicalSummary()}
+          on:click={() => generateMedicalSummary(lastSummarySignature || buildSummarySignature())}
           title="Refresh summary"
           disabled={isLoadingSummary}
         >

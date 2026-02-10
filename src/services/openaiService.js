@@ -1405,7 +1405,6 @@ ${patientData.reportAnalyses && patientData.reportAnalyses.length > 0
 2. Key Health Concerns (bullet points of main issues based on symptoms and diagnoses)
 3. Current Treatment Plan (summary of active medications and their purpose)
 4. Recommendations for Monitoring (what to watch for, follow-up timing)
-5. Risk Factors (if any, based on age, conditions, medications)
 
 IMPORTANT FORMATTING RULES:
 - DO NOT wrap the response in markdown code blocks (no \`\`\`html tags)
@@ -1459,6 +1458,8 @@ IMPORTANT FORMATTING RULES:
       if (summary.endsWith('```')) {
         summary = summary.replace(/\n?```\s*$/, '')
       }
+
+      summary = summary.replace(/<h[34][^>]*>\s*Risk Factors\s*<\/h[34]>\s*([\s\S]*?)(?=<h[34][^>]*>|$)/gi, '').trim()
 
       summary = summary.trim()
 

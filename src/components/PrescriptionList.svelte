@@ -18,6 +18,8 @@
   let chargesRequestId = 0
   let patientCache = {}
   let patientRequestId = 0
+  let doctorCache = {}
+  let doctorRequestId = 0
   
   // Helper function to get all prescriptions (including those without medications)
   const getAllPrescriptions = () => {
@@ -34,6 +36,10 @@
   
   let allPrescriptions = []
   $: allPrescriptions = getAllPrescriptions()
+  $: if (allPrescriptions.length > 0) {
+    loadMissingPatients()
+    loadMissingDoctors()
+  }
   
   // Pagination calculations
   $: totalPages = Math.ceil(allPrescriptions.length / itemsPerPage)
@@ -54,6 +60,56 @@
       month: '2-digit',
       year: 'numeric'
     })
+  }
+
+  const getDoctorIdForPrescription = (prescription) => {
+    const createdBy = prescription?.createdBy || null
+    if (createdBy && String(createdBy).includes('@')) {
+      return (
+        prescription?.doctorId ||
+        prescription?.doctor?.id ||
+        null
+      )
+    }
+    return (
+      prescription?.doctorId ||
+      prescription?.doctor?.id ||
+      createdBy ||
+      null
+    )
+  }
+
+  const getDoctorEmailForPrescription = (prescription) => {
+    const createdBy = prescription?.createdBy || ''
+    const createdByEmail = String(createdBy).includes('@') ? createdBy : null
+    return prescription?.doctorEmail || prescription?.doctor?.email || createdByEmail || null
+  }
+
+  const resolveDoctorName = (prescription) => {
+    const resolvedDoctor = resolveDoctorForPrescription(prescription)
+    if (resolvedDoctor) {
+      return (
+        resolvedDoctor.name ||
+        `${resolvedDoctor.firstName || ''} ${resolvedDoctor.lastName || ''}`.trim() ||
+        resolvedDoctor.email ||
+        'Doctor'
+      )
+    }
+    if (selectedPatient) {
+      const patientDoctorName = selectedPatient.doctorName
+        || selectedPatient.doctor?.name
+        || `${selectedPatient.doctor?.firstName || ''} ${selectedPatient.doctor?.lastName || ''}`.trim()
+      if (patientDoctorName) return patientDoctorName
+    }
+    return (
+      prescription?.doctorName ||
+      prescription?.doctor?.name ||
+      `${prescription?.doctor?.firstName || ''} ${prescription?.doctor?.lastName || ''}`.trim() ||
+      prescription?.createdByName ||
+      prescription?.createdByEmail ||
+      prescription?.createdByName ||
+      'Doctor'
+    )
   }
 
   const getPatientIdForPrescription = (prescription) => {
@@ -78,6 +134,17 @@
       if (matched) return matched
     }
     return patientCache[patientId] || null
+  }
+
+  const resolveDoctorForPrescription = (prescription) => {
+    if (prescription?.doctor && typeof prescription.doctor === 'object') {
+      return prescription.doctor
+    }
+    const doctorId = getDoctorIdForPrescription(prescription)
+    if (doctorId && doctorCache[doctorId]) return doctorCache[doctorId]
+    const doctorEmail = getDoctorEmailForPrescription(prescription)
+    if (doctorEmail && doctorCache[doctorEmail]) return doctorCache[doctorEmail]
+    return null
   }
 
   const loadMissingPatients = async () => {
@@ -118,6 +185,51 @@
       patientCache = nextCache
     } catch (error) {
       console.error('❌ Error loading patients for prescriptions:', error)
+    }
+  }
+
+  const loadMissingDoctors = async () => {
+    const requestId = ++doctorRequestId
+    const ids = Array.from(new Set(
+      allPrescriptions
+        .map((prescription) => getDoctorIdForPrescription(prescription))
+        .filter(Boolean)
+    ))
+    const emails = Array.from(new Set(
+      allPrescriptions
+        .map((prescription) => getDoctorEmailForPrescription(prescription))
+        .filter(Boolean)
+    ))
+
+    const missingIds = ids.filter((id) => !doctorCache[id])
+    const missingEmails = emails.filter((email) => !doctorCache[email])
+
+    if (!missingIds.length && !missingEmails.length) {
+      return
+    }
+
+    try {
+      const idResults = await Promise.all(
+        missingIds.map((id) => firebaseStorage.getDoctorById(id).catch(() => null))
+      )
+      const emailResults = await Promise.all(
+        missingEmails.map((email) => firebaseStorage.getDoctorByEmail(email).catch(() => null))
+      )
+      if (requestId !== doctorRequestId) return
+      const nextCache = { ...doctorCache }
+      idResults.forEach((doctor, index) => {
+        if (doctor) {
+          nextCache[missingIds[index]] = doctor
+        }
+      })
+      emailResults.forEach((doctor, index) => {
+        if (doctor) {
+          nextCache[missingEmails[index]] = doctor
+        }
+      })
+      doctorCache = nextCache
+    } catch (error) {
+      console.error('❌ Error loading doctors for prescriptions:', error)
     }
   }
 
@@ -309,25 +421,27 @@
 {#if paginatedPrescriptions && paginatedPrescriptions.length > 0}
   <div class="space-y-4">
     {#each paginatedPrescriptions as prescription, prescriptionIndex}
-      <div class="bg-white rounded-lg shadow-sm border-2 {prescriptionIndex % 2 === 0 ? 'border-teal-200' : 'border-teal-200'}">
+      <div class="bg-white rounded-lg shadow-sm border {prescriptionIndex % 2 === 0 ? 'border-teal-200' : 'border-teal-200'}">
         <!-- Prescription Header -->
-        <div class="bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-4 py-4 rounded-t-lg">
-          <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="bg-gradient-to-r from-teal-600 to-emerald-600 text-white px-4 py-3 rounded-t-lg">
+          <div class="flex flex-wrap items-start justify-between gap-2">
             <div class="flex items-center gap-3">
-              <span class="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
+              <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/15">
                 <i class="fas fa-prescription-bottle-alt text-sm"></i>
               </span>
               <div>
-                <h6 class="text-lg font-semibold leading-tight">
+                <h6 class="text-base font-semibold leading-tight">
                   Prescription #{prescriptionIndex + 1}
                 </h6>
-                <p class="text-sm text-white/80">Date: {formatPrescriptionDate(prescription.createdAt)}</p>
+                <p class="text-xs text-white/80">
+                  {formatPrescriptionDate(prescription.createdAt)} • {resolveDoctorName(prescription)}
+                </p>
               </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 text-xs">
+            <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
               <span class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1">
                 <i class="fas fa-user-md"></i>
-                {prescription.doctorName || prescription.doctor?.name || 'Doctor'}
+                {resolveDoctorName(prescription)}
               </span>
               <span class="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1">
                 <i class="fas fa-hashtag"></i>
@@ -336,7 +450,7 @@
             </div>
           </div>
           {#if prescription.notes}
-            <div class="mt-3 flex items-start gap-2 text-sm text-white/90">
+            <div class="mt-2 flex items-start gap-2 text-xs text-white/90">
               <i class="fas fa-sticky-note mt-0.5 text-white/80"></i>
               <span>{prescription.notes}</span>
             </div>
@@ -345,16 +459,16 @@
         
         <!-- Medications List -->
         <div class="divide-y divide-gray-200">
-          <div class="p-4 bg-gray-50 border-b border-gray-200">
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm text-gray-700">
+          <div class="p-3 bg-gray-50 border-b border-gray-200">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs text-gray-700">
               <div class="lg:col-span-2 bg-white border border-gray-200 rounded-lg p-3">
-                <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2">
+                <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2 text-sm">
                   <i class="fas fa-user"></i>
                   <span>Patient Details</span>
                 </div>
                 {#if resolvePatientForPrescription(prescription)}
                   {@const patient = resolvePatientForPrescription(prescription)}
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                     <div class="flex items-center gap-2">
                       <span class="font-medium text-gray-600">Name:</span>
                       <span>{patient.firstName} {patient.lastName}</span>
@@ -393,22 +507,22 @@
                 {/if}
               </div>
 
-              <div class="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+              <div class="bg-white border border-gray-200 rounded-lg p-3 space-y-2">
                 <div>
-                  <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2">
+                  <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2 text-sm">
                     <i class="fas fa-notes-medical"></i>
                     <span>Procedures</span>
                   </div>
-                  <div class="text-gray-700">
+                  <div class="text-gray-700 text-xs">
                     {getProcedureList(prescription).length > 0 ? getProcedureList(prescription).join(', ') : 'None'}
                   </div>
                 </div>
-                <div class="border-t border-gray-200 pt-3">
-                  <div class="flex items-center gap-2 text-teal-700 font-semibold mb-2">
+                <div class="border-t border-gray-200 pt-2">
+                  <div class="flex items-center gap-2 text-teal-700 font-semibold mb-1 text-sm">
                     <i class="fas fa-receipt"></i>
                     <span>Total (rounded)</span>
                   </div>
-                  <div class="text-gray-700 font-medium">
+                  <div class="text-gray-700 font-medium text-xs">
                     {#if chargesLoading}
                       Calculating...
                     {:else if chargeTotals[prescription.id] !== undefined && expectedPharmacist}
@@ -427,40 +541,40 @@
           </div>
           {#if prescription.medications && prescription.medications.length > 0}
             {#each prescription.medications as medication, medicationIndex}
-            <div class="p-4 {medicationIndex === prescription.medications.length - 1 ? '' : 'border-b border-gray-200'} text-sm text-gray-700">
-              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="p-3 {medicationIndex === prescription.medications.length - 1 ? '' : 'border-b border-gray-200'} text-xs text-gray-700">
+              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 <div class="col-span-full">
-                  <h6 class="text-base font-semibold text-teal-600 mb-2">
+                  <h6 class="text-sm font-semibold text-teal-600 mb-1">
                     <i class="fas fa-pills mr-2"></i>
                     {medication.name || 'Unknown Medication'}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}
                   </h6>
                 </div>
                 <div>
-                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Dosage</div>
+                  <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Dosage</div>
                   <div class="font-medium text-gray-900">{medication.dosage || 'Not specified'}</div>
                 </div>
                 <div>
-                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Duration</div>
+                  <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Duration</div>
                   <div class="font-medium text-gray-900">{medication.duration || 'Not specified'}</div>
                 </div>
                 <div>
-                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Frequency</div>
+                  <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Frequency</div>
                   <div class="font-medium text-gray-900">{medication.frequency || 'Not specified'}</div>
                 </div>
                 <div>
-                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Added</div>
+                  <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Added</div>
                   <div class="text-gray-600 font-medium">
                     <i class="fas fa-calendar mr-1"></i>
                     {formatPrescriptionDate(prescription.createdAt)}
                   </div>
                 </div>
                 <div class="col-span-full">
-                  <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Instructions</div>
+                  <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Instructions</div>
                   <p class="text-gray-700">{medication.instructions || 'No instructions provided'}</p>
                 </div>
                 {#if medication.notes}
                   <div class="col-span-full">
-                    <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Notes</div>
+                    <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Notes</div>
                     <p class="text-teal-600">{medication.notes}</p>
                   </div>
                 {/if}

@@ -1,5 +1,29 @@
 # Recent Fixes Summary - Prescribe Medical System
 
+## 🎯 Latest Updates (February 10, 2026)
+
+### 🧾 Patient Registration Workflow
+**Status**: ✅ **IMPLEMENTED**
+- Registration modals are now scrollable in doctor + pharmacy portals
+- Age input upgraded to **Years / Months / Days** with DOB auto‑calculation
+- Validation rule enforced: if DOB missing, **Years required** (Days required only if Years is empty)
+- Add patient now **closes the form** and shows a **success notification**
+
+### 🔎 Doctor Portal Patient Search
+**Status**: ✅ **IMPLEMENTED**
+- Search supports **short patient ID** (`PAxxxxxxx`)
+
+### 💊 Prescription Safety + Routing
+**Status**: ✅ **IMPLEMENTED**
+- Warning before starting a new prescription if the current one has unfinalized drugs
+- Save‑drug button shows progress while saving
+- Per‑drug **“Send to external pharmacy”** checkbox
+- External PDF includes **out‑of‑stock + external‑flagged** drugs and excludes them from own‑pharmacy send
+
+### 🩺 Medical Summary Auto‑Refresh
+**Status**: ✅ **IMPLEMENTED**
+- Summary updates automatically on changes to symptoms, allergies, drugs, and reports
+
 ## 🎯 Latest Updates (January 30, 2026)
 
 ### 📧 Patient Notification Opt-Out + Unsubscribe

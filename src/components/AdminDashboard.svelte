@@ -169,6 +169,16 @@
   // OpenAI proxy test
   let openaiTestRunning = false
   let openaiTestStatus = ''
+  let openaiDebugBaseUrl = ''
+  let openaiDebugProjectId = ''
+  let openaiDebugRegion = ''
+  let openaiDebugFunctionsBaseUrl = ''
+  let openaiDebugUserId = ''
+  let openaiDebugUserEmail = ''
+  let openaiDebugLastStatus = ''
+  let openaiDebugLastBody = ''
+  let openaiDebugLastError = ''
+  let openaiDebugLastTime = ''
 
   // SMTP settings (stored in Firestore)
   let smtpLoading = false
@@ -248,6 +258,7 @@
     }
     
     await loadAdminData()
+    refreshOpenAIDebug()
   })
   
   // Load admin data and statistics
@@ -1002,6 +1013,16 @@
     return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`
   }
 
+  const refreshOpenAIDebug = () => {
+    openaiDebugProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || ''
+    openaiDebugRegion = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
+    openaiDebugFunctionsBaseUrl = import.meta.env.VITE_FUNCTIONS_BASE_URL || ''
+    openaiDebugBaseUrl = getFunctionsBaseUrl() || ''
+    const currentUser = auth?.currentUser
+    openaiDebugUserId = currentUser?.uid || ''
+    openaiDebugUserEmail = currentUser?.email || ''
+  }
+
   const sendTemplateToDoctor = async (templateId, doctorId, statusSetter) => {
     const baseUrl = getFunctionsBaseUrl()
     if (!baseUrl) {
@@ -1208,6 +1229,11 @@
 
   const testOpenAIProxy = async () => {
     const baseUrl = getFunctionsBaseUrl()
+    refreshOpenAIDebug()
+    openaiDebugLastTime = new Date().toISOString()
+    openaiDebugLastStatus = ''
+    openaiDebugLastBody = ''
+    openaiDebugLastError = ''
     if (!baseUrl) {
       openaiTestStatus = 'Functions base URL not configured'
       return
@@ -1241,12 +1267,15 @@
         })
       })
       const text = await response.text()
+      openaiDebugLastStatus = `${response.status} ${response.statusText}`
+      openaiDebugLastBody = text?.slice(0, 1000) || ''
       if (!response.ok) {
         throw new Error(text || 'OpenAI test failed')
       }
       openaiTestStatus = 'OpenAI proxy OK'
     } catch (error) {
       openaiTestStatus = error?.message || 'OpenAI test failed'
+      openaiDebugLastError = error?.message || 'OpenAI test failed'
     } finally {
       openaiTestRunning = false
       setTimeout(() => {
@@ -3857,8 +3886,37 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                         <i class="fas fa-vial mr-2"></i>Test OpenAI
                       {/if}
                     </button>
+                    <button
+                      class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                      on:click={refreshOpenAIDebug}
+                    >
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh Debug
+                    </button>
                     {#if openaiTestStatus}
                       <span class="text-sm text-gray-500">{openaiTestStatus}</span>
+                    {/if}
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-3 bg-gray-50 text-xs text-gray-700 space-y-2">
+                    <div class="flex flex-wrap gap-3">
+                      <span><strong>Project ID:</strong> {openaiDebugProjectId || '—'}</span>
+                      <span><strong>Region:</strong> {openaiDebugRegion || '—'}</span>
+                      <span><strong>Functions Base URL:</strong> {openaiDebugBaseUrl || '—'}</span>
+                      <span><strong>Override Base URL:</strong> {openaiDebugFunctionsBaseUrl || '—'}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                      <span><strong>User UID:</strong> {openaiDebugUserId || '—'}</span>
+                      <span><strong>User Email:</strong> {openaiDebugUserEmail || '—'}</span>
+                      <span><strong>Last Test:</strong> {openaiDebugLastTime || '—'}</span>
+                      <span><strong>Last Status:</strong> {openaiDebugLastStatus || '—'}</span>
+                    </div>
+                    {#if openaiDebugLastError}
+                      <div><strong>Last Error:</strong> {openaiDebugLastError}</div>
+                    {/if}
+                    {#if openaiDebugLastBody}
+                      <div>
+                        <div class="font-semibold text-gray-700 mb-1">Last Response Body (truncated)</div>
+                        <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-2 overflow-x-auto"><code>{openaiDebugLastBody}</code></pre>
+                      </div>
                     {/if}
                   </div>
                 </div>

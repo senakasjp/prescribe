@@ -1,5 +1,24 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.4 - Patient Workflow & Prescription Routing (February 10, 2026)
+
+### 👤 Patient Registration UX
+- **Scrollable registration modals** in doctor and pharmacy portals
+- **Age entry upgraded to Years/Months/Days** with auto‑calculation from DOB
+- **Validation rule**: if DOB missing, Years required (Days required only if Years is empty)
+- **Success notifications + auto‑close** after adding a patient
+
+### 🔎 Patient Search
+- Doctor portal search now matches **short patient IDs** (PAxxxxxxx)
+
+### 🧾 Prescriptions Safety
+- **Warning prompt** when starting a new prescription with unfinalized drugs
+- **Save Drug progress** shown on the button during save
+- **External pharmacy routing**: checkbox per drug; any out‑of‑stock or flagged drug goes to external PDF and is excluded from own‑pharmacy send
+
+### 🩺 Medical Summary
+- Auto‑refreshes on changes to **symptoms, allergies, drugs, and reports**
+
 ## Version 2.3.3 - Messaging Templates & App URL (February 3, 2026)
 
 ### 📩 SMS + Email Template Upgrades

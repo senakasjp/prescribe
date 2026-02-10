@@ -547,6 +547,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let isShowingAIDiagnostics = false
   let showIllnessForm = false
   let showMedicationForm = false
+  let savingMedication = false
   let showSymptomsForm = false
   let showPrescriptionPDF = false
   let expandedSymptoms = {}
@@ -764,6 +765,31 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     }
     
     // Clear any existing AI analysis when loading data
+  }
+
+  export function loadPrescriptionForEditing(prescription) {
+    if (!prescription) return
+
+    const medicationsWithIds = ensureMedicationIds(prescription.medications || [])
+    currentPrescription = {
+      ...prescription,
+      medications: medicationsWithIds
+    }
+    currentMedications = medicationsWithIds
+    prescriptionProcedures = Array.isArray(prescription.procedures) ? prescription.procedures : []
+    otherProcedurePrice = prescription.otherProcedurePrice || ''
+    excludeConsultationCharge = !!prescription.excludeConsultationCharge
+    prescriptionDiscount = Number.isFinite(Number(prescription.discount)) ? Number(prescription.discount) : 0
+    prescriptionDiscountScope = prescription.discountScope || 'consultation'
+    nextAppointmentDate = prescription.nextAppointmentDate || ''
+
+    prescriptionFinished = false
+    prescriptionsFinalized = false
+    aiCheckComplete = false
+    aiCheckMessage = ''
+    lastAnalyzedMedications = []
+
+    handleTabChange('prescriptions', false)
   }
   
   // Filter current prescriptions (show all medications from all prescriptions)
@@ -1190,6 +1216,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     console.log('💊 Medication added:', medicationData)
     
     try {
+      savingMedication = true
       if (medicationData.isEdit) {
         // Update existing medication in database
         const updatedMedication = await firebaseStorage.createMedication({
@@ -1269,6 +1296,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       console.error('❌ Error saving medication:', error)
       // Reload data to ensure consistency
       loadPatientData()
+    } finally {
+      savingMedication = false
     }
     
     showMedicationForm = false
@@ -1857,6 +1886,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     if (newReport.type === 'image') {
       await analyzeReport(newReport)
     }
+
+    dispatch('dataUpdated', { type: 'reports', data: newReport })
     
     // Reset form
     reportTitle = ''
@@ -1905,6 +1936,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       console.error('Failed to delete report:', error)
     }
     reports = reports.filter(r => r.id !== reportId)
+    dispatch('dataUpdated', { type: 'reports', data: { reportId } })
   }
 
   $: if (reportType !== 'image' && reportFilePreview) {
@@ -1955,7 +1987,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
 
   // Show pharmacy selection modal
-  const showPharmacySelection = async () => {
+  const showPharmacySelection = async (medicationsOverride = null) => {
     try {
       console.log('📤 Opening pharmacy selection modal')
       
@@ -1997,9 +2029,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         return
       }
       
+      const medicationsToSend = Array.isArray(medicationsOverride) ? medicationsOverride : currentMedications
       // Get current medications (the actual prescriptions to send)
-      console.log('🔍 Current medications to send:', currentMedications)
-      if (!currentMedications || currentMedications.length === 0) {
+      console.log('🔍 Current medications to send:', medicationsToSend)
+      if (!medicationsToSend || medicationsToSend.length === 0) {
         console.log('❌ No medications to send')
         return
       }
@@ -2037,7 +2070,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         doctorId: doctor.id,
         doctorName: sendingDoctorName,
         patient: buildPatientSnapshot(),
-        medications: currentMedications.map(enrichMedicationForPharmacy),
+        medications: medicationsToSend.map(enrichMedicationForPharmacy),
         notes: prescriptionNotes || '',
         procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
         otherProcedurePrice: otherProcedurePrice,
@@ -3074,7 +3107,35 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         yPos += notes.length * 3
       }
       
-      // Doctor signature section removed
+      // Signature section
+      if (yPos > pageHeight - 30) {
+        doc.addPage()
+        
+        // Add header to new page if captured
+        if (capturedHeaderImage) {
+          if (capturedHeaderImage === 'PRINTED_LETTERHEAD') {
+            const lineY = headerYStart + capturedHeaderHeight + 2
+            doc.setLineWidth(0.5)
+            doc.line(margin, lineY, pageWidth - margin, lineY)
+            yPos = lineY + 5
+          } else {
+            doc.addImage(capturedHeaderImage, 'PNG', capturedHeaderX, headerYStart, capturedHeaderWidth, capturedHeaderHeight)
+            const lineY = headerYStart + capturedHeaderHeight + 2
+            doc.setLineWidth(0.5)
+            doc.line(margin, lineY, pageWidth - margin, lineY)
+            yPos = lineY + 5
+          }
+        } else {
+          yPos = margin + 10
+        }
+      }
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      doc.text('Signature:', margin, yPos + 8)
+      doc.setLineWidth(0.3)
+      doc.line(margin + 22, yPos + 8, pageWidth - margin, yPos + 8)
+      yPos += 14
       
       // Footer
       doc.setFontSize(7)
@@ -5913,6 +5974,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           {loadingAIDrugSuggestions}
           {symptoms}
           {openaiService}
+          {savingMedication}
           bind:prescriptionNotes
           bind:prescriptionDiscount
           bind:prescriptionProcedures
@@ -5940,6 +6002,107 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             console.log('🆕 New Prescription button clicked - Creating NEW prescription');
             showMedicationForm = false; 
             editingMedication = null;
+            
+            const hasExistingDraftMeds = Boolean(
+              currentPrescription &&
+              currentMedications &&
+              currentMedications.length > 0 &&
+              currentPrescription.status !== 'sent' &&
+              !currentPrescription.sentToPharmacy &&
+              !currentPrescription.printedAt
+            );
+            
+            if (hasExistingDraftMeds) {
+              pendingAction = async () => {
+                try {
+                  // Reset AI check state for new prescription
+                  aiCheckComplete = false;
+                  aiCheckMessage = '';
+                  lastAnalyzedMedications = [];
+                  
+                  // NEW RULE: When clicking "+ New Prescription", don't show current prescription under prescriptions anymore
+                  // Remove current prescription from prescriptions array regardless of status
+                  if (currentPrescription && currentMedications && currentMedications.length > 0) {
+                    console.log('📋 Removing current prescription from prescriptions array (New Prescription clicked)');
+                    
+                    // Remove from prescriptions array - this will hide it from prescriptions tab
+                    prescriptions = prescriptions.filter(p => p.id !== currentPrescription.id);
+                    
+                    // If prescription was sent to pharmacy or printed, move it to history
+                    const isSentToPharmacy = currentPrescription.status === 'sent' || currentPrescription.sentToPharmacy || currentPrescription.printedAt;
+                    
+                    if (isSentToPharmacy) {
+                      console.log('📋 Prescription was sent/printed - moving to history');
+                      
+                      // Update prescription with end date to mark it as historical
+                      currentPrescription.endDate = new Date().toISOString().split('T')[0];
+                      
+                      // Save to Firebase
+                      await firebaseStorage.updatePrescription(currentPrescription.id, {
+                        endDate: new Date().toISOString().split('T')[0],
+                        updatedAt: new Date().toISOString()
+                      });
+                      
+                      console.log('✅ Current prescription moved to history');
+                    } else {
+                      console.log('⚠️ Prescription not sent/printed - deleting from Firebase');
+                      // Delete unsent/unprinted prescriptions from Firebase
+                      try {
+                        await firebaseStorage.deletePrescription(currentPrescription.id);
+                        console.log('🗑️ Deleted unsent prescription from Firebase');
+                      } catch (error) {
+                        console.log('⚠️ Could not delete prescription from Firebase (may not exist):', error.message);
+                      }
+                    }
+                  }
+                  
+                  // Create new prescription
+                  const newPrescription = await firebaseStorage.createPrescription({
+                    patientId: selectedPatient.id,
+                    doctorId: doctorId,
+                    patient: buildPatientSnapshot(),
+                    name: 'New Prescription',
+                    notes: 'Prescription created from Prescriptions tab',
+                    nextAppointmentDate: '',
+                    medications: [],
+                    procedures: [],
+                    otherProcedurePrice: '',
+                    excludeConsultationCharge: false,
+                    status: 'draft',
+                    createdAt: new Date().toISOString()
+                  })
+                  
+                  currentPrescription = newPrescription;
+                  currentMedications = [];
+                  prescriptionProcedures = [];
+                  otherProcedurePrice = '';
+                  excludeConsultationCharge = false;
+                  nextAppointmentDate = '';
+                  prescriptionFinished = false;
+                  prescriptionsFinalized = false;
+                  
+                  // Add the new prescription to the prescriptions array immediately
+                  prescriptions = [...prescriptions, currentPrescription];
+                  console.log('📋 Added new prescription to prescriptions array:', prescriptions.length);
+                  
+                  // Update prescriptions array to trigger reactivity
+                  prescriptions = [...prescriptions];
+                  
+                  console.log('✅ NEW prescription ready - click "Add Drug" to add medications');
+                } catch (error) {
+                  console.error('❌ Error creating new prescription:', error);
+                }
+              };
+              
+              showConfirmation(
+                'Start New Prescription?',
+                'This prescription is not finalized yet. Starting a new prescription will delete the added drugs.',
+                'Start New',
+                'Cancel',
+                'warning'
+              );
+              return;
+            }
             
             // Reset AI check state for new prescription
             aiCheckComplete = false;
@@ -5980,17 +6143,6 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                   } catch (error) {
                     console.log('⚠️ Could not delete prescription from Firebase (may not exist):', error.message);
                   }
-                }
-              }
-              
-              // Clear any existing medications from Firebase for this patient
-              if (currentPrescription) {
-                console.log('🗑️ Clearing existing medications from Firebase for new prescription');
-                try {
-                  await firebaseStorage.clearPrescriptionMedications(currentPrescription.id);
-                  console.log('✅ Cleared existing medications from Firebase');
-                } catch (error) {
-                  console.log('⚠️ Could not clear medications from Firebase:', error.message);
                 }
               }
               

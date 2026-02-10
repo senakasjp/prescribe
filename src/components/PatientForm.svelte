@@ -19,8 +19,9 @@
   let phoneCodeTouched = false
   let gender = ''
   let dateOfBirth = ''
-  let age = ''
-  let ageType = 'years' // 'years' or 'days'
+  let ageYears = ''
+  let ageMonths = ''
+  let ageDays = ''
   let weight = ''
   let bloodGroup = ''
   let idNumber = ''
@@ -71,63 +72,48 @@
     }
   }
   
-  // Calculate age from date of birth
-  const calculateAge = (birthDate) => {
-    if (!birthDate) return ''
+  const calculateAgeParts = (birthDate) => {
+    if (!birthDate) return { years: '', months: '', days: '' }
     const today = new Date()
     const birth = new Date(birthDate)
-    let age = today.getFullYear() - birth.getFullYear()
-    const monthDiff = today.getMonth() - birth.getMonth()
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--
+    let years = today.getFullYear() - birth.getFullYear()
+    let months = today.getMonth() - birth.getMonth()
+    let days = today.getDate() - birth.getDate()
+
+    if (days < 0) {
+      months -= 1
+      const prevMonth = new Date(today.getFullYear(), today.getMonth(), 0)
+      days += prevMonth.getDate()
     }
-    return age.toString()
-  }
 
-  // Calculate age in days from date of birth
-  const calculateAgeInDays = (birthDate) => {
-    if (!birthDate) return ''
-    const today = new Date()
-    const birth = new Date(birthDate)
-    const diffTime = Math.abs(today - birth)
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays.toString()
-  }
-
-  // Convert days to years for display
-  const convertDaysToYears = (days) => {
-    if (!days || isNaN(days)) return ''
-    const years = Math.floor(days / 365.25)
-    const remainingDays = Math.floor(days % 365.25)
-    if (years === 0) {
-      return `${days} days`
-    } else if (remainingDays === 0) {
-      return `${years} year${years > 1 ? 's' : ''}`
-    } else {
-      return `${years} year${years > 1 ? 's' : ''} ${remainingDays} days`
+    if (months < 0) {
+      years -= 1
+      months += 12
+    }
+    return {
+      years: years.toString(),
+      months: months.toString(),
+      days: days.toString()
     }
   }
   
   // Handle date of birth change to auto-calculate age
-  const handleDateOfBirthChange = () => {
-    if (dateOfBirth) {
-      if (ageType === 'days') {
-        age = calculateAgeInDays(dateOfBirth)
-      } else {
-        age = calculateAge(dateOfBirth)
-      }
+  const handleDateOfBirthChange = (value) => {
+    const resolved = typeof value === 'string' ? value : (value?.detail?.value || value?.detail || dateOfBirth)
+    if (resolved) {
+      dateOfBirth = resolved
+      const parts = calculateAgeParts(resolved)
+      ageYears = parts.years
+      ageMonths = parts.months
+      ageDays = parts.days
     }
   }
 
-  // Handle age type change
-  const handleAgeTypeChange = () => {
-    if (dateOfBirth && age) {
-      if (ageType === 'days') {
-        age = calculateAgeInDays(dateOfBirth)
-      } else {
-        age = calculateAge(dateOfBirth)
-      }
-    }
+  $: if (dateOfBirth) {
+    const parts = calculateAgeParts(dateOfBirth)
+    ageYears = parts.years
+    ageMonths = parts.months
+    ageDays = parts.days
   }
   
   // Handle form submission
@@ -143,25 +129,18 @@
         throw new Error('First name is required')
       }
       
-      // Calculate age if date of birth is provided
-      let calculatedAge = age
-      if (dateOfBirth && !age) {
-        if (ageType === 'days') {
-          calculatedAge = calculateAgeInDays(dateOfBirth)
-        } else {
-          calculatedAge = calculateAge(dateOfBirth)
+      if (dateOfBirth) {
+        const parts = calculateAgeParts(dateOfBirth)
+        ageYears = parts.years
+        ageMonths = parts.months
+        ageDays = parts.days
+      } else {
+        const hasYears = String(ageYears || '').trim() !== ''
+        const hasDays = String(ageDays || '').trim() !== ''
+        if (!hasYears && !hasDays) {
+          focusField('ageYears')
+          throw new Error('Years is required. If not available, enter days.')
         }
-      }
-      
-      if (!calculatedAge || calculatedAge === '') {
-        focusField('age')
-        throw new Error('Age is required. Please provide either age or date of birth')
-      }
-
-      // Convert days to display format if needed
-      let ageDisplay = calculatedAge
-      if (ageType === 'days' && calculatedAge) {
-        ageDisplay = convertDaysToYears(parseInt(calculatedAge))
       }
       
       // Validate email format only if email is provided
@@ -192,8 +171,10 @@
         phoneCountryCode: phoneCountryCode.trim() || '',
         gender: gender || '',
         dateOfBirth: dateOfBirth || '',
-        age: ageDisplay,
-        ageType: ageType,
+        age: ageYears?.toString().trim() || '',
+        ageMonths: ageMonths?.toString().trim() || '',
+        ageDays: ageDays?.toString().trim() || '',
+        ageType: 'ymd',
         weight: weight?.toString().trim() || '',
         bloodGroup: bloodGroup.trim() || '',
         idNumber: idNumber.trim() || '',
@@ -217,8 +198,9 @@
       phoneCodeTouched = false
       gender = ''
       dateOfBirth = ''
-      age = ''
-      ageType = 'years'
+      ageYears = ''
+      ageMonths = ''
+      ageDays = ''
       weight = ''
       bloodGroup = ''
       idNumber = ''
@@ -432,6 +414,7 @@
               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
               id="dateOfBirth" 
               bind:value={dateOfBirth}
+              on:input={handleDateOfBirthChange}
               on:change={handleDateOfBirthChange}
               disabled={loading} />
           </div>
@@ -442,28 +425,42 @@
               <i class="fas fa-birthday-cake mr-1"></i>Age <span class="text-red-600">*</span>
             </label>
             <div class="flex gap-2">
-              <select 
-                class="w-20 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                bind:value={ageType}
-                on:change={handleAgeTypeChange}
-                disabled={loading}
-              >
-                <option value="years">Years</option>
-                <option value="days">Days</option>
-              </select>
               <input 
                 type="number" 
-                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                id="age" 
-                bind:value={age}
+                class="w-20 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                id="ageYears" 
+                bind:value={ageYears}
                 min="0"
-                max={ageType === 'days' ? '36500' : '150'}
-                placeholder={ageType === 'days' ? 'e.g., 40' : 'Auto-calculated'}
+                max="150"
+                placeholder="Years"
                 disabled={loading}
+                readonly={Boolean(dateOfBirth)}
+              >
+              <input 
+                type="number" 
+                class="w-20 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                id="ageMonths" 
+                bind:value={ageMonths}
+                min="0"
+                max="11"
+                placeholder="Months"
+                disabled={loading}
+                readonly={Boolean(dateOfBirth)}
+              >
+              <input 
+                type="number" 
+                class="w-20 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                id="ageDays" 
+                bind:value={ageDays}
+                min="0"
+                max="31"
+                placeholder="Days"
+                disabled={loading}
+                readonly={Boolean(dateOfBirth)}
               >
             </div>
             <small class="text-xs text-gray-500">
-              {ageType === 'days' ? 'Enter age in days (e.g., 40 days old)' : 'Auto-calculated from date of birth'}
+              {dateOfBirth ? 'Auto-calculated from date of birth' : 'Enter years, months, and days'}
             </small>
           </div>
         </div>

@@ -17,6 +17,7 @@
   export let onCancelIllness
   export let onCancelSymptoms
   export let onCancelMedication
+  export let savingMedication = false
 </script>
 
 {#if showIllnessForm}
@@ -90,6 +91,7 @@
         {doctorId}
         {allowNonPharmacyDrugs}
         {excludePharmacyDrugs}
+        {savingMedication}
         visible={showMedicationForm}
         on:medication-added={onMedicationAdded}
         on:cancel={onCancelMedication}

@@ -25,6 +25,7 @@
   import PricingPage from './components/PricingPage.svelte'
   import RegisterPage from './components/RegisterPage.svelte'
   import PublicHeader from './components/PublicHeader.svelte'
+  import { notifyError, notifySuccess } from './stores/notifications.js'
   import { resolveCurrencyFromCountry } from './utils/currencyByCountry.js'
   
   let user = null
@@ -45,6 +46,7 @@
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
   let currentView = 'home' // Navigation state: 'home', 'patients', 'pharmacies', 'reports', 'settings'
   let settingsDoctor = null
+  let wasOffline = false
 
   $: effectiveCurrency = settingsDoctor?.currency
     || user?.currency
@@ -94,6 +96,18 @@
     } else {
       document.body.appendChild(script)
     }
+  }
+
+  const handleOffline = () => {
+    if (wasOffline) return
+    wasOffline = true
+    notifyError('Internet connection lost. Some features may not work.', 10000)
+  }
+
+  const handleOnline = () => {
+    if (!wasOffline) return
+    wasOffline = false
+    notifySuccess('Back online.', 3000)
   }
 
   const showChatWidget = () => {
@@ -220,6 +234,12 @@
       window.__setAppView = setAppView
       window.__openSettingsView = () => handleSettingsClick()
       window.__openPatientsView = () => handleMenuNavigation('patients')
+      wasOffline = !navigator.onLine
+      if (wasOffline) {
+        notifyError('Internet connection lost. Some features may not work.', 10000)
+      }
+      window.addEventListener('offline', handleOffline)
+      window.addEventListener('online', handleOnline)
     }
     try {
       // Initialize Flowbite components
@@ -467,6 +487,10 @@
   
   // Cleanup Firebase auth listener on destroy
   onDestroy(() => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
+    }
     if (window.firebaseUnsubscribe) {
       window.firebaseUnsubscribe()
       window.firebaseUnsubscribe = null
@@ -755,6 +779,11 @@
 </script>
 
 <main class="min-h-screen bg-gray-50" on:ai-usage-updated={handleAIUsageUpdate}>
+  {#if wasOffline}
+    <div class="bg-red-600 text-white text-sm px-4 py-2 text-center">
+      You are offline. Some features may not work.
+    </div>
+  {/if}
   
   {#if showAdminPanel}
     <!-- Admin Panel -->

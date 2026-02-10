@@ -15,6 +15,9 @@
   import ConfirmationModal from './ConfirmationModal.svelte'
   import prescriptionStatusService from '../services/doctor/prescriptionStatusService.js'
   import backupService from '../services/backupService.js'
+  import { formatPatientId } from '../utils/idFormat.js'
+  import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import { formatPrescriptionId } from '../utils/idFormat.js'
   
   const dispatch = createEventDispatcher()
   export let user
@@ -124,6 +127,7 @@
   let illnesses = []
   let prescriptions = []
   let symptoms = []
+  let reports = []
   
   // Dispensed status tracking
   let prescriptionDispensedStatus = {}
@@ -201,6 +205,7 @@
   
   // Prescription state
   let currentPrescription = []
+  let patientDetailsRef = null
   
   // Refresh trigger for right side updates
   let refreshTrigger = 0
@@ -455,14 +460,22 @@
     
     const query = searchQuery.toLowerCase().trim()
     filteredPatients = patients.filter(patient => {
-      const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase()
+      const fullName = `${patient.firstName || ''} ${patient.lastName || ''}`.trim().toLowerCase()
+      const patientIdShort = formatPatientId(patient.id).toLowerCase()
+      const hasPrescriptionMatch = prescriptions.some(prescription => {
+        if (prescription?.patientId !== patient.id) return false
+        const shortId = formatPrescriptionId(prescription.id).toLowerCase()
+        return shortId.includes(query)
+      })
       return fullName.includes(query) || 
-             patient.firstName.toLowerCase().includes(query) || 
-             patient.lastName.toLowerCase().includes(query) || 
-             patient.idNumber.toLowerCase().includes(query) || 
-             patient.email.toLowerCase().includes(query) || 
-             (patient.phone && patient.phone.toLowerCase().includes(query)) ||
-             (patient.dateOfBirth && patient.dateOfBirth.includes(query))
+             (patient.firstName || '').toLowerCase().includes(query) || 
+             (patient.lastName || '').toLowerCase().includes(query) || 
+             (patient.idNumber || '').toLowerCase().includes(query) || 
+             (patient.email || '').toLowerCase().includes(query) || 
+             (patient.phone || '').toLowerCase().includes(query) ||
+             (patient.dateOfBirth || '').toLowerCase().includes(query) ||
+             patientIdShort.includes(query) ||
+             hasPrescriptionMatch
     }).slice(0, 20) // Limit to 20 results for performance
   }
   
@@ -538,10 +551,12 @@
       }, 1000)
 
       showPatientForm = false
+      notifySuccess('Patient added successfully!')
       console.log('✅ PatientManagement: Patient creation process completed')
     } catch (error) {
       console.error('❌ PatientManagement: Error adding patient:', error)
       console.error('❌ PatientManagement: Error stack:', error.stack)
+      notifyError(error?.message || 'Failed to add patient.')
     }
   }
   
@@ -580,9 +595,16 @@
       illnesses = []
       prescriptions = []
       symptoms = []
+      reports = []
       currentView = 'patients'
       await loadPatients()
       return
+    }
+
+    if (type === 'patient' && data?.id) {
+      selectedPatient = data
+      patients = patients.map(patient => patient.id === data.id ? { ...patient, ...data } : patient)
+      filteredPatients = filteredPatients.map(patient => patient.id === data.id ? { ...patient, ...data } : patient)
     }
     
     // Refresh medical data to update MedicalSummary
@@ -991,6 +1013,10 @@
       // Load symptoms
       symptoms = await firebaseStorage.getSymptomsByPatientId(patientId) || []
       console.log('🔍 PatientManagement: Loaded symptoms:', symptoms.length)
+
+      // Load reports
+      reports = await firebaseStorage.getReportsByPatientId(patientId) || []
+      console.log('🔍 PatientManagement: Loaded reports:', reports.length)
       
       // Check dispensed status for prescriptions
       await checkPrescriptionDispensedStatus(patientId)
@@ -1001,6 +1027,7 @@
       illnesses = []
       prescriptions = []
       symptoms = []
+      reports = []
     }
   }
 
@@ -1106,6 +1133,11 @@
     } catch (error) {
       console.error('Error adding prescription:', error)
     }
+  }
+
+  const loadLastPrescriptionToEditor = () => {
+    if (!selectedPrescriptionForCard || !patientDetailsRef) return
+    patientDetailsRef.loadPrescriptionForEditing(selectedPrescriptionForCard)
   }
   
   // Check if medication is already in prescription
@@ -1861,7 +1893,7 @@
       class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
       on:click={() => showPatientForm = false}
     >
-      <div class="w-full max-w-3xl" on:click|stopPropagation>
+      <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto" on:click|stopPropagation>
         <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
       </div>
     </div>
@@ -2095,6 +2127,7 @@
         {illnesses}
         {prescriptions}
         {symptoms}
+        {reports}
         {activeMedicalTab}
         {showSymptomsNotes}
         {showIllnessesNotes}
@@ -2114,10 +2147,23 @@
     {#if selectedPatient}
       <div class="bg-white border-2 border-rose-200 rounded-lg shadow-sm mt-3">
         <div class="bg-rose-50 px-3 py-2 border-b border-rose-200 rounded-t-lg">
-          <h6 class="text-lg font-semibold text-gray-900 mb-0">
-            <i class="fas fa-prescription-bottle-alt text-rose-600 mr-2"></i>
-            Last Prescription
-          </h6>
+          <div class="flex items-center justify-between">
+            <h6 class="text-lg font-semibold text-gray-900 mb-0">
+              <i class="fas fa-prescription-bottle-alt text-rose-600 mr-2"></i>
+              Last Prescription
+            </h6>
+            {#if selectedPrescriptionForCard}
+              <button
+                type="button"
+                class="inline-flex items-center px-2.5 py-1 border border-rose-300 text-xs font-medium text-rose-700 bg-white hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 rounded-lg transition-colors duration-200"
+                on:click={loadLastPrescriptionToEditor}
+                title="Load this prescription for editing"
+              >
+                <i class="fas fa-pen mr-1"></i>
+                Load
+              </button>
+            {/if}
+          </div>
         </div>
         <div class="p-3">
           
@@ -2211,12 +2257,13 @@
           class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
           on:click={() => showPatientForm = false}
         >
-          <div class="w-full max-w-3xl" on:click|stopPropagation>
+          <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto" on:click|stopPropagation>
             <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
           </div>
         </div>
       {:else if selectedPatient}
           <PatientDetails 
+            bind:this={patientDetailsRef}
             selectedPatient={selectedPatient}
             {addToPrescription} 
             {refreshTrigger} 

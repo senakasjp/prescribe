@@ -156,6 +156,7 @@
       }
       await firebaseStorage.createPatient(patientToCreate)
       notifySuccess(`Patient added to ${doctor.name || doctor.email || 'connected doctor'}.`)
+      registrationTab = 'search'
     } catch (error) {
       console.error('❌ PharmacistDashboard: Error creating patient:', error)
       notifyError(error?.message || 'Failed to create patient.')
@@ -2288,7 +2289,7 @@
                   on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && (registrationTab = 'search')}
                 >
                   <div
-                    class="w-full max-w-3xl"
+                    class="w-full max-w-3xl max-h-[90vh] overflow-y-auto"
                     on:click|stopPropagation
                     on:keydown|stopPropagation
                     role="presentation"
