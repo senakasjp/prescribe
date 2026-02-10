@@ -556,7 +556,7 @@
 
     const doctorIdentifier = currentPrescription?.doctorId || doctorProfile?.id || doctorId || null
     const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
-    const hasChargeableItems = medicationsForCharge.length > 0 || procedures.length > 0 || !excludeConsultationCharge
+    const hasChargeableItems = medicationsForCharge.length > 0 || procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
     if (!hasChargeableItems) {
       return null
     }
@@ -683,6 +683,11 @@
       currentPrescription.medications = currentMedications
     }
   }
+
+  const hasChargeableItems = () => {
+    const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+    return procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
+  }
   
   // Determine doctor identifier reactively and load stock
   $: resolvedDoctorIdentifier = (() => {
@@ -719,7 +724,7 @@
     expectedPharmacist = null
   }
 
-  $: if (prescriptionsFinalized && currentMedications && currentMedications.length > 0) {
+  $: if (prescriptionsFinalized && currentPrescription) {
     const internalMedications = getInternalMedications()
     recomputeExpectedPrice(internalMedications)
   } else {
@@ -1116,7 +1121,7 @@
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   on:click={onFinalizePrescription}
-                  disabled={currentMedications.length === 0}
+                  disabled={currentMedications.length === 0 && !hasChargeableItems()}
                   title="Finalize this prescription"
                   data-tour="prescription-finalize"
                 >
@@ -1128,6 +1133,10 @@
                   on:click={() => {
                     const internalMedications = getInternalMedications()
                     if (!internalMedications || internalMedications.length === 0) {
+                      if (hasChargeableItems()) {
+                        onShowPharmacyModal && onShowPharmacyModal([])
+                        return
+                      }
                       notifyWarning('All medications are marked for external pharmacy or not in stock.')
                       return
                     }
@@ -1161,7 +1170,7 @@
               {/if}
             </div>
 
-            {#if prescriptionsFinalized && currentMedications.length > 0}
+            {#if prescriptionsFinalized && (currentMedications.length > 0 || hasChargeableItems())}
               <!-- Expected Price -->
               <div class="mt-4 text-center">
                 <span class="text-sm font-semibold text-green-600">

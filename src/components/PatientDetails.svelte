@@ -2032,9 +2032,14 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       const medicationsToSend = Array.isArray(medicationsOverride) ? medicationsOverride : currentMedications
       // Get current medications (the actual prescriptions to send)
       console.log('🔍 Current medications to send:', medicationsToSend)
+      const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      const hasChargeableItems = procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
       if (!medicationsToSend || medicationsToSend.length === 0) {
-        console.log('❌ No medications to send')
-        return
+        if (!hasChargeableItems) {
+          console.log('❌ No medications or chargeable services to send')
+          return
+        }
+        console.log('ℹ️ No medications to send, continuing with charge-only prescription')
       }
       
       // NEW RULE: When "Send to Pharmacy", mark prescription as sent and move to history/summary
@@ -2180,9 +2185,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
       // Send only the current prescription, not all prescriptions for the patient
       let prescriptions = []
-      if (currentPrescription && currentPrescription.medications && currentPrescription.medications.length > 0) {
+      if (currentPrescription) {
         prescriptions = [currentPrescription]
-        console.log('📤 Sending current prescription:', currentPrescription.id, 'with', currentPrescription.medications.length, 'medications')
+        console.log('📤 Sending current prescription:', currentPrescription.id, 'with', currentPrescription.medications?.length || 0, 'medications')
       } else {
         // If no current prescription, get the most recent prescription for this patient
         const allPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(selectedPatient.id)
@@ -3107,8 +3112,14 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         yPos += notes.length * 3
       }
       
-      // Signature section
-      if (yPos > pageHeight - 30) {
+      // Signature section (bottom, half-width line)
+      const footerY = pageHeight - 5
+      const signatureLineY = pageHeight - 12
+      const halfWidth = (pageWidth - (margin * 2)) / 2
+      const signatureLineEnd = pageWidth - margin
+      const signatureLineStart = signatureLineEnd - halfWidth
+
+      if (signatureLineY - yPos < 10) {
         doc.addPage()
         
         // Add header to new page if captured
@@ -3130,17 +3141,16 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         }
       }
       
-      doc.setFontSize(10)
+      doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
-      doc.text('Signature:', margin, yPos + 8)
+      doc.text('Signature', signatureLineStart, signatureLineY - 2)
       doc.setLineWidth(0.3)
-      doc.line(margin + 22, yPos + 8, pageWidth - margin, yPos + 8)
-      yPos += 14
+      doc.line(signatureLineStart, signatureLineY, signatureLineEnd, signatureLineY)
       
       // Footer
       doc.setFontSize(7)
-      doc.text('This prescription is valid for 30 days from the date of issue.', margin, pageHeight - 5)
-      doc.text('Keep this prescription in a safe place.', margin + 75, pageHeight - 5)
+      doc.text('This prescription is valid for 30 days from the date of issue.', margin, footerY)
+      doc.text('Keep this prescription in a safe place.', margin + 75, footerY)
       
       // Generate filename
       const filename = `Prescription_${selectedPatient.firstName}_${selectedPatient.lastName}_${currentDate.replace(/\//g, '-')}.pdf`
