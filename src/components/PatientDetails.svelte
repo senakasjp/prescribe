@@ -21,6 +21,7 @@
   export const addToPrescription = null
   export let refreshTrigger = 0
   export let editPatientTrigger = 0
+  let lastEditPatientTrigger = 0
   export let doctorId = null
   export let currentUser = null
   export let authUser = null
@@ -162,7 +163,17 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
   $: effectiveDoctorSettings = getDoctorSettingsFallback()
   $: patientBioLines = getPatientBioLines(selectedPatient)
-  $: if (editPatientTrigger && selectedPatient && !isEditingPatient) {
+  onMount(() => {
+    lastEditPatientTrigger = editPatientTrigger
+  })
+
+  $: if (
+    editPatientTrigger &&
+    editPatientTrigger !== lastEditPatientTrigger &&
+    selectedPatient &&
+    !isEditingPatient
+  ) {
+    lastEditPatientTrigger = editPatientTrigger
     startEditingPatient()
   }
 
@@ -3328,6 +3339,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       Object.assign(selectedPatient, updatedPatient)
       dispatch('dataUpdated', { type: 'patient', data: updatedPatient })
       isEditingBio = false
+      notifySuccess('Patient bio updated successfully!')
     } catch (error) {
       bioError = error.message
       console.error('❌ Error updating patient bio:', error)
@@ -3338,6 +3350,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   
   const cancelEditingPatient = () => {
     isEditingPatient = false
+    lastEditPatientTrigger = editPatientTrigger
     editError = ''
     editPatientData = {
       title: '',
@@ -3421,6 +3434,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       
       // Exit edit mode
       isEditingPatient = false
+      notifySuccess('Patient details updated successfully!')
       
       console.log('✅ Patient data updated successfully')
       
@@ -3476,6 +3490,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       
       // Reset edit state
       editLongTermMedications = null
+      notifySuccess('Long-term medications updated successfully!')
       
       console.log('✅ Long-term medications saved successfully')
       
@@ -3502,6 +3517,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       await firebaseStorage.updatePatient(selectedPatient.id, updatedPatient)
       selectedPatient.allergies = editAllergiesOverview || ''
       editAllergiesOverview = null
+      notifySuccess('Allergies updated successfully!')
 
       console.log('✅ Allergies saved successfully')
     } catch (error) {

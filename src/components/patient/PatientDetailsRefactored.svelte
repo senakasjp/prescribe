@@ -12,6 +12,7 @@
   import AIRecommendations from '../AIRecommendations.svelte'
   import PrescriptionsTab from '../PrescriptionsTab.svelte'
   import ConfirmationModal from '../ConfirmationModal.svelte'
+  import { notifySuccess } from '../../stores/notifications.js'
   
   // Import refactored components
   import PatientOverview from './patient/PatientOverview.svelte'
@@ -172,6 +173,7 @@
     // Save patient data logic here
     console.log('Saving patient data:', patientData)
     isEditingPatient = false
+    notifySuccess('Patient details updated successfully!')
   }
   
   function handleCancelEdit() {

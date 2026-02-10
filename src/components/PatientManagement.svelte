@@ -1338,6 +1338,7 @@
       // Exit edit mode
       showSaveProfileHint = false
       editingProfile = false
+      notifySuccess('Profile updated successfully!')
       
     } catch (err) {
       profileError = err.message
