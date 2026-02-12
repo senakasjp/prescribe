@@ -16,6 +16,7 @@
   import backupService from '../services/backupService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+  import { resolveInheritedCurrency } from '../utils/currencyInheritance.js'
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
 
   const dispatch = createEventDispatcher()
@@ -60,6 +61,10 @@
   let resetExternalDeviceModal = false
   let resetExternalDeviceLoading = false
   let resetExternalDeviceMessage = ''
+  let externalDoctors = []
+  let externalDoctorsLoading = false
+  let externalDoctorsError = ''
+  let externalDoctorsLoaded = false
 
   // Prescription template variables
   let templateType = '' // Will be set from user.templateSettings
@@ -697,6 +702,10 @@
     }
   }
 
+  $: if (activeTab === 'external-doctor') {
+    loadExternalDoctors()
+  }
+
   // Keep saved city values even when they are not in the curated list.
 
   // Initialize form with user data
@@ -789,6 +798,64 @@
     }
   }
 
+  const getExternalDoctorUsername = (email) => {
+    if (!email) return 'N/A'
+    const [name, domain] = email.split('@')
+    if (domain === 'external.local') {
+      return name || 'N/A'
+    }
+    return email
+  }
+
+  const getExternalDoctorLocation = (doctor) => {
+    if (!doctor) return 'Not set'
+    const cityName = doctor.city || ''
+    const countryName = doctor.country || ''
+    if (cityName && countryName) return `${cityName}, ${countryName}`
+    return cityName || countryName || 'Not set'
+  }
+
+  const getTimestampMs = (value) => {
+    if (!value) return 0
+    if (typeof value === 'number') return value
+    if (value instanceof Date) return value.getTime()
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value)
+      return Number.isNaN(parsed) ? 0 : parsed
+    }
+    if (value?.seconds) return value.seconds * 1000
+    if (value?.toDate) {
+      try {
+        return value.toDate().getTime()
+      } catch (error) {
+        return 0
+      }
+    }
+    return 0
+  }
+
+  const loadExternalDoctors = async ({ force = false } = {}) => {
+    if (externalDoctorsLoading) return
+    if (externalDoctorsLoaded && !force) return
+    externalDoctorsLoading = true
+    externalDoctorsError = ''
+    try {
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Unable to identify the owner doctor.')
+      }
+      const externalDoctorsData = await firebaseStorage.getExternalDoctorsByOwnerId(doctorId)
+      externalDoctors = [...externalDoctorsData].sort(
+        (a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt)
+      )
+      externalDoctorsLoaded = true
+    } catch (error) {
+      externalDoctorsError = error?.message || 'Failed to load external doctors.'
+    } finally {
+      externalDoctorsLoading = false
+    }
+  }
+
   const handleDoctorBackupDownload = async () => {
     try {
       backupLoading = true
@@ -857,7 +924,17 @@
       }
 
       const syntheticEmail = `${username}@external.local`
-      const ownerDeviceId = firebaseAuthService.getOrCreateDeviceId()
+      let ownerDoctor = null
+      try {
+        ownerDoctor = await firebaseStorage.getDoctorById(doctorId)
+      } catch (error) {
+        ownerDoctor = null
+      }
+      const ownerDeviceId = await firebaseAuthService.getOrCreateDeviceIdForDoctor(ownerDoctor || user)
+      const inheritedCurrency = resolveInheritedCurrency({
+        ownerDoctor,
+        fallbackCountry: externalCountry.trim()
+      })
       const payload = {
         firstName: externalFirstName.trim(),
         lastName: externalLastName.trim(),
@@ -868,6 +945,7 @@
         specialization: externalSpecialization.trim(),
         country: externalCountry.trim(),
         city: externalCity.trim(),
+        currency: inheritedCurrency,
         role: 'doctor',
         isAdmin: false,
         permissions: ['view_patients', 'write_prescriptions'],
@@ -900,6 +978,7 @@
       externalSpecialization = ''
       externalCountry = ''
       externalCity = ''
+      await loadExternalDoctors({ force: true })
     } catch (error) {
       externalError = error.message || 'Failed to add external doctor.'
       notifyError(externalError)
@@ -916,7 +995,13 @@
       if (!doctorId) {
         throw new Error('Unable to identify the owner doctor.')
       }
-      const ownerDeviceId = firebaseAuthService.getOrCreateDeviceId()
+      let ownerDoctor = null
+      try {
+        ownerDoctor = await firebaseStorage.getDoctorById(doctorId)
+      } catch (error) {
+        ownerDoctor = null
+      }
+      const ownerDeviceId = await firebaseAuthService.getOrCreateDeviceIdForDoctor(ownerDoctor || user)
       const externalDoctors = await firebaseStorage.getExternalDoctorsByOwnerId(doctorId)
       if (!externalDoctors.length) {
         resetExternalDeviceMessage = 'No external doctors found for this account.'
@@ -1561,7 +1646,7 @@
                   required
                 >
                   {#each currencies as currencyOption}
-                    <option value={currencyOption.code}>{currencyOption.symbol} {currencyOption.name} ({currencyOption.code})</option>
+                    <option value={currencyOption.code}>{currencyOption.code} - {currencyOption.name}</option>
                   {/each}
                 </select>
               </div>
@@ -1580,7 +1665,7 @@
                   </label>
                   <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
+                      <span class="text-gray-500 text-sm">{currency}</span>
                     </div>
                     <input 
                       type="text" 
@@ -1602,7 +1687,7 @@
                   </label>
                   <div class="relative">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
+                      <span class="text-gray-500 text-sm">{currency}</span>
                     </div>
                     <input 
                       type="text" 
@@ -2059,6 +2144,53 @@
             {/if}
             {#if externalSuccess}
               <div class="mt-3 text-xs text-green-600">{externalSuccess}</div>
+            {/if}
+          </div>
+
+          <div class="mt-6">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 class="text-sm font-semibold text-gray-800">External Doctors</h3>
+              <button
+                type="button"
+                class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-lg text-xs font-medium transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                on:click={() => loadExternalDoctors({ force: true })}
+                disabled={externalDoctorsLoading}
+              >
+                Refresh List
+              </button>
+            </div>
+
+            {#if externalDoctorsLoading}
+              <div class="text-xs text-gray-500">Loading external doctors...</div>
+            {:else if externalDoctorsError}
+              <div class="text-xs text-red-600">{externalDoctorsError}</div>
+            {:else if !externalDoctors.length}
+              <div class="text-xs text-gray-500">No external doctors found for this account.</div>
+            {:else}
+              <div class="space-y-3">
+                {#each externalDoctors as doctor}
+                  <div class="bg-white border border-gray-200 rounded-lg p-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="text-sm font-semibold text-gray-900">
+                          {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'External Doctor'}
+                        </div>
+                        <div class="text-xs text-gray-500">
+                          Username: {getExternalDoctorUsername(doctor.email)}
+                        </div>
+                      </div>
+                      <span class="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                        External
+                      </span>
+                    </div>
+                    <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-gray-600">
+                      <div>Specialization: {doctor.specialization || 'Not set'}</div>
+                      <div>Phone: {doctor.phone || 'Not set'}</div>
+                      <div>Location: {getExternalDoctorLocation(doctor)}</div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
             {/if}
           </div>
   </div>

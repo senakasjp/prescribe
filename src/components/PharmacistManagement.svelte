@@ -1,8 +1,10 @@
 <script>
   import { onMount } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import { resolveInheritedCurrency } from '../utils/currencyInheritance.js'
   import firebaseAuthService from '../services/firebaseAuth.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import { formatDate } from '../utils/dataProcessing.js'
   import ThreeDots from './ThreeDots.svelte'
   
   export let user
@@ -45,15 +47,20 @@
           return pharmacistEmail && pharmacistEmail === doctor.email.toLowerCase()
         })
 
-        if (!ownPharmacy) {
+          if (!ownPharmacy) {
           console.log('🧪 Own pharmacy not found, creating pharmacy profile for:', doctor.email)
           const pharmacistNumber = firebaseAuthService.generatePharmacistNumber()
+          const inheritedCurrency = resolveInheritedCurrency({
+            ownerDoctor: doctor,
+            fallbackCountry: doctor?.country
+          })
           const created = await firebaseStorage.createPharmacist({
             email: doctor.email,
             password: `doctor-${Date.now()}`,
             role: 'pharmacist',
             businessName: doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email,
-            pharmacistNumber
+            pharmacistNumber,
+            currency: inheritedCurrency
           })
           ownPharmacy = created
           allPharmacists.push(created)
@@ -410,11 +417,7 @@
                       </p>
                       <p class="text-gray-500 text-sm mb-0">
                         <i class="fas fa-calendar mr-1"></i>
-                        Connected: {new Date(pharmacist.createdAt).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        })}
+                        Connected: {formatDate(pharmacist.createdAt)}
                       </p>
                     </div>
                   </div>

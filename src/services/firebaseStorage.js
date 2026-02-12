@@ -126,6 +126,7 @@ class FirebaseStorageService {
         authProvider: doctorData.authProvider,
         connectedPharmacists: doctorData.connectedPharmacists || [],
         allowedDeviceId: doctorData.allowedDeviceId,
+        deviceId: doctorData.deviceId,
         isDisabled: doctorData.isDisabled ?? false,
         isApproved: doctorData.isApproved ?? true,
         accessExpiresAt: doctorData.accessExpiresAt || null,
@@ -335,6 +336,7 @@ class FirebaseStorageService {
         connectedPharmacists: updatedDoctor.connectedPharmacists,
         deleteCode: updatedDoctor.deleteCode,
         allowedDeviceId: updatedDoctor.allowedDeviceId,
+        deviceId: updatedDoctor.deviceId,
         isDisabled: updatedDoctor.isDisabled,
         isApproved: updatedDoctor.isApproved,
         accessExpiresAt: updatedDoctor.accessExpiresAt,
@@ -580,12 +582,16 @@ class FirebaseStorageService {
     try {
       console.log('🏥 Creating pharmacist with Firebase:', pharmacistData)
       
+      const resolvedCurrency = pharmacistData.currency ||
+        resolveCurrencyFromCountry(pharmacistData.country) ||
+        'USD'
       const pharmacist = {
         email: pharmacistData.email,
         password: pharmacistData.password,
         role: pharmacistData.role,
         businessName: pharmacistData.businessName,
         pharmacistNumber: pharmacistData.pharmacistNumber,
+        currency: String(resolvedCurrency).trim(),
         connectedDoctors: [], // Array of doctor IDs who have connected with this pharmacist
         deleteCode: pharmacistData.deleteCode || this.generateDeleteCode(),
         createdAt: new Date().toISOString()
@@ -743,18 +749,20 @@ class FirebaseStorageService {
         throw new Error('Email and password are required to create a pharmacy user')
       }
 
-      const existingPharmacist = await this.getPharmacistByEmail(pharmacyUserData.email)
+      const normalizedEmail = String(pharmacyUserData.email || '').trim()
+      const normalizedPassword = String(pharmacyUserData.password || '').trim()
+      const existingPharmacist = await this.getPharmacistByEmail(normalizedEmail)
       if (existingPharmacist) {
         throw new Error('User with this email already exists')
       }
-      const existingPharmacyUser = await this.getPharmacyUserByEmail(pharmacyUserData.email)
+      const existingPharmacyUser = await this.getPharmacyUserByEmail(normalizedEmail)
       if (existingPharmacyUser) {
         throw new Error('User with this email already exists')
       }
 
       const pharmacyUser = {
-        email: pharmacyUserData.email,
-        password: pharmacyUserData.password,
+        email: normalizedEmail,
+        password: normalizedPassword,
         firstName: pharmacyUserData.firstName || '',
         lastName: pharmacyUserData.lastName || '',
         role: 'pharmacist',
@@ -826,6 +834,19 @@ class FirebaseStorageService {
       console.log('Pharmacy user updated successfully')
     } catch (error) {
       console.error('Error updating pharmacy user:', error)
+      throw error
+    }
+  }
+
+  async deletePharmacyUser(pharmacyUserId) {
+    try {
+      if (!pharmacyUserId) {
+        throw new Error('Pharmacy user ID is required')
+      }
+      await deleteDoc(doc(db, this.collections.pharmacyUsers, pharmacyUserId))
+      console.log('Pharmacy user deleted successfully')
+    } catch (error) {
+      console.error('Error deleting pharmacy user:', error)
       throw error
     }
   }
@@ -954,12 +975,18 @@ class FirebaseStorageService {
       
       // Capitalize names before updating
       const capitalizedPatientData = capitalizePatientNames(updatedPatientData)
-      console.log('🔍 FirebaseStorage: Capitalized patient update data:', capitalizedPatientData)
+      const updateData = { ...capitalizedPatientData }
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key]
+        }
+      })
+      console.log('🔍 FirebaseStorage: Capitalized patient update data:', updateData)
       
       const patientRef = doc(db, this.collections.patients, patientId)
-      await updateDoc(patientRef, capitalizedPatientData)
+      await updateDoc(patientRef, updateData)
       console.log('✅ Patient updated successfully')
-      return { id: patientId, ...capitalizedPatientData }
+      return { id: patientId, ...updateData }
     } catch (error) {
       console.error('Error updating patient:', error)
       throw error

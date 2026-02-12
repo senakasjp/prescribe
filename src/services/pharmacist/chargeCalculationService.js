@@ -8,6 +8,74 @@ import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase-config.js'
 
 class ChargeCalculationService {
+  isLiquidMedication(medication) {
+    if (!medication) return false
+    const unit = String(medication.strengthUnit || '').trim().toLowerCase()
+    const dosageForm = String(medication.dosageForm || medication.form || '').trim().toLowerCase()
+    const strengthText = String(medication.strength || '').trim().toLowerCase()
+    return (
+      unit === 'ml' ||
+      unit === 'l' ||
+      dosageForm === 'liquid' ||
+      strengthText.includes('ml') ||
+      strengthText.includes(' l')
+    )
+  }
+
+  resolveStrengthToMl(value, unitHint = '') {
+    if (value === null || value === undefined || value === '') return null
+    const normalized = String(value).trim().toLowerCase()
+    const match = normalized.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+    if (match) {
+      const amount = parseFloat(match[1])
+      if (!Number.isFinite(amount)) return null
+      return match[2] === 'l' ? amount * 1000 : amount
+    }
+
+    const unit = String(unitHint || '').trim().toLowerCase()
+    const numeric = parseFloat(normalized.replace(/[^\d.]/g, ''))
+    if (!Number.isFinite(numeric)) return null
+    if (unit === 'l') return numeric * 1000
+    if (unit === 'ml') return numeric
+    return null
+  }
+
+  resolveDailyFrequency(frequency = '') {
+    const value = String(frequency).toLowerCase()
+    if (value.includes('once daily') || value.includes('(od)') || value.includes('mane') || value.includes('nocte') || value.includes('noon') || value.includes('vesper')) return 1
+    if (value.includes('twice daily') || value.includes('(bd)')) return 2
+    if (value.includes('three times daily') || value.includes('(tds)')) return 3
+    if (value.includes('four times daily') || value.includes('(qds)')) return 4
+    if (value.includes('every 4 hours') || value.includes('(q4h)')) return 6
+    if (value.includes('every 6 hours') || value.includes('(q6h)')) return 4
+    if (value.includes('every 8 hours') || value.includes('(q8h)')) return 3
+    if (value.includes('every 12 hours') || value.includes('(q12h)')) return 2
+    if (value.includes('every other day') || value.includes('(eod)')) return 0.5
+    if (value.includes('weekly')) return 1 / 7
+    if (value.includes('monthly')) return 1 / 30
+    if (value.includes('stat')) return 1
+    return 0
+  }
+
+  resolveDurationDays(duration = '') {
+    const match = String(duration || '').match(/(\d+)\s*days?/i)
+    if (!match) return 0
+    const days = parseInt(match[1], 10)
+    return Number.isFinite(days) ? days : 0
+  }
+
+  calculateLiquidAmount(medication) {
+    const strengthMl = this.resolveStrengthToMl(
+      medication?.strength,
+      medication?.strengthUnit,
+    )
+    if (!strengthMl) return 0
+    const days = this.resolveDurationDays(medication?.duration)
+    if (!days) return 0
+    const dailyFrequency = this.resolveDailyFrequency(medication?.frequency)
+    if (!dailyFrequency) return 0
+    return strengthMl * dailyFrequency * days
+  }
   constructor() {
     this.collections = {
       doctors: 'doctors',
@@ -332,7 +400,11 @@ class ChargeCalculationService {
               }
 
               const parsedQuantity = this.parseMedicationQuantity(medication.amount)
-              const requestedQuantity = parsedQuantity !== null ? parsedQuantity : 0
+              const isLiquid = this.isLiquidMedication(medication)
+              const liquidAmount = isLiquid ? this.calculateLiquidAmount(medication) : 0
+              const requestedQuantity = liquidAmount > 0
+                ? liquidAmount
+                : (parsedQuantity !== null ? parsedQuantity : 0)
 
               const pricingSources = this.buildInventoryPricingSources(
                 medication,
@@ -465,6 +537,7 @@ class ChargeCalculationService {
   }
 
   buildInventoryPricingSources(medication, inventoryItems, inventoryContext) {
+    const isLiquid = this.isLiquidMedication(medication)
     const sources = []
     const inventoryById = new Map()
     inventoryItems.forEach(item => inventoryById.set(item.id, item))
@@ -488,10 +561,21 @@ class ChargeCalculationService {
         return
       }
 
-      const available = this.extractNumericValue(entry.currentStock ?? entry.available ?? entry.quantity ?? 0)
-      const unitCost = this.parseCurrencyValue(entry.sellingPrice ?? entry.unitCost ?? entry.costPrice)
+      let available = this.extractNumericValue(entry.currentStock ?? entry.available ?? entry.quantity ?? 0)
+      let unitCost = this.parseCurrencyValue(entry.sellingPrice ?? entry.unitCost ?? entry.costPrice)
       if (!available || available <= 0) return
       if (unitCost === null) return
+
+      if (isLiquid) {
+        const packMl = this.resolveStrengthToMl(
+          entry.strength ?? entry.dosage ?? entry.packSize,
+          entry.strengthUnit ?? entry.unit ?? entry.packUnit
+        )
+        if (packMl && packMl > 0) {
+          available = available * packMl
+          unitCost = unitCost / packMl
+        }
+      }
 
       sources.push({
         inventoryItemId: entry.inventoryItemId ?? entry.id ?? entry.itemId ?? null,
@@ -501,7 +585,9 @@ class ChargeCalculationService {
         unitCost,
         expiryDate: entry.expiryDate || null,
         brandName: entry.brandName || null,
-        genericName: entry.genericName || null
+        genericName: entry.genericName || null,
+        strength: entry.strength ?? null,
+        strengthUnit: entry.strengthUnit ?? null
       })
     }
 
@@ -772,20 +858,11 @@ class ChargeCalculationService {
    */
   formatCurrency(amount, currency = 'USD') {
     try {
-      if (currency === 'LKR') {
-        // For LKR, return just the number without symbol
-        return new Intl.NumberFormat('en-US', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        }).format(amount)
-      } else {
-        // For other currencies, use currency code prefix (e.g., "USD 1,234.50")
-        const formatted = new Intl.NumberFormat('en-US', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        }).format(amount)
-        return `${currency} ${formatted}`
-      }
+      const formatted = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(amount)
+      return `${currency} ${formatted}`
     } catch (error) {
       console.error('❌ Error formatting currency:', error)
       return amount.toFixed(2)

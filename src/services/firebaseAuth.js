@@ -12,6 +12,7 @@ import {
 import { initializeApp, getApps } from 'firebase/app'
 import app, { auth, googleProvider } from '../firebase-config.js'
 import firebaseStorage from './firebaseStorage.js'
+import { getOrCreateDeviceId } from './deviceIdService.js'
 
 const pendingApprovalMessage = [
   'Your account is waiting for approval.',
@@ -28,12 +29,23 @@ class FirebaseAuthService {
   }
 
   getOrCreateDeviceId() {
-    if (typeof localStorage === 'undefined') return ''
-    const key = 'prescribe_device_id'
-    let deviceId = localStorage.getItem(key)
-    if (!deviceId) {
-      deviceId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
-      localStorage.setItem(key, deviceId)
+    return getOrCreateDeviceId()
+  }
+
+  async getOrCreateDeviceIdForDoctor(doctor) {
+    const fallbackId = doctor?.deviceId || doctor?.allowedDeviceId || ''
+    const deviceId = getOrCreateDeviceId({ fallbackId })
+
+    if (!doctor || doctor.externalDoctor) {
+      return deviceId
+    }
+
+    if (doctor.id && deviceId && doctor.deviceId !== deviceId) {
+      try {
+        await firebaseStorage.updateDoctor({ ...doctor, deviceId })
+      } catch (error) {
+        console.warn('⚠️ Failed to persist device id for doctor:', error)
+      }
     }
     return deviceId
   }
@@ -173,8 +185,8 @@ class FirebaseAuthService {
     const { provider, authProvider } = this.getProviderMeta(firebaseUser)
 
     if (existingUser) {
+      const localDeviceId = await this.getOrCreateDeviceIdForDoctor(existingUser)
       if (existingUser.externalDoctor && existingUser.allowedDeviceId) {
-        const localDeviceId = this.getOrCreateDeviceId()
         if (localDeviceId !== existingUser.allowedDeviceId) {
           await firebaseSignOut(auth)
           throw new Error('External doctor login is allowed only from the owner doctor device.')

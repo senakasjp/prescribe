@@ -205,6 +205,28 @@
       teamLoading = false
     }
   }
+
+  const handleDeleteTeamMember = async (member) => {
+    if (!member?.id) return
+    if (!isPrimaryPharmacy) {
+      notifyError('Only the primary pharmacy account can remove users')
+      return
+    }
+    const name = `${member.firstName || ''} ${member.lastName || ''}`.trim() || member.email || 'this user'
+    const confirmed = window.confirm(`Delete ${name}? This cannot be undone.`)
+    if (!confirmed) return
+    try {
+      teamLoading = true
+      await firebaseStorage.deletePharmacyUser(member.id)
+      notifySuccess('Team member deleted successfully')
+      await loadTeamMembers()
+    } catch (err) {
+      teamError = err.message
+      notifyError(teamError)
+    } finally {
+      teamLoading = false
+    }
+  }
   
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -554,7 +576,7 @@
                   disabled={loading || !canEditProfile}
                 >
                   {#each currencies as currencyOption}
-                    <option value={currencyOption.code}>{currencyOption.symbol} {currencyOption.name} ({currencyOption.code})</option>
+                    <option value={currencyOption.code}>{currencyOption.code} - {currencyOption.name}</option>
                   {/each}
                 </select>
                 <div class="text-xs text-gray-500 mt-1">
@@ -734,6 +756,7 @@
                     <th class="px-4 py-2">Name</th>
                     <th class="px-4 py-2">Email</th>
                     <th class="px-4 py-2">Status</th>
+                    <th class="px-4 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
@@ -744,6 +767,17 @@
                       </td>
                       <td class="px-4 py-2 text-gray-700">{member.email}</td>
                       <td class="px-4 py-2 text-gray-600">{member.status || 'active'}</td>
+                      <td class="px-4 py-2 text-right">
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                          on:click={() => handleDeleteTeamMember(member)}
+                          disabled={teamLoading}
+                        >
+                          <i class="fas fa-trash mr-1"></i>
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   {/each}
                 </tbody>

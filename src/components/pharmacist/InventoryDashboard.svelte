@@ -9,6 +9,14 @@
   import { notifySuccess, notifyError } from '../../stores/notifications.js'
   import ConfirmationModal from '../ConfirmationModal.svelte'
   import DateInput from '../DateInput.svelte'
+  import { formatDate as formatDateByLocale } from '../../utils/dataProcessing.js'
+  import { formatCurrency as formatCurrencyByLocale } from '../../utils/formatting.js'
+  import {
+    STRENGTH_UNITS,
+    DOSAGE_FORM_OPTIONS,
+    normalizeStrengthUnitValue,
+    normalizeDosageFormValue
+  } from '../../utils/medicationOptions.js'
   
   export let pharmacist
   export let currency = 'USD'
@@ -58,8 +66,8 @@
     manufacturer: '',
     category: 'prescription',
     strength: '',
-    strengthUnit: 'mg',
-    dosageForm: 'tablet',
+    strengthUnit: normalizeStrengthUnitValue('mg'),
+    dosageForm: normalizeDosageFormValue('tablet'),
     packSize: '',
     packUnit: 'tablets',
     initialStock: '',
@@ -288,8 +296,8 @@
         manufacturer: '',
         category: 'prescription',
         strength: '',
-        strengthUnit: 'mg',
-        dosageForm: 'tablet',
+        strengthUnit: normalizeStrengthUnitValue('mg'),
+        dosageForm: normalizeDosageFormValue('tablet'),
         packSize: '',
         packUnit: 'tablets',
         initialStock: '',
@@ -395,44 +403,15 @@
   }
   
   // Format currency
-  const formatCurrency = (amount) => {
-    const resolvedCurrency = currency || pharmacist?.currency || 'USD'
-    
-    if (resolvedCurrency === 'LKR') {
-      // Format the number without currency style (icon shows currency)
-      const numberFormatted = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(amount)
-      return numberFormatted
-    } else {
-      // For other currencies, use the standard currency formatting
-      const formatted = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: resolvedCurrency
-      }).format(amount)
-      
-      if (resolvedCurrency === 'USD') {
-        return formatted.replace('$', 'USD $')
-      } else if (resolvedCurrency === 'EUR') {
-        return formatted.replace('€', 'EUR €')
-      } else if (resolvedCurrency === 'GBP') {
-        return formatted.replace('£', 'GBP £')
-      }
-      
-      return formatted
-    }
-  }
+  const formatCurrency = (amount) => formatCurrencyByLocale(amount, {
+    currency: currency || pharmacist?.currency || 'USD',
+    country: pharmacist?.country,
+    includeCurrencyCode: true
+  })
   
   // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
-  }
+  const formatDate = (dateString) =>
+    dateString ? formatDateByLocale(dateString, { country: pharmacist?.country }) : 'N/A'
   
   // Handle confirmation
   const handleConfirmation = () => {
@@ -846,7 +825,14 @@
                         <div class="flex flex-wrap gap-1">
                           <button 
                             class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-xs font-medium transition-colors duration-200"
-                            on:click={() => { selectedItem = item; showEditItemModal = true }}
+                            on:click={() => {
+                              selectedItem = {
+                                ...item,
+                                strengthUnit: normalizeStrengthUnitValue(item?.strengthUnit),
+                                dosageForm: normalizeDosageFormValue(item?.dosageForm)
+                              }
+                              showEditItemModal = true
+                            }}
                           >
                             <i class="fas fa-edit mr-1"></i>
                             Edit
@@ -921,7 +907,14 @@
                 <div class="flex space-x-2">
                   <button 
                     class="flex-1 text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
-                    on:click={() => { selectedItem = item; showEditItemModal = true }}
+                    on:click={() => {
+                      selectedItem = {
+                        ...item,
+                        strengthUnit: normalizeStrengthUnitValue(item?.strengthUnit),
+                        dosageForm: normalizeDosageFormValue(item?.dosageForm)
+                      }
+                      showEditItemModal = true
+                    }}
                   >
                     <i class="fas fa-edit mr-1"></i>
                     Edit
@@ -1149,9 +1142,12 @@
                 <label for="newItemStrength" class="block text-sm font-medium text-gray-700 mb-2">Strength <span class="text-red-500">*</span></label>
                 <input 
                   id="newItemStrength"
-                  type="text" 
+                  type="number"
                   bind:value={newItemForm.strength}
                   required
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
                   placeholder="e.g., 500"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1164,11 +1160,9 @@
                   bind:value={newItemForm.strengthUnit}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="mg">mg</option>
-                  <option value="g">g</option>
-                  <option value="ml">ml</option>
-                  <option value="mcg">mcg</option>
-                  <option value="units">units</option>
+                  {#each STRENGTH_UNITS as unit}
+                    <option value={unit}>{unit}</option>
+                  {/each}
                 </select>
               </div>
               
@@ -1180,15 +1174,9 @@
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="tablet">Tablet</option>
-                  <option value="capsule">Capsule</option>
-                  <option value="liquid">Liquid</option>
-                  <option value="injection">Injection</option>
-                  <option value="cream">Cream</option>
-                  <option value="ointment">Ointment</option>
-                  <option value="suppository">Suppository</option>
-                  <option value="packet">Packet</option>
-                  <option value="roll">Roll</option>
+                  {#each DOSAGE_FORM_OPTIONS as option}
+                    <option value={option}>{option}</option>
+                  {/each}
                 </select>
               </div>
             </div>
@@ -1203,6 +1191,8 @@
                   bind:value={newItemForm.initialStock}
                   required
                   min="0"
+                  step="1"
+                  inputmode="numeric"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1215,6 +1205,8 @@
                   bind:value={newItemForm.minimumStock}
                   required
                   min="0"
+                  step="1"
+                  inputmode="numeric"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1227,6 +1219,7 @@
                   bind:value={newItemForm.costPrice}
                   min="0"
                   step="0.01"
+                  inputmode="decimal"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1240,6 +1233,7 @@
                   required
                   min="0"
                   step="0.01"
+                  inputmode="decimal"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1403,16 +1397,19 @@
                   <label for="editItemStrength" class="block text-sm font-medium text-gray-700 mb-1">Strength <span class="text-red-500">*</span></label>
                   <input 
                     id="editItemStrength"
-                    type="text"
+                    type="number"
                     bind:value={selectedItem.strength}
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                     disabled
                     title="Strength cannot be changed (Primary Key)"
+                    min="0"
+                    step="0.01"
+                    inputmode="decimal"
                   />
                   <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
                 </div>
                 <div>
-                  <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-1">Strength Unit <span class="text-red-500">*</span></label>
+                <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-1">Strength Unit <span class="text-red-500">*</span></label>
                   <select 
                     id="editItemStrengthUnit"
                     bind:value={selectedItem.strengthUnit}
@@ -1420,12 +1417,9 @@
                     disabled
                     title="Strength Unit cannot be changed (Primary Key)"
                   >
-                    <option value="mg">mg</option>
-                    <option value="g">g</option>
-                    <option value="ml">ml</option>
-                    <option value="mcg">mcg</option>
-                    <option value="units">units</option>
-                    <option value="%">%</option>
+                    {#each STRENGTH_UNITS as unit}
+                      <option value={unit}>{unit}</option>
+                    {/each}
                   </select>
                   <p class="text-xs text-gray-500 mt-1">Strength Unit is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
                 </div>
@@ -1439,17 +1433,9 @@
                     required
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="tablet">Tablet</option>
-                    <option value="capsule">Capsule</option>
-                    <option value="syrup">Syrup</option>
-                    <option value="injection">Injection</option>
-                    <option value="cream">Cream</option>
-                    <option value="gel">Gel</option>
-                    <option value="drops">Drops</option>
-                    <option value="spray">Spray</option>
-                    <option value="suppository">Suppository</option>
-                    <option value="packet">Packet</option>
-                    <option value="roll">Roll</option>
+                    {#each DOSAGE_FORM_OPTIONS as option}
+                      <option value={option}>{option}</option>
+                    {/each}
                   </select>
                 </div>
             </div>
@@ -1463,8 +1449,11 @@
                   <label for="editItemPackSize" class="block text-sm font-medium text-gray-700 mb-1">Pack Size</label>
                   <input 
                     id="editItemPackSize"
-                    type="text"
+                    type="number"
                     bind:value={selectedItem.packSize}
+                    min="0"
+                    step="1"
+                    inputmode="numeric"
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1496,6 +1485,8 @@
                   type="number"
                   bind:value={selectedItem.currentStock}
                   min="0"
+                  step="1"
+                  inputmode="numeric"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1503,49 +1494,55 @@
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label for="editItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-1">Minimum Stock <span class="text-red-500">*</span></label>
-                  <input 
-                    id="editItemMinimumStock"
-                    type="number"
-                    bind:value={selectedItem.minimumStock}
-                    required
-                    min="0"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                <input 
+                  id="editItemMinimumStock"
+                  type="number"
+                  bind:value={selectedItem.minimumStock}
+                  required
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 </div>
                 <div>
                   <label for="editItemMaximumStock" class="block text-sm font-medium text-gray-700 mb-1">Maximum Stock</label>
-                  <input 
-                    id="editItemMaximumStock"
-                    type="number"
-                    bind:value={selectedItem.maximumStock}
-                    min="0"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                <input 
+                  id="editItemMaximumStock"
+                  type="number"
+                  bind:value={selectedItem.maximumStock}
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 </div>
               </div>
               
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label for="editItemCostPrice" class="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
-                  <input 
-                    id="editItemCostPrice"
-                    type="number"
-                    bind:value={selectedItem.costPrice}
-                    min="0"
-                    step="0.01"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                <input 
+                  id="editItemCostPrice"
+                  type="number"
+                  bind:value={selectedItem.costPrice}
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 </div>
                 <div>
                   <label for="editItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-1">Selling Price</label>
-                  <input 
-                    id="editItemSellingPrice"
-                    type="number"
-                    bind:value={selectedItem.sellingPrice}
-                    min="0"
-                    step="0.01"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                <input 
+                  id="editItemSellingPrice"
+                  type="number"
+                  bind:value={selectedItem.sellingPrice}
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 </div>
               </div>
               

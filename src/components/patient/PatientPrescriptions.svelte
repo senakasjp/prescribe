@@ -68,6 +68,16 @@
   function deleteMedication(medication) {
     dispatch('delete-medication', medication)
   }
+
+  const getMedicationDosageDisplay = (medication) => {
+    const strength = String(medication?.strength || '').trim()
+    const strengthUnit = String(medication?.strengthUnit || '').trim()
+    const dosage = String(medication?.dosage || '').trim()
+    if (!strength && !dosage) return ''
+    if (!strength) return dosage
+    const strengthText = strengthUnit ? `${strength} ${strengthUnit}` : strength
+    return dosage ? `${strengthText} ${dosage}` : strengthText
+  }
   
   // Get prescription status color
   function getStatusColor(status) {
@@ -156,7 +166,7 @@
                     <div class="flex-1">
                       <div class="flex items-center space-x-3">
                         <span class="font-medium text-gray-900">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</span>
-                        <span class="text-sm text-gray-500">{medication.dosage}</span>
+                        <span class="text-sm text-gray-500">{getMedicationDosageDisplay(medication)}</span>
                         <span class="text-sm text-gray-500">{getFrequencyLabel(medication.frequency)}</span>
                         {#if medication.duration}
                           <span class="text-sm text-gray-500">for {medication.duration}</span>
@@ -299,7 +309,7 @@
                       <div class="flex items-center space-x-3 text-sm">
                         <i class="{getIconClass('medication')} text-gray-400"></i>
                         <span class="font-medium text-gray-900">{medication.name}</span>
-                        <span class="text-gray-500">{medication.dosage}</span>
+                        <span class="text-gray-500">{getMedicationDosageDisplay(medication)}</span>
                         <span class="text-gray-500">{getFrequencyLabel(medication.frequency)}</span>
                         {#if medication.duration}
                           <span class="text-gray-500">for {medication.duration}</span>

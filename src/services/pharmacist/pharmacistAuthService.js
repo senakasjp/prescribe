@@ -115,16 +115,19 @@ class PharmacistAuthService {
   // Pharmacist login
   async signInPharmacist(email, password) {
     try {
-      console.log('PharmacistAuthService: Signing in pharmacist:', email)
+      const normalizedEmail = String(email || '').trim()
+      const normalizedPassword = String(password || '').trim()
+      console.log('PharmacistAuthService: Signing in pharmacist:', normalizedEmail)
       
       // Get pharmacist from Firebase
-      const pharmacist = await firebaseStorage.getPharmacistByEmail(email)
+      const pharmacist = await firebaseStorage.getPharmacistByEmail(normalizedEmail)
       if (!pharmacist) {
-        const pharmacyUser = await firebaseStorage.getPharmacyUserByEmail(email)
+        const pharmacyUser = await firebaseStorage.getPharmacyUserByEmail(normalizedEmail)
         if (!pharmacyUser) {
           throw new Error('Pharmacist not found')
         }
-        if (pharmacyUser.password !== password) {
+        const storedPassword = String(pharmacyUser.password || '')
+        if (storedPassword !== password && storedPassword.trim() !== normalizedPassword) {
           throw new Error('Invalid password')
         }
 
@@ -149,7 +152,8 @@ class PharmacistAuthService {
       }
 
       // Simple password check (in production, use proper hashing)
-      if (pharmacist.password !== password) {
+      const storedPassword = String(pharmacist.password || '')
+      if (storedPassword !== password && storedPassword.trim() !== normalizedPassword) {
         throw new Error('Invalid password')
       }
 

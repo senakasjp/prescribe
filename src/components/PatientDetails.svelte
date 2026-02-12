@@ -15,6 +15,7 @@
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
   import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import { formatDate } from '../utils/dataProcessing.js'
   import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
@@ -240,11 +241,78 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return { strength: normalized, strengthUnit: rawUnit || '' }
   }
 
-  const getPdfDosageLabel = (medication) => {
-    const base = String(medication?.dosage ?? '').trim()
+  const parseDosageValue = (dosage) => {
+    const raw = String(dosage || '').trim()
+    if (!raw) return null
+    if (/^\d+(?:\.\d+)?$/.test(raw)) return Number(raw)
+    const mixedMatch = raw.match(/^(\d+)\s+(\d+)\/(\d+)$/)
+    if (mixedMatch) {
+      const whole = Number(mixedMatch[1])
+      const numerator = Number(mixedMatch[2])
+      const denominator = Number(mixedMatch[3])
+      if (denominator) return whole + numerator / denominator
+    }
+    const fractionMatch = raw.match(/^(\d+)\/(\d+)$/)
+    if (fractionMatch) {
+      const numerator = Number(fractionMatch[1])
+      const denominator = Number(fractionMatch[2])
+      if (denominator) return numerator / denominator
+    }
+    return null
+  }
+
+  const formatDosageFormLabel = (form, isPlural) => {
+    const trimmed = String(form || '').trim()
+    const base = trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : 'Tablet'
+    if (!isPlural) return base
+    if (base.toLowerCase().endsWith('s')) return base
+    return `${base}s`
+  }
+
+  const getDoseLabel = (medication) => {
+    const dosage = String(medication?.dosage ?? '').trim()
+    if (!dosage) return ''
+    const parsedValue = parseDosageValue(dosage)
+    const isPlural = parsedValue !== null ? parsedValue > 1 : !/^1(?:\s|$)/.test(dosage)
+    const form = medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? ''
+    const formLabel = formatDosageFormLabel(form || 'Tablet', isPlural)
+    return `${dosage} ${formLabel}`.trim()
+  }
+
+  const isLiquidMedication = (medication) => {
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
-    return strengthText || base
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const strengthTextLower = strengthText.toLowerCase()
+    return Boolean(
+      strengthUnit &&
+      ['ml', 'l'].includes(String(strengthUnit).toLowerCase())
+    ) || dosageForm === 'liquid' || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
+  }
+
+  const getMedicationMetaLine = (medication, headerLabel = '') => {
+    const parts = []
+    if (!isLiquidMedication(medication)) {
+      const doseLabel = getDoseLabel(medication)
+      if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
+    }
+    return parts.join(' | ')
+  }
+
+  const getPdfDosageLabel = (medication) => {
+    const { strength, strengthUnit } = parseStrengthParts(medication)
+    const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
+    if (strength && strengthUnit) return strengthText
+
+    const doseLabel = getDoseLabel(medication)
+    if (doseLabel) return doseLabel
+
+    const base = String(medication?.dosage ?? '').trim()
+    const fallbackUnit = String(medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? '').trim()
+    if (base && fallbackUnit) {
+      return `${base} ${fallbackUnit}`.trim()
+    }
+    return base
   }
 
   const buildMedicationKeyForPharmacy = (medication) => {
@@ -303,6 +371,23 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return total > 0 ? total : 1
   }
 
+  const resolveStrengthToMl = (value, unitHint = '') => {
+    if (value === null || value === undefined || value === '') return null
+    const normalized = String(value).trim().toLowerCase()
+    const match = normalized.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+    if (match) {
+      const amount = parseFloat(match[1])
+      if (!Number.isFinite(amount)) return null
+      return match[2] === 'l' ? amount * 1000 : amount
+    }
+    const unit = String(unitHint || '').trim().toLowerCase()
+    const numeric = parseFloat(normalized.replace(/[^\d.]/g, ''))
+    if (!Number.isFinite(numeric)) return null
+    if (unit === 'l') return numeric * 1000
+    if (unit === 'ml') return numeric
+    return null
+  }
+
   const calculateMedicationQuantity = (medication) => {
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
       const base = Number(medication.amount) || 0
@@ -321,6 +406,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     if (!Number.isFinite(days) || days <= 0) return 0
     const dailyFrequency = resolveDailyFrequency(medication.frequency)
     if (!dailyFrequency) return 0
+    if (isLiquidMedication(medication)) {
+      const strengthMl = resolveStrengthToMl(medication?.strength, medication?.strengthUnit)
+      if (!strengthMl) return 0
+      return Math.ceil(days * dailyFrequency * strengthMl)
+    }
     const dosageMultiplier = parseDosageMultiplier(medication.dosage)
     return Math.ceil(days * dailyFrequency * dosageMultiplier)
   }
@@ -2368,11 +2458,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         format: 'a5'
       })
       
-      const currentDate = new Date().toLocaleDateString('en-GB', {
-        day: '2-digit', 
-        month: '2-digit',
-        year: 'numeric'
-      })
+      const currentDate = formatDate(new Date(), { country: currentUser?.country })
       
       console.log('📄 Creating A5 PDF content...')
       console.log('Patient:', selectedPatient.firstName, selectedPatient.lastName)
@@ -2970,9 +3056,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         JsBarcode(barcodeCanvas, prescriptionId, {
           format: 'CODE128',
           displayValue: false,
-          margin: 0,
-          width: 0.9,
-          height: 18
+          margin: 4,
+          width: 2,
+          height: 24
         })
         barcodeDataUrl = barcodeCanvas.toDataURL('image/png')
       } catch (error) {
@@ -2980,8 +3066,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       }
 
       if (barcodeDataUrl) {
-        const barcodeWidth = 42
-        const barcodeHeight = 8
+        const barcodeWidth = 60
+        const barcodeHeight = 10
         const barcodeX = pageWidth - margin - barcodeWidth
         const barcodeY = contentYStart + 15
         doc.addImage(barcodeDataUrl, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight)
@@ -3039,14 +3125,16 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
           
           // Dosage on the right (bold and right-aligned)
-          doc.text(getPdfDosageLabel(medication), pageWidth - margin, yPos, { align: 'right' })
+          const headerLabel = getPdfDosageLabel(medication)
+          doc.text(headerLabel, pageWidth - margin, yPos, { align: 'right' })
           
           // Other medication details on next line
           doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
-          
+
           // Build horizontal medication details string (excluding dosage since it's now on header line)
-          let medicationDetails = `${medication.frequency}`
+          const doseLabel = getMedicationMetaLine(medication, headerLabel)
+          let medicationDetails = doseLabel ? `${doseLabel} | ${medication.frequency}` : `${medication.frequency}`
           if (medication.timing) {
             medicationDetails += ` | ${medication.timing}`
           }
@@ -5113,11 +5201,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </div>
                       <div class="text-xs text-gray-500">
                         <i class="fas fa-calendar mr-1"></i>
-                        Recorded: {symptom.createdAt ? new Date(symptom.createdAt).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        }) : 'Unknown date'}
+                        Recorded: {symptom.createdAt ? formatDate(symptom.createdAt, { country: currentUser?.country }) : 'Unknown date'}
                       </div>
                     </div>
                     <button 
@@ -5256,11 +5340,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       {/if}
                       <small class="text-gray-600 dark:text-gray-300">
                         <i class="fas fa-calendar me-1"></i>
-                        Recorded: {illness.createdAt ? new Date(illness.createdAt).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        }) : 'Unknown date'}
+                        Recorded: {illness.createdAt ? formatDate(illness.createdAt, { country: currentUser?.country }) : 'Unknown date'}
                       </small>
                     </div>
                     <button 
@@ -5550,11 +5630,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                   <div class="p-4">
                     <p class="text-gray-500 text-xs mb-3">
                       <i class="fas fa-calendar mr-1"></i>
-                        {new Date(report.date).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        })}
+                        {formatDate(report.date, { country: currentUser?.country })}
                       </p>
                     {#if report.type === 'text'}
                       <div class="report-content">
@@ -5843,11 +5919,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 sm:mb-3 gap-1 sm:gap-0">
                       <div class="text-gray-500 text-xs">
                         <i class="fas fa-calendar mr-1"></i>
-                            {new Date(diagnosis.date).toLocaleDateString('en-GB', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric'
-                            })}
+                            {formatDate(diagnosis.date, { country: currentUser?.country })}
               </div>
                       <span class="inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded-full text-xs font-medium {diagnosis.severity === 'mild' ? 'bg-green-100 text-teal-800' : diagnosis.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'} self-start sm:self-auto">
                             {diagnosis.severity.charAt(0).toUpperCase() + diagnosis.severity.slice(1)}

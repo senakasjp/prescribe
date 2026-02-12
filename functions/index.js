@@ -73,14 +73,6 @@ const normalizeNotifyRecipient = (input) => {
   return digits;
 };
 
-const renderTemplate = (template, data) => {
-  const safe = String(template || "");
-  return safe.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-    const value = data[key];
-    return value !== undefined && value !== null ? String(value) : "";
-  });
-};
-
 const sendNotifySms = async ({recipient, senderId, message, type}) => {
   const userId = NOTIFY_USER_ID.value();
   const apiKey = NOTIFY_API_KEY.value();
@@ -136,13 +128,6 @@ const getMessagingTemplates = async () => {
 const getAppUrl = async () => {
   const templates = await getMessagingTemplates();
   return (templates && templates.appUrl) || DEFAULT_APP_URL;
-};
-
-const buildDoctorName = (doctor) => {
-  return doctor.name ||
-    `${doctor.firstName || ""} ${doctor.lastName || ""}`.trim() ||
-    doctor.email ||
-    "Doctor";
 };
 
 // For cost control, you can set the maximum number of containers that can be
@@ -259,32 +244,15 @@ const formatDateInTimeZone = (dateValue, timeZone) => {
   }).format(date);
 };
 
-const hashString = (value) => {
-  const input = String(value || "");
-  let hash = 5381;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = ((hash << 5) + hash) + input.charCodeAt(i);
-    hash &= 0xffffffff;
-  }
-  return Math.abs(hash >>> 0);
-};
-
-const formatDoctorId = (rawId) => {
-  if (!rawId) return "";
-  const modulus = 100000;
-  const numeric = hashString(rawId) % modulus;
-  const padded = String(numeric).padStart(5, "0");
-  return `DR${padded}`;
-};
-
-const formatPatientId = (rawId) => {
-  if (!rawId) return "";
-  const modulus = 10000000;
-  const numeric = hashString(rawId) % modulus;
-  const padded = String(numeric).padStart(7, "0");
-  return `PA${padded}`;
-};
-
+const {
+  formatDoctorId,
+  formatPatientId,
+  renderTemplate,
+  buildDoctorName,
+} = require("./messagingUtils");
+const {
+  buildPatientRegistrationSmsPayload,
+} = require("./patientRegistrationSms");
 
 const applyTemplate = (value, replacements) => {
   if (!value) return value;
@@ -1179,6 +1147,65 @@ exports.sendPatientWelcomeEmail = onDocumentCreated(
           error: String((error && error.message) || error),
         });
       }
+    },
+);
+
+exports.sendPatientRegistrationSms = onDocumentCreated(
+    {
+      document: "patients/{patientId}",
+      secrets: [NOTIFY_USER_ID, NOTIFY_API_KEY],
+    },
+    async (event) => {
+      const patient = event.data && event.data.data ? event.data.data() : null;
+      if (!patient) return;
+      patient.id = patient.id || event.params.patientId;
+
+      const templates = await getMessagingTemplates();
+      let doctor = null;
+      if (patient.doctorId) {
+        try {
+          const doctorDoc = await admin
+              .firestore()
+              .collection("doctors")
+              .doc(patient.doctorId)
+              .get();
+          if (doctorDoc.exists) {
+            doctor = doctorDoc.data();
+          }
+        } catch (error) {
+          logger.error("Failed to load doctor for patient SMS:", error);
+        }
+      }
+
+      const payload = buildPatientRegistrationSmsPayload({
+        patient,
+        doctor,
+        templates,
+        appUrl: templates.appUrl || DEFAULT_APP_URL,
+      });
+
+      if (!payload.ok) {
+        logger.info("Patient registration SMS skipped:", payload.reason);
+        return;
+      }
+
+      const result = await sendNotifySms({
+        recipient: payload.recipient,
+        senderId: payload.senderId,
+        message: payload.message,
+      });
+      if (!result.ok) {
+        logger.warn("Patient registration SMS failed:", result.error);
+        return;
+      }
+
+      await admin.firestore()
+          .collection("patients")
+          .doc(event.params.patientId)
+          .set(
+              {patientRegistrationSmsSentAt: new Date().toISOString()},
+              {merge: true},
+          );
     },
 );
 

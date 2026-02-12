@@ -661,7 +661,7 @@
               disabled={loading}
             >
               {#each currencies as currencyOption}
-                <option value={currencyOption.code}>{currencyOption.symbol} {currencyOption.name} ({currencyOption.code})</option>
+                <option value={currencyOption.code}>{currencyOption.code} - {currencyOption.name}</option>
               {/each}
             </select>
           </div>
@@ -696,7 +696,7 @@
                 </label>
                 <div class="relative">
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
+                    <span class="text-gray-500 text-sm">{currency}</span>
                   </div>
                     <input 
                       type="text" 
@@ -719,7 +719,7 @@
                 </label>
                 <div class="relative">
                   <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span class="text-gray-500 text-sm">{currencies.find(c => c.code === currency)?.symbol || '$'}</span>
+                    <span class="text-gray-500 text-sm">{currency}</span>
                   </div>
                     <input 
                       type="text" 

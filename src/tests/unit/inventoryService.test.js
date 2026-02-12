@@ -52,4 +52,16 @@ describe('inventoryService', () => {
       expect(inventoryService.getStockStatus(50, 10, 90)).toBe(inventoryService.STOCK_STATUS.IN_STOCK)
     })
   })
+
+  describe('normalizeStockChange', () => {
+    it('should reduce stock for dispatch even if quantity is negative', () => {
+      const change = inventoryService.normalizeStockChange(-5, 'dispatch')
+      expect(change).toBe(-5)
+    })
+
+    it('should return positive stock change for purchase', () => {
+      const change = inventoryService.normalizeStockChange(7, inventoryService.MOVEMENT_TYPES.PURCHASE)
+      expect(change).toBe(7)
+    })
+  })
 })

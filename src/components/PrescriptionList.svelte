@@ -3,6 +3,8 @@
   import firebaseStorage from '../services/firebaseStorage.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
+  import { formatDate } from '../utils/dataProcessing.js'
+  import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
   
   export let prescriptions = []
   export let selectedPatient = null
@@ -55,11 +57,17 @@
   // Helper function to format prescription date
   const formatPrescriptionDate = (dateString) => {
     if (!dateString) return 'Unknown date'
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
+    return formatDate(dateString)
+  }
+
+  const getMedicationDosageDisplay = (medication) => {
+    const strength = String(medication?.strength || '').trim()
+    const strengthUnit = String(medication?.strengthUnit || '').trim()
+    const dosage = String(medication?.dosage || '').trim()
+    if (!strength && !dosage) return 'Not specified'
+    if (!strength) return dosage || 'Not specified'
+    const strengthText = strengthUnit ? `${strength} ${strengthUnit}` : strength
+    return dosage ? `${strengthText} ${dosage}` : strengthText
   }
 
   const getDoctorIdForPrescription = (prescription) => {
@@ -287,23 +295,8 @@
     return []
   }
 
-  const formatCurrencyDisplay = (amount, currencyCode = 'USD') => {
-    try {
-      if (currencyCode === 'LKR') {
-        return new Intl.NumberFormat('en-US', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        }).format(amount)
-      }
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currencyCode
-      }).format(amount)
-    } catch (error) {
-      console.error('❌ Error formatting currency:', error)
-      return Number(amount || 0).toFixed(2)
-    }
-  }
+  const formatCurrencyDisplay = (amount, currencyCode = 'USD') =>
+    formatCurrencyByLocale(amount, { currency: currencyCode })
 
   const buildChargePayload = (prescription) => {
     const medications = Array.isArray(prescription?.medications) ? prescription.medications : []
@@ -551,7 +544,7 @@
                 </div>
                 <div>
                   <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Dosage</div>
-                  <div class="font-medium text-gray-900">{medication.dosage || 'Not specified'}</div>
+                  <div class="font-medium text-gray-900">{getMedicationDosageDisplay(medication)}</div>
                 </div>
                 <div>
                   <div class="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Duration</div>

@@ -2,6 +2,11 @@
   import { createEventDispatcher, onMount } from 'svelte'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { MEDICATION_FREQUENCIES } from '../utils/constants.js'
+  import {
+    STRENGTH_UNITS,
+    DOSAGE_FORM_OPTIONS,
+    normalizeDosageFormValue
+  } from '../utils/medicationOptions.js'
   import openaiService from '../services/openaiService.js'
   import authService from '../services/doctor/doctorAuthService.js'
   import DateInput from './DateInput.svelte'
@@ -23,7 +28,6 @@
   let dosageForm = ''
   let strength = ''
   let strengthUnit = ''
-  const STRENGTH_UNITS = ['mg', 'g', 'ml', 'mcg', 'IU']
   let route = 'PO'
   let instructions = ''
   let frequency = ''
@@ -93,6 +97,18 @@
   let nameSelectedIndex = -1
   let nameSearchTimeout = null
   let isInventoryDrug = false
+  const resolveLiquidUnitFromStrength = (value) => {
+    const raw = String(value || '').trim().toLowerCase()
+    if (!raw) return ''
+    const match = raw.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+    return match ? match[2] : ''
+  }
+
+  $: isLiquidStrengthUnit = ['ml', 'l'].includes(String(strengthUnit || '').trim().toLowerCase()) ||
+    Boolean(resolveLiquidUnitFromStrength(strength))
+  $: if (isLiquidStrengthUnit && dosage !== '1') {
+    dosage = '1'
+  }
   
   // Reset loading state when form is hidden
   $: if (!visible) {
@@ -160,7 +176,13 @@
   $: if (editingMedication && !formInitialized) {
     name = editingMedication.name || ''
     genericName = editingMedication.genericName || ''
-    dosageForm = editingMedication.dosageForm || editingMedication.form || ''
+    dosageForm = normalizeDosageFormValue(
+      editingMedication.dosageForm ||
+      editingMedication.form ||
+      editingMedication.packUnit ||
+      editingMedication.unit ||
+      ''
+    )
     strength = editingMedication.strength || ''
     strengthUnit = editingMedication.strengthUnit || ''
     
@@ -280,7 +302,7 @@
     
     // Set generic name, dosage form, and strength from selected drug
     genericName = s.genericName || ''
-    dosageForm = s.dosageForm || s.form || s.packUnit || s.unit || ''
+    dosageForm = normalizeDosageFormValue(s.dosageForm || s.form || s.packUnit || s.unit || '')
     strength = s.strength || ''
     strengthUnit = s.strengthUnit || ''
     isInventoryDrug = s.source === 'inventory'
@@ -665,30 +687,43 @@
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         <div>
-          <label for="medicationDosage" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dosage <span class="text-red-500">*</span></label>
+          <label for="medicationDosage" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dosage Fraction <span class="text-red-500">*</span></label>
           <div class="flex flex-col sm:flex-row gap-2">
-            <select
-              class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-              id="medicationDosage"
-              bind:value={dosage}
-              required
-              disabled={loading}
-            >
-              <option value="">Select dosage</option>
-              {#each DOSAGE_OPTIONS as option}
-                <option value={option}>{option}</option>
-              {/each}
-            </select>
+            {#if isLiquidStrengthUnit}
+              <div
+                class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center justify-between"
+                id="medicationDosage"
+              >
+                <span>1</span>
+                <span class="text-[10px] uppercase tracking-wide text-gray-500">fixed</span>
+              </div>
+            {:else}
+              <select
+                class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                id="medicationDosage"
+                bind:value={dosage}
+                required
+                disabled={loading}
+              >
+                <option value="">Select dosage</option>
+                {#each DOSAGE_OPTIONS as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            {/if}
 
-            {#if !isInventoryDrug}
+            {#if !isInventoryDrug || (isInventoryDrug && isLiquidStrengthUnit)}
               <input
                 id="medicationStrength"
-                type="text"
+                type="number"
                 class="w-full sm:flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 bind:value={strength}
                 placeholder="Strength"
                 disabled={loading}
-                required
+                required={!isInventoryDrug}
+                min="0"
+                step="0.01"
+                inputmode="decimal"
               />
               <select
                 id="medicationStrengthUnit"
@@ -701,6 +736,11 @@
                   <option value={unit}>{unit}</option>
                 {/each}
               </select>
+            {:else if strength}
+              <div class="flex items-center text-xs sm:text-sm text-gray-700 px-2">
+                <span class="font-medium">Strength:</span>
+                <span class="ml-1">{strength}{#if strengthUnit} {strengthUnit}{/if}</span>
+              </div>
             {/if}
           </div>
         </div>
@@ -749,16 +789,9 @@
             disabled={loading}
           >
             <option value="">Select dosage form</option>
-            <option value="Tablet">Tablet</option>
-            <option value="Capsule">Capsule</option>
-            <option value="Liquid">Liquid</option>
-            <option value="Injection">Injection</option>
-            <option value="Cream">Cream</option>
-            <option value="Ointment">Ointment</option>
-            <option value="Suppository">Suppository</option>
-            <option value="Drops">Drops</option>
-            <option value="Inhaler">Inhaler</option>
-            <option value="Spray">Spray</option>
+            {#each DOSAGE_FORM_OPTIONS as option}
+              <option value={option}>{option}</option>
+            {/each}
           </select>
         </div>
         <div>
@@ -783,13 +816,16 @@
                 </label>
                 <input 
                   id="prnAmount"
-                  type="text" 
+                  type="number" 
                   class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                   placeholder="Amount"
                   bind:value={prnAmount}
                   required
                   aria-required="true"
                   disabled={loading}
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
                 >
               </div>
             {/if}

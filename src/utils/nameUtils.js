@@ -42,11 +42,18 @@ export function capitalizePatientNames(patientData) {
   if (!patientData) {
     return patientData
   }
-  
-  return {
-    ...patientData,
-    firstName: capitalizeName(patientData.firstName),
-    lastName: capitalizeName(patientData.lastName),
-    emergencyContact: capitalizeName(patientData.emergencyContact)
+
+  const result = { ...patientData }
+
+  if (Object.prototype.hasOwnProperty.call(patientData, 'firstName')) {
+    result.firstName = capitalizeName(patientData.firstName)
   }
+  if (Object.prototype.hasOwnProperty.call(patientData, 'lastName')) {
+    result.lastName = capitalizeName(patientData.lastName)
+  }
+  if (Object.prototype.hasOwnProperty.call(patientData, 'emergencyContact')) {
+    result.emergencyContact = capitalizeName(patientData.emergencyContact)
+  }
+
+  return result
 }

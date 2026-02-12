@@ -5,6 +5,7 @@
   import firebaseStorage from '../services/firebaseStorage.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import DateInput from './DateInput.svelte'
+  import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
   
   export let selectedPatient
   export let showMedicationForm
@@ -502,7 +503,41 @@
     return total > 0 ? total : 1
   }
 
+  const getMedicationDosageDisplay = (medication) => {
+    const strength = String(medication?.strength || '').trim()
+    const strengthUnit = String(medication?.strengthUnit || '').trim()
+    const dosage = String(medication?.dosage || '').trim()
+    if (!strength && !dosage) return ''
+    if (!strength) return dosage
+    const strengthText = strengthUnit ? `${strength} ${strengthUnit}` : strength
+    return dosage ? `${strengthText} ${dosage}` : strengthText
+  }
+
   const calculateMedicationQuantity = (medication) => {
+    const resolveStrengthToMl = (value, unitHint = '') => {
+      if (value === null || value === undefined || value === '') return null
+      const normalized = String(value).trim().toLowerCase()
+      const match = normalized.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+      if (match) {
+        const amount = parseFloat(match[1])
+        if (!Number.isFinite(amount)) return null
+        return match[2] === 'l' ? amount * 1000 : amount
+      }
+      const unit = String(unitHint || '').trim().toLowerCase()
+      const numeric = parseFloat(normalized.replace(/[^\d.]/g, ''))
+      if (!Number.isFinite(numeric)) return null
+      if (unit === 'l') return numeric * 1000
+      if (unit === 'ml') return numeric
+      return null
+    }
+
+    const isLiquid = (() => {
+      const unit = String(medication?.strengthUnit || '').trim().toLowerCase()
+      const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+      const strengthText = String(medication?.strength || '').trim().toLowerCase()
+      return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
+    })()
+
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
       const base = chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
       const dosageMultiplier = parseDosageMultiplier(medication.dosage)
@@ -528,6 +563,12 @@
 
     const dailyFrequency = resolveDailyFrequency(medication.frequency)
     if (!dailyFrequency) return 0
+    if (isLiquid) {
+      const strengthMl = resolveStrengthToMl(medication?.strength, medication?.strengthUnit)
+      if (!strengthMl) return 0
+      const totalAmount = days * dailyFrequency * strengthMl
+      return Math.ceil(totalAmount)
+    }
     const dosageMultiplier = parseDosageMultiplier(medication.dosage)
     const totalAmount = days * dailyFrequency * dosageMultiplier
     return Math.ceil(totalAmount)
@@ -633,14 +674,8 @@
       return '--'
     }
     const currency = expectedPharmacist?.currency || doctorCurrency || 'USD'
-    if (currency === 'LKR') {
-      return `Rs ${amount.toFixed(2)}`
-    }
-    try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
-    } catch (error) {
-      return amount.toFixed(2)
-    }
+    const country = doctorProfile?.country || doctorProfileFallback?.country || ''
+    return formatCurrencyByLocale(amount, { currency, country })
   }
 
   const getUnavailableMedications = () => {
@@ -851,7 +886,7 @@
                       {/if}
                     </div>
                     <div class="text-gray-500 text-sm">
-                      {medication.dosage} • {medication.frequency}
+                      {getMedicationDosageDisplay(medication)} • {medication.frequency}
                       {#if medication.timing} • {medication.timing}{/if}
                       • {medication.duration}{#if medication.dosageForm} • {medication.dosageForm}{/if}
                     </div>

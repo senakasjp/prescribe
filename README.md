@@ -143,15 +143,51 @@ npm run test:coverage
 
 # Run with UI dashboard
 npm run test:ui
+
+# E2E (Playwright)
+npm run test:e2e
 ```
 
-### Test Coverage
-- **115 tests** implemented
-- **93 tests passing** (81% success rate)
-- **Unit tests**: Service and utility testing
-- **Integration tests**: Complete workflow testing
-- **Component tests**: Svelte component testing
-- **HIPAA compliance**: Data isolation and privacy testing
+### Implemented Tests (as of Feb 11, 2026)
+
+**E2E (Playwright)**
+- `tests/e2e/auth-toggle.spec.js` - Landing page toggle for Doctor/Pharmacy login.
+- `tests/e2e/core-flows.spec.js` - Team member registrations access, doctor add patient modal, pharmacy owner tabs.
+
+**Integration (Vitest)**
+- `src/tests/integration/backupRestore.test.js` - Pharmacy backup/export + restore flow.
+- `src/tests/integration/doctorPharmacyDataFlow.test.js` - Doctor → pharmacy data handoff persistence.
+- `src/tests/integration/patientManagement.test.js` - End-to-end patient workflow coverage.
+- `src/tests/integration/priceConsistency.test.js` - Doctor expected price matches pharmacy total within delta.
+- `src/tests/integration/pharmacyTeamMemberAccess.test.js` - Team member login + registration integration.
+- `src/tests/integration/pharmacyOwnerRegistrationFlow.test.js` - Owner registration flow.
+
+**Component (Vitest + Testing Library)**
+- `src/tests/components/AdminLogin.test.js`
+- `src/tests/components/AdminDashboard.test.js`
+- `src/tests/components/ConfirmationModal.test.js`
+- `src/tests/components/DoctorAuth.test.js`
+- `src/tests/components/EditProfile.test.js`
+- `src/tests/components/MedicalSummary.test.js`
+- `src/tests/components/PatientForm.test.js`
+- `src/tests/components/PatientPrescriptions.test.js`
+- `src/tests/components/PharmacistDashboard.test.js`
+- `src/tests/components/PharmacistSettings.test.js`
+- `src/tests/components/PrescriptionPDF.test.js`
+- `src/tests/components/PrescriptionsTab.test.js`
+
+**Unit (Vitest)**
+- `src/tests/unit/authService.test.js`
+- `src/tests/unit/backupService.test.js`
+- `src/tests/unit/chargeCalculationService.test.js`
+- `src/tests/unit/dataProcessing.test.js`
+- `src/tests/unit/firebaseStorage.test.js`
+- `src/tests/unit/firebaseStorage.regression.test.js`
+- `src/tests/unit/formatting.test.js`
+- `src/tests/unit/inventoryDispense.test.js`
+- `src/tests/unit/inventoryService.test.js`
+- `src/tests/unit/pharmacySend.test.js`
+- `src/tests/unit/pharmacistAuthService.test.js`
 
 ### Testing Documentation
 - **[TESTING_QUICK_START.md](./TESTING_QUICK_START.md)** - Quick start guide

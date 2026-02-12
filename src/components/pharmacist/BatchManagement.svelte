@@ -7,6 +7,8 @@
   import { notifySuccess, notifyError } from '../../stores/notifications.js'
   import ConfirmationModal from '../ConfirmationModal.svelte'
   import DateInput from '../DateInput.svelte'
+  import { formatDate as formatDateByLocale } from '../../utils/dataProcessing.js'
+  import { formatCurrency as formatCurrencyByLocale } from '../../utils/formatting.js'
   
   export let item
   export let onClose
@@ -143,22 +145,12 @@
   }
   
   // Format date
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
-  }
+  const formatDate = (dateString) =>
+    dateString ? formatDateByLocale(dateString) : 'N/A'
   
   // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
+  const formatCurrency = (amount) =>
+    formatCurrencyByLocale(amount, { currency: item?.currency || 'USD' })
   
   // Handle confirmation
   const handleConfirmation = () => {

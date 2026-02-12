@@ -124,4 +124,36 @@ describe('FirebaseStorage Regression Coverage', () => {
       connectedPharmacists: ['ph-1']
     })
   })
+
+  it('creates pharmacist with inherited currency when provided', async () => {
+    addDoc.mockResolvedValue({ id: 'ph-1' })
+
+    await firebaseStorage.createPharmacist({
+      email: 'pharmacy@example.com',
+      password: 'secret',
+      role: 'pharmacist',
+      businessName: 'City Pharmacy',
+      pharmacistNumber: 'PH1234',
+      currency: 'LKR'
+    })
+
+    const addDocPayload = addDoc.mock.calls[0]?.[1]
+    expect(addDocPayload.currency).toBe('LKR')
+  })
+
+  it('resolves pharmacist currency from country when missing', async () => {
+    addDoc.mockResolvedValue({ id: 'ph-2' })
+
+    await firebaseStorage.createPharmacist({
+      email: 'pharmacy2@example.com',
+      password: 'secret',
+      role: 'pharmacist',
+      businessName: 'Coastal Pharmacy',
+      pharmacistNumber: 'PH2222',
+      country: 'Sri Lanka'
+    })
+
+    const addDocPayload = addDoc.mock.calls[0]?.[1]
+    expect(addDocPayload.currency).toBe('LKR')
+  })
 })

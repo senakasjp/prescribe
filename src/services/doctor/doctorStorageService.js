@@ -228,8 +228,15 @@ class DoctorStorageService {
       const capitalizedUpdateData = capitalizePatientNames(updateData)
       console.log('DoctorStorage: Capitalized patient update data:', capitalizedUpdateData)
       
+      const sanitizedData = { ...capitalizedUpdateData }
+      Object.keys(sanitizedData).forEach(key => {
+        if (sanitizedData[key] === undefined) {
+          delete sanitizedData[key]
+        }
+      })
+
       const docRef = doc(db, this.collections.patients, patientId)
-      await updateDoc(docRef, capitalizedUpdateData)
+      await updateDoc(docRef, sanitizedData)
       console.log('DoctorStorage: Patient updated successfully')
     } catch (error) {
       console.error('DoctorStorage: Error updating patient:', error)

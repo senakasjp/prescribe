@@ -3,12 +3,15 @@
  * Provides common data manipulation and processing functions
  */
 
+import { resolveLocaleFromCountry } from './localeByCountry.js'
+
 /**
  * Formats date to readable string
  * @param {string|Date} date - Date to format
  * @param {object} options - Formatting options
  * @returns {string} - Formatted date string
  */
+
 export function formatDate(date, options = {}) {
   if (!date) return 'Unknown'
   
@@ -19,11 +22,14 @@ export function formatDate(date, options = {}) {
     const {
       includeTime = false,
       format = 'short',
-      locale = 'en-GB' // Use British locale for DD/MM/YYYY format
+      locale,
+      country
     } = options
     
+    const resolvedLocale = locale || resolveLocaleFromCountry(country) || 'en-GB'
+    
     if (format === 'long') {
-      return dateObj.toLocaleDateString(locale, {
+      return dateObj.toLocaleDateString(resolvedLocale, {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -33,7 +39,7 @@ export function formatDate(date, options = {}) {
         })
       })
     } else if (format === 'short') {
-      return dateObj.toLocaleDateString(locale, {
+      return dateObj.toLocaleDateString(resolvedLocale, {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -43,14 +49,14 @@ export function formatDate(date, options = {}) {
         })
       })
     } else if (format === 'time') {
-      return dateObj.toLocaleTimeString(locale, {
+      return dateObj.toLocaleTimeString(resolvedLocale, {
         hour: '2-digit',
         minute: '2-digit'
       })
     }
     
     // Default DD/MM/YYYY format
-    return dateObj.toLocaleDateString(locale, {
+    return dateObj.toLocaleDateString(resolvedLocale, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'

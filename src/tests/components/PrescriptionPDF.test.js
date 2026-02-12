@@ -221,4 +221,94 @@ describe('PrescriptionPDF', () => {
 
     expect(hasVersion).toBe(true)
   })
+
+  it('includes medication name and dosage for full PDF list', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const prescriptions = [
+      {
+        id: 'med-3',
+        name: 'Full Drug',
+        dosage: '250',
+        strength: '250',
+        strengthUnit: 'mg',
+        frequency: 'Once daily (OD)'
+      }
+    ]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions,
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const textCalls = lastPdfProxy?._fns?.text?.mock?.calls || []
+    const flattened = textCalls.flat()
+    const hasName = flattened.some(value =>
+      typeof value === 'string' && /Full Drug/i.test(value)
+    )
+    const hasDosage = flattened.some(value =>
+      typeof value === 'string' && /250\s*mg/i.test(value)
+    )
+
+    expect(hasName).toBe(true)
+    expect(hasDosage).toBe(true)
+  })
+
+  it('includes only external medications when prescriptions list is filtered', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const prescriptions = [
+      {
+        id: 'med-4',
+        name: 'External Only Drug',
+        dosage: '100',
+        strength: '100',
+        strengthUnit: 'mg',
+        frequency: 'Once daily (OD)'
+      }
+    ]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions,
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const textCalls = lastPdfProxy?._fns?.text?.mock?.calls || []
+    const flattened = textCalls.flat()
+    const hasExternalName = flattened.some(value =>
+      typeof value === 'string' && /External Only Drug/i.test(value)
+    )
+    const hasUnexpected = flattened.some(value =>
+      typeof value === 'string' && /Internal Drug/i.test(value)
+    )
+
+    expect(hasExternalName).toBe(true)
+    expect(hasUnexpected).toBe(false)
+  })
 })

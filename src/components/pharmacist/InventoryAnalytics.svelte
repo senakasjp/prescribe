@@ -5,6 +5,7 @@
   import { onMount } from 'svelte'
   import inventoryService from '../../services/pharmacist/inventoryService.js'
   import { notifyError } from '../../stores/notifications.js'
+  import { formatCurrency as formatCurrencyByLocale } from '../../utils/formatting.js'
   
   export let pharmacist
   let pharmacyId = null
@@ -88,34 +89,11 @@
   }
   
   // Format currency
-  const formatCurrency = (amount) => {
-    const currency = pharmacist?.currency || 'USD'
-    
-    if (currency === 'LKR') {
-      // Format the number without currency style (icon shows currency)
-      const numberFormatted = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(amount)
-      return numberFormatted
-    } else {
-      // For other currencies, use the standard currency formatting
-      const formatted = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currency
-      }).format(amount)
-      
-      if (currency === 'USD') {
-        return formatted.replace('$', 'USD $')
-      } else if (currency === 'EUR') {
-        return formatted.replace('€', 'EUR €')
-      } else if (currency === 'GBP') {
-        return formatted.replace('£', 'GBP £')
-      }
-      
-      return formatted
-    }
-  }
+  const formatCurrency = (amount) => formatCurrencyByLocale(amount, {
+    currency: pharmacist?.currency || 'USD',
+    country: pharmacist?.country,
+    includeCurrencyCode: true
+  })
   
   // Format percentage
   const formatPercentage = (value) => {

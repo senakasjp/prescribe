@@ -504,9 +504,9 @@ class InventoryService {
         pharmacistId,
         itemId: movementData.itemId,
         type: movementData.type,
-        quantity: parseInt(movementData.quantity),
+        quantity: parseFloat(movementData.quantity),
         unitCost: parseFloat(movementData.unitCost) || 0,
-        totalCost: parseInt(movementData.quantity) * (parseFloat(movementData.unitCost) || 0),
+        totalCost: (parseFloat(movementData.quantity) || 0) * (parseFloat(movementData.unitCost) || 0),
         reference: movementData.reference || '',
         referenceId: movementData.referenceId || '',
         notes: movementData.notes || '',
@@ -536,6 +536,21 @@ class InventoryService {
   /**
    * Update stock level for an item
    */
+  normalizeStockChange(quantity, type) {
+    const parsed = parseFloat(quantity)
+    if (!Number.isFinite(parsed)) return 0
+    if (
+      type === this.MOVEMENT_TYPES.SALE ||
+      type === this.MOVEMENT_TYPES.EXPIRED ||
+      type === this.MOVEMENT_TYPES.DAMAGED ||
+      type === this.MOVEMENT_TYPES.DISPATCH ||
+      type === 'dispatch'
+    ) {
+      return -Math.abs(parsed)
+    }
+    return parsed
+  }
+
   async updateStockLevel(itemId, quantity, type) {
     try {
       console.log('🔍 InventoryService: Updating stock level for itemId:', itemId, 'quantity:', quantity, 'type:', type)
@@ -551,10 +566,7 @@ class InventoryService {
       
       console.log('✅ InventoryService: Document exists, current stock:', itemDoc.data().currentStock)
       
-      let stockChange = parseInt(quantity)
-      if (type === this.MOVEMENT_TYPES.SALE || type === this.MOVEMENT_TYPES.EXPIRED || type === this.MOVEMENT_TYPES.DAMAGED || type === 'dispatch') {
-        stockChange = -stockChange
-      }
+      const stockChange = this.normalizeStockChange(quantity, type)
       
       console.log('🔍 InventoryService: Stock change to apply:', stockChange)
       

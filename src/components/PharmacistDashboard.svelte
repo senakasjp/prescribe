@@ -15,9 +15,13 @@
   import PatientForm from './PatientForm.svelte'
   import PharmacistSettings from './pharmacist/PharmacistSettings.svelte'
   import inventoryService from '../services/pharmacist/inventoryService.js'
+  import { buildInventoryDispensePlan, resolveDispenseQuantity } from '../utils/inventoryDispensePlan.js'
   import { formatDoctorId, formatPrescriptionId, formatPharmacyId, formatPatientId } from '../utils/idFormat.js'
   import BrandName from './BrandName.svelte'
   import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+  import { resolveInheritedCurrency } from '../utils/currencyInheritance.js'
+  import { resolveLocaleFromCountry } from '../utils/localeByCountry.js'
+  import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
   
   export let pharmacist
   let pharmacyId = null
@@ -72,6 +76,10 @@
     || pharmacist?.currency
     || resolveCurrencyFromCountry(doctorOwnerProfile?.country || pharmacist?.doctorCountry || pharmacist?.country)
     || 'USD'
+  $: displayCountry = (isDoctorOwnedPharmacy ? doctorOwnerProfile?.country : pharmacist?.country)
+    || pharmacist?.doctorCountry
+    || pharmacist?.country
+    || ''
   
   // Pagination for prescriptions
   let currentPrescriptionPage = 1
@@ -79,8 +87,10 @@
   
   let activeTab = 'prescriptions' // 'prescriptions', 'inventory', or 'registrations'
   let registrationTab = 'add' // 'add' or 'barcodes'
+  let connectedDoctorIds = []
+  $: connectedDoctorIds = Array.isArray(pharmacist?.connectedDoctors) ? pharmacist.connectedDoctors : []
   let canRegisterPatients = false
-  $: canRegisterPatients = connectedDoctors.length === 1
+  $: canRegisterPatients = connectedDoctors.length >= 1 || connectedDoctorIds.length >= 1
   $: if (!canRegisterPatients && activeTab === 'registrations') {
     activeTab = 'prescriptions'
   }
@@ -136,13 +146,28 @@
     migrateLegacyInventoryIfNeeded()
   }
 
+  const resolvePrimaryConnectedDoctor = async () => {
+    if (connectedDoctors.length > 0) {
+      return connectedDoctors[0]
+    }
+    if (connectedDoctorIds.length === 0) {
+      return null
+    }
+    const doctor = await firebaseStorage.getDoctorById(connectedDoctorIds[0])
+    if (doctor) {
+      connectedDoctors = [doctor]
+      return doctor
+    }
+    return { id: connectedDoctorIds[0] }
+  }
+
   const handleRegisterPatient = async (event) => {
     if (!canRegisterPatients) {
-      notifyError('Registrations are available only when exactly one doctor is connected.')
+      notifyError('Registrations are available only when at least one doctor is connected.')
       return
     }
 
-    const doctor = connectedDoctors[0]
+    const doctor = await resolvePrimaryConnectedDoctor()
     if (!doctor?.id) {
       notifyError('Connected doctor not available. Please refresh and try again.')
       return
@@ -168,7 +193,8 @@
     if (registrationPatientsLoading) return
     registrationPatientsLoading = true
     try {
-      const doctorId = connectedDoctors[0]?.id
+      const doctor = await resolvePrimaryConnectedDoctor()
+      const doctorId = doctor?.id
       if (!doctorId) {
         notifyError('Connected doctor not available yet. Please refresh.')
         registrationPatients = []
@@ -374,10 +400,45 @@
 
         const batchEntries = []
 
+        const resolveStrengthToMl = (value, unitHint = '') => {
+          if (value === null || value === undefined || value === '') return null
+          const normalized = String(value).trim().toLowerCase()
+          const match = normalized.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+          if (match) {
+            const amount = parseFloat(match[1])
+            if (!Number.isFinite(amount)) return null
+            return match[2] === 'l' ? amount * 1000 : amount
+          }
+          const unit = String(unitHint || '').trim().toLowerCase()
+          const numeric = parseFloat(normalized.replace(/[^\d.]/g, ''))
+          if (!Number.isFinite(numeric)) return null
+          if (unit === 'l') return numeric * 1000
+          if (unit === 'ml') return numeric
+          return null
+        }
+
+        const isLiquidMedication = (med) => {
+          const unit = String(med?.strengthUnit || '').trim().toLowerCase()
+          const form = String(med?.dosageForm || med?.form || '').trim().toLowerCase()
+          const strengthText = String(med?.strength || '').trim().toLowerCase()
+          return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
+        }
+
+        const liquidMode = isLiquidMedication(medication)
+
         const pushBatchEntry = (item, batch = null) => {
           const quantityRaw = batch ? (batch.quantity ?? batch.currentStock) : item.currentStock
-          const quantity = parseFloat(quantityRaw)
+          let quantity = parseFloat(quantityRaw)
           if (!Number.isFinite(quantity)) return
+
+          let packUnit = batch?.packUnit ?? item.packUnit ?? item.unit ?? ''
+          if (liquidMode) {
+            const packMl = resolveStrengthToMl(item.strength ?? item.packSize ?? '', item.strengthUnit ?? item.unit ?? packUnit)
+            if (packMl && packMl > 0) {
+              quantity = quantity * packMl
+              packUnit = 'ml'
+            }
+          }
 
           batchEntries.push({
             id: batch?.id ? `${item.id}|${batch.id}` : item.id,
@@ -387,9 +448,11 @@
             currentStock: quantity,
             sellingPrice: (batch?.sellingPrice ?? item.sellingPrice),
             expiryDate: batch?.expiryDate ?? item.expiryDate,
-            packUnit: batch?.packUnit ?? item.packUnit ?? item.unit ?? '',
+            packUnit: packUnit,
             brandName: item.brandName,
-            genericName: item.genericName
+            genericName: item.genericName,
+            strength: item.strength,
+            strengthUnit: item.strengthUnit
           })
         }
 
@@ -762,6 +825,19 @@
     return medicationAllocationPreviews[key] || { orderedMatches: [], requested: 0, remaining: 0 }
   }
 
+  const canDispenseMedication = (prescriptionId, medication) => {
+    const key = `${prescriptionId}-${medication.id || medication.name}`
+    const inventoryData = medicationInventoryData[key]
+    if (!inventoryData?.found) return false
+    const available = Number(inventoryData.currentStock || 0)
+    if (Number.isFinite(available) && available > 0) return true
+    const matches = inventoryData.matches || []
+    return matches.some(match => {
+      const matchAvailable = Number(match.currentStock || match.available || 0)
+      return Number.isFinite(matchAvailable) && matchAvailable > 0
+    })
+  }
+
   $: if (showPrescriptionDetails && selectedPrescription) {
     // Recalculate charges when amounts, inventory, or dispensed selection changes
     editableAmounts
@@ -957,82 +1033,39 @@
         }
         
         try {
-          // Find the inventory item by drug name
-          const inventoryItems = await inventoryService.getInventoryItems(pharmacyId)
-          console.log('🔍 Available inventory items:', inventoryItems.map(item => ({
-            id: item.id,
-            drugName: item.drugName,
-            genericName: item.genericName,
-            brandName: item.brandName
-          })))
-          
-          const medicationName = String(medication?.name || '').toLowerCase()
-          let inventoryItem = inventoryItems.find(item => 
-            String(item.drugName || '').toLowerCase() === medicationName ||
-            String(item.genericName || '').toLowerCase() === medicationName ||
-            String(item.brandName || '').toLowerCase() === medicationName
+          const medicationKey = medication.id || medication.name
+          const inventoryData = getMedicationInventoryData(prescriptionId, medicationKey, medicationInventoryVersion)
+          const allocationPreview = getAllocationPreview(prescriptionId, medication)
+          const fallbackAmount = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
+          const fallbackQuantity = resolveDispenseQuantity(
+            fallbackAmount !== undefined && fallbackAmount !== null && fallbackAmount !== ''
+              ? fallbackAmount
+              : (medication.quantity || medication.dosage || 1)
           )
-          
-          // Verify the inventory item exists and has a valid ID
-          if (inventoryItem && inventoryItem.id) {
-            try {
-              // Test if the document actually exists by trying to get it
-              const itemRef = doc(db, 'pharmacistInventory', inventoryItem.id)
-              const itemDoc = await getDoc(itemRef)
-              if (!itemDoc.exists()) {
-                console.warn(`⚠️ Inventory item ${inventoryItem.id} not found in database, will create new one`)
-                inventoryItem = null // Force creation of new item
-              } else {
-                console.log(`✅ Inventory item ${inventoryItem.id} verified and exists`)
-              }
-            } catch (error) {
-              console.warn(`⚠️ Error verifying inventory item ${inventoryItem.id}:`, error)
-              inventoryItem = null // Force creation of new item
-            }
-          } else {
-            console.log(`⚠️ No inventory item found for ${medication.name}`)
-          }
-          
-          if (inventoryItem) {
-            // Calculate quantity to reduce (default to 1 if not specified)
-            let quantity = medication.quantity || medication.dosage || 1
-            // Ensure quantity is a valid number
-            quantity = parseInt(quantity) || 1
-            console.log(`🔍 Using quantity: ${quantity} for ${medication.name}`)
-            
-            console.log('🔍 Inventory item found:', {
-              id: inventoryItem.id,
-              drugName: inventoryItem.drugName,
-              currentStock: inventoryItem.currentStock
-            })
-            
-            // Verify the document exists before trying to update
-            try {
-              // Create stock movement for dispatch
+          const dispensePlan = buildInventoryDispensePlan({
+            inventoryData,
+            allocationPreview,
+            fallbackQuantity
+          })
+
+          if (dispensePlan.length > 0) {
+            for (const entry of dispensePlan) {
               await inventoryService.createStockMovement(pharmacyId, {
-                itemId: inventoryItem.id, // This should be the Firestore document ID
-                type: 'dispatch', // Using 'dispatch' for dispensed medications
-                quantity: -Math.abs(quantity), // Negative quantity for reduction
-                unitCost: inventoryItem.costPrice || 0,
+                itemId: entry.inventoryItemId,
+                type: 'dispatch',
+                quantity: entry.quantity,
+                unitCost: inventoryData?.costPrice || 0,
                 reference: 'prescription_dispatch',
                 referenceId: prescriptionId,
                 notes: `Dispensed for prescription ${prescriptionId} - ${medication.name}`,
                 batchNumber: '',
                 expiryDate: ''
               })
-              
+
               inventoryReductions.push({
                 drugName: medication.name,
-                quantity: quantity,
-                inventoryItem: inventoryItem.drugName
-              })
-              
-              console.log(`✅ Reduced inventory for ${medication.name}: -${quantity}`)
-            } catch (inventoryError) {
-              console.error(`❌ Failed to update inventory for ${medication.name}:`, inventoryError)
-              inventoryErrors.push({
-                drugName: medication.name,
-                error: `Inventory update failed: ${inventoryError.message}`
+                quantity: entry.quantity,
+                inventoryItem: entry.inventoryItemId
               })
             }
           } else {
@@ -1064,15 +1097,19 @@
               console.log(`✅ Created basic inventory item for ${medication.name}:`, newInventoryItem.id)
               
               // Calculate quantity for tracking
-              let quantity = medication.quantity || medication.dosage || 1
-              quantity = parseInt(quantity) || 1
+              const fallbackAmount = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
+              let quantity = resolveDispenseQuantity(
+                fallbackAmount !== undefined && fallbackAmount !== null && fallbackAmount !== ''
+                  ? fallbackAmount
+                  : (medication.quantity || medication.dosage || 1)
+              )
               
               // Try to create stock movement, but don't fail if inventory item doesn't exist
               try {
                 await inventoryService.createStockMovement(pharmacyId, {
                   itemId: newInventoryItem.id,
                   type: 'dispatch',
-                  quantity: -Math.abs(quantity),
+                  quantity: quantity,
                   unitCost: 0,
                   reference: 'prescription_dispatch',
                   referenceId: prescriptionId,
@@ -1109,8 +1146,12 @@
               console.error(`❌ Failed to create inventory item for ${medication.name}:`, createError)
               
               // Still track the dispensing even if inventory creation fails
-              let quantity = medication.quantity || medication.dosage || 1
-              quantity = parseInt(quantity) || 1
+              const fallbackAmount = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
+              let quantity = resolveDispenseQuantity(
+                fallbackAmount !== undefined && fallbackAmount !== null && fallbackAmount !== ''
+                  ? fallbackAmount
+                  : (medication.quantity || medication.dosage || 1)
+              )
               
               inventoryReductions.push({
                 drugName: medication.name,
@@ -1136,8 +1177,8 @@
           console.log(`⚠️ Continuing with dispensing ${medication.name} despite inventory error`)
           
           // Add to dispensed medications even if inventory failed
-          let fallbackQuantity = medication.quantity || medication.dosage || 1
-          fallbackQuantity = parseInt(fallbackQuantity) || 1
+          let fallbackQuantity = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
+          fallbackQuantity = parseFloat(fallbackQuantity) || parseFloat(medication.quantity || medication.dosage) || 1
           inventoryReductions.push({
             drugName: medication.name,
             quantity: fallbackQuantity,
@@ -1312,17 +1353,28 @@
       console.log('🔍 PharmacistDashboard: pharmacist.connectedDoctors:', pharmacist?.connectedDoctors)
 
       // Ensure pharmacist profile exists in pharmacy collection
-      if (pharmacist?.email) {
+      if (pharmacist?.email && !pharmacist?.isPharmacyUser) {
         const pharmacistProfile = await firebaseStorage.getPharmacistByEmail(pharmacist.email)
         if (!pharmacistProfile) {
           console.log('🧪 Pharmacist profile missing. Creating pharmacy profile for:', pharmacist.email)
           const pharmacistNumber = firebaseAuthService.generatePharmacistNumber()
+          let ownerDoctor = null
+          try {
+            ownerDoctor = await firebaseStorage.getDoctorByEmail(pharmacist.email)
+          } catch (error) {
+            ownerDoctor = null
+          }
+          const inheritedCurrency = resolveInheritedCurrency({
+            ownerDoctor,
+            fallbackCountry: ownerDoctor?.country
+          })
           const created = await firebaseStorage.createPharmacist({
             email: pharmacist.email,
             password: `doctor-${Date.now()}`,
             role: 'pharmacist',
             businessName: pharmacist.businessName || pharmacist.name || pharmacist.email,
-            pharmacistNumber
+            pharmacistNumber,
+            currency: inheritedCurrency
           })
           pharmacist = created
         } else if (pharmacistProfile?.id && pharmacistProfile.id !== pharmacist?.id) {
@@ -1383,9 +1435,19 @@
       
       // Load connected doctors info from Firebase
       connectedDoctors = []
-      if (pharmacist.connectedDoctors && Array.isArray(pharmacist.connectedDoctors) && pharmacist.connectedDoctors.length > 0) {
+      let connectedDoctorIds = Array.isArray(pharmacist.connectedDoctors) ? pharmacist.connectedDoctors : []
+
+      if (pharmacist?.isPharmacyUser && pharmacist?.pharmacyId) {
+        const parentPharmacy = await firebaseStorage.getPharmacistById(pharmacist.pharmacyId)
+        if (parentPharmacy?.connectedDoctors && parentPharmacy.connectedDoctors.length > 0) {
+          connectedDoctorIds = parentPharmacy.connectedDoctors
+          pharmacist.connectedDoctors = connectedDoctorIds
+        }
+      }
+
+      if (connectedDoctorIds.length > 0) {
         const loadedDoctors = []
-        for (const doctorId of pharmacist.connectedDoctors) {
+        for (const doctorId of connectedDoctorIds) {
           const doctor = await firebaseStorage.getDoctorById(doctorId)
           if (doctor) {
             loadedDoctors.push(doctor)
@@ -1573,7 +1635,8 @@
   const formatDate = (dateValue, timeZone = null) => {
     const parsed = toDate(dateValue)
     if (!parsed) return 'Unknown'
-    return parsed.toLocaleDateString('en-GB', {
+    const locale = resolveLocaleFromCountry(displayCountry)
+    return parsed.toLocaleDateString(locale, {
       timeZone: timeZone || undefined,
       day: '2-digit',
       month: '2-digit',
@@ -1584,7 +1647,8 @@
   const formatTime = (dateValue, timeZone = null) => {
     const parsed = toDate(dateValue)
     if (!parsed) return ''
-    return parsed.toLocaleTimeString('en-GB', {
+    const locale = resolveLocaleFromCountry(displayCountry)
+    return parsed.toLocaleTimeString(locale, {
       timeZone: timeZone || undefined,
       hour: '2-digit',
       minute: '2-digit'
@@ -1602,6 +1666,30 @@
     console.log('🧮 Calculating amount for medication:', medication)
     if (medication.amount !== undefined && medication.amount !== null && medication.amount !== '') {
       return medication.amount
+    }
+
+    const resolveStrengthToMl = (value, unitHint = '') => {
+      if (value === null || value === undefined || value === '') return null
+      const normalized = String(value).trim().toLowerCase()
+      const match = normalized.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+      if (match) {
+        const amount = parseFloat(match[1])
+        if (!Number.isFinite(amount)) return null
+        return match[2] === 'l' ? amount * 1000 : amount
+      }
+      const unit = String(unitHint || '').trim().toLowerCase()
+      const numeric = parseFloat(normalized.replace(/[^\d.]/g, ''))
+      if (!Number.isFinite(numeric)) return null
+      if (unit === 'l') return numeric * 1000
+      if (unit === 'ml') return numeric
+      return null
+    }
+
+    const isLiquidMedication = (med) => {
+      const unit = String(med?.strengthUnit || '').trim().toLowerCase()
+      const form = String(med?.dosageForm || med?.form || '').trim().toLowerCase()
+      const strengthText = String(med?.strength || '').trim().toLowerCase()
+      return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
     }
 
     if (!medication.frequency || !medication.duration) {
@@ -1650,13 +1738,23 @@
     }
 
     // Calculate total amount
+    if (isLiquidMedication(medication)) {
+      const strengthMl = resolveStrengthToMl(medication?.strength, medication?.strengthUnit)
+      if (!strengthMl) return 'N/A'
+      const totalAmount = Math.ceil(dailyFrequency * days * strengthMl)
+      return totalAmount > 0 ? `${totalAmount}` : 'N/A'
+    }
+
     const totalAmount = Math.ceil(dailyFrequency * days)
-    
     return totalAmount > 0 ? `${totalAmount}` : 'N/A'
   }
   
   // Handle profile settings
   const handleProfileSettings = () => {
+    if (pharmacist?.isPharmacyUser) {
+      notifyError('Settings access is restricted for pharmacy team members.')
+      return
+    }
     showProfileSettings = true
   }
   
@@ -1777,26 +1875,12 @@
   }
   
   // Format currency for display
-  const formatCurrencyDisplay = (amount, currency = 'USD') => {
-    try {
-      if (currency === 'LKR') {
-        // For LKR, return just the number without symbol
-        return new Intl.NumberFormat('en-US', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        }).format(amount)
-      } else {
-        // For other currencies, use standard formatting
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: currency
-        }).format(amount)
-      }
-    } catch (error) {
-      console.error('❌ Error formatting currency:', error)
-      return amount.toFixed(2)
-    }
-  }
+  const formatCurrencyDisplay = (amount, currency = 'USD') =>
+    formatCurrencyByLocale(amount, {
+      currency,
+      country: displayCountry,
+      lkrSymbol: 'none'
+    })
 
   onMount(() => {
     console.log('🔍 PharmacistDashboard: Received pharmacist data:', pharmacist)
@@ -1823,16 +1907,18 @@
           </div>
         </div>
         <div class="ml-2 flex items-center gap-2">
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors duration-200"
-            on:click={handleProfileSettings}
-          >
-            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-700">
-              <i class="fas fa-cog"></i>
-            </span>
-            Settings
-          </button>
+          {#if !pharmacist?.isPharmacyUser}
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors duration-200"
+              on:click={handleProfileSettings}
+            >
+              <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-700">
+                <i class="fas fa-cog"></i>
+              </span>
+              Settings
+            </button>
+          {/if}
           <button
             type="button"
             class="inline-flex items-center gap-2 rounded-full bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 transition-colors duration-200"
@@ -1849,7 +1935,7 @@
   </div>
   
   <!-- Profile Settings Modal -->
-  {#if showProfileSettings}
+  {#if showProfileSettings && !pharmacist?.isPharmacyUser}
     <div class="fixed inset-0 z-50 overflow-y-auto">
       <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         <button
@@ -2496,8 +2582,8 @@
                                     type="checkbox"
                                     class="w-5 h-5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                     checked={isMedicationDispensed(prescription.id, medication.id || medication.name) || isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
-                                    disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
-                                    on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+                                    disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) || !canDispenseMedication(prescription.id, medication)}
+                                    on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && canDispenseMedication(prescription.id, medication) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
                                   />
                                   <span class="text-base font-semibold text-gray-900">
                                     {medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}
@@ -2532,11 +2618,14 @@
                                   <div class="col-span-1">
                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Amount</div>
                                     <input
-                                      type="text"
+                                      type="number"
                                       class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
                                       value={getEditableAmount(prescription.id, medication)}
                                       on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
                                       placeholder="0"
+                                      min="0"
+                                      step="0.01"
+                                      inputmode="decimal"
                                     />
                                   </div>
 
@@ -2546,7 +2635,7 @@
                                       {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
                                         <span class="text-green-600 font-medium">
                                           {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ?
-                                            new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) :
+                                            formatDate(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate) :
                                             'N/A'
                                           }
                                         </span>
@@ -2640,8 +2729,8 @@
                                   type="checkbox" 
                                   class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                   checked={isMedicationDispensed(prescription.id, medication.id || medication.name) || isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
-                                  disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
-                                  on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+                                  disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) || !canDispenseMedication(prescription.id, medication)}
+                                  on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && canDispenseMedication(prescription.id, medication) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
                                 />
                                 <span class="text-xs {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'text-gray-400' : 'text-gray-600'}">Dispensed</span>
                               </label>
@@ -2667,11 +2756,14 @@
                                 <span class="text-gray-600">Amount:</span>
                                 <!-- All medications - show as editable input -->
                                 <input 
-                                  type="text" 
+                                  type="number" 
                                   class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
                                   value={getEditableAmount(prescription.id, medication)}
                                   on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
                                   placeholder="0"
+                                  min="0"
+                                  step="0.01"
+                                  inputmode="decimal"
                                 />
                               </div>
                               <div class="flex justify-between">
@@ -2679,7 +2771,7 @@
                                 {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
                                   <span class="text-green-600 font-medium text-xs">
                                     {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ? 
-                                      new Date(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 
+                                      formatDate(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate) : 
                                       'N/A'
                                     }
                                   </span>

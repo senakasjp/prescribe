@@ -4,6 +4,7 @@
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import { formatDate } from '../utils/dataProcessing.js'
+  import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
 
   export let user
   
@@ -35,19 +36,13 @@
   }
 
   $: currency = effectiveDoctor?.currency || user?.currency || 'USD'
+  $: doctorCountry = effectiveDoctor?.country || user?.country || ''
 
-  const formatCurrency = (amount) => {
-    const safeAmount = Number.isFinite(amount) ? amount : 0
-    try {
-      return new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: currency || 'USD',
-        maximumFractionDigits: 2
-      }).format(safeAmount)
-    } catch (error) {
-      return safeAmount.toFixed(2)
-    }
-  }
+  const formatCurrency = (amount) => formatCurrencyByLocale(amount, {
+    currency,
+    country: doctorCountry,
+    maximumFractionDigits: 2
+  })
 
   const toDateKey = (dateValue) => {
     const date = new Date(dateValue)

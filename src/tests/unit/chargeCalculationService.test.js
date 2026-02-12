@@ -2,8 +2,15 @@
  * Unit tests for charge calculation service (memory-based)
  */
 import { describe, it, expect, vi } from 'vitest'
+import inventoryService from '../../services/pharmacist/inventoryService.js'
 import chargeCalculationService from '../../services/pharmacist/chargeCalculationService.js'
 import { resolveCurrencyFromCountry } from '../../utils/currencyByCountry.js'
+
+vi.mock('../../services/pharmacist/inventoryService.js', () => ({
+  default: {
+    getInventoryItems: vi.fn()
+  }
+}))
 
 describe('chargeCalculationService', () => {
   describe('roundTotalCharge', () => {
@@ -135,20 +142,60 @@ describe('chargeCalculationService', () => {
   })
 
   describe('formatCurrency', () => {
-    it('should format LKR without currency symbol when doctor country is Sri Lanka', () => {
+    it('should format LKR with currency code when doctor country is Sri Lanka', () => {
       const currency = resolveCurrencyFromCountry('Sri Lanka')
       const formatted = chargeCalculationService.formatCurrency(1234.5, currency)
       expect(currency).toBe('LKR')
       expect(formatted).toContain('1,234.50')
-      expect(formatted).not.toContain('LKR')
-      expect(formatted).not.toContain('$')
+      expect(formatted).toContain('LKR')
     })
 
-    it('should format currency with symbol when doctor country is not Sri Lanka', () => {
+    it('should format currency with code when doctor country is not Sri Lanka', () => {
       const currency = resolveCurrencyFromCountry('United States')
       const formatted = chargeCalculationService.formatCurrency(1234.5, currency)
       expect(currency).toBe('USD')
       expect(formatted).toBe('USD 1,234.50')
+    })
+  })
+
+  describe('liquid pricing', () => {
+    it('prices liquid meds by ml using inventory strength', async () => {
+      inventoryService.getInventoryItems.mockResolvedValue([
+        {
+          id: 'inv-1',
+          brandName: 'Corex',
+          strength: '100',
+          strengthUnit: 'ml',
+          dosageForm: 'Liquid',
+          currentStock: 10,
+          sellingPrice: 20
+        }
+      ])
+
+      const prescription = {
+        id: 'rx-1',
+        prescriptions: [
+          {
+            id: 'rx-1',
+            medications: [
+              {
+                name: 'Corex',
+                strength: '50',
+                strengthUnit: 'ml',
+                frequency: 'three times daily',
+                duration: '2 days',
+                isDispensed: true
+              }
+            ]
+          }
+        ]
+      }
+
+      const pharmacist = { id: 'ph-1' }
+      const result = await chargeCalculationService.calculateDrugCharges(prescription, pharmacist)
+
+      expect(result.totalCost).toBeCloseTo(60, 4)
+      expect(result.medicationBreakdown[0].quantity).toBeCloseTo(300, 4)
     })
   })
 })

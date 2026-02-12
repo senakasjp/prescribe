@@ -6,6 +6,7 @@
   import doctorAuthService from '../services/doctor/doctorAuthService.js'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
+  import { formatDate } from '../utils/dataProcessing.js'
   
   const dispatch = createEventDispatcher()
   
@@ -67,17 +68,81 @@
     return [parsed.strength, parsed.strengthUnit].filter(Boolean).join(' ').trim()
   }
 
-  const getPdfDosageLabel = (medication) => {
-    const base = String(medication?.dosage ?? '').trim()
+  const parseDosageValue = (dosage) => {
+    const raw = String(dosage || '').trim()
+    if (!raw) return null
+    const parts = raw.split(/\s+/)
+    let total = 0
+    for (const part of parts) {
+      if (!part) continue
+      if (part.includes('/')) {
+        const [num, den] = part.split('/')
+        const numerator = parseFloat(num)
+        const denominator = parseFloat(den)
+        if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) {
+          return null
+        }
+        total += numerator / denominator
+      } else {
+        const value = parseFloat(part)
+        if (!Number.isFinite(value)) return null
+        total += value
+      }
+    }
+    return total
+  }
+
+  const formatDosageFormLabel = (form, isPlural) => {
+    const trimmed = String(form || '').trim()
+    const base = trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : 'Tablet'
+    if (!isPlural) return base
+    if (base.toLowerCase().endsWith('s')) return base
+    return `${base}s`
+  }
+
+  const getDoseLabel = (medication) => {
+    const dosage = String(medication?.dosage ?? '').trim()
+    if (!dosage) return ''
+    const parsedValue = parseDosageValue(dosage)
+    const isPlural = parsedValue !== null ? parsedValue > 1 : !/^1(?:\s|$)/.test(dosage)
+    const form = medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? ''
+    const formLabel = formatDosageFormLabel(form || 'Tablet', isPlural)
+    return `${dosage} ${formLabel}`.trim()
+  }
+
+  const isLiquidMedication = (medication) => {
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
-    if (strengthText && strengthUnit) return strengthText
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const strengthTextLower = strengthText.toLowerCase()
+    return Boolean(
+      strengthUnit &&
+      ['ml', 'l'].includes(String(strengthUnit).toLowerCase())
+    ) || dosageForm === 'liquid' || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
+  }
+
+  const getMedicationMetaLine = (medication, headerLabel = '') => {
+    const parts = []
+    if (!isLiquidMedication(medication)) {
+      const doseLabel = getDoseLabel(medication)
+      if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
+    }
+    return parts.join(' | ')
+  }
+
+  const getPdfDosageLabel = (medication) => {
+    const { strength, strengthUnit } = parseStrengthParts(medication)
+    const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
+    const hasStrength = Boolean(strength && strengthUnit)
+    if (hasStrength) return strengthText
 
     const fromInventory = findInventoryStrengthText(medication)
     if (fromInventory) return fromInventory
 
-    if (strengthText) return strengthText
+    const doseLabel = getDoseLabel(medication)
+    if (doseLabel) return doseLabel
 
+    const base = String(medication?.dosage ?? '').trim()
     const fallbackUnit = String(medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? '').trim()
     if (base && fallbackUnit) {
       return `${base} ${fallbackUnit}`.trim()
@@ -95,11 +160,7 @@
         unit: 'mm',
         format: 'a5'
       })
-      const currentDate = new Date().toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      })
+      const currentDate = formatDate(new Date(), { country: selectedPatient?.country })
       
       const pageWidth = 148
       const pageHeight = 210
@@ -466,9 +527,9 @@
         JsBarcode(barcodeCanvas, prescriptionId, {
           format: 'CODE128',
           displayValue: false,
-          margin: 0,
-          width: 0.9,
-          height: 18
+          margin: 4,
+          width: 2,
+          height: 32
         })
         barcodeDataUrl = barcodeCanvas.toDataURL('image/png')
       } catch (error) {
@@ -476,8 +537,8 @@
       }
 
       if (barcodeDataUrl) {
-        const barcodeWidth = 42
-        const barcodeHeight = 8
+        const barcodeWidth = 60
+        const barcodeHeight = 12
         const barcodeX = pageWidth - margin - barcodeWidth
         const barcodeY = contentYStart + 15
         doc.addImage(barcodeDataUrl, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight)
@@ -523,11 +584,19 @@
           doc.setFont('helvetica', 'bold')
           const medName = medication.genericName ? `${medication.name} (${medication.genericName})` : medication.name
           doc.text(`${index + 1}. ${medName}`, margin, yPos)
-          doc.text(getPdfDosageLabel(medication), pageWidth - margin, yPos, { align: 'right' })
+          const headerLabel = getPdfDosageLabel(medication)
+          doc.text(headerLabel, pageWidth - margin, yPos, { align: 'right' })
           
+          const metaLine = getMedicationMetaLine(medication, headerLabel)
           doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
-          
+          if (metaLine) {
+            yPos += 4
+            const metaLines = doc.splitTextToSize(metaLine, contentWidth)
+            doc.text(metaLines, margin, yPos)
+            yPos += metaLines.length * 3
+          }
+
           let medicationDetails = `${medication.frequency}`
           if (medication.duration) {
             medicationDetails += ` | Duration: ${medication.duration}`
@@ -685,6 +754,11 @@
                       <div class="font-medium text-gray-900 dark:text-white">
                         {medication.name}{#if medication.genericName} ({medication.genericName}){/if}
                       </div>
+                      {#if getMedicationMetaLine(medication, getPdfDosageLabel(medication))}
+                        <div class="text-xs text-gray-500 mt-1">
+                          {getMedicationMetaLine(medication, getPdfDosageLabel(medication))}
+                        </div>
+                      {/if}
                       <div class="text-sm text-gray-600 dark:text-gray-300 space-y-1">
                         <p><span class="font-medium">Frequency:</span> {medication.frequency}</p>
                         {#if medication.timing}

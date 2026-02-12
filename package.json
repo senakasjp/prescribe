@@ -10,9 +10,11 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "firebase emulators:exec --only firestore,auth \"vitest run\"",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@sveltejs/vite-plugin-svelte": "^3.0.0",
     "@testing-library/jest-dom": "^6.9.0",
     "@testing-library/svelte": "^5.2.8",

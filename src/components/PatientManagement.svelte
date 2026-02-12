@@ -16,8 +16,12 @@
   import prescriptionStatusService from '../services/doctor/prescriptionStatusService.js'
   import backupService from '../services/backupService.js'
   import { formatPatientId } from '../utils/idFormat.js'
+  import { splitTitleFromName } from '../utils/patientName.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
+  import { formatDate } from '../utils/dataProcessing.js'
+  import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+  import JsBarcode from 'jsbarcode'
   
   const dispatch = createEventDispatcher()
   export let user
@@ -273,6 +277,176 @@
       'Cancel',
       'danger'
     )
+  }
+
+  const getPatientNameParts = (patient) => {
+    const normalize = (value) => String(value || '').trim()
+    const isGenderWord = (value) => {
+      const lower = normalize(value).toLowerCase()
+      return ['male', 'female', 'other', 'm', 'f'].includes(lower)
+    }
+    const looksLikeEmail = (value) => {
+      const normalized = normalize(value)
+      return normalized.includes('@')
+    }
+
+    const rawFirstName = normalize(patient?.firstName)
+    const rawLastName = normalize(patient?.lastName)
+    const resolved = splitTitleFromName(rawFirstName)
+    const camelFirst = normalize(resolved.firstName || rawFirstName)
+    const camelLast = rawLastName
+
+    const alternateCandidates = [
+      camelFirst && !isGenderWord(camelFirst) ? `${camelFirst} ${camelLast}`.trim() : '',
+      camelLast && !isGenderWord(camelLast) ? camelLast : '',
+      patient?.name,
+      patient?.fullName,
+      patient?.displayName,
+      patient?.patientName,
+      patient?.patient_name,
+      patient?.first_name && patient?.last_name
+        ? `${patient.first_name} ${patient.last_name}`
+        : '',
+      patient?.first_name,
+      patient?.last_name
+    ].map(normalize)
+
+    const fallbackName = alternateCandidates.find(
+      (candidate) => candidate && !looksLikeEmail(candidate) && !isGenderWord(candidate)
+    )
+
+    let firstName = ''
+    let lastName = ''
+    if (fallbackName) {
+      const parts = fallbackName.split(/\s+/)
+      firstName = parts.shift() || ''
+      lastName = parts.join(' ')
+    } else if (patient?.idNumber) {
+      firstName = String(patient.idNumber)
+    } else {
+      firstName = 'Patient'
+    }
+
+    const initialSource = firstName || lastName
+    const initial = String(initialSource || '').charAt(0) || 'P'
+    return { firstName, lastName, initial }
+  }
+
+  const printPatientBarcode = (patient) => {
+    if (!patient) return
+    const barcodeValue = String(patient.idNumber || formatPatientId(patient.id) || '').trim()
+    if (!barcodeValue) {
+      notifyError('Patient ID not available for barcode')
+      return
+    }
+
+    const canvas = document.createElement('canvas')
+    try {
+      JsBarcode(canvas, barcodeValue, {
+        format: 'CODE128',
+        displayValue: true,
+        height: 60,
+        margin: 10
+      })
+    } catch (error) {
+      console.error('❌ Failed to generate barcode:', error)
+      notifyError('Failed to generate barcode')
+      return
+    }
+
+    const patientName = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
+    const doctorName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.name || 'Doctor'
+    const dataUrl = canvas.toDataURL('image/png')
+    const printHtml = `
+      <html>
+        <head>
+          <title>Patient Barcode</title>
+          <style>
+            @page { size: 85.6mm 53.98mm; margin: 0; }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              width: 85.6mm;
+              height: 53.98mm;
+              background: white;
+            }
+            .card {
+              width: 85.6mm;
+              height: 53.98mm;
+              box-sizing: border-box;
+              border: 1px dashed #9aa0a6;
+              border-radius: 6mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              padding: 6mm 4mm;
+            }
+            .name { font-size: 11pt; font-weight: 600; margin-bottom: 3mm; }
+            .barcode-wrap {
+              width: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 2mm;
+              border: 1px dashed #c2c6cc;
+              border-radius: 999px;
+            }
+            .clinic { font-size: 9.5pt; color: #4b5563; margin-top: 2mm; }
+            img { max-width: 100%; height: auto; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="name">${patientName}</div>
+            <div class="barcode-wrap">
+              <img src="${dataUrl}" alt="Patient Barcode" />
+            </div>
+            <div class="clinic">Clinic of Dr. ${doctorName}</div>
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+              window.close();
+            };
+          <\/script>
+        </body>
+      </html>
+    `
+
+    const frame = document.createElement('iframe')
+    frame.style.position = 'fixed'
+    frame.style.right = '0'
+    frame.style.bottom = '0'
+    frame.style.width = '0'
+    frame.style.height = '0'
+    frame.style.border = '0'
+    document.body.appendChild(frame)
+
+    const frameDoc = frame.contentWindow?.document
+    if (!frameDoc) {
+      notifyError('Unable to open print view.')
+      frame.remove()
+      return
+    }
+    frameDoc.open()
+    frameDoc.write(printHtml)
+    frameDoc.close()
+
+    const cleanup = () => {
+      if (frame.parentNode) {
+        frame.parentNode.removeChild(frame)
+      }
+    }
+
+    frame.onload = () => {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+      setTimeout(cleanup, 1000)
+    }
   }
 
   const downloadJsonFile = (data, filename) => {
@@ -779,11 +953,7 @@
           
           dateRange.push({
             dateStr,
-            displayDate: date.toLocaleDateString('en-GB', { 
-              day: '2-digit', 
-              month: '2-digit', 
-              year: 'numeric' 
-            })
+            displayDate: formatDate(date, { country: user?.country })
           })
         }
         
@@ -1224,11 +1394,7 @@
     if (!items || !Array.isArray(items)) return []
     
     const grouped = items.reduce((groups, item) => {
-      const date = item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      }) : 'No date'
+      const date = item.createdAt ? formatDate(item.createdAt, { country: user?.country }) : 'No date'
       if (!groups[date]) {
         groups[date] = []
       }
@@ -1326,7 +1492,8 @@
         lastName: editLastName.trim(),
         country: editCountry.trim(),
         city: editCity.trim(),
-        name: `${editFirstName.trim()} ${editLastName.trim()}`
+        name: `${editFirstName.trim()} ${editLastName.trim()}`,
+        currency: resolveCurrencyFromCountry(editCountry.trim()) || user?.currency || 'USD'
       }
       
       // Update in auth service
@@ -1947,10 +2114,12 @@
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center">
                     <div class="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm sm:text-base font-semibold mr-3">
-                      {patient.firstName?.[0] || 'P'}
+                      {getPatientNameParts(patient).initial}
                     </div>
                     <div>
-                      <p class="text-sm sm:text-base font-medium text-gray-900">{patient.firstName} {patient.lastName || ''}</p>
+                      <p class="text-sm sm:text-base font-medium text-gray-900">
+                        {getPatientNameParts(patient).firstName} {getPatientNameParts(patient).lastName}
+                      </p>
                       <p class="text-xs sm:text-sm text-gray-500">{patient.gender || 'N/A'}</p>
                     </div>
                   </div>
@@ -1987,6 +2156,13 @@
                   >
                     <i class="fas fa-edit mr-1"></i>
                     Edit
+                  </button>
+                  <button
+                    class="inline-flex items-center px-3 py-1.5 border border-gray-500 text-gray-700 hover:bg-gray-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
+                    on:click|stopPropagation={() => printPatientBarcode(patient)}
+                  >
+                    <i class="fas fa-barcode mr-1"></i>
+                    Barcode
                   </button>
                   <button
                     class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
@@ -2033,10 +2209,12 @@
             <div class="flex justify-between items-start mb-3">
               <div class="flex items-center">
                 <div class="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm sm:text-base font-semibold mr-3">
-                  {patient.firstName?.[0] || 'P'}
+                  {getPatientNameParts(patient).initial}
                 </div>
                 <div>
-                  <h3 class="font-semibold text-gray-900 text-sm sm:text-base">{patient.firstName} {patient.lastName || ''}</h3>
+                  <h3 class="font-semibold text-gray-900 text-sm sm:text-base">
+                    {getPatientNameParts(patient).firstName} {getPatientNameParts(patient).lastName}
+                  </h3>
                   <p class="text-xs sm:text-sm text-gray-500">{patient.gender || 'N/A'}</p>
                 </div>
               </div>
@@ -2058,6 +2236,13 @@
                 >
                   <i class="fas fa-edit mr-1"></i>
                   Edit
+                </button>
+                <button
+                  class="inline-flex items-center px-3 py-1.5 border border-gray-500 text-gray-700 hover:bg-gray-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => printPatientBarcode(patient)}
+                >
+                  <i class="fas fa-barcode mr-1"></i>
+                  Barcode
                 </button>
                 <button
                   class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
@@ -2172,11 +2357,7 @@
             {#if selectedPrescriptionForCard}
             <div class="space-y-2">
               <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
-                <span><i class="fas fa-calendar mr-1"></i>{new Date(selectedPrescriptionForCard.createdAt).toLocaleDateString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: 'numeric'
-                })}</span>
+                <span><i class="fas fa-calendar mr-1"></i>{formatDate(selectedPrescriptionForCard.createdAt, { country: user?.country })}</span>
                 <div class="flex items-center gap-2">
                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{selectedPrescriptionForCard.medications.length} drug{selectedPrescriptionForCard.medications.length !== 1 ? 's' : ''}</span>
                 </div>
