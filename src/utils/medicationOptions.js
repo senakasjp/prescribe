@@ -13,6 +13,7 @@ export const DOSAGE_FORM_OPTIONS = [
   'Drops',
   'Inhaler',
   'Spray',
+  'Shampoo',
   'Packet',
   'Roll'
 ]

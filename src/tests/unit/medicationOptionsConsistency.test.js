@@ -26,6 +26,7 @@ describe('medication option consistency', () => {
       'Drops',
       'Inhaler',
       'Spray',
+      'Shampoo',
       'Packet',
       'Roll'
     ])

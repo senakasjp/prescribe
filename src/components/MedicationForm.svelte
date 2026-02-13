@@ -32,6 +32,7 @@
   let instructions = ''
   let frequency = ''
   let prnAmount = '' // Amount for PRN medications
+  let qts = ''
   let timing = ''
   const TIMING_OPTIONS = [
     'Before meals (AC)',
@@ -106,8 +107,32 @@
 
   $: isLiquidStrengthUnit = ['ml', 'l'].includes(String(strengthUnit || '').trim().toLowerCase()) ||
     Boolean(resolveLiquidUnitFromStrength(strength))
+  const isQtsExcludedDosageForm = (value) => {
+    const form = String(value || '').trim().toLowerCase()
+    if (!form) return false
+    return (
+      form.includes('tablet') ||
+      form.includes('tab') ||
+      form.includes('capsule') ||
+      form.includes('cap') ||
+      form.includes('syrup') ||
+      form.includes('liquid')
+    )
+  }
+  $: requiresQts = Boolean(String(dosageForm || '').trim()) && !isLiquidStrengthUnit && !isQtsExcludedDosageForm(dosageForm)
+  const parsePositiveInteger = (value) => {
+    const parsed = Number.parseInt(String(value ?? '').trim(), 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) return null
+    return parsed
+  }
   $: if (isLiquidStrengthUnit && dosage !== '1') {
     dosage = '1'
+  }
+  $: if (requiresQts && dosage !== '1') {
+    dosage = '1'
+  }
+  $: if (!requiresQts && qts) {
+    qts = ''
   }
   
   // Reset loading state when form is hidden
@@ -154,6 +179,7 @@
     instructions = ''
     frequency = ''
     prnAmount = ''
+    qts = ''
     timing = ''
     duration = ''
     startDate = ''
@@ -201,6 +227,7 @@
     timing = editingMedication.timing || ''
     frequency = editingMedication.frequency || ''
     prnAmount = editingMedication.prnAmount || ''
+    qts = editingMedication.qts || ''
     // Remove 'days' suffix if present for editing
     duration = editingMedication.duration ? editingMedication.duration.replace(/\s*days?$/i, '') : ''
     startDate = editingMedication.startDate || ''
@@ -334,22 +361,27 @@
     
     try {
       // Validate required fields
-      if (!name || !dosage || !frequency || !duration) {
+      if (!name || (!requiresQts && !dosage) || (!requiresQts && !frequency) || (!requiresQts && !duration)) {
         if (!name) focusField('brandName')
-        else if (!dosage) focusField('medicationDosage')
-        else if (!frequency) focusField('medicationFrequency')
-        else if (!duration) focusField('medicationDuration')
+        else if (!requiresQts && !dosage) focusField('medicationDosage')
+        else if (!requiresQts && !frequency) focusField('medicationFrequency')
+        else if (!requiresQts && !duration) focusField('medicationDuration')
         throw new Error('Please fill in all required fields')
       }
       if (!isInventoryDrug && !String(strength || '').trim()) {
         focusField('medicationStrength')
         throw new Error('Please enter the strength for this medication')
       }
-      if (frequency && frequency.includes('PRN') && !String(prnAmount || '').trim()) {
+      if (!requiresQts && frequency && frequency.includes('PRN') && !String(prnAmount || '').trim()) {
         focusField('prnAmount')
         throw new Error('Please enter the PRN amount')
       }
-      if (!timing) {
+      const parsedQts = requiresQts ? parsePositiveInteger(qts) : null
+      if (requiresQts && !parsedQts) {
+        focusField('medicationQts')
+        throw new Error('Please enter Qts as a positive integer')
+      }
+      if (!requiresQts && !timing) {
         focusField('medicationTiming')
         throw new Error('Please select when to take')
       }
@@ -432,7 +464,8 @@
         instructions: String(instructions ?? '').trim(),
         frequency,
         timing,
-        prnAmount: frequency.includes('PRN') ? String(prnAmount ?? '').trim() : '', // Include PRN amount if frequency is PRN
+        prnAmount: !requiresQts && frequency.includes('PRN') ? String(prnAmount ?? '').trim() : '', // Include PRN amount if frequency is PRN
+        qts: requiresQts ? String(parsedQts) : '',
         duration: String(duration ?? '').trim() + ' days',
         startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
         endDate: endDate || null,
@@ -461,6 +494,7 @@
       instructions = ''
       frequency = ''
       prnAmount = ''
+      qts = ''
       duration = ''
       startDate = ''
       endDate = ''
@@ -687,36 +721,43 @@
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         <div>
-          <label for="medicationDosage" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dosage Fraction <span class="text-red-500">*</span></label>
+          <label for={requiresQts ? 'medicationStrength' : 'medicationDosage'} class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            {requiresQts ? 'Strength' : 'Dosage Fraction'}
+            {#if !requiresQts}
+              <span class="text-red-500">*</span>
+            {/if}
+          </label>
           <div class="flex flex-col sm:flex-row gap-2">
-            {#if isLiquidStrengthUnit}
-              <div
-                class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center justify-between"
-                id="medicationDosage"
-              >
-                <span>1</span>
-                <span class="text-[10px] uppercase tracking-wide text-gray-500">fixed</span>
-              </div>
-            {:else}
-              <select
-                class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                id="medicationDosage"
-                bind:value={dosage}
-                required
-                disabled={loading}
-              >
-                <option value="">Select dosage</option>
-                {#each DOSAGE_OPTIONS as option}
-                  <option value={option}>{option}</option>
-                {/each}
-              </select>
+            {#if !requiresQts}
+              {#if isLiquidStrengthUnit}
+                <div
+                  class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center justify-between"
+                  id="medicationDosage"
+                >
+                  <span>1</span>
+                  <span class="text-[10px] uppercase tracking-wide text-gray-500">fixed</span>
+                </div>
+              {:else}
+                <select
+                  class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  id="medicationDosage"
+                  bind:value={dosage}
+                  required
+                  disabled={loading}
+                >
+                  <option value="">Select dosage</option>
+                  {#each DOSAGE_OPTIONS as option}
+                    <option value={option}>{option}</option>
+                  {/each}
+                </select>
+              {/if}
             {/if}
 
             {#if !isInventoryDrug || (isInventoryDrug && isLiquidStrengthUnit)}
               <input
                 id="medicationStrength"
                 type="number"
-                class="w-full sm:flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                class="w-full sm:flex-1 h-12 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 bind:value={strength}
                 placeholder="Strength"
                 disabled={loading}
@@ -727,7 +768,7 @@
               />
               <select
                 id="medicationStrengthUnit"
-                class="w-full sm:w-24 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                class="w-full sm:w-24 h-12 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 bind:value={strengthUnit}
                 disabled={loading}
               >
@@ -740,6 +781,25 @@
               <div class="flex items-center text-xs sm:text-sm text-gray-700 px-2">
                 <span class="font-medium">Strength:</span>
                 <span class="ml-1">{strength}{#if strengthUnit} {strengthUnit}{/if}</span>
+              </div>
+            {/if}
+
+            {#if requiresQts}
+              <div class="w-full sm:w-24 flex items-end">
+                <input
+                  type="number"
+                  class="w-full h-12 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  id="medicationQts"
+                  bind:value={qts}
+                  required={requiresQts}
+                  aria-required={requiresQts}
+                  min="1"
+                  step="1"
+                  inputmode="numeric"
+                  disabled={loading}
+                  placeholder="Qunatity"
+                  aria-label="Qunatity"
+                >
               </div>
             {/if}
           </div>
@@ -795,13 +855,18 @@
           </select>
         </div>
         <div>
-          <label for="medicationFrequency" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Frequency <span class="text-red-500">*</span></label>
-          <div class="flex gap-2">
+        <label for="medicationFrequency" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          Frequency
+          {#if !requiresQts}
+            <span class="text-red-500">*</span>
+          {/if}
+        </label>
+        <div class="flex gap-2">
             <select 
               class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="medicationFrequency" 
               bind:value={frequency}
-              required
+              required={!requiresQts}
               disabled={loading}
             >
               <option value="">Select frequency</option>
@@ -809,7 +874,7 @@
                 <option value={freq}>{freq}</option>
               {/each}
             </select>
-            {#if frequency && frequency.includes('PRN')}
+            {#if !requiresQts && frequency && frequency.includes('PRN')}
               <div class="w-24">
                 <label for="prnAmount" class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-1">
                   Amount <span class="text-red-500">*</span>
@@ -833,23 +898,25 @@
         </div>
       </div>
       
-      <div>
-        <label for="medicationTiming" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-          When to take <span class="text-red-500">*</span>
-        </label>
-        <select
-          id="medicationTiming"
-          bind:value={timing}
-          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-          required
-          disabled={loading}
-        >
-          <option value="">Select timing</option>
-          {#each TIMING_OPTIONS as option}
-            <option value={option}>{option}</option>
-          {/each}
-        </select>
-      </div>
+      {#if !requiresQts}
+        <div>
+          <label for="medicationTiming" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            When to take <span class="text-red-500">*</span>
+          </label>
+          <select
+            id="medicationTiming"
+            bind:value={timing}
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            required
+            disabled={loading}
+          >
+            <option value="">Select timing</option>
+            {#each TIMING_OPTIONS as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
 
       <div>
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
@@ -891,15 +958,21 @@
         ></textarea>
       </div>
       
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div>
-          <label for="medicationDuration" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Duration in days <span class="text-red-500">*</span></label>
+          <label for="medicationDuration" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            Duration in days
+            {#if !requiresQts}
+              <span class="text-red-500">*</span>
+            {/if}
+          </label>
           <input 
             type="number" 
             class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationDuration" 
             bind:value={duration}
             min="1"
+            required={!requiresQts}
             disabled={loading}
             placeholder="e.g., 30"
           >

@@ -514,6 +514,12 @@
   }
 
   const calculateMedicationQuantity = (medication) => {
+    const parsePositiveInteger = (value) => {
+      const parsed = chargeCalculationService.parseMedicationQuantity(value)
+      if (!parsed || parsed <= 0) return null
+      const normalized = Math.trunc(parsed)
+      return normalized > 0 ? normalized : null
+    }
     const resolveStrengthToMl = (value, unitHint = '') => {
       if (value === null || value === undefined || value === '') return null
       const normalized = String(value).trim().toLowerCase()
@@ -537,6 +543,26 @@
       const strengthText = String(medication?.strength || '').trim().toLowerCase()
       return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
     })()
+    const requiresQtsPricing = (() => {
+      if (isLiquid) return false
+      const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+      if (!form) return false
+      return !(
+        form.includes('tablet') ||
+        form.includes('tab') ||
+        form.includes('capsule') ||
+        form.includes('cap') ||
+        form.includes('syrup') ||
+        form.includes('liquid')
+      )
+    })()
+
+    if (requiresQtsPricing) {
+      const qtsQuantity = parsePositiveInteger(medication.qts)
+      if (qtsQuantity) {
+        return qtsQuantity
+      }
+    }
 
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
       const base = chargeCalculationService.parseMedicationQuantity(medication.amount) || 0

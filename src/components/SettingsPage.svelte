@@ -1097,17 +1097,6 @@
   // Initialize system template when templateType becomes 'system'
   $: if (templateType === 'system' && !templatePreview) {
     generateSystemHeader()
-    
-    // Initialize headerText with default content if empty
-    if (!headerText || headerText.trim() === '') {
-      headerText = `<h5 style="font-weight: bold; margin: 10px 0; text-align: center;">Dr. ${user?.name || '[Your Name]'}</h5>
-<p style="font-weight: 600; margin: 5px 0; text-align: center;">${user?.firstName || ''} ${user?.lastName || ''} Medical Practice</p>
-<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">${user?.city || 'City'}, ${user?.country || 'Country'}</p>
-<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: +1 (555) 123-4567 | Email: ${user?.email || 'doctor@example.com'}</p>
-<hr style="margin: 10px 0; border: 1px solid #ccc;">
-<p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>`
-      console.log('🔧 Auto-initialized headerText with default content')
-    }
   }
 
   // Handle form submission
@@ -1253,19 +1242,14 @@
       formattedHeader: '',
       logo: null
     }
-    
-    
-    // Load saved header content if available
-    const savedHeader = localStorage.getItem('prescriptionHeader')
-    
-    if (savedHeader) {
-      headerText = savedHeader
-      templatePreview.formattedHeader = savedHeader
+
+    if (headerText && headerText.trim()) {
+      templatePreview.formattedHeader = headerText
     } else {
       // Initialize with default content
       updateHeaderText()
+      templatePreview.formattedHeader = headerText
     }
-    
   }
   
   // Update header text from template preview
@@ -1301,8 +1285,6 @@
     headerText = content
     if (templatePreview) {
       templatePreview.formattedHeader = content
-      // Save to localStorage or database if needed
-      localStorage.setItem('prescriptionHeader', content)
       // Trigger reactive update
       templatePreview = { ...templatePreview }
     }
@@ -1372,7 +1354,13 @@
       
       const previewWidthPx = templateType === 'system' ? previewElement?.offsetWidth || null : null
       const templatePreviewSnapshot = templatePreview
-        ? { ...templatePreview, previewWidthPx }
+        ? {
+          ...templatePreview,
+          previewWidthPx,
+          formattedHeader: templateType === 'system'
+            ? (headerText || templatePreview?.formattedHeader || '')
+            : templatePreview?.formattedHeader
+        }
         : templatePreview
 
       // Prepare template settings object

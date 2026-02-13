@@ -290,6 +290,20 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     ) || dosageForm === 'liquid' || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
   }
 
+  const requiresQtsPricing = (medication) => {
+    if (isLiquidMedication(medication)) return false
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    if (!dosageForm) return false
+    return !(
+      dosageForm.includes('tablet') ||
+      dosageForm.includes('tab') ||
+      dosageForm.includes('capsule') ||
+      dosageForm.includes('cap') ||
+      dosageForm.includes('syrup') ||
+      dosageForm.includes('liquid')
+    )
+  }
+
   const getMedicationMetaLine = (medication, headerLabel = '') => {
     const parts = []
     if (!isLiquidMedication(medication)) {
@@ -389,6 +403,18 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
 
   const calculateMedicationQuantity = (medication) => {
+    const parsePositiveInteger = (value) => {
+      const parsed = chargeCalculationService.parseMedicationQuantity(value)
+      if (!parsed || parsed <= 0) return null
+      const normalized = Math.trunc(parsed)
+      return normalized > 0 ? normalized : null
+    }
+    if (requiresQtsPricing(medication)) {
+      const qtsQuantity = parsePositiveInteger(medication.qts)
+      if (qtsQuantity) {
+        return qtsQuantity
+      }
+    }
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
       const base = Number(medication.amount) || 0
       const dosageMultiplier = parseDosageMultiplier(medication.dosage)

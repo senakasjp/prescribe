@@ -1,5 +1,24 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.5 - Qts-Based Non-Tablet Pricing (February 13, 2026)
+
+### 💊 Qts Input + Pricing Rule
+- **New Qts workflow** for non-`Tablet`/`Capsule`/`Syrup` dosage forms (for example: ointment, suppository, drops, spray).
+- **Qts input moved next to Strength** in the `Add New Medication` form for faster entry.
+- **Qts is integer-only** (positive whole number).
+- **Qts is compulsory** whenever it is shown.
+- **Dosage Fraction hidden** when Qts-based dosage forms are selected.
+- **PRN Amount hidden** in Qts mode.
+- **When to take hidden** in Qts mode.
+- **Frequency and Duration are optional** in Qts mode.
+
+### 💰 Price Calculation Logic
+- For non-`Tablet`/`Capsule`/`Syrup` dosage forms:  
+  `Drug Price = Qts × unit selling price`
+- For syrups/liquids: pricing continues with ml-based quantity logic.
+- For tablets/capsules: pricing continues with amount/dosage logic.
+- Multi-batch inventory allocation is still supported; total cost is summed across allocated batches.
+
 ## Version 2.3.4 - Patient Workflow & Prescription Routing (February 10, 2026)
 
 ### 👤 Patient Registration UX

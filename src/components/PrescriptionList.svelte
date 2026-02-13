@@ -242,6 +242,38 @@
   }
 
   const calculateMedicationQuantity = (medication) => {
+    const parsePositiveInteger = (value) => {
+      const parsed = chargeCalculationService.parseMedicationQuantity(value)
+      if (!parsed || parsed <= 0) return null
+      const normalized = Math.trunc(parsed)
+      return normalized > 0 ? normalized : null
+    }
+    const isLiquid = (() => {
+      const unit = String(medication?.strengthUnit || '').trim().toLowerCase()
+      const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+      const strengthText = String(medication?.strength || '').trim().toLowerCase()
+      return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
+    })()
+    const requiresQtsPricing = (() => {
+      if (isLiquid) return false
+      const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+      if (!form) return false
+      return !(
+        form.includes('tablet') ||
+        form.includes('tab') ||
+        form.includes('capsule') ||
+        form.includes('cap') ||
+        form.includes('syrup') ||
+        form.includes('liquid')
+      )
+    })()
+    if (requiresQtsPricing) {
+      const qtsValue = parsePositiveInteger(medication?.qts)
+      if (qtsValue) {
+        return qtsValue
+      }
+    }
+
     const frequency = medication?.frequency || ''
     const duration = medication?.duration || ''
     const numericMatch = duration.match(/(\d+)/)

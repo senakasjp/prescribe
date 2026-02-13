@@ -22,6 +22,14 @@
 | 4 | Click "Save Medication" (repeat for more drugs) |
 | 5 | Choose: Save / Print PDF / Send to Pharmacy |
 
+### Qts Rule (Important)
+- For non-`Tablet`/`Capsule`/`Syrup` dosage forms, enter **Qts** (integer) next to **Strength**.
+- **Qts is required** when it is shown.
+- In Qts mode, **Amount (PRN)** and **When to take** are hidden.
+- In Qts mode, **Frequency** and **Duration** are optional.
+- Price formula for these forms: `Drug Price = Qts × unit selling price`.
+- Syrup/liquid stays ml-based; tablet/capsule stays amount/dosage-based.
+
 ## 📋 Medical Records
 | Tab | Purpose | Action |
 |-----|---------|--------|

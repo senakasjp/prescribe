@@ -141,6 +141,38 @@ describe('chargeCalculationService', () => {
     })
   })
 
+  describe('qts quantity pricing', () => {
+    it('uses qts for non-tablet/capsule/syrup dosage forms', () => {
+      const requested = chargeCalculationService.resolveRequestedQuantity({
+        dosageForm: 'Suppository',
+        qts: '3',
+        amount: '30'
+      })
+
+      expect(requested).toBe(3)
+    })
+
+    it('falls back to amount for tablet/capsule dosage forms', () => {
+      const requested = chargeCalculationService.resolveRequestedQuantity({
+        dosageForm: 'Tablet',
+        qts: '3',
+        amount: '30'
+      })
+
+      expect(requested).toBe(30)
+    })
+
+    it('normalizes qts to positive integer', () => {
+      const requested = chargeCalculationService.resolveRequestedQuantity({
+        dosageForm: 'Suppository',
+        qts: '2.9',
+        amount: '30'
+      })
+
+      expect(requested).toBe(2)
+    })
+  })
+
   describe('formatCurrency', () => {
     it('should format LKR with currency code when doctor country is Sri Lanka', () => {
       const currency = resolveCurrencyFromCountry('Sri Lanka')

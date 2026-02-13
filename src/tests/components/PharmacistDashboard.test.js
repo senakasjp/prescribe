@@ -61,7 +61,28 @@ vi.mock('jsbarcode', () => ({
 
 vi.mock('../../services/pharmacist/chargeCalculationService.js', () => ({
   default: {
-    calculatePrescriptionCharge: vi.fn(() => Promise.resolve({ totalCharge: 0 }))
+    calculatePrescriptionCharge: vi.fn(() => Promise.resolve({
+      doctorCharges: {
+        consultationCharge: 0,
+        excludeConsultationCharge: false,
+        baseConsultationCharge: 0,
+        hospitalCharge: 0,
+        procedureCharges: {
+          breakdown: []
+        },
+        discountPercentage: 0,
+        discountScope: 'consultation_only',
+        discountAmount: 0
+      },
+      drugCharges: {
+        medicationBreakdown: [],
+        totalCost: 0
+      },
+      totalBeforeRounding: 0,
+      roundingAdjustment: 0,
+      roundingPreference: 'none',
+      totalCharge: 0
+    }))
   }
 }))
 

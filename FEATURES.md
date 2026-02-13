@@ -2,6 +2,22 @@
 
 ## 🆕 Recent Updates (January 16, 2025)
 
+### **💊 Qts-Based Non-Tablet Pricing (February 13, 2026) - v2.3.5**
+- **Qts for non-tablet dosage forms**:
+  - ✅ Non-`Tablet`/`Capsule`/`Syrup` forms now use `Qts` for quantity (for example: ointment, suppository, drops, spray)
+  - ✅ `Qts` accepts positive integers only
+  - ✅ `Qts` is compulsory when shown
+  - ✅ `Qts` field appears next to **Strength** in medication form
+  - ✅ **Dosage Fraction** is hidden when `Qts` mode is active
+  - ✅ **PRN Amount** is hidden when `Qts` mode is active
+  - ✅ **When to take** is hidden when `Qts` mode is active
+  - ✅ **Frequency** and **Duration** are optional when `Qts` mode is active
+- **Pricing formula**:
+  - ✅ Non-tablet forms: `Drug Price = Qts × unit selling price`
+  - ✅ Syrups/liquids continue ml-based quantity pricing
+  - ✅ Tablets/capsules continue amount/dosage pricing
+  - ✅ Multi-batch allocation remains supported for inventory pricing
+
 ### **🔧 Brand Name Autofill Enhancement (January 16, 2025) - v2.2.24**
 - **Pharmacy Inventory Integration**: 
   - ✅ Fixed autofill not working with brand names from pharmacist portal inventory

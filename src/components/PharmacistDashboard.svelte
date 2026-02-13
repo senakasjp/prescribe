@@ -22,6 +22,7 @@
   import { resolveInheritedCurrency } from '../utils/currencyInheritance.js'
   import { resolveLocaleFromCountry } from '../utils/localeByCountry.js'
   import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
+  import { buildDispensedMedicationKey, buildPersistedDispensedSet, isMedicationAlreadyDispensed as resolveMedicationDispensedState } from '../utils/pharmacistDispenseState.js'
   
   export let pharmacist
   let pharmacyId = null
@@ -35,20 +36,11 @@
   
   // Individual medication dispatch tracking
   let dispensedMedications = new Set()
-  let permanentlyDispensedMedications = new Set() // Track medications that have been permanently dispensed
-  
-  // Load permanently dispensed medications from localStorage on component mount
-  onMount(() => {
-    try {
-      const stored = localStorage.getItem('permanentlyDispensedMedications')
-      if (stored) {
-        permanentlyDispensedMedications = new Set(JSON.parse(stored))
-        console.log('📦 Loaded permanently dispensed medications from localStorage:', permanentlyDispensedMedications.size)
-      }
-    } catch (error) {
-      console.error('❌ Error loading permanently dispensed medications:', error)
-    }
-  })
+  let persistedDispensedMedications = new Set()
+
+  $: {
+    persistedDispensedMedications = buildPersistedDispensedSet(selectedPrescription)
+  }
 
   let doctorOwnerProfile = null
   let displayCurrency = 'USD'
@@ -929,19 +921,12 @@
   }
   
   function isMedicationAlreadyDispensed(prescriptionId, medicationId) {
-    const key = `${prescriptionId}-${medicationId}`
-    
-    // Check if it's in the current session's dispensed medications
-    if (dispensedMedications.has(key)) {
-      return true
-    }
-    
-    // Check if it's in the permanently dispensed medications
-    if (permanentlyDispensedMedications.has(key)) {
-      return true
-    }
-    
-    return false
+    return resolveMedicationDispensedState({
+      selectedPrescription,
+      persistedDispensedMedications,
+      prescriptionId,
+      medicationId
+    })
   }
   
   function getDispensedCount() {
@@ -1014,7 +999,10 @@
       
       // Process each dispensed medication
       for (const dispensedKey of dispensedMedications) {
-        const [prescriptionId, medicationId] = dispensedKey.split('-')
+        const separatorIndex = dispensedKey.indexOf('-')
+        if (separatorIndex === -1) continue
+        const prescriptionId = dispensedKey.slice(0, separatorIndex)
+        const medicationId = dispensedKey.slice(separatorIndex + 1)
         
         // Find the medication details
         let medication = null
@@ -1227,20 +1215,6 @@
         notifyError('Prescription dispensed but failed to update records: ' + error.message)
       }
       
-      // Add dispensed medications to permanently dispensed set
-      for (const dispensedKey of dispensedMedications) {
-        permanentlyDispensedMedications.add(dispensedKey)
-      }
-      permanentlyDispensedMedications = new Set(permanentlyDispensedMedications) // Trigger reactivity
-      
-      // Save to localStorage for persistence across page refreshes
-      try {
-        localStorage.setItem('permanentlyDispensedMedications', JSON.stringify(Array.from(permanentlyDispensedMedications)))
-        console.log('💾 Saved permanently dispensed medications to localStorage:', permanentlyDispensedMedications.size)
-      } catch (error) {
-        console.error('❌ Error saving permanently dispensed medications to localStorage:', error)
-      }
-      
       // Clear dispensed medications and close modal
       dispensedMedications.clear()
       dispensedMedications = new Set(dispensedMedications)
@@ -1286,7 +1260,9 @@
           dispensedAt: new Date().toISOString(),
           dispensedBy: pharmacist.id || '',
           dispensedMedications: Array.from(dispensedMedications).map(key => {
-            const [prescriptionId, medicationId] = key.split('-')
+            const separatorIndex = key.indexOf('-')
+            const prescriptionId = separatorIndex === -1 ? '' : key.slice(0, separatorIndex)
+            const medicationId = separatorIndex === -1 ? '' : key.slice(separatorIndex + 1)
             return { prescriptionId: prescriptionId || '', medicationId: medicationId || '', isDispensed: true }
           }),
           receivedAt: selectedPrescription.receivedAt || new Date().toISOString(),
@@ -1304,7 +1280,9 @@
           dispensedAt: new Date().toISOString(),
           dispensedBy: pharmacist.id,
           dispensedMedications: Array.from(dispensedMedications).map(key => {
-            const [prescriptionId, medicationId] = key.split('-')
+            const separatorIndex = key.indexOf('-')
+            const prescriptionId = separatorIndex === -1 ? '' : key.slice(0, separatorIndex)
+            const medicationId = separatorIndex === -1 ? '' : key.slice(separatorIndex + 1)
             return { prescriptionId, medicationId, isDispensed: true }
           })
         })
@@ -1321,7 +1299,9 @@
         dispensedAt: new Date().toISOString(),
         dispensedBy: pharmacist.id,
         dispensedMedications: Array.from(dispensedMedications).map(key => {
-          const [prescriptionId, medicationId] = key.split('-')
+          const separatorIndex = key.indexOf('-')
+          const prescriptionId = separatorIndex === -1 ? '' : key.slice(0, separatorIndex)
+          const medicationId = separatorIndex === -1 ? '' : key.slice(separatorIndex + 1)
           return { prescriptionId, medicationId, isDispensed: true }
         })
       }
@@ -1802,7 +1782,7 @@
         const inventoryData = medicationInventoryData[key]
 
         // Check if medication is selected/dispensed
-        const isDispensed = dispensedMedications.has(key) || permanentlyDispensedMedications.has(key)
+        const isDispensed = dispensedMedications.has(key) || persistedDispensedMedications.has(key)
 
         return {
           ...medication,
@@ -2579,15 +2559,16 @@
                               <div class="bg-gray-50 px-4 py-3 border-b border-gray-300">
                                 <div class="flex items-center gap-3">
                                   <input
+                                    id={`dispense-${prescription.id}-${medication.id || medication.name}`}
                                     type="checkbox"
                                     class="w-5 h-5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                     checked={isMedicationDispensed(prescription.id, medication.id || medication.name) || isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
-                                    disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) || !canDispenseMedication(prescription.id, medication)}
-                                    on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && canDispenseMedication(prescription.id, medication) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+                                    disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
+                                    on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
                                   />
-                                  <span class="text-base font-semibold text-gray-900">
+                                  <label for={`dispense-${prescription.id}-${medication.id || medication.name}`} class="text-base font-semibold text-gray-900 cursor-pointer">
                                     {medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}
-                                  </span>
+                                  </label>
                                 </div>
                               </div>
 
@@ -2729,8 +2710,8 @@
                                   type="checkbox" 
                                   class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                                   checked={isMedicationDispensed(prescription.id, medication.id || medication.name) || isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
-                                  disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) || !canDispenseMedication(prescription.id, medication)}
-                                  on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && canDispenseMedication(prescription.id, medication) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
+                                  disabled={isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name)}
+                                  on:change={() => !isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) && toggleMedicationDispatch(prescription.id, medication.id || medication.name)}
                                 />
                                 <span class="text-xs {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'text-gray-400' : 'text-gray-600'}">Dispensed</span>
                               </label>

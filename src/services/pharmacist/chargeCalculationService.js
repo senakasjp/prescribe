@@ -8,6 +8,47 @@ import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '../../firebase-config.js'
 
 class ChargeCalculationService {
+  toPositiveInteger(value) {
+    const parsed = this.extractNumericValue(value)
+    if (!parsed || parsed <= 0) return null
+    const normalized = Math.trunc(parsed)
+    return normalized > 0 ? normalized : null
+  }
+
+  isQtsMedication(medication) {
+    if (!medication) return false
+    if (this.isLiquidMedication(medication)) return false
+    const dosageForm = String(medication.dosageForm || medication.form || '').trim().toLowerCase()
+    if (!dosageForm) return false
+    return !(
+      dosageForm.includes('tablet') ||
+      dosageForm.includes('tab') ||
+      dosageForm.includes('capsule') ||
+      dosageForm.includes('cap') ||
+      dosageForm.includes('syrup') ||
+      dosageForm.includes('liquid')
+    )
+  }
+
+  resolveRequestedQuantity(medication) {
+    if (!medication) return 0
+
+    if (this.isQtsMedication(medication)) {
+      const qtsQuantity = this.toPositiveInteger(medication.qts)
+      if (qtsQuantity) {
+        return qtsQuantity
+      }
+    }
+
+    const parsedQuantity = this.parseMedicationQuantity(medication.amount)
+    const isLiquid = this.isLiquidMedication(medication)
+    const liquidAmount = isLiquid ? this.calculateLiquidAmount(medication) : 0
+
+    if (liquidAmount > 0) return liquidAmount
+    if (parsedQuantity !== null && parsedQuantity > 0) return parsedQuantity
+    return 0
+  }
+
   isLiquidMedication(medication) {
     if (!medication) return false
     const unit = String(medication.strengthUnit || '').trim().toLowerCase()
@@ -225,7 +266,7 @@ class ChargeCalculationService {
     prescriptions.forEach((presc) => {
       const meds = presc?.medications || []
       meds.forEach((medication) => {
-        const requestedQuantity = this.parseMedicationQuantity(medication?.amount)
+        const requestedQuantity = this.resolveRequestedQuantity(medication)
         if (!requestedQuantity || requestedQuantity <= 0) {
           missingQuantityCount += 1
           return
@@ -399,12 +440,7 @@ class ChargeCalculationService {
                 continue
               }
 
-              const parsedQuantity = this.parseMedicationQuantity(medication.amount)
-              const isLiquid = this.isLiquidMedication(medication)
-              const liquidAmount = isLiquid ? this.calculateLiquidAmount(medication) : 0
-              const requestedQuantity = liquidAmount > 0
-                ? liquidAmount
-                : (parsedQuantity !== null ? parsedQuantity : 0)
+              const requestedQuantity = this.resolveRequestedQuantity(medication)
 
               const pricingSources = this.buildInventoryPricingSources(
                 medication,
