@@ -16,7 +16,7 @@ describe('Mobile capture route wiring', () => {
     expect(appSource).toContain('<MobileCameraCapturePage accessCode={mobileCaptureCode} />')
   })
 
-  it('mobile capture page enforces code format and supports camera capture input', () => {
+  it('mobile capture page enforces code format and keeps the new branded capture flow', () => {
     const __filename = fileURLToPath(import.meta.url)
     const __dirname = path.dirname(__filename)
     const pagePath = path.resolve(__dirname, '../../components/MobileCameraCapturePage.svelte')
@@ -24,7 +24,12 @@ describe('Mobile capture route wiring', () => {
 
     expect(pageSource).toContain('validateAccessCode')
     expect(pageSource).toContain('/^[A-Z0-9]{8,16}$/')
+    expect(pageSource).toContain('BrandName')
     expect(pageSource).toContain("capture=\"environment\"")
-    expect(pageSource).toContain('download={`report-capture-${Date.now()}.jpg`}')
+    expect(pageSource).toContain('Take Photograph')
+    expect(pageSource).toContain('Upload Photo')
+    expect(pageSource).toContain('Photo uploaded successfully. You can return to desktop.')
+    expect(pageSource).not.toContain('Access code:')
+    expect(pageSource).not.toContain('download={`report-capture-${Date.now()}.jpg`}')
   })
 })

@@ -39,7 +39,8 @@ class FirebaseStorageService {
       pharmacyUsers: 'pharmacyUsers',
       doctorReports: 'doctorReports',
       reports: 'reports',
-      systemSettings: 'systemSettings'
+      systemSettings: 'systemSettings',
+      mobileCaptureSessions: 'mobileCaptureSessions'
     }
   }
 
@@ -1959,6 +1960,53 @@ class FirebaseStorageService {
       await deleteDoc(doc(db, this.collections.reports, reportId))
     } catch (error) {
       console.error('Error deleting report:', error)
+      throw error
+    }
+  }
+
+  async upsertMobileCaptureSession(sessionCode, payload = {}) {
+    try {
+      const code = String(sessionCode || '').trim().toUpperCase()
+      if (!code) throw new Error('Session code is required')
+      const sessionRef = doc(db, this.collections.mobileCaptureSessions, code)
+      await setDoc(sessionRef, {
+        ...payload,
+        code,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return { id: code, ...payload }
+    } catch (error) {
+      console.error('Error upserting mobile capture session:', error)
+      throw error
+    }
+  }
+
+  subscribeMobileCaptureSession(sessionCode, callback, errorCallback = null) {
+    const code = String(sessionCode || '').trim().toUpperCase()
+    if (!code) {
+      return () => {}
+    }
+    const sessionRef = doc(db, this.collections.mobileCaptureSessions, code)
+    return onSnapshot(
+      sessionRef,
+      (snapshot) => {
+        callback?.(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null)
+      },
+      (error) => {
+        console.error('Error subscribing mobile capture session:', error)
+        if (typeof errorCallback === 'function') errorCallback(error)
+      }
+    )
+  }
+
+  async deleteMobileCaptureSession(sessionCode) {
+    try {
+      const code = String(sessionCode || '').trim().toUpperCase()
+      if (!code) return
+      const sessionRef = doc(db, this.collections.mobileCaptureSessions, code)
+      await deleteDoc(sessionRef)
+    } catch (error) {
+      console.error('Error deleting mobile capture session:', error)
       throw error
     }
   }

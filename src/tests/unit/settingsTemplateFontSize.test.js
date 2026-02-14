@@ -40,8 +40,8 @@ describe('Doctor template font size settings regression', () => {
     expect(headerEditorSource).toContain("SizeStyle.whitelist = FONT_SIZE_OPTIONS.map((size) => `${size}px`)")
 
     expect(prescriptionPdfSource).toContain('const headerFontSize = Number(templateSettings.headerFontSize || 24)')
-    expect(prescriptionPdfSource).toContain('font-size: ${headerFontSize}px !important;')
+    expect(prescriptionPdfSource).toContain('font-size: ${headerFontSize}px;')
     expect(patientDetailsSource).toContain('const headerFontSize = Number(templateSettings.headerFontSize || 24)')
-    expect(patientDetailsSource).toContain('font-size: ${headerFontSize}px !important;')
+    expect(patientDetailsSource).toContain('font-size: ${headerFontSize}px;')
   })
 })

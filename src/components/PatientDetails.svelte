@@ -18,6 +18,7 @@
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import { formatDate } from '../utils/dataProcessing.js'
   import { detectDocumentCornersFromDataUrl, createSelectedAreaDataUrl } from '../utils/documentCornerDetection.js'
+  import { isUnreadableText } from '../utils/unreadableText.js'
   import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
@@ -1903,6 +1904,12 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let mobileCameraAccessCode = ''
   let mobileCameraUrl = ''
   let mobileCameraQrUrl = ''
+  let mobileCaptureSessionUnsubscribe = null
+  let mobileCaptureSessionStatus = 'idle'
+  let mobileWaitingForPhoto = false
+  let mobileWaitingProgress = 0
+  let mobileWaitingTimer = null
+  let lastProcessedMobilePhotoAt = ''
   let cameraOcrLoading = false
   let cameraOcrError = ''
   let cameraOcrProgress = 0
@@ -2067,7 +2074,13 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       )
       cameraOcrProgress = 100
       cameraOcrProgressLabel = 'Finalizing extracted text...'
-      reportText = result?.extractedText || ''
+      const extractedText = String(result?.extractedText || '').trim()
+      if (isUnreadableText(extractedText)) {
+        reportText = ''
+        cameraOcrError = 'Extracted text is unreadable. Please retake a clearer photo and try again.'
+      } else {
+        reportText = extractedText
+      }
       dispatch('ai-usage-updated', {
         tokensUsed: result?.tokensUsed || 0,
         type: 'reportImageOcr'
@@ -2242,23 +2255,109 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     }
   }
 
-  const handleMobileCameraUpload = async (event) => {
-    const file = event?.target?.files?.[0]
-    if (!file) {
+  const stopMobileWaitingProgress = (reset = false) => {
+    if (mobileWaitingTimer) {
+      clearInterval(mobileWaitingTimer)
+      mobileWaitingTimer = null
+    }
+    if (reset) {
+      mobileWaitingForPhoto = false
+      mobileWaitingProgress = 0
+    }
+  }
+
+  const startMobileWaitingProgress = () => {
+    stopMobileWaitingProgress()
+    mobileWaitingForPhoto = true
+    mobileWaitingProgress = Math.max(mobileWaitingProgress, 8)
+    mobileWaitingTimer = setInterval(() => {
+      if (!mobileWaitingForPhoto) return
+      mobileWaitingProgress = Math.min(94, mobileWaitingProgress + 2)
+    }, 300)
+  }
+
+  const cleanupMobileCaptureSession = async (deleteRemote = false) => {
+    stopMobileWaitingProgress(true)
+    mobileCaptureSessionStatus = 'idle'
+    lastProcessedMobilePhotoAt = ''
+    if (mobileCaptureSessionUnsubscribe) {
+      mobileCaptureSessionUnsubscribe()
+      mobileCaptureSessionUnsubscribe = null
+    }
+    if (deleteRemote && mobileCameraAccessCode) {
+      try {
+        await firebaseStorage.deleteMobileCaptureSession(mobileCameraAccessCode)
+      } catch (error) {
+        console.warn('⚠️ Failed to delete mobile capture session:', error)
+      }
+    }
+  }
+
+  const hydrateFromMobileCapture = async (session) => {
+    if (!session?.imageDataUrl || typeof session.imageDataUrl !== 'string') return
+    const uploadedAt = String(session.photoUploadedAt || '')
+    if (uploadedAt && uploadedAt === lastProcessedMobilePhotoAt) return
+    lastProcessedMobilePhotoAt = uploadedAt
+
+    stopMobileWaitingProgress()
+    mobileWaitingForPhoto = true
+    mobileWaitingProgress = 100
+    mobileCaptureSessionStatus = 'photo_ready'
+
+    reportFiles = []
+    reportFileDataUrl = session.imageDataUrl
+    setReportFilePreview(session.imageDataUrl)
+    cameraCaptureError = ''
+    cameraOcrError = ''
+    await detectPreviewCorners()
+    await runCameraOcr()
+
+    mobileWaitingForPhoto = false
+    mobileWaitingProgress = 0
+    try {
+      await firebaseStorage.upsertMobileCaptureSession(mobileCameraAccessCode, {
+        status: 'consumed'
+      })
+    } catch (error) {
+      console.warn('⚠️ Failed to mark mobile capture session as consumed:', error)
+    }
+  }
+
+  const ensureMobileCaptureSession = async () => {
+    if (!mobileCameraAccessCode) return
+    if (mobileCaptureSessionUnsubscribe) return
+    const ownerDoctorId = doctorId || currentUser?.id || currentUser?.uid || selectedPatient?.doctorId || null
+    if (!ownerDoctorId) return
+
+    const nowIso = new Date().toISOString()
+    const expiresAtIso = new Date(Date.now() + (15 * 60 * 1000)).toISOString()
+    try {
+      await firebaseStorage.upsertMobileCaptureSession(mobileCameraAccessCode, {
+        doctorId: ownerDoctorId,
+        status: 'qr_ready',
+        createdAt: nowIso,
+        expiresAt: expiresAtIso
+      })
+    } catch (error) {
+      console.warn('⚠️ Failed to initialize mobile capture session:', error)
       return
     }
-    try {
-      const dataUrl = await readFileAsDataUrl(file)
-      reportFiles = [file]
-      reportFileDataUrl = dataUrl
-      setReportFilePreview(dataUrl)
-      cameraCaptureError = ''
-      cameraOcrError = ''
-      await detectPreviewCorners()
-    } catch (error) {
-      console.error('❌ Failed to load mobile camera image:', error)
-      cameraCaptureError = error?.message || 'Failed to load mobile camera image.'
-    }
+
+    mobileCaptureSessionUnsubscribe = firebaseStorage.subscribeMobileCaptureSession(
+      mobileCameraAccessCode,
+      async (session) => {
+        if (!session) return
+        mobileCaptureSessionStatus = String(session.status || 'idle')
+        if (mobileCaptureSessionStatus === 'opened') {
+          startMobileWaitingProgress()
+        } else if (mobileCaptureSessionStatus === 'photo_ready') {
+          await hydrateFromMobileCapture(session)
+        }
+      },
+      (error) => {
+        console.warn('⚠️ Mobile capture session listener error:', error)
+      }
+    )
   }
 
   // Report functions
@@ -2401,6 +2500,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
 
   const resetReportForm = () => {
+    const existingMobileCode = mobileCameraAccessCode
+    cleanupMobileCaptureSession(false)
     editingReportId = null
     reportTitle = ''
     reportText = ''
@@ -2427,6 +2528,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     }
     stopCameraScan()
     showReportForm = false
+    if (existingMobileCode) {
+      firebaseStorage.deleteMobileCaptureSession(existingMobileCode).catch(() => {})
+    }
   }
   
   const handleFileUpload = (event) => {
@@ -2505,6 +2609,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
   $: if (showReportForm && reportType === 'camera' && cameraSource === 'mobile') {
     updateMobileCameraLinks()
+    ensureMobileCaptureSession()
+  }
+  $: if ((!showReportForm || reportType !== 'camera' || cameraSource !== 'mobile') && (mobileCaptureSessionUnsubscribe || mobileWaitingForPhoto || mobileCaptureSessionStatus !== 'idle')) {
+    cleanupMobileCaptureSession(false)
   }
   $: if (showReportForm && reportType === 'camera' && cameraSource === 'laptop' && !reportFileDataUrl && !cameraStream && !cameraStarting) {
     startCameraScan()
@@ -3145,67 +3253,56 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             headerContainer.style.width = `${pageWidth - (margin * 2)}mm`
             headerContainer.style.minWidth = `${pageWidth - (margin * 2)}mm`
             headerContainer.style.backgroundColor = 'white'
-            headerContainer.style.padding = '8px'
-            headerContainer.style.fontFamily = 'Arial, sans-serif'
-            headerContainer.style.lineHeight = '1.4'
+            headerContainer.style.padding = '0'
+            headerContainer.style.fontFamily = 'inherit'
+            headerContainer.style.lineHeight = 'normal'
             headerContainer.style.color = '#000000'
-            headerContainer.style.textAlign = 'center'
             headerContainer.style.direction = 'ltr'
             
             // Add CSS to normalize styling and ensure proper alignment
             const style = document.createElement('style')
             style.textContent = `
               .header-capture-container {
-                text-align: center !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                justify-content: center !important;
-                width: 100% !important;
                 position: relative !important;
-                margin: 0 auto !important;
+                margin: 0 !important;
+                overflow: visible !important;
               }
               .header-capture-container .ql-editor {
                 width: 100% !important;
                 padding: 0 !important;
-                font-size: ${headerFontSize}px !important;
-                line-height: 1.4 !important;
+                font-size: ${headerFontSize}px;
+                line-height: 1.42;
                 font-family: inherit !important;
+                color: #000 !important;
+                min-height: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
               }
-              .header-capture-container .ql-editor h1 {
-                font-size: 3em !important;
-                margin: 0.2em 0 !important;
+              .header-capture-container .ql-editor h1,
+              .header-capture-container .ql-editor h2,
+              .header-capture-container .ql-editor h3,
+              .header-capture-container .ql-editor h4,
+              .header-capture-container .ql-editor h5,
+              .header-capture-container .ql-editor h6,
+              .header-capture-container .ql-editor p,
+              .header-capture-container .ql-editor ol,
+              .header-capture-container .ql-editor ul,
+              .header-capture-container .ql-editor pre,
+              .header-capture-container .ql-editor blockquote {
+                margin: 0 !important;
+                padding: 0 !important;
               }
-              .header-capture-container .ql-editor h2 {
-                font-size: 2.4em !important;
-                margin: 0.2em 0 !important;
+              .header-capture-container .ql-editor ol,
+              .header-capture-container .ql-editor ul {
+                padding-left: 1.5em !important;
               }
-              .header-capture-container .ql-editor h3 {
-                font-size: 1.9em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor h4 {
-                font-size: 1.5em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor h5 {
-                font-size: 1.25em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor h6 {
-                font-size: 1.1em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor p {
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-size-small {
+              .header-capture-container .ql-editor .ql-size-small {
                 font-size: 0.75em !important;
               }
-              .header-capture-container .ql-size-large {
+              .header-capture-container .ql-editor .ql-size-large {
                 font-size: 1.9em !important;
               }
-              .header-capture-container .ql-size-huge {
+              .header-capture-container .ql-editor .ql-size-huge {
                 font-size: 3em !important;
               }
               .header-capture-container * {
@@ -3214,9 +3311,6 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                 border: none !important;
                 box-shadow: none !important;
                 text-decoration: none !important;
-              }
-              .header-capture-container > * {
-                width: 100% !important;
               }
               .header-capture-container p,
               .header-capture-container div,
@@ -3231,12 +3325,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                 box-shadow: none !important;
                 width: 100% !important;
               }
-              .header-capture-container img {
-                display: block !important;
-                margin: 0 auto !important;
+              .header-capture-container .ql-editor img {
+                display: inline-block !important;
                 max-width: 100% !important;
                 height: auto !important;
-                object-fit: contain !important;
               }
               .header-capture-container .resize-handle,
               .header-capture-container .quill-resize-handle {
@@ -3297,6 +3389,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             
             headerContainer.style.width = `${baseWidthPx}px`
             headerContainer.style.minWidth = `${baseWidthPx}px`
+            headerContainer.style.paddingBottom = '8px'
             headerContainer.innerHTML = `<div class="ql-editor">${cleanHeaderContent}</div>`
             
             // Add to DOM temporarily
@@ -3311,6 +3404,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               const html2canvas = html2canvasModule.default
               
               console.log('📸 Capturing header as image... [UPDATE v2.1.6]')
+              const captureWidth = Math.ceil(headerContainer.scrollWidth || headerContainer.offsetWidth)
+              const captureHeight = Math.ceil((headerContainer.scrollHeight || headerContainer.offsetHeight) + 8)
               
               // Capture the header as an image
               const canvas = await html2canvas(headerContainer, {
@@ -3318,8 +3413,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                 scale: captureScale,
                 useCORS: true,
                 allowTaint: true,
-                width: headerContainer.offsetWidth,
-                height: headerContainer.offsetHeight,
+                width: captureWidth,
+                height: captureHeight,
+                windowWidth: captureWidth,
+                windowHeight: captureHeight,
                 removeContainer: true,
                 foreignObjectRendering: false,
                 logging: false,
@@ -3337,24 +3434,24 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               console.log('📸 Header captured successfully [UPDATE v2.1.6]:', headerImageData.substring(0, 50) + '...')
               
               // Calculate proper dimensions maintaining aspect ratio
-              const maxHeaderWidthMm = pageWidth
+              const maxHeaderWidthMm = pageWidth - (margin * 2)
               const maxHeaderHeightMm = null
               const rawHeaderWidthMm = (canvas.width / captureScale) / pxPerMm
               const rawHeaderHeightMm = (canvas.height / captureScale) / pxPerMm
-              const headerScale = 5
               
               // Calculate aspect ratio from canvas dimensions
               const aspectRatio = canvas.width / canvas.height
               
               // Calculate dimensions maintaining aspect ratio within limits
-              let headerImageWidthMm = rawHeaderWidthMm * headerScale
-              let headerImageHeightMm = rawHeaderHeightMm * headerScale
-
-              if (headerImageWidthMm < maxHeaderWidthMm) {
-                headerImageWidthMm = maxHeaderWidthMm
-                headerImageHeightMm = headerImageWidthMm / aspectRatio
+              let headerImageWidthMm = rawHeaderWidthMm
+              let headerImageHeightMm = rawHeaderHeightMm
+              const minHeaderWidthMm = maxHeaderWidthMm * 0.9
+              if (headerImageWidthMm < minHeaderWidthMm) {
+                const scaleUp = minHeaderWidthMm / headerImageWidthMm
+                headerImageWidthMm *= scaleUp
+                headerImageHeightMm *= scaleUp
               }
-              
+
               // If height exceeds limit, scale down based on height
               if (headerImageWidthMm > maxHeaderWidthMm) {
                 headerImageWidthMm = maxHeaderWidthMm
@@ -3378,8 +3475,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               
               console.log('📸 Header image dimensions for PDF [UPDATE v2.1.6]:', `${headerImageWidthMm.toFixed(1)}mm x ${headerImageHeightMm.toFixed(1)}mm (aspect ratio: ${aspectRatio.toFixed(2)})`)
               
-              // Center the header image horizontally
-              const headerImageX = (pageWidth - headerImageWidthMm) / 2
+              // Keep header aligned with content margins
+              const headerImageX = margin
               
               // Add the header image to PDF with proper aspect ratio
               doc.addImage(headerImageData, 'PNG', headerImageX, headerYStart, headerImageWidthMm, headerImageHeightMm)
@@ -4419,6 +4516,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     if (cameraOcrProgressTimer) {
       clearInterval(cameraOcrProgressTimer)
       cameraOcrProgressTimer = null
+    }
+    stopMobileWaitingProgress(true)
+    if (mobileCaptureSessionUnsubscribe) {
+      mobileCaptureSessionUnsubscribe()
+      mobileCaptureSessionUnsubscribe = null
     }
     stopCameraScan()
     if (typeof window !== 'undefined' && window.__setPatientDetailsTab) {
@@ -6005,7 +6107,6 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
                 {#if reportType === 'camera'}
                   <div class="mb-4 space-y-3">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Camera Capture</label>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <button
                         type="button"
@@ -6059,21 +6160,28 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                               >
                                 <polygon
                                   points={getCornerPolygonPoints(reportDetectedCorners)}
-                                  fill="rgba(20, 184, 166, 0.12)"
-                                  stroke="#0d9488"
-                                  stroke-width="0.7"
+                                  fill="rgba(59, 130, 246, 0.16)"
+                                  stroke="#1d4ed8"
+                                  stroke-width="0.9"
                                 />
                                 {#each reportDetectedCorners as corner, index}
-                                  <circle
-                                    cx={corner.x * 100}
-                                    cy={corner.y * 100}
-                                    r="2"
-                                    fill="#0f766e"
-                                    stroke="white"
-                                    stroke-width="0.5"
+                                  <g
+                                    transform={`translate(${corner.x * 100} ${corner.y * 100})`}
                                     style="cursor: grab;"
                                     on:pointerdown={(event) => startCornerDrag(index, event)}
-                                  />
+                                  >
+                                    <rect
+                                      x="-4.5"
+                                      y="-4.5"
+                                      width="9"
+                                      height="9"
+                                      fill="transparent"
+                                    />
+                                    <line x1="-2.7" y1="0" x2="2.7" y2="0" stroke="white" stroke-width="1.8" stroke-linecap="round" />
+                                    <line x1="0" y1="-2.7" x2="0" y2="2.7" stroke="white" stroke-width="1.8" stroke-linecap="round" />
+                                    <line x1="-2.7" y1="0" x2="2.7" y2="0" stroke="#e11d48" stroke-width="1" stroke-linecap="round" />
+                                    <line x1="0" y1="-2.7" x2="0" y2="2.7" stroke="#e11d48" stroke-width="1" stroke-linecap="round" />
+                                  </g>
                                 {/each}
                               </svg>
                             {/if}
@@ -6088,21 +6196,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           </div>
                         {/if}
                       </div>
-                      <div class="flex items-center gap-2">
-                        <button
-                          type="button"
-                          class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
-                          on:click={retakeCameraPhoto}
-                        >
-                          <i class="fas fa-rotate-right mr-1"></i>Retake
-                        </button>
-                        <button
-                          type="button"
-                          class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700"
-                          on:click={detectPreviewCorners}
-                        >
-                          <i class="fas fa-vector-square mr-1"></i>Detect 4 Corners
-                        </button>
+                      <div class="flex items-center">
                         <button
                           type="button"
                           class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -6131,9 +6225,6 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           </div>
                         </div>
                       {/if}
-                      {#if reportDetectedCorners.length === 4}
-                        <p class="text-xs text-teal-700">4-corner text area boundary detected and shown in preview. Drag corner dots to adjust.</p>
-                      {/if}
                     {:else if cameraSource === 'laptop'}
                       <div class="rounded-lg border border-gray-200 bg-black/5 overflow-hidden">
                         <video bind:this={cameraVideoEl} autoplay playsinline muted class="w-full h-auto max-h-80 bg-black"></video>
@@ -6157,31 +6248,37 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </div>
                     {:else}
                       <div class="rounded-lg border border-cyan-200 bg-cyan-50 p-4">
-                        <p class="text-sm font-semibold text-cyan-800 mb-2">Scan on your mobile phone</p>
-                        <p class="text-xs text-cyan-700 mb-3">Open this report camera screen on your phone, capture the report image, then upload it.</p>
-                        {#if mobileCameraQrUrl}
-                          <div class="flex flex-col items-center gap-2">
-                            <img src={mobileCameraQrUrl} alt="Mobile camera QR code" class="w-40 h-40 rounded border border-cyan-200 bg-white p-1" />
-                            <p class="text-xs text-cyan-900">Security code: <span class="font-semibold tracking-wider">{mobileCameraAccessCode}</span></p>
-                            <a
-                              href={mobileCameraUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              class="text-xs text-cyan-800 underline break-all text-center"
-                            >
-                              {mobileCameraUrl}
-                            </a>
+                        {#if mobileWaitingForPhoto}
+                          <p class="text-sm font-semibold text-cyan-800 mb-2">Waiting for photo from phone</p>
+                          <p class="text-xs text-cyan-700 mb-3">Mobile capture page is open. Take a photo on phone and keep this window open.</p>
+                          <div class="space-y-1">
+                            <div class="flex items-center justify-between text-xs text-cyan-700">
+                              <span>{mobileCaptureSessionStatus === 'photo_ready' ? 'Photo received. Processing...' : 'Waiting for photo upload...'}</span>
+                              <span>{mobileWaitingProgress}%</span>
+                            </div>
+                            <div class="w-full h-2 bg-cyan-100 rounded-full overflow-hidden">
+                              <div
+                                class="h-full bg-cyan-600 transition-all duration-300 ease-out"
+                                style={`width: ${mobileWaitingProgress}%`}
+                                aria-label="Mobile capture waiting progress"
+                              ></div>
+                            </div>
                           </div>
+                        {:else}
+                          <p class="text-sm font-semibold text-cyan-800 mb-2">Scan on your mobile phone</p>
+                          <p class="text-xs text-cyan-700 mb-3">Open this report camera screen on your phone, capture the report image, then upload it.</p>
+                          {#if mobileCameraQrUrl}
+                            <div class="grid grid-cols-1 md:grid-cols-[168px_1fr] gap-4 items-center">
+                              <div class="flex justify-center md:justify-start">
+                                <img src={mobileCameraQrUrl} alt="Mobile camera QR code" class="w-40 h-40 rounded border border-cyan-200 bg-white p-1" />
+                              </div>
+                              <div class="space-y-1">
+                                <p class="text-xs text-cyan-900">Scan the QR code using your phone camera.</p>
+                                <p class="text-[11px] text-cyan-700">No manual link or code is required in this tab.</p>
+                              </div>
+                            </div>
+                          {/if}
                         {/if}
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Upload photo captured from mobile</label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500"
-                          on:change={handleMobileCameraUpload}
-                        />
                       </div>
                     {/if}
                     {#if cameraCaptureError}
@@ -6198,17 +6295,12 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
                   {#if cameraOcrLoading || (reportText && reportText.trim())}
                     <div class="mb-4">
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Extracted Text (Editable)</label>
                       <textarea
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500"
                         rows="6"
                         bind:value={reportText}
                         placeholder={cameraOcrLoading ? 'Extracting text...' : 'Extracted text'}
                       ></textarea>
-                    </div>
-                  {:else}
-                    <div class="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                      Extracted text will appear here after OCR is generated.
                     </div>
                   {/if}
                 {:else if reportType === 'text'}

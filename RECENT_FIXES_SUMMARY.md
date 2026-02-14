@@ -1,5 +1,46 @@
 # Recent Fixes Summary - Prescribe Medical System
 
+## 🎯 Latest Updates (February 14, 2026)
+
+### 📱 Mobile Camera Capture UX Refresh
+**Status**: ✅ **IMPLEMENTED**
+- Added branded mobile capture header (`BrandName`)
+- Removed visible access code on mobile capture page
+- Replaced browse-style flow with guided capture flow:
+- `Take Photograph` button first
+- Then preview with `Upload Photo` and `Retake`
+- Removed `Download Image`
+- Added upload success message:
+- `Photo uploaded successfully. You can return to desktop.`
+
+### 🖥️ Desktop Camera OCR UI Simplification
+**Status**: ✅ **IMPLEMENTED**
+- Kept only `Extract Text` in captured-photo action row
+- Removed camera helper clutter in desktop report camera tab:
+- `Camera Capture` label removed
+- `Detect 4 Corners` button removed from action row
+- `Retake` button removed from action row
+- `Extracted Text (Editable)` label removed
+- Placeholder text block removed (`Extracted text will appear here after OCR is generated.`)
+- Improved crop-corner visibility with high-contrast cross markers
+
+### 🧠 OCR Safety Behavior
+**Status**: ✅ **IMPLEMENTED**
+- If OCR output indicates unreadable/unclear image:
+- Do not open extracted text input box
+- Show only unreadable warning message prompting retake
+- Added shared utility for unreadable detection:
+- `src/utils/unreadableText.js`
+
+### 🧪 Tests Updated
+**Status**: ✅ **VERIFIED**
+- Updated/added coverage in:
+- `src/tests/components/MobileCameraCapturePage.test.js`
+- `src/tests/unit/mobileCaptureRoute.test.js`
+- `src/tests/unit/patientDetailsImportRegression.test.js`
+- `src/tests/unit/unreadableText.test.js`
+- Full test suite status: **69/69 files, 497/497 tests passing**
+
 ## 🎯 Latest Updates (February 10, 2026)
 
 ### 🧾 Patient Registration Workflow

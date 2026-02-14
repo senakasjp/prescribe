@@ -1,5 +1,45 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.7 - Camera Capture UX + OCR Guardrails (February 14, 2026)
+
+### 📱 Mobile Camera Capture Flow Refinement
+- Added branded mobile capture header using `BrandName`.
+- Removed access code display from mobile capture page.
+- Removed manual file-browse style UI and switched to a guided flow:
+- `Take Photograph` first.
+- After capture: preview + `Upload Photo` + `Retake`.
+- Removed mobile `Download Image` option.
+- Added success confirmation after upload:
+- `Photo uploaded successfully. You can return to desktop.`
+
+### 🖥️ Desktop Camera Tab Simplification
+- Simplified camera OCR controls in report form to keep only `Extract Text` under captured preview.
+- Removed extra controls and helper text in desktop camera section:
+- `Camera Capture` label removed.
+- `Retake` button removed from that action row.
+- `Detect 4 Corners` button removed from that action row.
+- `Extracted Text (Editable)` label removed.
+- `Extracted text will appear here after OCR is generated.` helper removed.
+- Improved corner-handle visibility by replacing subtle circles with high-contrast cross markers.
+
+### 🧠 OCR Unreadable Handling
+- Added reusable unreadable-text detector utility:
+- `src/utils/unreadableText.js`
+- Integrated unreadable detection in camera OCR flow:
+- If unreadable signals are detected, keep extracted text box closed and show explicit retake message.
+
+### 🧪 Test Updates
+- Added new unit test file:
+- `src/tests/unit/unreadableText.test.js`
+- Updated mobile capture component tests for the new flow and success message:
+- `src/tests/components/MobileCameraCapturePage.test.js`
+- Updated mobile route wiring tests to remove old download-link expectation and assert new branded flow:
+- `src/tests/unit/mobileCaptureRoute.test.js`
+- Updated camera OCR regression expectations in:
+- `src/tests/unit/patientDetailsImportRegression.test.js`
+- Full suite verified green after updates:
+- `69/69` test files, `497/497` tests passing.
+
 ## Version 2.3.6 - Security Hardening and Authorization Test Expansion (February 13, 2026)
 
 ### 🔐 Firestore Rule Hardening

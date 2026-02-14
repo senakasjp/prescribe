@@ -251,6 +251,57 @@ service cloud.firestore {
       );
     }
 
+    match /mobileCaptureSessions/{sessionCode} {
+      allow create: if isSignedIn() &&
+        request.resource.data.doctorId is string &&
+        isDoctorOwnerByDoctorId(request.resource.data.doctorId) &&
+        request.resource.data.code == sessionCode &&
+        request.resource.data.keys().hasOnly([
+          'code',
+          'doctorId',
+          'status',
+          'createdAt',
+          'expiresAt',
+          'openedAt',
+          'photoUploadedAt',
+          'imageDataUrl',
+          'updatedAt'
+        ]);
+
+      allow read, delete: if isSignedIn() &&
+        resource.data.doctorId is string &&
+        isDoctorOwnerByDoctorId(resource.data.doctorId);
+
+      allow update: if (
+        isSignedIn() &&
+        resource.data.doctorId is string &&
+        isDoctorOwnerByDoctorId(resource.data.doctorId)
+      ) || (
+        !isSignedIn() &&
+        resource.data.doctorId is string &&
+        request.resource.data.doctorId == resource.data.doctorId &&
+        request.resource.data.code == resource.data.code &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.expiresAt == resource.data.expiresAt &&
+        request.resource.data.keys().hasOnly([
+          'code',
+          'doctorId',
+          'status',
+          'createdAt',
+          'expiresAt',
+          'openedAt',
+          'photoUploadedAt',
+          'imageDataUrl',
+          'updatedAt'
+        ]) &&
+        request.resource.data.status in ['opened', 'photo_ready'] &&
+        (
+          !request.resource.data.keys().hasAny(['imageDataUrl']) ||
+          request.resource.data.imageDataUrl is string
+        )
+      );
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

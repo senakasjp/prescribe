@@ -330,79 +330,77 @@
             headerContainer.style.width = `${baseWidthPx}px`
             headerContainer.style.minWidth = `${baseWidthPx}px`
             headerContainer.style.backgroundColor = 'white'
-            headerContainer.style.padding = '8px'
-            headerContainer.style.fontFamily = 'Arial, sans-serif'
-            headerContainer.style.lineHeight = '1.4'
+            headerContainer.style.padding = '0 0 8px 0'
+            headerContainer.style.fontFamily = 'inherit'
+            headerContainer.style.lineHeight = 'normal'
             headerContainer.style.color = '#000000'
-            headerContainer.style.textAlign = 'center'
             headerContainer.className = 'header-capture-container'
             
             style.textContent = `
               .header-capture-container {
-                text-align: center !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                justify-content: center !important;
-                width: 100% !important;
                 position: relative !important;
-                margin: 0 auto !important;
+                margin: 0 !important;
+                overflow: visible !important;
               }
               .header-capture-container .ql-editor {
                 width: 100% !important;
                 padding: 0 !important;
-                font-size: ${headerFontSize}px !important;
-                line-height: 1.4 !important;
+                font-size: ${headerFontSize}px;
+                line-height: 1.42;
                 font-family: inherit !important;
+                color: #000 !important;
+                min-height: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
               }
-              .header-capture-container .ql-editor h1 {
-                font-size: 3em !important;
-                margin: 0.2em 0 !important;
+              .header-capture-container .ql-editor h1,
+              .header-capture-container .ql-editor h2,
+              .header-capture-container .ql-editor h3,
+              .header-capture-container .ql-editor h4,
+              .header-capture-container .ql-editor h5,
+              .header-capture-container .ql-editor h6,
+              .header-capture-container .ql-editor p,
+              .header-capture-container .ql-editor ol,
+              .header-capture-container .ql-editor ul,
+              .header-capture-container .ql-editor pre,
+              .header-capture-container .ql-editor blockquote {
+                margin: 0 !important;
+                padding: 0 !important;
               }
-              .header-capture-container .ql-editor h2 {
-                font-size: 2.4em !important;
-                margin: 0.2em 0 !important;
+              .header-capture-container .ql-editor ol,
+              .header-capture-container .ql-editor ul {
+                padding-left: 1.5em !important;
               }
-              .header-capture-container .ql-editor h3 {
-                font-size: 1.9em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor h4 {
-                font-size: 1.5em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor h5 {
-                font-size: 1.25em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor h6 {
-                font-size: 1.1em !important;
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-editor p {
-                margin: 0.2em 0 !important;
-              }
-              .header-capture-container .ql-size-small {
-                font-size: 0.75em !important;
-              }
-              .header-capture-container .ql-size-large {
-                font-size: 1.9em !important;
-              }
-              .header-capture-container .ql-size-huge {
-                font-size: 3em !important;
-              }
-              .header-capture-container * {
-                box-sizing: border-box !important;
+              .header-capture-container .ql-editor .ql-align-center {
                 text-align: center !important;
               }
-              .header-capture-container > * {
-                width: 100% !important;
+              .header-capture-container .ql-editor .ql-align-right {
+                text-align: right !important;
               }
-              .header-capture-container img {
-                display: block !important;
-                margin: 0 auto !important;
+              .header-capture-container .ql-editor .ql-align-justify {
+                text-align: justify !important;
+              }
+              .header-capture-container .ql-editor .ql-indent-1 { padding-left: 3em !important; }
+              .header-capture-container .ql-editor .ql-indent-2 { padding-left: 6em !important; }
+              .header-capture-container .ql-editor .ql-indent-3 { padding-left: 9em !important; }
+              .header-capture-container .ql-editor .ql-indent-4 { padding-left: 12em !important; }
+              .header-capture-container .ql-editor .ql-indent-5 { padding-left: 15em !important; }
+              .header-capture-container .ql-editor .ql-indent-6 { padding-left: 18em !important; }
+              .header-capture-container .ql-editor .ql-indent-7 { padding-left: 21em !important; }
+              .header-capture-container .ql-editor .ql-indent-8 { padding-left: 24em !important; }
+              .header-capture-container .ql-editor .ql-size-small {
+                font-size: 0.75em !important;
+              }
+              .header-capture-container .ql-editor .ql-size-large {
+                font-size: 1.9em !important;
+              }
+              .header-capture-container .ql-editor .ql-size-huge {
+                font-size: 3em !important;
+              }
+              .header-capture-container .ql-editor img {
+                display: inline-block !important;
                 max-width: 100% !important;
-                object-fit: contain !important;
+                height: auto !important;
               }
             `
             
@@ -415,30 +413,34 @@
             try {
               const html2canvasModule = await import('html2canvas')
               const html2canvas = html2canvasModule.default
+              const captureWidth = Math.ceil(headerContainer.scrollWidth || headerContainer.offsetWidth)
+              const captureHeight = Math.ceil((headerContainer.scrollHeight || headerContainer.offsetHeight) + 8)
               const canvas = await html2canvas(headerContainer, {
                 backgroundColor: 'white',
                 scale: captureScale,
                 useCORS: true,
                 allowTaint: true,
-                width: headerContainer.offsetWidth,
-                height: headerContainer.offsetHeight,
+                width: captureWidth,
+                height: captureHeight,
+                windowWidth: captureWidth,
+                windowHeight: captureHeight,
                 logging: false
               })
               
               const headerImageData = canvas.toDataURL('image/png')
-              const maxHeaderWidthMm = pageWidth
+              const maxHeaderWidthMm = pageWidth - (margin * 2)
               const maxHeaderHeightMm = null
               const rawHeaderWidthMm = (canvas.width / captureScale) / pxPerMm
               const rawHeaderHeightMm = (canvas.height / captureScale) / pxPerMm
-              const headerScale = 5
               const aspectRatio = canvas.width / canvas.height
               
-              let headerImageWidthMm = rawHeaderWidthMm * headerScale
-              let headerImageHeightMm = rawHeaderHeightMm * headerScale
-
-              if (headerImageWidthMm < maxHeaderWidthMm) {
-                headerImageWidthMm = maxHeaderWidthMm
-                headerImageHeightMm = headerImageWidthMm / aspectRatio
+              let headerImageWidthMm = rawHeaderWidthMm
+              let headerImageHeightMm = rawHeaderHeightMm
+              const minHeaderWidthMm = maxHeaderWidthMm * 0.9
+              if (headerImageWidthMm < minHeaderWidthMm) {
+                const scaleUp = minHeaderWidthMm / headerImageWidthMm
+                headerImageWidthMm *= scaleUp
+                headerImageHeightMm *= scaleUp
               }
               if (maxHeaderHeightMm && headerImageHeightMm > maxHeaderHeightMm) {
                 headerImageHeightMm = maxHeaderHeightMm
@@ -460,7 +462,7 @@
                 }
               }
               
-              const headerImageX = (pageWidth - headerImageWidthMm) / 2
+              const headerImageX = margin
               doc.addImage(headerImageData, 'PNG', headerImageX, headerYStart, headerImageWidthMm, headerImageHeightMm)
               
               capturedHeaderImage = headerImageData
