@@ -67,6 +67,23 @@ class InventoryService {
     }
   }
 
+  toInteger(value) {
+    if (value === undefined || value === null || value === '') return null
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value) || !Number.isInteger(value)) return null
+      return value
+    }
+    const raw = String(value).trim()
+    if (!/^-?\d+$/.test(raw)) return null
+    const parsed = Number(raw)
+    return Number.isSafeInteger(parsed) ? parsed : null
+  }
+
+  parseIntegerOr(value, fallback) {
+    const parsed = this.toInteger(value)
+    return parsed === null ? fallback : parsed
+  }
+
   // ==================== MIGRATIONS ====================
 
   /**
@@ -594,11 +611,15 @@ class InventoryService {
   async addBatch(itemId, batchData) {
     try {
       console.log('📦 InventoryService: Adding batch to item:', itemId)
+      const quantity = this.toInteger(batchData.quantity)
+      if (quantity === null || quantity <= 0) {
+        throw new Error('Batch quantity must be a positive integer')
+      }
       
       const batch = {
         id: this.generateId(),
         batchNumber: batchData.batchNumber,
-        quantity: parseInt(batchData.quantity),
+        quantity,
         expiryDate: batchData.expiryDate,
         costPrice: parseFloat(batchData.costPrice),
         supplier: batchData.supplier,
@@ -775,8 +796,15 @@ class InventoryService {
       // Validate required fields including strength
       this.validateInventoryItem(itemData)
       
-      // Check for duplicate primary key (brand name + strength + strength unit + expiry date)
-      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength, itemData.strengthUnit, itemData.expiryDate)
+      // Check for duplicate primary key (brand name + strength + strength unit + expiry date + selling price)
+      await this.checkDuplicatePrimaryKey(
+        pharmacistId,
+        itemData.brandName,
+        itemData.strength,
+        itemData.strengthUnit,
+        itemData.expiryDate,
+        itemData.sellingPrice
+      )
       
       // Prepare the item data
       const inventoryItem = this.prepareInventoryItemData(pharmacistId, itemData)
@@ -815,7 +843,15 @@ class InventoryService {
       this.validateInventoryItem(itemData)
       
       // Check for duplicate primary key (excluding current item)
-      await this.checkDuplicatePrimaryKey(pharmacistId, itemData.brandName, itemData.strength, itemData.strengthUnit, itemData.expiryDate, itemId)
+      await this.checkDuplicatePrimaryKey(
+        pharmacistId,
+        itemData.brandName,
+        itemData.strength,
+        itemData.strengthUnit,
+        itemData.expiryDate,
+        itemData.sellingPrice,
+        itemId
+      )
       
       // Prepare the update data
       const updateData = {
@@ -828,7 +864,7 @@ class InventoryService {
       // Handle stock field mapping for updates
       if (updateData.initialStock !== undefined) {
         // Map initialStock to currentStock for database storage
-        updateData.currentStock = parseInt(updateData.initialStock) || 0
+        updateData.currentStock = this.parseIntegerOr(updateData.initialStock, 0)
         delete updateData.initialStock // Remove initialStock as it's not stored in DB
       }
       
@@ -1021,7 +1057,7 @@ class InventoryService {
       strengthUnit: itemData.strengthUnit,
       dosageForm: itemData.dosageForm || 'tablet',
       route: itemData.route || 'oral',
-      packSize: itemData.packSize ? parseInt(itemData.packSize) : null,
+      packSize: this.toInteger(itemData.packSize),
       packUnit: itemData.packUnit || 'tablets',
       
       // Regulatory Information
@@ -1032,11 +1068,11 @@ class InventoryService {
       requiresPrescription: itemData.requiresPrescription !== false,
       
       // Inventory Details
-      currentStock: parseInt(itemData.initialStock) || 0,
-      minimumStock: parseInt(itemData.minimumStock) || 10,
-      maximumStock: parseInt(itemData.maximumStock) || 1000,
-      reorderPoint: parseInt(itemData.reorderPoint) || 20,
-      reorderQuantity: parseInt(itemData.reorderQuantity) || 100,
+      currentStock: this.parseIntegerOr(itemData.initialStock, 0),
+      minimumStock: this.parseIntegerOr(itemData.minimumStock, 10),
+      maximumStock: this.parseIntegerOr(itemData.maximumStock, 1000),
+      reorderPoint: this.parseIntegerOr(itemData.reorderPoint, 20),
+      reorderQuantity: this.parseIntegerOr(itemData.reorderQuantity, 100),
       
       // Financial Information
       costPrice: itemData.costPrice ? parseFloat(itemData.costPrice) : null,
@@ -1067,7 +1103,7 @@ class InventoryService {
       
       // Analytics
       totalSold: 0,
-      totalPurchased: parseInt(itemData.initialStock) || 0,
+      totalPurchased: this.parseIntegerOr(itemData.initialStock, 0),
       averageMonthlySales: 0,
       lastSaleDate: null,
       lastPurchaseDate: new Date().toISOString(),
@@ -1080,8 +1116,8 @@ class InventoryService {
       notes: itemData.notes || '',
       
       // Additional fields for search and compatibility
-      brandNameLower: (itemData.brandName || '').toLowerCase(),
-      genericNameLower: (itemData.genericName || '').toLowerCase(),
+      brandNameLower: String(itemData.brandName ?? '').toLowerCase(),
+      genericNameLower: String(itemData.genericName ?? '').toLowerCase(),
       pharmacistId: pharmacistId
     }
   }
@@ -1106,7 +1142,29 @@ class InventoryService {
       throw new Error(`Missing required fields: ${missing.join(', ')}`)
     }
     
-    if (parseInt(itemData.initialStock) < 0) {
+    const integerFieldRules = [
+      { key: 'initialStock', label: 'Initial stock', required: true, min: 0 },
+      { key: 'minimumStock', label: 'Minimum stock', required: true, min: 0 },
+      { key: 'maximumStock', label: 'Maximum stock', required: false, min: 0 },
+      { key: 'reorderPoint', label: 'Reorder point', required: false, min: 0 },
+      { key: 'reorderQuantity', label: 'Reorder quantity', required: false, min: 0 },
+      { key: 'packSize', label: 'Pack size', required: false, min: 0 }
+    ]
+    for (const rule of integerFieldRules) {
+      const rawValue = itemData[rule.key]
+      if (!rule.required && (rawValue === undefined || rawValue === null || rawValue === '')) {
+        continue
+      }
+      const parsed = this.toInteger(rawValue)
+      if (parsed === null) {
+        throw new Error(`${rule.label} must be an integer`)
+      }
+      if (typeof rule.min === 'number' && parsed < rule.min) {
+        throw new Error(`${rule.label} cannot be negative`)
+      }
+    }
+
+    if (this.parseIntegerOr(itemData.initialStock, 0) < 0) {
       throw new Error('Initial stock cannot be negative')
     }
     
@@ -1121,12 +1179,12 @@ class InventoryService {
   }
 
   /**
-   * Check if a brand name + strength + strength unit + expiry date combination already exists for a pharmacist
-   * This implements the primary key rule: Brand Name + Strength + Strength Unit + Expiry Date
+   * Check if a brand name + strength + strength unit + expiry date + selling price combination exists
+   * Primary key rule: Brand Name + Strength + Strength Unit + Expiry Date + Selling Price
    */
-  async checkDuplicatePrimaryKey(pharmacistId, brandName, strength, strengthUnit, expiryDate, excludeId = null) {
+  async checkDuplicatePrimaryKey(pharmacistId, brandName, strength, strengthUnit, expiryDate, sellingPrice, excludeId = null) {
     try {
-      console.log('🔍 Checking for duplicate primary key:', { pharmacistId, brandName, strength, strengthUnit, expiryDate, excludeId })
+      console.log('🔍 Checking for duplicate primary key:', { pharmacistId, brandName, strength, strengthUnit, expiryDate, sellingPrice, excludeId })
       
       // Use simple query to avoid composite index requirements
       const stockRef = collection(db, this.collections.inventory)
@@ -1141,11 +1199,18 @@ class InventoryService {
         }
         
         const data = doc.data()
-        // Check for duplicate using client-side filtering - composite key: brandName + strength + strengthUnit + expiryDate
+        const normalizedIncomingSellingPrice = Number.parseFloat(sellingPrice)
+        const normalizedExistingSellingPrice = Number.parseFloat(data.sellingPrice)
+        const sellingPriceMatches = Number.isFinite(normalizedIncomingSellingPrice) &&
+          Number.isFinite(normalizedExistingSellingPrice) &&
+          normalizedIncomingSellingPrice === normalizedExistingSellingPrice
+
+        // Check for duplicate using client-side filtering - composite key: brandName + strength + strengthUnit + expiryDate + sellingPrice
         if (data.brandName === brandName && 
             data.strength === strength && 
             data.strengthUnit === strengthUnit &&
-            data.expiryDate === expiryDate) {
+            data.expiryDate === expiryDate &&
+            sellingPriceMatches) {
           duplicates.push({
             id: doc.id,
             ...data
@@ -1157,7 +1222,9 @@ class InventoryService {
       
       if (duplicates.length > 0) {
         const duplicateItem = duplicates[0]
-        throw new Error(`A drug with brand name "${brandName}", strength "${strength} ${strengthUnit}", and expiry date "${expiryDate}" already exists. Each brand name + strength + unit + expiry combination must be unique.`)
+        throw new Error(
+          `A drug with brand name "${brandName}", strength "${strength} ${strengthUnit}", expiry date "${expiryDate}", and selling price "${duplicateItem.sellingPrice}" already exists. Each brand name + strength + unit + expiry + selling price combination must be unique.`
+        )
       }
       
       return false // No duplicates found

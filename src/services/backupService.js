@@ -4,6 +4,7 @@ import firebaseStorage from './firebaseStorage.js'
 import inventoryService from './pharmacist/inventoryService.js'
 
 const BACKUP_VERSION = 1
+const MAX_BACKUP_BYTES = 10 * 1024 * 1024
 
 const sanitizeDocData = (item) => {
   if (!item || typeof item !== 'object') {
@@ -12,6 +13,29 @@ const sanitizeDocData = (item) => {
 
   const { id, ...data } = item
   return data
+}
+
+const getBackupSizeBytes = (backup) => {
+  try {
+    return new TextEncoder().encode(JSON.stringify(backup)).length
+  } catch (error) {
+    return Number.POSITIVE_INFINITY
+  }
+}
+
+const assertBackupPayloadSize = (backup) => {
+  const size = getBackupSizeBytes(backup)
+  if (!Number.isFinite(size) || size > MAX_BACKUP_BYTES) {
+    throw new Error('Backup payload too large')
+  }
+}
+
+const assertCollectionOwnerIntegrity = (items, fieldName, expectedOwnerId, label) => {
+  const safeItems = Array.isArray(items) ? items : []
+  const mismatch = safeItems.find((item) => item && item[fieldName] && item[fieldName] !== expectedOwnerId)
+  if (mismatch) {
+    throw new Error(`Backup owner mismatch in ${label}`)
+  }
 }
 
 const writeDoc = async (collectionName, item, overrides = {}, options = {}) => {
@@ -89,6 +113,17 @@ const restoreDoctorBackup = async (doctorId, backup, options = {}) => {
   if (!backup || backup.type !== 'doctor') {
     throw new Error('Invalid doctor backup file')
   }
+  assertBackupPayloadSize(backup)
+  if (backup.doctorId && backup.doctorId !== doctorId) {
+    throw new Error('Backup doctorId mismatch')
+  }
+
+  assertCollectionOwnerIntegrity(backup.patients, 'doctorId', doctorId, 'patients')
+  assertCollectionOwnerIntegrity(backup.symptoms, 'doctorId', doctorId, 'symptoms')
+  assertCollectionOwnerIntegrity(backup.reports, 'doctorId', doctorId, 'reports')
+  assertCollectionOwnerIntegrity(backup.illnesses, 'doctorId', doctorId, 'illnesses')
+  assertCollectionOwnerIntegrity(backup.prescriptions, 'doctorId', doctorId, 'prescriptions')
+  assertCollectionOwnerIntegrity(backup.longTermMedications, 'doctorId', doctorId, 'longTermMedications')
 
   const writeOptions = options.merge === false ? undefined : { merge: true }
 
@@ -183,6 +218,13 @@ const restorePharmacistBackup = async (pharmacistId, backup, options = {}) => {
   if (!backup || backup.type !== 'pharmacist') {
     throw new Error('Invalid pharmacist backup file')
   }
+  assertBackupPayloadSize(backup)
+  if (backup.pharmacistId && backup.pharmacistId !== pharmacistId) {
+    throw new Error('Backup pharmacistId mismatch')
+  }
+
+  assertCollectionOwnerIntegrity(backup.pharmacyUsers, 'pharmacyId', pharmacistId, 'pharmacyUsers')
+  assertCollectionOwnerIntegrity(backup.inventoryItems, 'pharmacistId', pharmacistId, 'inventoryItems')
 
   const writeOptions = options.merge === false ? undefined : { merge: true }
   const currentPharmacist = await firebaseStorage.getPharmacistById(pharmacistId)

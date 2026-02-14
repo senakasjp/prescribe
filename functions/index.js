@@ -32,6 +32,32 @@ const TWILIO_WHATSAPP_FROM = defineSecret("TWILIO_WHATSAPP_FROM");
 const NOTIFY_USER_ID = defineSecret("NOTIFY_USER_ID");
 const NOTIFY_API_KEY = defineSecret("NOTIFY_API_KEY");
 const DEFAULT_APP_URL = "https://prescribe-7e1e8.web.app";
+const OPENAI_PROXY_ALLOWED_ENDPOINTS = new Set(["chat/completions"]);
+const OPENAI_PROXY_MAX_BODY_BYTES = 100 * 1024; // 100 KB hard cap
+const OPENAI_PROXY_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const OPENAI_PROXY_RATE_LIMIT_MAX_REQUESTS = 30;
+const openaiProxyRateLimits = new Map();
+const smsDedupeCache = new Map();
+const SMS_DEDUPE_WINDOW_MS = 60 * 1000;
+
+const cleanupExpiredInMemoryGuards = (now = Date.now()) => {
+  for (const [key, entry] of openaiProxyRateLimits.entries()) {
+    if (!entry || now - entry.windowStart >= OPENAI_PROXY_RATE_LIMIT_WINDOW_MS) {
+      openaiProxyRateLimits.delete(key);
+    }
+  }
+  for (const [key, createdAt] of smsDedupeCache.entries()) {
+    if (!createdAt || now - createdAt >= SMS_DEDUPE_WINDOW_MS) {
+      smsDedupeCache.delete(key);
+    }
+  }
+};
+
+// Test-only reset hook for in-memory guards.
+exports.__resetInMemoryGuardsForTests = () => {
+  openaiProxyRateLimits.clear();
+  smsDedupeCache.clear();
+};
 
 const setCors = (req, res) => {
   const origin = req.headers.origin || "*";
@@ -85,6 +111,14 @@ const sendNotifySms = async ({recipient, senderId, message, type}) => {
   if (!/^\d{11}$/.test(formattedRecipient)) {
     return {ok: false, error: "Recipient format invalid"};
   }
+
+  const now = Date.now();
+  cleanupExpiredInMemoryGuards(now);
+  const dedupeKey = `${formattedRecipient}|${String(senderId || "")}|${String(message || "")}`;
+  if (smsDedupeCache.has(dedupeKey)) {
+    return {ok: true, skipped: true, reason: "duplicate"};
+  }
+  smsDedupeCache.set(dedupeKey, now);
 
   const payload = new URLSearchParams({
     user_id: String(userId),
@@ -2009,6 +2043,14 @@ exports.openaiProxy = onRequest(
       }
 
       const {endpoint, requestBody} = req.body || {};
+      const bodySize = Buffer.byteLength(
+          JSON.stringify(req.body || {}),
+          "utf8",
+      );
+      if (bodySize > OPENAI_PROXY_MAX_BODY_BYTES) {
+        res.status(413).send("Payload too large");
+        return;
+      }
       if (!endpoint || typeof endpoint !== "string") {
         res.status(400).send("Invalid endpoint");
         return;
@@ -2018,6 +2060,33 @@ exports.openaiProxy = onRequest(
       if (sanitizedEndpoint.includes("://")) {
         res.status(400).send("Invalid endpoint");
         return;
+      }
+      if (!OPENAI_PROXY_ALLOWED_ENDPOINTS.has(sanitizedEndpoint)) {
+        res.status(403).send("Endpoint not allowed");
+        return;
+      }
+      if (
+        requestBody &&
+        typeof requestBody.max_tokens === "number" &&
+        requestBody.max_tokens > 4000
+      ) {
+        res.status(400).send("max_tokens too large");
+        return;
+      }
+
+      const now = Date.now();
+      cleanupExpiredInMemoryGuards(now);
+      const rateKey = user.uid || user.email || "unknown";
+      const existing = openaiProxyRateLimits.get(rateKey);
+      if (!existing || now - existing.windowStart >= OPENAI_PROXY_RATE_LIMIT_WINDOW_MS) {
+        openaiProxyRateLimits.set(rateKey, {windowStart: now, count: 1});
+      } else {
+        existing.count += 1;
+        openaiProxyRateLimits.set(rateKey, existing);
+        if (existing.count > OPENAI_PROXY_RATE_LIMIT_MAX_REQUESTS) {
+          res.status(429).send("Rate limit exceeded");
+          return;
+        }
       }
 
       const apiKey = OPENAI_API_KEY.value();

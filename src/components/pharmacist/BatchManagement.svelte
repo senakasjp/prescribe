@@ -61,12 +61,18 @@
         notifyError('Please fill in all required fields')
         return
       }
+
+      const quantityRaw = String(newBatchForm.quantity || '').trim()
+      if (!/^\d+$/.test(quantityRaw) || Number(quantityRaw) <= 0) {
+        notifyError('Quantity must be a positive integer')
+        return
+      }
       
       const batchData = {
         ...newBatchForm,
         purchaseDate: newBatchForm.purchaseDate || new Date().toISOString(),
         costPrice: parseFloat(newBatchForm.costPrice) || 0,
-        quantity: parseInt(newBatchForm.quantity)
+        quantity: Number(quantityRaw)
       }
       
       await inventoryService.addBatch(item.id, batchData)

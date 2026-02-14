@@ -99,10 +99,13 @@
   
   // Handle date of birth change to auto-calculate age
   const handleDateOfBirthChange = (value) => {
-    const resolved = typeof value === 'string' ? value : (value?.detail?.value || value?.detail || dateOfBirth)
-    if (resolved) {
-      dateOfBirth = resolved
-      const parts = calculateAgeParts(resolved)
+    const resolved = typeof value === 'string'
+      ? value
+      : (value?.detail?.value ?? value?.detail ?? dateOfBirth)
+
+    dateOfBirth = resolved || ''
+    if (dateOfBirth) {
+      const parts = calculateAgeParts(dateOfBirth)
       ageYears = parts.years
       ageMonths = parts.months
       ageDays = parts.days
@@ -136,10 +139,11 @@
         ageDays = parts.days
       } else {
         const hasYears = String(ageYears || '').trim() !== ''
+        const hasMonths = String(ageMonths || '').trim() !== ''
         const hasDays = String(ageDays || '').trim() !== ''
-        if (!hasYears && !hasDays) {
+        if (!hasYears && !hasMonths && !hasDays) {
           focusField('ageYears')
-          throw new Error('Years is required. If not available, enter days.')
+          throw new Error('Enter age in years, months, or days when date of birth is not provided.')
         }
       }
       

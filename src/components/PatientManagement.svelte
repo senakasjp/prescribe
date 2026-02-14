@@ -2059,9 +2059,21 @@
   {#if showPatientForm}
     <div
       class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
-      on:click={() => showPatientForm = false}
+      on:click={(event) => {
+        if (event.target === event.currentTarget) {
+          showPatientForm = false
+        }
+      }}
+      on:keydown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape')) {
+          showPatientForm = false
+        }
+      }}
+      role="button"
+      tabindex="0"
+      aria-label="Close patient form modal"
     >
-      <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto" on:click|stopPropagation>
+      <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
       </div>
     </div>
@@ -2437,9 +2449,21 @@
       {#if showPatientForm}
         <div
           class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
-          on:click={() => showPatientForm = false}
+          on:click={(event) => {
+            if (event.target === event.currentTarget) {
+              showPatientForm = false
+            }
+          }}
+          on:keydown={(event) => {
+            if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape')) {
+              showPatientForm = false
+            }
+          }}
+          role="button"
+          tabindex="0"
+          aria-label="Close patient form modal"
         >
-          <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto" on:click|stopPropagation>
+          <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
           </div>
         </div>

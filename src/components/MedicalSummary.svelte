@@ -52,23 +52,27 @@
     return Math.abs(hash).toString(36)
   }
 
-  const getFinalizedPrescriptions = () => {
+  const getSummaryPrescriptions = () => {
     if (!Array.isArray(prescriptions)) return []
-    return prescriptions.filter((prescription) => {
-      if (!prescription?.medications || prescription.medications.length === 0) return false
-      return Boolean(
-        prescription.status === 'finalized' ||
-        prescription.sentToPharmacy ||
-        prescription.printedAt ||
-        prescription.endDate
-      )
-    })
+    return prescriptions
+      .filter((prescription) => {
+        if (!Array.isArray(prescription?.medications) || prescription.medications.length === 0) return false
+        const status = String(prescription?.status || '').toLowerCase()
+        if (['deleted', 'cancelled', 'canceled', 'void'].includes(status)) return false
+        if (prescription?.deleted === true || prescription?.isDeleted === true) return false
+        return true
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime()
+        const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime()
+        return bTime - aTime
+      })
   }
 
   const buildMedicationsSignature = () => {
-    const finalizedPrescriptions = getFinalizedPrescriptions()
-    if (finalizedPrescriptions.length === 0) return ''
-    const parts = finalizedPrescriptions.flatMap(prescription => (
+    const summaryPrescriptions = getSummaryPrescriptions()
+    if (summaryPrescriptions.length === 0) return ''
+    const parts = summaryPrescriptions.flatMap(prescription => (
       (prescription?.medications || []).map(medication => (
         `${medication?.id || medication?.name || ''}:${medication?.updatedAt || medication?.createdAt || ''}:${medication?.duration || ''}:${medication?.frequency || ''}`
       ))
@@ -90,7 +94,7 @@
       medicationsSignature: buildMedicationsSignature(),
       symptomsLatest: getLatestTimestamp(symptoms),
       illnessesLatest: getLatestTimestamp(illnesses),
-      prescriptionsLatest: getLatestTimestamp(getFinalizedPrescriptions()),
+      prescriptionsLatest: getLatestTimestamp(getSummaryPrescriptions()),
       reportsLatest: getLatestTimestamp(reports)
     }
     return JSON.stringify(base)
@@ -189,7 +193,7 @@
     summaryError = ''
 
     try {
-      const finalizedPrescriptions = getFinalizedPrescriptions()
+      const summaryPrescriptions = getSummaryPrescriptions()
       const patientData = {
         name: `${selectedPatient.firstName || ''} ${selectedPatient.lastName || ''}`.trim(),
         firstName: selectedPatient.firstName,
@@ -204,7 +208,7 @@
         medicalHistory: selectedPatient.medicalHistory,
         symptoms: symptoms || [],
         illnesses: illnesses || [],
-        prescriptions: finalizedPrescriptions,
+        prescriptions: summaryPrescriptions,
         recentReports: reports || [],
         reportAnalyses: []
       }
@@ -228,9 +232,9 @@
   // Reactive tab counts
   $: symptomsCount = symptoms?.length || 0
   $: illnessesCount = illnesses?.length || 0
-  $: finalizedPrescriptions = getFinalizedPrescriptions()
-  $: prescriptionsCount = finalizedPrescriptions?.length || 0
-  $: medicationsCount = finalizedPrescriptions?.reduce((total, prescription) => {
+  $: summaryPrescriptions = getSummaryPrescriptions()
+  $: prescriptionsCount = summaryPrescriptions?.length || 0
+  $: medicationsCount = summaryPrescriptions?.reduce((total, prescription) => {
     const meds = Array.isArray(prescription?.medications) ? prescription.medications.length : 0
     return total + meds
   }, 0) || 0
@@ -246,7 +250,7 @@
 
   
   // Extract all medications from prescriptions and group by drug name
-  $: groupedMedications = finalizedPrescriptions?.flatMap(prescription => 
+  $: groupedMedications = summaryPrescriptions?.flatMap(prescription => 
     prescription.medications?.map(medication => ({
       ...medication,
       prescriptionId: prescription.id,

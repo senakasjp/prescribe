@@ -88,10 +88,32 @@ export function validateNumeric(value, options = {}) {
   if (value === '' || value === null || value === undefined) {
     return { isValid: false, message: 'Value is required' }
   }
-  
-  const numValue = parseFloat(value)
-  
-  if (isNaN(numValue)) {
+
+  let numValue = null
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      return { isValid: false, message: 'Must be a valid number' }
+    }
+    numValue = value
+  } else {
+    const raw = String(value).trim()
+    if (!raw) {
+      return { isValid: false, message: 'Value is required' }
+    }
+
+    // Enforce strict numeric strings so values like "12abc" are rejected.
+    const numericPattern = allowDecimals ? /^-?\d+(\.\d+)?$/ : /^-?\d+$/
+    if (!numericPattern.test(raw)) {
+      return { isValid: false, message: 'Must be a valid number' }
+    }
+
+    numValue = Number(raw)
+    if (!Number.isFinite(numValue)) {
+      return { isValid: false, message: 'Must be a valid number' }
+    }
+  }
+
+  if (Number.isNaN(numValue)) {
     return { isValid: false, message: 'Must be a valid number' }
   }
   

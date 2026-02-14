@@ -116,6 +116,19 @@ firebase deploy
 
 ## 🔄 Recent Updates
 
+### Version 2.3.6 - Security Hardening + Security Test Expansion (February 13, 2026)
+- Firestore rules hardened for tenant ownership enforcement.
+- Added explicit secure rules for `pharmacistInventory` and `drugStock`.
+- Added update-time ownership lock to block non-admin reassignment of `doctorId`/`pharmacistId`.
+- Expanded security-focused automated tests:
+- `src/tests/integration/firestoreRules.security.test.js`
+- `src/tests/unit/openaiProxy.security.test.js`
+- `src/tests/unit/optimizedOpenaiService.security.test.js`
+- `src/tests/integration/backupRestore.test.js` (signed-out deny checks)
+- `src/tests/unit/doctorNotificationSmsTriggers.test.js` (guard behavior)
+- `src/tests/unit/securityInputSanitization.test.js`
+- Current full-suite baseline: `431` passing tests (`npm run test:run`).
+
 ### Version 2.3.1 - Add New Patient Button Fix (December 28, 2024)
 - **Critical Bug Fix**: Resolved "+ Add New Patient" button functionality
 - **Root Cause**: Fixed PatientForm conditional rendering location in component architecture
@@ -138,6 +151,9 @@ npm test
 # Run once (CI/CD mode)
 npm run test:run
 
+# Firestore rules security integration tests only
+npm run test:security:rules
+
 # Generate coverage report
 npm run test:coverage
 
@@ -148,7 +164,7 @@ npm run test:ui
 npm run test:e2e
 ```
 
-### Implemented Tests (as of Feb 11, 2026)
+### Implemented Tests (as of Feb 13, 2026)
 
 **E2E (Playwright)**
 - `tests/e2e/auth-toggle.spec.js` - Landing page toggle for Doctor/Pharmacy login.
@@ -157,6 +173,7 @@ npm run test:e2e
 **Integration (Vitest)**
 - `src/tests/integration/backupRestore.test.js` - Pharmacy backup/export + restore flow.
 - `src/tests/integration/doctorPharmacyDataFlow.test.js` - Doctor → pharmacy data handoff persistence.
+- `src/tests/integration/firestoreRules.security.test.js` - Firestore tenant isolation and authorization enforcement.
 - `src/tests/integration/patientManagement.test.js` - End-to-end patient workflow coverage.
 - `src/tests/integration/priceConsistency.test.js` - Doctor expected price matches pharmacy total within delta.
 - `src/tests/integration/pharmacyTeamMemberAccess.test.js` - Team member login + registration integration.
@@ -177,17 +194,27 @@ npm run test:e2e
 - `src/tests/components/PrescriptionsTab.test.js`
 
 **Unit (Vitest)**
+- `src/tests/unit/aiTokenTracker.test.js`
 - `src/tests/unit/authService.test.js`
 - `src/tests/unit/backupService.test.js`
 - `src/tests/unit/chargeCalculationService.test.js`
 - `src/tests/unit/dataProcessing.test.js`
+- `src/tests/unit/doctorNotificationSmsTriggers.test.js`
+- `src/tests/unit/firebaseAuth.referral.test.js`
+- `src/tests/unit/firebaseStorage.reports.test.js`
 - `src/tests/unit/firebaseStorage.test.js`
 - `src/tests/unit/firebaseStorage.regression.test.js`
 - `src/tests/unit/formatting.test.js`
+- `src/tests/unit/inventoryConcurrency.test.js`
 - `src/tests/unit/inventoryDispense.test.js`
 - `src/tests/unit/inventoryService.test.js`
+- `src/tests/unit/openaiProxy.security.test.js`
+- `src/tests/unit/optimizedOpenaiService.security.test.js`
 - `src/tests/unit/pharmacySend.test.js`
 - `src/tests/unit/pharmacistAuthService.test.js`
+- `src/tests/unit/securityInputSanitization.test.js`
+- `src/tests/unit/securityRoleAccess.test.js`
+- `src/tests/unit/securityTenantIsolation.test.js`
 
 ### Testing Documentation
 - **[TESTING_QUICK_START.md](./TESTING_QUICK_START.md)** - Quick start guide

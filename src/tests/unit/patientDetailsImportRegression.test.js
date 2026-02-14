@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+describe('PatientDetails import regression', () => {
+  it('keeps chargeCalculationService imported when medication quantity logic uses it', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const patientDetailsPath = path.resolve(__dirname, '../../components/PatientDetails.svelte')
+    const source = fs.readFileSync(patientDetailsPath, 'utf8')
+
+    expect(source).toContain("import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'")
+    expect(source).toContain('chargeCalculationService.parseMedicationQuantity')
+  })
+
+  it('keeps camera report OCR flow wired in report form', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const patientDetailsPath = path.resolve(__dirname, '../../components/PatientDetails.svelte')
+    const source = fs.readFileSync(patientDetailsPath, 'utf8')
+
+    expect(source).toContain("let reportType = 'camera'")
+    expect(source).toContain("id=\"report-camera\"")
+    expect(source).toContain('startCameraScan')
+    expect(source).toContain('captureCameraPhoto')
+    expect(source).toContain('runCameraOcr')
+    expect(source).toContain("let cameraSource = 'mobile'")
+    expect(source).toContain('Mobile Phone')
+    expect(source).toContain('Laptop Camera')
+    expect(source).toContain('mobileCameraQrUrl')
+    expect(source).toContain('mobileCameraAccessCode')
+    expect(source).toContain('generateMobileAccessCode')
+    expect(source).toContain("nextUrl.searchParams.set('mobile-capture', '1')")
+    expect(source).toContain("nextUrl.searchParams.set('code', mobileCameraAccessCode)")
+    expect(source).toContain('Security code:')
+    expect(source).toContain('handleMobileCameraUpload')
+    expect(source).toContain('Mobile camera QR code')
+    expect(source).toContain('cameraOcrProgress')
+    expect(source).toContain('cameraOcrProgressLabel')
+    expect(source).toContain('OCR progress bar')
+    expect(source).toContain('Extracting... {cameraOcrProgress}%')
+    expect(source).toContain("cameraOcrLoading || (reportText && reportText.trim())")
+    expect(source).toContain('Extracted text will appear here after OCR is generated.')
+    expect(source).toContain('Extract Text')
+    expect(source).not.toContain('Extract Text (OpenAI OCR)')
+    expect(source).toContain('grid grid-cols-1 lg:grid-cols-2 gap-3')
+    expect(source).toContain('Captured Photo')
+    expect(source).toContain('Selected Area (Saved)')
+    expect(source).toContain('detectPreviewCorners')
+    expect(source).toContain('Detect 4 Corners')
+    expect(source).toContain('reportDetectedCorners')
+    expect(source).toContain('reportSelectedAreaDataUrl')
+    expect(source).toContain('createSelectedAreaDataUrl')
+    expect(source).toContain('selectedAreaDataUrl: effectiveReportType === \'image\'')
+    expect(source).toContain('startCornerDrag')
+    expect(source).toContain('updateDraggedCorner')
+    expect(source).toContain('on:pointerdown={(event) => startCornerDrag(index, event)}')
+    expect(source).toContain('text area boundary detected')
+    expect(source).toContain('openaiService.extractTextFromImage')
+    expect(source).toContain("type: 'reportImageOcr'")
+  })
+
+  it('keeps AI Analysis under Diagnoses instead of as a dedicated workflow tab', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const patientDetailsPath = path.resolve(__dirname, '../../components/PatientDetails.svelte')
+    const source = fs.readFileSync(patientDetailsPath, 'utf8')
+
+    expect(source).toContain("const allTabs = ['overview', 'symptoms', 'reports', 'diagnoses', 'prescriptions']")
+    expect(source).toContain("const tabOrder = ['overview', 'symptoms', 'reports', 'diagnoses', 'prescriptions']")
+    expect(source).not.toContain("{#if activeTab === 'ai-analysis'}")
+    expect(source).toContain('showAiAnalysisUnderDiagnoses')
+    expect(source).toContain('Hide AI Analysis')
+    expect(source).toContain("title=\"Continue to Prescriptions tab\"")
+  })
+})

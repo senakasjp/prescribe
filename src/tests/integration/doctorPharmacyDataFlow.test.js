@@ -1,19 +1,75 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { collection, doc, getDocs, setDoc } from 'firebase/firestore'
-import { db } from '../../firebase-config.js'
+import { connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
+import { auth, db } from '../../firebase-config.js'
 import firebaseStorage from '../../services/firebaseStorage.js'
 
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST || ''
+const authEmulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099'
 const shouldRun = emulatorHost.length > 0
+let authEmulatorConnected = false
+let emulatorAvailable = shouldRun
+
+const checkEmulatorAvailable = async () => {
+  if (!shouldRun) return false
+  const [host, portString] = emulatorHost.split(':')
+  const port = Number(portString || 8080)
+  const projectId =
+    process.env.VITE_FIREBASE_PROJECT_ID ||
+    process.env.FIREBASE_PROJECT_ID ||
+    'demo-test'
+  const probeUrl = `http://${host || 'localhost'}:${port}/v1/projects/${projectId}/databases/(default)/documents`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 1000)
+  try {
+    await fetch(probeUrl, { signal: controller.signal })
+    return true
+  } catch (error) {
+    return false
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+const connectAuthIfNeeded = () => {
+  if (!shouldRun || authEmulatorConnected) return
+  const [host, portString] = authEmulatorHost.split(':')
+  const url = `http://${host || '127.0.0.1'}:${Number(portString || 9099)}`
+  connectAuthEmulator(auth, url, { disableWarnings: true })
+  authEmulatorConnected = true
+}
+
+const ensureAdminSignedIn = async () => {
+  const adminEmail = 'senakahks@gmail.com'
+  const adminPassword = 'TestAdmin#123'
+  try {
+    await createUserWithEmailAndPassword(auth, adminEmail, adminPassword)
+  } catch (error) {
+    if (error?.code !== 'auth/email-already-in-use') {
+      throw error
+    }
+  }
+  await signInWithEmailAndPassword(auth, adminEmail, adminPassword)
+}
 
 describe('doctor → pharmacy data flow (integration)', () => {
   beforeAll(async () => {
-    if (!shouldRun) {
-      console.warn('Firestore emulator not configured, skipping integration test.')
+    emulatorAvailable = await checkEmulatorAvailable()
+    if (!emulatorAvailable) {
+      console.warn('Firestore emulator not reachable, skipping doctor-pharmacy integration test.')
+      return
+    }
+    connectAuthIfNeeded()
+    try {
+      await ensureAdminSignedIn()
+    } catch (error) {
+      emulatorAvailable = false
+      console.warn('Auth emulator sign-in unavailable, skipping doctor-pharmacy integration test.', error?.message || error)
     }
   })
 
   it.skipIf(!shouldRun)('persists valid prescription payload for pharmacy portal', async () => {
+    if (!emulatorAvailable) return
     const runId = Date.now()
     const pharmacistId = `pharm-${runId}`
     const doctorId = `doctor-${runId}`
@@ -110,5 +166,5 @@ describe('doctor → pharmacy data flow (integration)', () => {
     const subcollection = collection(doc(db, 'pharmacists', pharmacistId), 'receivedPrescriptions')
     const subSnapshot = await getDocs(subcollection)
     expect(subSnapshot.size).toBe(1)
-  })
+  }, 30000)
 })

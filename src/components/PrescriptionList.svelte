@@ -551,11 +551,7 @@
                     {#if chargesLoading}
                       Calculating...
                     {:else if chargeTotals[prescription.id] !== undefined && expectedPharmacist}
-                      {#if currency === 'LKR'}
-                        Rs {formatCurrencyDisplay(chargeTotals[prescription.id], currency)}
-                      {:else}
-                        {formatCurrencyDisplay(chargeTotals[prescription.id], currency)}
-                      {/if}
+                      {formatCurrencyDisplay(chargeTotals[prescription.id], currency)}
                     {:else}
                       N/A
                     {/if}

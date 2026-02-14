@@ -121,7 +121,9 @@
   }
   $: requiresQts = Boolean(String(dosageForm || '').trim()) && !isLiquidStrengthUnit && !isQtsExcludedDosageForm(dosageForm)
   const parsePositiveInteger = (value) => {
-    const parsed = Number.parseInt(String(value ?? '').trim(), 10)
+    const raw = String(value ?? '').trim()
+    if (!/^\d+$/.test(raw)) return null
+    const parsed = Number(raw)
     if (!Number.isFinite(parsed) || parsed <= 0) return null
     return parsed
   }
@@ -381,6 +383,11 @@
         focusField('medicationQts')
         throw new Error('Please enter Qts as a positive integer')
       }
+      const parsedDurationDays = !requiresQts ? parsePositiveInteger(duration) : null
+      if (!requiresQts && !parsedDurationDays) {
+        focusField('medicationDuration')
+        throw new Error('Please enter duration as a positive integer')
+      }
       if (!requiresQts && !timing) {
         focusField('medicationTiming')
         throw new Error('Please select when to take')
@@ -466,7 +473,7 @@
         timing,
         prnAmount: !requiresQts && frequency.includes('PRN') ? String(prnAmount ?? '').trim() : '', // Include PRN amount if frequency is PRN
         qts: requiresQts ? String(parsedQts) : '',
-        duration: String(duration ?? '').trim() + ' days',
+        duration: !requiresQts ? `${parsedDurationDays} days` : String(duration ?? '').trim() + ' days',
         startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
         endDate: endDate || null,
         notes: String(notes ?? '').trim()
@@ -535,7 +542,7 @@
       const resolvedDoctorId = getDoctorIdForImprove()
 
       // Call OpenAI service to improve text
-      const result = await openaiService.improveText(name, resolvedDoctorId)
+      const result = await openaiService.improveText(name, resolvedDoctorId, { context: 'medication-name' })
 
       // Update the brand name with improved text
       name = result.improvedText
@@ -574,7 +581,7 @@
       const originalInstructions = instructions
       const resolvedDoctorId = getDoctorIdForImprove()
 
-      const result = await openaiService.improveText(instructions, resolvedDoctorId)
+      const result = await openaiService.improveText(instructions, resolvedDoctorId, { context: 'medication-instructions' })
       instructions = result.improvedText
 
       const normalizedOriginal = String(originalInstructions ?? '').trim()
@@ -606,7 +613,7 @@
       const originalNotes = notes
       const resolvedDoctorId = getDoctorIdForImprove()
 
-      const result = await openaiService.improveText(notes, resolvedDoctorId)
+      const result = await openaiService.improveText(notes, resolvedDoctorId, { context: 'medication-notes' })
       notes = result.improvedText
 
       const normalizedOriginal = String(originalNotes ?? '').trim()
@@ -806,9 +813,9 @@
         </div>
         <div>
           <label for="medicationRoute" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Route of Administration</label>
-          <div class="flex">
+          <div class="flex w-full min-w-0">
             <select 
-              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="medicationRoute" 
               on:change={(e) => {
                 if (e.target.value) {
@@ -833,7 +840,7 @@
             </select>
             <input 
               type="text" 
-              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               placeholder="Or enter custom route"
               bind:value={routeDisplay}
               disabled={loading}

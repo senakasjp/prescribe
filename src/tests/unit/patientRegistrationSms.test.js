@@ -83,4 +83,77 @@ describe('patient registration SMS payload', () => {
     expect(payload.ok).toBe(true)
     expect(payload.recipient).toBe('+94712345678')
   })
+
+  it('skips when registration template is disabled', () => {
+    const payload = buildPatientRegistrationSmsPayload({
+      patient: {
+        id: 'patient-3',
+        firstName: 'Nadee',
+        phone: '0712345678',
+        phoneCountryCode: '+94'
+      },
+      doctor: { firstName: 'Maya', lastName: 'Silva' },
+      templates: {
+        ...baseTemplates,
+        registrationTemplateEnabled: false
+      },
+      appUrl: 'https://example.test'
+    })
+
+    expect(payload).toEqual({ ok: false, reason: 'template-disabled' })
+  })
+
+  it('skips when registration channel is email only', () => {
+    const payload = buildPatientRegistrationSmsPayload({
+      patient: {
+        id: 'patient-4',
+        firstName: 'Nadee',
+        phone: '0712345678',
+        phoneCountryCode: '+94'
+      },
+      doctor: { firstName: 'Maya', lastName: 'Silva' },
+      templates: {
+        ...baseTemplates,
+        registrationChannel: 'email'
+      },
+      appUrl: 'https://example.test'
+    })
+
+    expect(payload).toEqual({ ok: false, reason: 'channel-not-sms' })
+  })
+
+  it('skips when sender id is missing', () => {
+    const payload = buildPatientRegistrationSmsPayload({
+      patient: {
+        id: 'patient-5',
+        firstName: 'Nadee',
+        phone: '0712345678',
+        phoneCountryCode: '+94'
+      },
+      doctor: { firstName: 'Maya', lastName: 'Silva' },
+      templates: {
+        ...baseTemplates,
+        smsSenderId: ''
+      },
+      appUrl: 'https://example.test'
+    })
+
+    expect(payload).toEqual({ ok: false, reason: 'missing-sender-id' })
+  })
+
+  it('skips when phone is missing', () => {
+    const payload = buildPatientRegistrationSmsPayload({
+      patient: {
+        id: 'patient-6',
+        firstName: 'Nadee',
+        phone: '',
+        phoneCountryCode: '+94'
+      },
+      doctor: { firstName: 'Maya', lastName: 'Silva' },
+      templates: baseTemplates,
+      appUrl: 'https://example.test'
+    })
+
+    expect(payload).toEqual({ ok: false, reason: 'missing-phone' })
+  })
 })

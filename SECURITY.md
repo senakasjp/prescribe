@@ -94,24 +94,52 @@ async createPatient(patientData) {
 
 #### Firestore Security Rules
 ```javascript
-// Example security rules (server-side)
+// Current rule patterns (server-side)
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Patients can only be accessed by their doctor
-    match /patients/{patientId} {
-      allow read, write: if request.auth != null 
-        && resource.data.doctorId == request.auth.uid;
+    // Admin override is email-gated to super admin account
+    function isAdmin() {
+      return request.auth != null &&
+        request.auth.token.email == 'senakahks@gmail.com';
     }
-    
-    // Doctors can only access their own data
-    match /doctors/{doctorId} {
-      allow read, write: if request.auth != null 
-        && request.auth.uid == doctorId;
+
+    // Doctor-owned records require ownership by uid mapping
+    match /patients/{patientId} {
+      allow create: if isAdmin() || isDoctorOwnerByRequestDoctorId();
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || isDoctorOwnedUpdateWithoutReassignment();
+    }
+
+    // Pharmacy inventory is tenant-bound to pharmacist ownership
+    match /pharmacistInventory/{itemId} {
+      allow create: if isAdmin() || (
+        request.auth != null &&
+        request.resource.data.pharmacistId is string &&
+        isPharmacistOwnerByPharmacistId(request.resource.data.pharmacistId)
+      );
+      allow read, delete: if isAdmin() || (
+        request.auth != null &&
+        resource.data.pharmacistId is string &&
+        isPharmacistOwnerByPharmacistId(resource.data.pharmacistId)
+      );
+      allow update: if isAdmin() || (
+        request.auth != null &&
+        request.resource.data.pharmacistId == resource.data.pharmacistId &&
+        isPharmacistOwnerByPharmacistId(resource.data.pharmacistId)
+      );
     }
   }
 }
 ```
+
+### Rule Security Guarantees
+- Unauthenticated read/write is denied by default.
+- Cross-tenant doctor access is denied unless requester is admin.
+- Cross-tenant pharmacist inventory access is denied unless requester is admin.
+- Ownership reassignment is blocked on update:
+- `doctorId` cannot be changed by non-admin owners.
+- `pharmacistId` cannot be changed by non-admin owners.
 
 ### Data Validation
 
@@ -159,6 +187,31 @@ service cloud.firestore {
 - **Custom Logging** - Application-specific security logs
 - **Error Tracking** - Comprehensive error monitoring
 - **Performance Monitoring** - Track system performance
+
+## ✅ Automated Security Verification
+
+### Firestore Rules Integration Coverage
+- `src/tests/integration/firestoreRules.security.test.js` verifies:
+- Unauthenticated deny paths.
+- Tenant isolation for doctor/patient data.
+- Tenant isolation for pharmacist inventory and stock.
+- Admin override paths.
+- Privilege-escalation and reassignment-deny behavior.
+
+### Additional Security Unit Coverage
+- `src/tests/unit/openaiProxy.security.test.js`:
+- Requires bearer auth.
+- Rejects endpoint protocol injection.
+- Verifies sanitized OpenAI proxy forwarding.
+- `src/tests/unit/optimizedOpenaiService.security.test.js`:
+- Rejects unauthenticated proxy calls.
+- Verifies token forwarding and error propagation.
+- `src/tests/unit/securityInputSanitization.test.js`:
+- Checks script/event-handler stripping behavior.
+- `src/tests/unit/doctorNotificationSmsTriggers.test.js`:
+- Verifies guarded send behavior for disabled templates, invalid numbers, and missing sender IDs.
+- `src/tests/integration/backupRestore.test.js`:
+- Verifies export/restore deny behavior when signed out.
 
 ## 🛠️ Security Best Practices
 
@@ -220,6 +273,6 @@ service cloud.firestore {
 
 ---
 
-**Last Updated**: January 16, 2025  
-**Version**: 1.0  
+**Last Updated**: February 13, 2026  
+**Version**: 1.1  
 **Review Date**: Quarterly

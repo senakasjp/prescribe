@@ -72,7 +72,7 @@
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
   let headerText = ''
-  let previewElement = null
+  let headerFontSize = 16
   let isSaving = false
   let excludePharmacyDrugs = false
   let procedurePricing = []
@@ -88,6 +88,11 @@
   
   // Available cities based on selected country
   let availableCities = []
+
+  const parseHeaderFontSize = (value, fallback = 16) => {
+    const numeric = typeof value === 'number' ? value : parseFloat(String(value || ''))
+    return Number.isFinite(numeric) ? numeric : fallback
+  }
 
   // Debug: Log initial state
   const getSettingsTourKey = () => {
@@ -735,11 +740,13 @@
       templateType = user.templateSettings.templateType
       headerSize = user.templateSettings.headerSize || 300
       headerText = user.templateSettings.headerText || ''
+      headerFontSize = parseHeaderFontSize(user.templateSettings.headerFontSize, 16)
       templatePreview = user.templateSettings.templatePreview || null
       uploadedHeader = user.templateSettings.uploadedHeader || null
       excludePharmacyDrugs = user.templateSettings.excludePharmacyDrugs ?? false
     } else {
       templateType = 'printed'
+      headerFontSize = 16
       excludePharmacyDrugs = false
     }
 
@@ -1290,6 +1297,10 @@
     }
   }
 
+  const handleHeaderFontSizeChange = (size) => {
+    headerFontSize = parseHeaderFontSize(size, 16)
+  }
+
   // Generate prescription preview
   const generatePrescriptionPreview = () => {
     if (templateType === 'printed') {
@@ -1352,11 +1363,9 @@
         doctor = user
       }
       
-      const previewWidthPx = templateType === 'system' ? previewElement?.offsetWidth || null : null
       const templatePreviewSnapshot = templatePreview
         ? {
           ...templatePreview,
-          previewWidthPx,
           formattedHeader: templateType === 'system'
             ? (headerText || templatePreview?.formattedHeader || '')
             : templatePreview?.formattedHeader
@@ -1369,6 +1378,7 @@
         templateType: templateType,
         headerSize: headerSize,
         headerText: headerText || '',
+        headerFontSize: headerFontSize || 16,
         templatePreview: templatePreviewSnapshot,
         uploadedHeader: uploadedHeader,
         excludePharmacyDrugs: excludePharmacyDrugs,
@@ -1426,17 +1436,6 @@
     </div>
 </div>
 
-<style>
-  .system-header-preview {
-    text-align: center;
-    line-height: 1.4;
-    color: #111827;
-  }
-
-  .system-header-preview .ql-editor {
-    padding: 0;
-  }
-</style>
   <!-- Main Content -->
   <div class="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
     <div class="bg-white rounded-lg shadow-sm border border-gray-200">
@@ -1886,8 +1885,10 @@
                     
                     <HeaderEditor 
                       bind:headerText={headerText}
+                      bind:headerFontSize={headerFontSize}
                       onContentChange={handleHeaderContentChange}
                       onSave={handleHeaderSave}
+                      onFontSizeChange={handleHeaderFontSizeChange}
                     />
                   </div>
         </div>
@@ -1898,48 +1899,6 @@
   </div>
           
 
-          <!-- Prescription Preview Section -->
-          {#if templateType && templatePreview}
-          <div class="mt-8">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Prescription Preview</h3>
-            <div class="bg-white border-2 border-gray-200 rounded-lg p-6">
-              <div class="max-w-2xl mx-auto">
-                <!-- Prescription Header -->
-                {#if templatePreview.type === 'printed'}
-                  <div id="prescription-header-preview-printed" class="text-center mb-6" style="height: {templatePreview.headerSpace}px; border: 2px dashed #d1d5db; display: flex; align-items: center; justify-content: center;">
-                    <div class="text-gray-500 text-sm">
-                      <i class="fas fa-print text-2xl mb-2"></i>
-                      <p>Printed Letterhead Space</p>
-                      <p class="text-xs">{templatePreview.headerSpace}px height</p>
-                    </div>
-                  </div>
-                {:else if templatePreview.type === 'upload' && templatePreview.headerImage}
-                  <div id="prescription-header-preview-upload" class="text-center mb-6" style="background: white; padding: 10px;">
-                    <img src={templatePreview.headerImage} alt="Header Preview" class="max-w-full h-auto mx-auto rounded" style="max-height: 200px;">
-                  </div>
-                {:else if templateType === 'system'}
-                  <div id="prescription-header-preview-system" class="text-center mb-6 bg-white p-4 rounded-lg">
-                    {#if headerText && headerText.trim()}
-                      <div class="system-header-preview ql-snow">
-                        <div class="ql-editor" bind:this={previewElement}>
-                          {@html headerText}
-                        </div>
-                      </div>
-                    {:else}
-                      <h4 class="font-bold text-lg mb-2">Dr. {user?.name || '[Your Name]'}</h4>
-                      <p class="font-semibold mb-1">{user?.firstName || ''} {user?.lastName || ''} Medical Practice</p>
-                      <p class="text-sm mb-1">{user?.city || 'City'}, {user?.country || 'Country'}</p>
-                      <p class="text-sm">Tel: +1 (555) 123-4567 | Email: {user?.email || 'doctor@example.com'}</p>
-                      <hr class="my-3 border-gray-300">
-                      <p class="font-bold text-teal-600">PRESCRIPTION</p>
-                    {/if}
-                  </div>
-                {/if}
-                
-              </div>
-            </div>
-          </div>
-          {/if}
         </div>
         {/if}
 

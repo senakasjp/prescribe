@@ -1,4 +1,4 @@
-import { render, screen, within, fireEvent } from '@testing-library/svelte';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
@@ -526,6 +526,108 @@ describe('AdminDashboard.svelte', () => {
     vi.unstubAllGlobals();
   });
 
+  it('approves a pending doctor and sends approval email automatically', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue('')
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    auth.currentUser = { getIdToken: vi.fn().mockResolvedValue('token') };
+    import.meta.env.VITE_FUNCTIONS_BASE_URL = 'https://example.test';
+    firebaseStorage.getAllDoctors.mockResolvedValue([
+      {
+        id: 'doc-pending-1',
+        email: 'pending@example.com',
+        name: 'Dr. Pending',
+        isApproved: false,
+        isDisabled: false,
+        role: 'doctor'
+      }
+    ]);
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    const approveButtons = await screen.findAllByRole('button', { name: 'Approve' });
+    await user.click(approveButtons[0]);
+
+    await waitFor(() => {
+      expect(firebaseStorage.updateDoctor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'doc-pending-1',
+          isApproved: true,
+          isDisabled: false
+        })
+      );
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/sendDoctorTemplateEmail',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token'
+        }),
+        body: expect.stringContaining('"templateId":"approvalWelcomeEmail"')
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/sendDoctorTemplateEmail',
+      expect.objectContaining({
+        body: expect.stringContaining('"doctorId":"doc-pending-1"')
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('sends a doctor registration SMS test request', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue('')
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    auth.currentUser = { getIdToken: vi.fn().mockResolvedValue('token') };
+    import.meta.env.VITE_FUNCTIONS_BASE_URL = 'https://example.test';
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Messaging' }));
+    await user.click(screen.getByRole('button', { name: 'Templates' }));
+
+    const doctorRegistrationSection = screen.getByText('Doctor Registration Confirm').closest('div.border');
+    expect(doctorRegistrationSection).not.toBeNull();
+    const doctorRegistrationScope = within(doctorRegistrationSection);
+
+    await user.click(doctorRegistrationScope.getByRole('button', { name: 'Send Test SMS' }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/sendSmsApi',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token'
+        }),
+        body: expect.stringContaining('"recipient":"94712345678"')
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it('sends a patient welcome email test template request', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
@@ -561,6 +663,111 @@ describe('AdminDashboard.svelte', () => {
           Authorization: 'Bearer token'
         }),
         body: expect.stringContaining('"templateId":"patientWelcomeEmail"')
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('applies referral bonus when referred doctor is eligible', async () => {
+    firebaseStorage.getAllDoctors.mockResolvedValue([
+      {
+        id: 'referrer-1',
+        email: 'referrer@example.com',
+        name: 'Dr. Referrer',
+        isApproved: true,
+        isDisabled: false,
+        accessExpiresAt: '2026-01-10T00:00:00.000Z'
+      },
+      {
+        id: 'referred-1',
+        email: 'referred@example.com',
+        name: 'Dr. Referred',
+        isApproved: true,
+        isDisabled: false,
+        referredByDoctorId: 'referrer-1',
+        referralEligibleAt: '2025-01-01T00:00:00.000Z',
+        referralBonusApplied: false,
+        accessExpiresAt: '2026-01-15T00:00:00.000Z'
+      }
+    ]);
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await waitFor(() => {
+      expect(firebaseStorage.updateDoctor).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'referred-1',
+          referredByDoctorId: 'referrer-1',
+          referralBonusApplied: true,
+          referralBonusAppliedAt: expect.any(String)
+        })
+      );
+    });
+
+    expect(firebaseStorage.updateDoctor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'referrer-1',
+        accessExpiresAt: expect.any(String)
+      })
+    );
+  });
+
+  it('sends a payment reminder email to a selected doctor', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue('')
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    auth.currentUser = { getIdToken: vi.fn().mockResolvedValue('token') };
+    import.meta.env.VITE_FUNCTIONS_BASE_URL = 'https://example.test';
+    firebaseStorage.getAllDoctors.mockResolvedValue([{ id: 'doc-2', email: 'doc2@example.com', name: 'Dr. Mail' }]);
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Email' }));
+    await user.click(screen.getByRole('button', { name: 'Templates' }));
+
+    await screen.findByRole('option', { name: /Dr\. Mail|doc2@example\.com/ });
+    const doctorSelect = screen.getByTestId('single-doctor-select');
+    const doctorOption = Array.from(doctorSelect.options).find(option => option.value === 'doc-2');
+    if (doctorOption) {
+      doctorOption.selected = true;
+    }
+    await fireEvent.change(doctorSelect, { target: { value: 'doc-2' } });
+    await tick();
+
+    const paymentSection = screen.getByRole('heading', { name: 'Payment Reminder' }).closest('div.bg-white');
+    expect(paymentSection).not.toBeNull();
+    const paymentScope = within(paymentSection);
+
+    await user.click(paymentScope.getByRole('button', { name: 'Send to selected doctor' }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/sendDoctorTemplateEmail',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token'
+        }),
+        body: expect.stringContaining('"templateId":"paymentReminderEmail"')
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/sendDoctorTemplateEmail',
+      expect.objectContaining({
+        body: expect.stringContaining('"doctorId":"doc-2"')
       })
     );
 

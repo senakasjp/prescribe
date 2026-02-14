@@ -41,15 +41,47 @@ class OpenAIService {
     return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`
   }
 
+  sanitizeForLogging(value) {
+    if (value == null) return value
+
+    if (typeof value === 'string') {
+      return value
+        .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]')
+        .replace(/sk-[A-Za-z0-9]{20,}/g, 'sk-[REDACTED]')
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeForLogging(item))
+    }
+
+    if (typeof value === 'object') {
+      const redacted = {}
+      for (const [key, raw] of Object.entries(value)) {
+        if (/(authorization|api[-_]?key|token|secret|password)/i.test(key)) {
+          redacted[key] = '[REDACTED]'
+        } else {
+          redacted[key] = this.sanitizeForLogging(raw)
+        }
+      }
+      return redacted
+    }
+
+    return value
+  }
+
   // Log AI prompt to Firebase for admin monitoring - Enhanced to capture ALL OpenAI requests
   async logAIPrompt(promptType, promptData, response = null, error = null, additionalInfo = {}) {
     try {
+      const sanitizedPromptData = this.sanitizeForLogging(promptData)
+      const sanitizedResponse = this.sanitizeForLogging(response)
+      const sanitizedAdditionalInfo = this.sanitizeForLogging(additionalInfo)
+
       console.log('📝 logAIPrompt called with:', {
         promptType,
-        promptData: typeof promptData,
+        promptData: typeof sanitizedPromptData,
         response: !!response,
         error: !!error,
-        additionalInfo
+        additionalInfo: sanitizedAdditionalInfo
       })
       
       // Extract the complete prompt content from the request body
@@ -57,8 +89,8 @@ class OpenAIService {
       let systemMessage = ''
       let userMessage = ''
       
-      if (promptData.requestBody && promptData.requestBody.messages) {
-        const messages = promptData.requestBody.messages
+      if (sanitizedPromptData.requestBody && sanitizedPromptData.requestBody.messages) {
+        const messages = sanitizedPromptData.requestBody.messages
         messages.forEach(msg => {
           if (msg.role === 'system') {
             systemMessage = msg.content
@@ -74,14 +106,14 @@ class OpenAIService {
       const logEntry = {
         promptType, // 'drugSuggestions', 'drugInteractions', 'comprehensiveAnalysis', 'api_call', etc.
         timestamp: new Date().toISOString(),
-        promptData: JSON.stringify(promptData, null, 2), // Stringify for storage
+        promptData: JSON.stringify(sanitizedPromptData, null, 2), // Stringify for storage
         fullPrompt: fullPrompt, // Complete prompt content
         systemMessage: systemMessage, // System message only
         userMessage: userMessage, // User message only
-        response: response ? JSON.stringify(response, null, 2) : null,
+        response: response ? JSON.stringify(sanitizedResponse, null, 2) : null,
         error: error ? error.message : null,
         success: !error,
-        tokensUsed: response ? this.estimateTokens(promptData, response) : 0,
+        tokensUsed: response ? this.estimateTokens(sanitizedPromptData, sanitizedResponse) : 0,
         // Additional metadata
         apiEndpoint: additionalInfo.endpoint || 'chat/completions',
         model: additionalInfo.model || 'unknown',
@@ -89,7 +121,7 @@ class OpenAIService {
         userAgent: navigator.userAgent,
         url: window.location.href,
         // Include any additional context
-        ...additionalInfo
+        ...sanitizedAdditionalInfo
       }
 
       console.log('📝 About to add document to Firebase:', logEntry.requestId)
@@ -1481,35 +1513,139 @@ IMPORTANT FORMATTING RULES:
     }
   }
 
-  // Improve text spelling/grammar with punctuation
-  async improveText(text, doctorId = null) {
+  normalizeMedicalUnits(text) {
+    if (!text) return text
+
+    let normalized = String(text)
+
+    const replacements = [
+      [/\bmilligrams?\b/gi, 'mg'],
+      [/\bmgs?\b/gi, 'mg'],
+      [/\bmicrograms?\b/gi, 'mcg'],
+      [/\bmcgs?\b/gi, 'mcg'],
+      [/\bmillilit(?:er|re)s?\b/gi, 'ml'],
+      [/\bmls?\b/gi, 'ml'],
+      [/\bkilograms?\b/gi, 'kg'],
+      [/\bgrams?\b/gi, 'g'],
+      [/\bI\.?\s*U\.?\b/gi, 'IU'],
+      [/\binternational units?\b/gi, 'IU']
+    ]
+
+    replacements.forEach(([pattern, replacement]) => {
+      normalized = normalized.replace(pattern, replacement)
+    })
+
+    normalized = normalized.replace(/(\d(?:\.\d+)?)\s*(mg|mcg|g|kg|ml|IU)\b/g, '$1 $2')
+    normalized = normalized.replace(/\s{2,}/g, ' ')
+
+    return normalized
+  }
+
+  capitalizeFirstLetterIfNeeded(text) {
+    if (!text) return text
+    return String(text).replace(/^(\s*)([a-z])/, (_, ws, char) => `${ws}${char.toUpperCase()}`)
+  }
+
+  postProcessImprovedText(text) {
+    let result = String(text || '').trim()
+    result = this.normalizeMedicalUnits(result)
+    result = this.capitalizeFirstLetterIfNeeded(result)
+    return result
+  }
+
+  async extractTextFromImage(imageSource, doctorId = null, options = {}) {
+    if (!this.isConfigured()) {
+      throw new Error('OpenAI is not configured.')
+    }
+
+    const imageUrl = String(imageSource || '').trim()
+    if (!imageUrl) {
+      throw new Error('Image source is required for OCR.')
+    }
+
+    try {
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an OCR assistant for medical reports. Extract all visible text faithfully. Preserve line breaks. Do not summarize. If text is unreadable, say "Unreadable". Return only extracted text.'
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Extract the text from this medical report image.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: imageUrl,
+                  detail: 'high'
+                }
+              }
+            ]
+          }
+        ],
+        temperature: 0,
+        max_tokens: 1500
+      }
+
+      const data = await this.makeOpenAIRequest('chat/completions', requestBody, 'reportImageOcr', {
+        doctorId,
+        context: options?.context || 'report-camera-ocr'
+      })
+
+      const extractedText = String(data?.choices?.[0]?.message?.content || '').trim()
+      const tokensUsed = data.__fromCache ? 0 : (data?.usage?.total_tokens || 0)
+
+      if (doctorId && !data.__fromCache) {
+        await aiTokenTracker.trackUsage(doctorId, tokensUsed, 'reportImageOcr')
+      }
+
+      return {
+        extractedText,
+        tokensUsed
+      }
+    } catch (error) {
+      console.error('❌ Error extracting OCR text from image:', error)
+      throw error
+    }
+  }
+
+  // Improve text with spelling/grammar + medical context normalization
+  async improveText(text, doctorId = null, options = {}) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI is not configured.')
     }
 
     try {
-      console.log('🤖 Correcting spelling, grammar, and punctuation...')
+      console.log('🤖 Improving medical text with context-aware corrections...')
+      const context = String(options?.context || 'medical-note')
 
-      const systemMessage = `You are a medical language correction assistant. Your ONLY job is to fix spelling and grammar errors and add missing punctuation.
+      const systemMessage = `You are a medical English editor for clinical notes and prescriptions.
 
 STRICT RULES:
-1. Fix spelling mistakes and basic grammar issues
-2. DO NOT rephrase or reword anything
-3. DO NOT add or remove medical facts
-4. Add missing punctuation, including full stops at the end of sentences
-5. Capitalize the first letter of the text if it is a letter
-6. Preserve the original meaning and word order as much as possible
-7. Keep the exact same word order and sentence structure
-8. Maintain all medical terminology accurately
-9. Return ONLY the corrected text with spelling fixes, nothing else
-10. If there are no errors, return the exact same text unchanged
+1. Correct spelling, grammar, and punctuation.
+2. Preserve medical meaning; do not add/remove facts.
+3. Keep the original intent and concise style (no verbose rewriting).
+4. Normalize medication/unit expressions when applicable:
+   - milligram/milligrams/mg -> mg
+   - microgram/mcg -> mcg
+   - milliliter/ml -> ml
+   - gram/g -> g, kilogram/kg -> kg
+   - international units/IU -> IU
+5. Ensure proper spacing between numbers and units (e.g., "500mg" -> "500 mg").
+6. Capitalize the first letter when the sentence starts with a letter.
+7. If text already looks correct, return it unchanged.
+8. Return ONLY the corrected text.
 
 Example:
-Input: "patient has chest paing and shortnes of breth"
-Output: "patient has chest pain and shortness of breath."
-(Spelling fixed, punctuation added, meaning unchanged)`
+Input: "take 5 milligrams after meal"
+Output: "Take 5 mg after meals."`
 
-      const userMessage = `Fix spelling and grammar mistakes and add missing punctuation (including full stops). Capitalize the first letter if it is a letter:\n\n${text}`
+      const userMessage = `Context: ${context}\nImprove this text using the rules above:\n\n${text}`
 
       // Prepare request body
       const requestBody = {
@@ -1528,7 +1664,8 @@ Output: "patient has chest pain and shortness of breath."
         doctorId
       })
 
-      const improvedText = data.choices[0]?.message?.content || text
+      const improvedTextRaw = data.choices[0]?.message?.content || text
+      const improvedText = this.postProcessImprovedText(improvedTextRaw)
       const tokensUsed = data.__fromCache ? 0 : (data.usage?.total_tokens || 0)
 
       console.log('✅ Text improved, tokens used:', tokensUsed)
@@ -1540,7 +1677,7 @@ Output: "patient has chest pain and shortness of breath."
       }
 
       return {
-        improvedText: improvedText.trim(),
+        improvedText,
         tokensUsed
       }
 

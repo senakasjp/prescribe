@@ -30,6 +30,9 @@
   let analytics = null
   let alerts = []
   let suppliers = []
+  let normalizedSearchQuery = ''
+  let searchFilteredItems = []
+  const normalizeSearchText = (value) => String(value ?? '').toLowerCase()
   
   // Filters and search
   let searchQuery = ''
@@ -158,20 +161,6 @@
       }
       
       console.log('📦 Loaded inventory items:', inventoryItems.length)
-      
-      // Apply search filter
-      if (searchQuery) {
-        inventoryItems = inventoryItems.filter(item => 
-          (item.brandName || item.drugName)?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.genericName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.manufacturer?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          item.strength?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          `${item.brandName || item.drugName} ${item.strength} ${item.expiryDate}`.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      }
-      
-      // Calculate pagination
-      totalPages = Math.ceil(inventoryItems.length / itemsPerPage)
       currentPage = 1
       
     } catch (error) {
@@ -222,6 +211,7 @@
   }
 
   const isFilled = (value) => String(value ?? '').trim().length > 0
+  const isIntegerString = (value) => /^\d+$/.test(String(value ?? '').trim())
 
   const coerceDateToIso = (raw) => {
     const value = String(raw || '').trim()
@@ -283,6 +273,22 @@
         notifyError(`Please fill in ${missingField.label}`)
         await focusFieldById(missingField.id)
         return
+      }
+
+      const integerValidationRules = [
+        { key: 'initialStock', id: 'newItemInitialStock', label: 'Initial Stock', required: true },
+        { key: 'minimumStock', id: 'newItemMinimumStock', label: 'Minimum Stock', required: true },
+        { key: 'maximumStock', id: 'newItemMaximumStock', label: 'Maximum Stock', required: false },
+        { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false }
+      ]
+      for (const rule of integerValidationRules) {
+        const raw = String(newItemForm[rule.key] ?? '').trim()
+        if (!rule.required && raw === '') continue
+        if (!isIntegerString(raw)) {
+          notifyError(`${rule.label} must be an integer`)
+          await focusFieldById(rule.id)
+          return
+        }
       }
       
       await inventoryService.createInventoryItem(pharmacyId, newItemForm)
@@ -441,6 +447,22 @@
         return
       }
 
+      const editIntegerValidationRules = [
+        { key: 'currentStock', id: 'editItemCurrentStock', label: 'Current Stock', required: true },
+        { key: 'minimumStock', id: 'editItemMinimumStock', label: 'Minimum Stock', required: true },
+        { key: 'maximumStock', id: 'editItemMaximumStock', label: 'Maximum Stock', required: false },
+        { key: 'packSize', id: 'editItemPackSize', label: 'Pack Size', required: false }
+      ]
+      for (const rule of editIntegerValidationRules) {
+        const raw = String(selectedItem[rule.key] ?? '').trim()
+        if (!rule.required && raw === '') continue
+        if (!isIntegerString(raw)) {
+          notifyError(`${rule.label} must be an integer`)
+          await focusFieldById(rule.id)
+          return
+        }
+      }
+
       // Map selectedItem data to the format expected by validation
       const itemDataForUpdate = {
         ...selectedItem,
@@ -473,8 +495,22 @@
   }
   
   // Reactive statements
-  $: filteredItems = inventoryItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-  $: if (pharmacyId && (searchQuery || categoryFilter || statusFilter || sortBy || sortOrder)) {
+  $: normalizedSearchQuery = normalizeSearchText(searchQuery).trim()
+  $: searchFilteredItems = normalizedSearchQuery
+    ? inventoryItems.filter(item =>
+      normalizeSearchText(item.brandName || item.drugName).includes(normalizedSearchQuery) ||
+      normalizeSearchText(item.genericName).includes(normalizedSearchQuery) ||
+      normalizeSearchText(item.manufacturer).includes(normalizedSearchQuery) ||
+      normalizeSearchText(item.strength).includes(normalizedSearchQuery) ||
+      normalizeSearchText(item.strengthUnit).includes(normalizedSearchQuery) ||
+      normalizeSearchText(item.dosageForm).includes(normalizedSearchQuery) ||
+      normalizeSearchText(`${item.brandName || item.drugName} ${item.strength}${item.strengthUnit || ''} ${item.expiryDate}`).includes(normalizedSearchQuery)
+    )
+    : inventoryItems
+  $: totalPages = Math.max(1, Math.ceil(searchFilteredItems.length / itemsPerPage))
+  $: if (currentPage > totalPages) currentPage = totalPages
+  $: filteredItems = searchFilteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  $: if (pharmacyId && (categoryFilter || statusFilter || sortBy || sortOrder)) {
     loadInventoryItems()
   }
   $: if (pharmacyId && pharmacyId !== lastPharmacistId) {
@@ -1252,7 +1288,7 @@
                   bind:value={newItemForm.expiryDate}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed after creation</p>
+                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed after creation</p>
               </div>
               
               <div>
@@ -1368,7 +1404,7 @@
                   readonly
                   title="Brand Name cannot be changed (Primary Key)"
                 />
-                <p class="text-xs text-gray-500 mt-1">Brand Name is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
+                <p class="text-xs text-gray-500 mt-1">Brand Name is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
               </div>
               
               <div>
@@ -1406,7 +1442,7 @@
                     step="0.01"
                     inputmode="decimal"
                   />
-                  <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
+                  <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
                 </div>
                 <div>
                 <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-1">Strength Unit <span class="text-red-500">*</span></label>
@@ -1421,7 +1457,7 @@
                       <option value={unit}>{unit}</option>
                     {/each}
                   </select>
-                  <p class="text-xs text-gray-500 mt-1">Strength Unit is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
+                  <p class="text-xs text-gray-500 mt-1">Strength Unit is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
                 </div>
               </div>
               
@@ -1533,7 +1569,7 @@
                 />
                 </div>
                 <div>
-                  <label for="editItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-1">Selling Price</label>
+                  <label for="editItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-1">Selling Price <span class="text-red-500">*</span></label>
                 <input 
                   id="editItemSellingPrice"
                   type="number"
@@ -1541,8 +1577,12 @@
                   min="0"
                   step="0.01"
                   inputmode="decimal"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled
+                  readonly
+                  title="Selling Price cannot be changed (Primary Key)"
                 />
+                  <p class="text-xs text-gray-500 mt-1">Selling Price is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
                 </div>
               </div>
               
@@ -1586,7 +1626,7 @@
                   disabled
                   readonly
                   title="Expiry Date cannot be changed (Primary Key)" />
-                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry) and cannot be changed</p>
+                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
               </div>
               
               <div>

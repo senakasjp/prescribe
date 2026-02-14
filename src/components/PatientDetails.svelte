@@ -11,11 +11,13 @@
   import AIRecommendations from './AIRecommendations.svelte'
   import PrescriptionsTab from './PrescriptionsTab.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
   import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
   import { notifySuccess, notifyError } from '../stores/notifications.js'
   import { formatDate } from '../utils/dataProcessing.js'
+  import { detectDocumentCornersFromDataUrl, createSelectedAreaDataUrl } from '../utils/documentCornerDetection.js'
   import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
@@ -188,6 +190,17 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   const getEffectiveDoctorProfile = async () => {
     if (settingsDoctor?.id) {
       return settingsDoctor
+    }
+
+    if (doctorId) {
+      try {
+        const doctorById = await firebaseStorage.getDoctorById(doctorId)
+        if (doctorById) {
+          return doctorById
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not resolve doctor profile by doctorId:', doctorId, error?.message || error)
+      }
     }
 
     const firebaseUser = currentUser || authService.getCurrentUser()
@@ -672,6 +685,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   
   // Track AI diagnostics state
   let isShowingAIDiagnostics = false
+  let showAiAnalysisUnderDiagnoses = false
   let showIllnessForm = false
   let showMedicationForm = false
   let savingMedication = false
@@ -1866,18 +1880,38 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let showPharmacyModal = false
   let availablePharmacies = []
   let selectedPharmacies = []
+  let pendingPharmacyMedications = null
   
   // Reports functionality
   let showReportForm = false
   let reportText = ''
   let reportFiles = []
-  let reportType = 'text' // 'text', 'pdf', 'image'
+  let reportType = 'camera' // 'camera', 'text', 'pdf', 'image'
   let reportTitle = ''
   let reportDate = new Date().toISOString().split('T')[0]
   let reports = []
   let reportFilePreview = null
   let reportFileDataUrl = null
   let reportError = ''
+  let editingReportId = null
+  let viewingReport = null
+  let cameraVideoEl = null
+  let cameraStream = null
+  let cameraStarting = false
+  let cameraCaptureError = ''
+  let cameraSource = 'mobile' // 'laptop' | 'mobile'
+  let mobileCameraAccessCode = ''
+  let mobileCameraUrl = ''
+  let mobileCameraQrUrl = ''
+  let cameraOcrLoading = false
+  let cameraOcrError = ''
+  let cameraOcrProgress = 0
+  let cameraOcrProgressLabel = ''
+  let cameraOcrProgressTimer = null
+  let reportDetectedCorners = []
+  let reportSelectedAreaDataUrl = null
+  let cornerOverlayEl = null
+  let activeCornerDragIndex = -1
   
   // Diagnostic data functionality
   let showDiagnosticForm = false
@@ -1951,23 +1985,315 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     reader.readAsDataURL(file)
   })
 
+  const stopCameraScan = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop())
+    }
+    cameraStream = null
+    cameraStarting = false
+  }
+
+  const startCameraScan = async () => {
+    if (cameraSource !== 'laptop') {
+      return
+    }
+    if (cameraStream || cameraStarting) {
+      return
+    }
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      cameraCaptureError = 'Camera is not supported in this browser.'
+      return
+    }
+
+    cameraCaptureError = ''
+    cameraStarting = true
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'environment'
+        },
+        audio: false
+      })
+      cameraStream = stream
+      await tick()
+      if (cameraVideoEl) {
+        cameraVideoEl.srcObject = stream
+        await cameraVideoEl.play()
+      }
+    } catch (error) {
+      console.error('❌ Unable to start camera:', error)
+      cameraCaptureError = error?.message || 'Unable to access camera.'
+      stopCameraScan()
+    } finally {
+      cameraStarting = false
+    }
+  }
+
+  const runCameraOcr = async () => {
+    if (!reportFileDataUrl) {
+      cameraOcrError = 'Capture a photo first.'
+      return
+    }
+    if (!openaiService.isConfigured()) {
+      cameraOcrError = 'OpenAI OCR is not configured.'
+      return
+    }
+
+    cameraOcrLoading = true
+    cameraOcrProgress = 6
+    cameraOcrProgressLabel = 'Uploading image...'
+    cameraOcrError = ''
+    if (cameraOcrProgressTimer) {
+      clearInterval(cameraOcrProgressTimer)
+      cameraOcrProgressTimer = null
+    }
+    cameraOcrProgressTimer = setInterval(() => {
+      if (!cameraOcrLoading) return
+      const next = Math.min(92, cameraOcrProgress + Math.floor(Math.random() * 6) + 2)
+      cameraOcrProgress = next
+      if (next < 35) {
+        cameraOcrProgressLabel = 'Uploading image...'
+      } else if (next < 70) {
+        cameraOcrProgressLabel = 'Reading text regions...'
+      } else {
+        cameraOcrProgressLabel = 'Extracting content...'
+      }
+    }, 260)
+    try {
+      const result = await openaiService.extractTextFromImage(
+        reportFileDataUrl,
+        getDoctorIdForImprove(),
+        { context: 'patient-report-camera-ocr' }
+      )
+      cameraOcrProgress = 100
+      cameraOcrProgressLabel = 'Finalizing extracted text...'
+      reportText = result?.extractedText || ''
+      dispatch('ai-usage-updated', {
+        tokensUsed: result?.tokensUsed || 0,
+        type: 'reportImageOcr'
+      })
+    } catch (error) {
+      console.error('❌ Error running camera OCR:', error)
+      cameraOcrError = error?.message || 'Failed to extract text from image.'
+    } finally {
+      if (cameraOcrProgressTimer) {
+        clearInterval(cameraOcrProgressTimer)
+        cameraOcrProgressTimer = null
+      }
+      cameraOcrLoading = false
+    }
+  }
+
+  const detectPreviewCorners = async () => {
+    if (!reportFileDataUrl) {
+      reportDetectedCorners = []
+      reportSelectedAreaDataUrl = null
+      return
+    }
+    try {
+      reportDetectedCorners = await detectDocumentCornersFromDataUrl(reportFileDataUrl)
+      reportSelectedAreaDataUrl = await createSelectedAreaDataUrl(reportFileDataUrl, reportDetectedCorners)
+    } catch (error) {
+      console.error('❌ Failed to detect document corners:', error)
+      reportDetectedCorners = []
+      reportSelectedAreaDataUrl = null
+    }
+  }
+
+  const getCornerPolygonPoints = (corners = []) => {
+    if (!Array.isArray(corners) || corners.length !== 4) {
+      return ''
+    }
+    return corners
+      .map(corner => `${corner.x * 100},${corner.y * 100}`)
+      .join(' ')
+  }
+
+  const clamp01 = (value) => Math.min(1, Math.max(0, value))
+
+  const getNormalizedPointFromOverlayEvent = (event) => {
+    if (!cornerOverlayEl) {
+      return null
+    }
+    const rect = cornerOverlayEl.getBoundingClientRect()
+    if (!rect.width || !rect.height) {
+      return null
+    }
+    const clientX = Number(event?.clientX ?? 0)
+    const clientY = Number(event?.clientY ?? 0)
+    return {
+      x: clamp01((clientX - rect.left) / rect.width),
+      y: clamp01((clientY - rect.top) / rect.height)
+    }
+  }
+
+  const updateDraggedCorner = (event) => {
+    if (activeCornerDragIndex < 0 || reportDetectedCorners.length !== 4) {
+      return
+    }
+    const point = getNormalizedPointFromOverlayEvent(event)
+    if (!point) {
+      return
+    }
+    reportDetectedCorners = reportDetectedCorners.map((corner, index) => (
+      index === activeCornerDragIndex ? point : corner
+    ))
+  }
+
+  const startCornerDrag = (index, event) => {
+    if (reportDetectedCorners.length !== 4) {
+      return
+    }
+    activeCornerDragIndex = index
+    event.preventDefault()
+    event.stopPropagation()
+    if (event?.currentTarget?.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+    updateDraggedCorner(event)
+  }
+
+  const endCornerDrag = async (event) => {
+    if (activeCornerDragIndex < 0) {
+      return
+    }
+    if (event?.currentTarget?.releasePointerCapture && event?.pointerId !== undefined) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      } catch (_) {
+        // no-op
+      }
+    }
+    activeCornerDragIndex = -1
+    if (reportFileDataUrl && reportDetectedCorners.length === 4) {
+      reportSelectedAreaDataUrl = await createSelectedAreaDataUrl(reportFileDataUrl, reportDetectedCorners)
+    }
+  }
+
+  const captureCameraPhoto = async () => {
+    if (!cameraVideoEl) {
+      cameraCaptureError = 'Camera preview is not ready.'
+      return
+    }
+    try {
+      const width = cameraVideoEl.videoWidth || 1280
+      const height = cameraVideoEl.videoHeight || 720
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        cameraCaptureError = 'Unable to capture photo.'
+        return
+      }
+      ctx.drawImage(cameraVideoEl, 0, 0, width, height)
+      const capturedDataUrl = canvas.toDataURL('image/jpeg', 0.92)
+      reportFileDataUrl = capturedDataUrl
+      setReportFilePreview(capturedDataUrl)
+      await detectPreviewCorners()
+      reportFiles = []
+      cameraCaptureError = ''
+      stopCameraScan()
+      await runCameraOcr()
+    } catch (error) {
+      console.error('❌ Failed to capture photo:', error)
+      cameraCaptureError = error?.message || 'Failed to capture photo.'
+    }
+  }
+
+  const retakeCameraPhoto = async () => {
+    reportFileDataUrl = null
+    setReportFilePreview(null)
+    reportDetectedCorners = []
+    reportSelectedAreaDataUrl = null
+    cameraOcrError = ''
+    if (cameraSource === 'laptop') {
+      await startCameraScan()
+    }
+  }
+
+  const generateMobileAccessCode = () => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = ''
+    for (let i = 0; i < 10; i++) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)]
+    }
+    return code
+  }
+
+  const updateMobileCameraLinks = () => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      if (!mobileCameraAccessCode) {
+        mobileCameraAccessCode = generateMobileAccessCode()
+      }
+      const nextUrl = new URL(window.location.origin)
+      nextUrl.searchParams.set('mobile-capture', '1')
+      nextUrl.searchParams.set('code', mobileCameraAccessCode)
+      nextUrl.searchParams.set('ts', String(Date.now()))
+      mobileCameraUrl = nextUrl.toString()
+      mobileCameraQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(mobileCameraUrl)}`
+    } catch (error) {
+      console.error('❌ Failed to prepare mobile camera QR:', error)
+      mobileCameraUrl = ''
+      mobileCameraQrUrl = ''
+    }
+  }
+
+  const handleMobileCameraUpload = async (event) => {
+    const file = event?.target?.files?.[0]
+    if (!file) {
+      return
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      reportFiles = [file]
+      reportFileDataUrl = dataUrl
+      setReportFilePreview(dataUrl)
+      cameraCaptureError = ''
+      cameraOcrError = ''
+      await detectPreviewCorners()
+    } catch (error) {
+      console.error('❌ Failed to load mobile camera image:', error)
+      cameraCaptureError = error?.message || 'Failed to load mobile camera image.'
+    }
+  }
+
   // Report functions
   const addReport = async () => {
+    const editingReport = editingReportId
+      ? reports.find((report) => report.id === editingReportId)
+      : null
+    const effectiveReportType = reportType === 'camera' ? 'image' : reportType
+
     if (!reportTitle.trim()) {
       reportError = 'Report title is required.'
       return
     }
 
-    if (reportType === 'text' && !reportText.trim()) {
+    if (effectiveReportType === 'text' && !reportText.trim()) {
+      reportError = 'Report content is required for text reports.'
       return
     }
     
-    if (reportType !== 'text' && reportFiles.length === 0) {
+    const hasExistingFiles = Boolean(
+      editingReport &&
+      effectiveReportType !== 'text' &&
+      Array.isArray(editingReport.files) &&
+      editingReport.files.length > 0
+    )
+
+    if (effectiveReportType !== 'text' && reportFiles.length === 0 && !hasExistingFiles && !reportFileDataUrl) {
+      reportError = reportType === 'camera'
+        ? 'Capture a photo before saving.'
+        : 'Please upload a file before saving.'
       return
     }
     
     let imageDataUrl = reportFileDataUrl
-    if (reportType === 'image' && !imageDataUrl && reportFiles[0]) {
+    if (effectiveReportType === 'image' && !imageDataUrl && reportFiles[0]) {
       try {
         imageDataUrl = await readFileAsDataUrl(reportFiles[0])
       } catch (error) {
@@ -1975,37 +2301,85 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         return
       }
     }
+    if (effectiveReportType === 'image' && !imageDataUrl && editingReport?.type === 'image') {
+      imageDataUrl = editingReport.dataUrl || null
+    }
 
-    const reportFilesMeta = reportType !== 'text'
-      ? reportFiles.map(file => ({ name: file.name, size: file.size, type: file.type }))
+    const reportFilesMeta = effectiveReportType !== 'text'
+      ? (
+        reportFiles.length > 0
+          ? reportFiles.map(file => ({ name: file.name, size: file.size, type: file.type }))
+          : (
+            reportType === 'camera' && imageDataUrl
+              ? [
+                { name: 'camera-capture.jpg', size: imageDataUrl.length, type: 'image/jpeg', source: 'camera' },
+                ...(reportSelectedAreaDataUrl
+                  ? [{ name: 'camera-selected-area.png', size: reportSelectedAreaDataUrl.length, type: 'image/png', source: 'camera-selected-area' }]
+                  : [])
+              ]
+              : (editingReport?.files || [])
+          )
+      )
       : []
 
     const reportPayload = {
       title: reportTitle.trim(),
-      type: reportType,
+      type: effectiveReportType,
       date: reportDate,
-      content: reportType === 'text' ? reportText : null,
+      content: effectiveReportType === 'text' ? reportText : (reportType === 'camera' ? (reportText || null) : null),
       files: reportFilesMeta,
-      dataUrl: reportType === 'image' ? imageDataUrl : null,
+      dataUrl: effectiveReportType === 'image' ? imageDataUrl : null,
+      selectedAreaDataUrl: effectiveReportType === 'image' ? (reportSelectedAreaDataUrl || null) : null,
       patientId: selectedPatient?.id || null,
       doctorId: doctorId || currentUser?.id || currentUser?.uid || null,
       analysis: null,
       analysisPending: false,
       analysisError: '',
-      analysisUnclear: false,
-      createdAt: new Date().toISOString()
+      analysisUnclear: false
+    }
+
+    if (editingReport) {
+      try {
+        const savedReport = await firebaseStorage.updateReport(editingReport.id, {
+          ...editingReport,
+          ...reportPayload
+        })
+        reports = reports.map((report) => (
+          report.id === editingReport.id
+            ? {
+              ...report,
+              ...savedReport,
+              previewUrl: effectiveReportType === 'image'
+                ? (reportFilePreview || report.previewUrl || report.dataUrl || null)
+                : null
+            }
+            : report
+        ))
+        dispatch('dataUpdated', {
+          type: 'reports',
+          data: { ...savedReport, id: editingReport.id, updated: true }
+        })
+      } catch (error) {
+        reportError = error.message || 'Failed to update report.'
+        return
+      }
+      resetReportForm()
+      return
     }
 
     let savedReport = null
     try {
-      savedReport = await firebaseStorage.createReport(reportPayload)
+      savedReport = await firebaseStorage.createReport({
+        ...reportPayload,
+        createdAt: new Date().toISOString()
+      })
     } catch (error) {
       reportError = error.message || 'Failed to save report.'
       return
     }
     const newReport = {
       ...savedReport,
-      previewUrl: reportType === 'image' ? reportFilePreview : null
+      previewUrl: effectiveReportType === 'image' ? reportFilePreview : null
     }
 
     reports = [...reports, newReport]
@@ -2015,18 +2389,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     }
 
     dispatch('dataUpdated', { type: 'reports', data: newReport })
-    
-    // Reset form
-    reportTitle = ''
-    reportText = ''
-    reportFiles = []
-    reportType = 'text'
-    reportDate = new Date().toISOString().split('T')[0]
-    reportFilePreview = null
-    reportFileDataUrl = null
-    reportError = ''
-    showReportForm = false
-    
+
+    resetReportForm()
   }
 
   const setReportFilePreview = (nextUrl) => {
@@ -2035,21 +2399,85 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     }
     reportFilePreview = nextUrl
   }
+
+  const resetReportForm = () => {
+    editingReportId = null
+    reportTitle = ''
+    reportText = ''
+    reportFiles = []
+    reportType = 'camera'
+    reportDate = new Date().toISOString().split('T')[0]
+    setReportFilePreview(null)
+    reportFileDataUrl = null
+    reportDetectedCorners = []
+    reportSelectedAreaDataUrl = null
+    cameraSource = 'mobile'
+    mobileCameraAccessCode = ''
+    mobileCameraUrl = ''
+    mobileCameraQrUrl = ''
+    reportError = ''
+    cameraCaptureError = ''
+    cameraOcrError = ''
+    cameraOcrLoading = false
+    cameraOcrProgress = 0
+    cameraOcrProgressLabel = ''
+    if (cameraOcrProgressTimer) {
+      clearInterval(cameraOcrProgressTimer)
+      cameraOcrProgressTimer = null
+    }
+    stopCameraScan()
+    showReportForm = false
+  }
   
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files)
     reportFiles = files
+    cameraCaptureError = ''
+    cameraOcrError = ''
     if (reportType === 'image' && files.length > 0) {
       setReportFilePreview(URL.createObjectURL(files[0]))
       const reader = new FileReader()
       reader.onload = () => {
         reportFileDataUrl = reader.result
+        reportDetectedCorners = []
+        reportSelectedAreaDataUrl = null
       }
       reader.readAsDataURL(files[0])
     } else {
       setReportFilePreview(null)
       reportFileDataUrl = null
+      reportDetectedCorners = []
+      reportSelectedAreaDataUrl = null
     }
+  }
+
+  const viewReport = (report) => {
+    viewingReport = report
+  }
+
+  const editReport = (report) => {
+    if (!report) {
+      return
+    }
+    editingReportId = report.id
+    showReportForm = true
+    reportTitle = report.title || ''
+    reportType = report.type === 'image' ? 'camera' : (report.type || 'text')
+    reportDate = report.date || new Date().toISOString().split('T')[0]
+    reportText = (reportType === 'text' || reportType === 'camera') ? (report.content || '') : ''
+    reportFiles = []
+    if (reportType === 'camera' || reportType === 'image') {
+      setReportFilePreview(report.previewUrl || report.dataUrl || null)
+      reportFileDataUrl = report.dataUrl || null
+      reportDetectedCorners = []
+      reportSelectedAreaDataUrl = report.selectedAreaDataUrl || null
+    } else {
+      setReportFilePreview(null)
+      reportFileDataUrl = null
+      reportDetectedCorners = []
+      reportSelectedAreaDataUrl = null
+    }
+    reportError = ''
   }
   
   const removeReport = async (reportId) => {
@@ -2066,11 +2494,23 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     dispatch('dataUpdated', { type: 'reports', data: { reportId } })
   }
 
-  $: if (reportType !== 'image' && reportFilePreview) {
+  $: if (reportType !== 'image' && reportType !== 'camera' && reportFilePreview) {
     setReportFilePreview(null)
   }
-  $: if (reportType !== 'image' && reportFileDataUrl) {
+  $: if (reportType !== 'image' && reportType !== 'camera' && reportFileDataUrl) {
     reportFileDataUrl = null
+  }
+  $: if (reportType !== 'image' && reportType !== 'camera' && reportSelectedAreaDataUrl) {
+    reportSelectedAreaDataUrl = null
+  }
+  $: if (showReportForm && reportType === 'camera' && cameraSource === 'mobile') {
+    updateMobileCameraLinks()
+  }
+  $: if (showReportForm && reportType === 'camera' && cameraSource === 'laptop' && !reportFileDataUrl && !cameraStream && !cameraStarting) {
+    startCameraScan()
+  }
+  $: if ((!showReportForm || reportType !== 'camera' || cameraSource !== 'laptop') && cameraStream) {
+    stopCameraScan()
   }
 
   $: if (reportError && reportTitle.trim()) {
@@ -2136,23 +2576,20 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       const firebaseUser = currentUser || authService.getCurrentUser()
       console.log('🔍 Firebase user:', firebaseUser)
       
-      if (!firebaseUser) {
-        console.log('❌ User not found')
-        return
-      }
-      
       // Get the actual doctor data from Firebase
       const doctor = await getEffectiveDoctorProfile()
       console.log('🔍 Doctor from Firebase:', doctor)
       
       if (!doctor) {
         console.log('❌ Doctor not found in Firebase')
+        notifyError('Unable to resolve doctor profile. Please sign in again and retry.')
         return
       }
       
       // Check if patient is selected
       if (!selectedPatient) {
         console.log('❌ No patient selected')
+        notifyError('No patient selected. Please select a patient and try again.')
         return
       }
       
@@ -2164,34 +2601,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       if (!medicationsToSend || medicationsToSend.length === 0) {
         if (!hasChargeableItems) {
           console.log('❌ No medications or chargeable services to send')
+          notifyError('No medications or chargeable services found to send.')
           return
         }
         console.log('ℹ️ No medications to send, continuing with charge-only prescription')
-      }
-      
-      // NEW RULE: When "Send to Pharmacy", mark prescription as sent and move to history/summary
-      if (currentPrescription) {
-        currentPrescription.status = 'sent'
-        currentPrescription.sentToPharmacy = true
-        currentPrescription.sentAt = new Date().toISOString()
-        currentPrescription.endDate = new Date().toISOString().split('T')[0] // Mark as historical
-        
-        // Update in Firebase
-        await firebaseStorage.updatePrescription(currentPrescription.id, {
-          status: 'sent',
-          sentToPharmacy: true,
-          sentAt: new Date().toISOString(),
-          endDate: new Date().toISOString().split('T')[0], // Add endDate for history
-          updatedAt: new Date().toISOString()
-        })
-        
-        // Update the prescription in the local array
-        const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id);
-        if (prescriptionIndex !== -1) {
-          prescriptions[prescriptionIndex] = currentPrescription;
-        }
-        
-        console.log('✅ Marked current prescription as sent to pharmacy and moved to history/summary');
       }
       
       // Create prescription data from current medications for sending to pharmacy
@@ -2214,6 +2627,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         status: 'pending'
       }]
       console.log('🔍 Created prescription data:', prescriptionsToSend)
+      pendingPharmacyMedications = medicationsToSend.map(enrichMedicationForPharmacy)
       
       // Get all pharmacists and find those connected to this doctor
       const allPharmacists = await firebaseStorage.getAllPharmacists()
@@ -2235,6 +2649,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       
       if (connectedPharmacists.length === 0) {
         console.log('❌ No connected pharmacists')
+        pendingPharmacyMedications = null
         pendingAction = openHelpInventory
         showConfirmation(
           'Connect a Pharmacy',
@@ -2261,6 +2676,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       // Check if any pharmacies were found
       if (availablePharmacies.length === 0) {
         console.log('❌ No pharmacies found after loading')
+        pendingPharmacyMedications = null
+        notifyError('No connected pharmacies available to send this prescription.')
         return
       }
       
@@ -2275,6 +2692,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     } catch (error) {
       console.error('❌ Error opening pharmacy selection:', error)
       console.error('❌ Error stack:', error.stack)
+      pendingPharmacyMedications = null
+      notifyError('Failed to open pharmacy selection. Please try again.')
     }
   }
 
@@ -2335,9 +2754,13 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         excludeConsultationCharge: typeof prescription?.excludeConsultationCharge === 'boolean'
           ? prescription.excludeConsultationCharge
           : !!excludeConsultationCharge,
-        medications: Array.isArray(prescription?.medications)
-          ? prescription.medications.map(enrichMedicationForPharmacy)
-          : []
+        medications: Array.isArray(pendingPharmacyMedications)
+          ? pendingPharmacyMedications
+          : (
+            Array.isArray(prescription?.medications)
+              ? prescription.medications.map(enrichMedicationForPharmacy)
+              : []
+          )
       }))
       
       console.log('📤 Total prescriptions to send:', prescriptions.length)
@@ -2377,9 +2800,32 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       
       // Clear selections
       selectedPharmacies = []
+      pendingPharmacyMedications = null
       
       // Show success message
       if (sentCount > 0) {
+        if (currentPrescription?.id) {
+          const sentTimestamp = new Date().toISOString()
+          const sentDate = sentTimestamp.split('T')[0]
+          currentPrescription.status = 'sent'
+          currentPrescription.sentToPharmacy = true
+          currentPrescription.sentAt = sentTimestamp
+          currentPrescription.endDate = sentDate
+
+          await firebaseStorage.updatePrescription(currentPrescription.id, {
+            status: 'sent',
+            sentToPharmacy: true,
+            sentAt: sentTimestamp,
+            endDate: sentDate,
+            updatedAt: sentTimestamp
+          })
+
+          const prescriptionIndex = prescriptions.findIndex((p) => p.id === currentPrescription.id)
+          if (prescriptionIndex !== -1) {
+            prescriptions[prescriptionIndex] = currentPrescription
+            prescriptions = [...prescriptions]
+          }
+        }
         notifySuccess(`Prescription sent to ${sentCount} pharmac${sentCount === 1 ? 'y' : 'ies'} successfully!`)
       } else {
         notifyError('No prescriptions were sent. Please check your selections.')
@@ -2389,6 +2835,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       
     } catch (error) {
       console.error('❌ Error sending prescriptions to pharmacies:', error)
+      pendingPharmacyMedications = null
       notifyError('Failed to send prescription to pharmacies. Please try again.')
     }
   }
@@ -2680,6 +3127,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           
           // Parse the header content from template settings
           const headerContent = templateSettings.templatePreview?.formattedHeader || templateSettings.headerText
+          const headerFontSize = Number(templateSettings.headerFontSize || 24)
           console.log('🔍 Header content sources:', {
             formattedHeader: templateSettings.templatePreview?.formattedHeader,
             headerText: templateSettings.headerText,
@@ -2720,7 +3168,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               .header-capture-container .ql-editor {
                 width: 100% !important;
                 padding: 0 !important;
-                font-size: 24px !important;
+                font-size: ${headerFontSize}px !important;
                 line-height: 1.4 !important;
                 font-family: inherit !important;
               }
@@ -3968,6 +4416,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   })
 
   onDestroy(() => {
+    if (cameraOcrProgressTimer) {
+      clearInterval(cameraOcrProgressTimer)
+      cameraOcrProgressTimer = null
+    }
+    stopCameraScan()
     if (typeof window !== 'undefined' && window.__setPatientDetailsTab) {
       delete window.__setPatientDetailsTab
     }
@@ -4041,7 +4494,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       </div>
       <div class="flex space-x-2" role="group">
         <button 
-          class="flex-1 inline-flex items-center justify-center px-2 sm:px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
+          class="flex-1 inline-flex items-center justify-center px-2 sm:px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-cyan-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-cyan-600 dark:hover:bg-cyan-700 dark:focus:ring-cyan-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
@@ -4051,7 +4504,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           <span class="xs:hidden">Hist</span>
         </button>
         <button 
-          class="flex-1 inline-flex items-center justify-center px-2 sm:px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
+          class="flex-1 inline-flex items-center justify-center px-2 sm:px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-cyan-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -4106,7 +4559,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         </div>
         <div class="flex space-x-2 sm:space-x-3" role="group">
         <button 
-            class="inline-flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 {activeTab === 'history' ? 'bg-teal-600 text-white shadow-lg hover:bg-teal-700 dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800' : 'bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50'}"
+            class="inline-flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-cyan-300 focus:ring-offset-2 bg-cyan-600 text-white hover:bg-cyan-700 border-2 border-cyan-800"
           on:click={() => handleTabChange('history')}
           role="tab"
           title="View patient history"
@@ -4114,7 +4567,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             <i class="fas fa-history mr-1 sm:mr-2 text-xs sm:text-sm"></i><span class="hidden md:inline">History</span><span class="md:hidden">Hist</span>
         </button>
         <button 
-            class="inline-flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 bg-white text-teal-700 hover:bg-teal-50 border border-teal-200 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 disabled:opacity-50 disabled:cursor-not-allowed" 
+            class="inline-flex items-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-cyan-300 focus:ring-offset-2 bg-cyan-600 text-white hover:bg-cyan-700 border-2 border-cyan-800 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={startEditingPatient}
           disabled={loading || isEditingPatient}
           title="Edit patient information"
@@ -4179,7 +4632,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             </div>
             <div class="text-xs sm:text-sm font-medium text-center leading-tight">Diagnoses</div>
           </button>
-          
+
           <button 
             class="flex-shrink-0 flex flex-col items-center px-1 sm:px-2 py-2 rounded-lg transition-all duration-200 w-16 sm:w-20 {activeTab === 'prescriptions' ? 'bg-teal-600 text-white' : enabledTabs.includes('prescriptions') ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-gray-300 text-gray-500'}"
             on:click={() => enabledTabs.includes('prescriptions') && handleTabChange('prescriptions')}
@@ -4309,7 +4762,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <div class="flex gap-2">
                           <select
                             id="editTitle"
-                            class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                             bind:value={editPatientData.title}
                             disabled={savingPatient}
                           >
@@ -4320,7 +4773,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           </select>
                           <input 
                             type="text" 
-                            class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                            class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                             id="editFirstName" 
                             bind:value={editPatientData.firstName}
                             required
@@ -4334,7 +4787,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <label for="editLastName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Last Name</label>
                         <input 
                           type="text" 
-                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editLastName" 
                           bind:value={editPatientData.lastName}
                           disabled={savingPatient}
@@ -4351,7 +4804,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         </label>
                         <input 
                           type="email" 
-                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editEmail" 
                           bind:value={editPatientData.email}
                           disabled={savingPatient}
@@ -4359,7 +4812,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <label class="mt-2 inline-flex items-center gap-2 text-xs sm:text-sm text-gray-700">
                           <input
                             type="checkbox"
-                            class="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500"
+                            class="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-cyan-500"
                             bind:checked={editPatientData.disableNotifications}
                             disabled={savingPatient}
                           />
@@ -4372,7 +4825,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <label for="editPhone" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                         <div class="grid grid-cols-3 gap-2">
                           <select
-                            class="col-span-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                            class="col-span-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                             bind:value={editPatientData.phoneCountryCode}
                             disabled={savingPatient}
                           >
@@ -4383,7 +4836,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           </select>
                           <input 
                             type="tel" 
-                            class="col-span-2 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                            class="col-span-2 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                             id="editPhone" 
                             value={editPatientData.phone}
                             on:input={(e) => editPatientData.phone = normalizePhoneInput(e.target.value, editPatientData.phoneCountryCode)}
@@ -4402,7 +4855,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           <i class="fas fa-venus-mars mr-1"></i>Gender
                         </label>
                         <select 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editGender" 
                           bind:value={editPatientData.gender}
                           disabled={savingPatient}
@@ -4424,7 +4877,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           <i class="fas fa-calendar mr-1"></i>Date of Birth
                         </label>
                         <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editDateOfBirth" 
                           bind:value={editPatientData.dateOfBirth}
                           on:change={handleEditDateOfBirthChange}
@@ -4438,7 +4891,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         </label>
                         <input 
                           type="number" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editAge" 
                           bind:value={editPatientData.age}
                           min="0"
@@ -4456,7 +4909,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         </label>
                         <input 
                           type="number" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                           id="editWeight" 
                           bind:value={editPatientData.weight}
                           min="0"
@@ -4474,7 +4927,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           <i class="fas fa-tint me-1"></i>Blood Group
                         </label>
                         <select 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                           id="editBloodGroup" 
                           bind:value={editPatientData.bloodGroup}
                           disabled={savingPatient}
@@ -4500,7 +4953,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <label for="editIdNumber" class="block text-sm font-medium text-gray-700 mb-1">ID Number</label>
                         <input 
                           type="text" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                           id="editIdNumber" 
                           bind:value={editPatientData.idNumber}
                           disabled={savingPatient}
@@ -4522,7 +4975,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </label>
                       <button
                         type="button"
-                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        class="inline-flex items-center px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                         on:click={() => handleImproveField('editAddress', editPatientData.address || '', (value) => editPatientData = { ...editPatientData, address: value })}
                         disabled={savingPatient || improvingFields.editAddress || improvedFields.editAddress || !editPatientData.address}
                         title="Improve grammar and spelling with AI"
@@ -4540,7 +4993,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </button>
                     </div>
                     <textarea 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                       id="editAddress" 
                       rows="3" 
                       bind:value={editPatientData.address}
@@ -4562,7 +5015,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </label>
                       <button
                         type="button"
-                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        class="inline-flex items-center px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                         on:click={() => handleImproveField('editAllergies', editPatientData.allergies || '', (value) => editPatientData = { ...editPatientData, allergies: value })}
                         disabled={savingPatient || improvingFields.editAllergies || improvedFields.editAllergies || !editPatientData.allergies}
                         title="Improve grammar and spelling with AI"
@@ -4580,7 +5033,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </button>
                     </div>
                     <textarea 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                       id="editAllergies" 
                       rows="3" 
                       bind:value={editPatientData.allergies}
@@ -4604,7 +5057,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </label>
                       <button
                         type="button"
-                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        class="inline-flex items-center px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                         on:click={() => handleImproveField('editLongTermMedications', editPatientData.longTermMedications || '', (value) => editPatientData = { ...editPatientData, longTermMedications: value })}
                         disabled={savingPatient || improvingFields.editLongTermMedications || improvedFields.editLongTermMedications || !editPatientData.longTermMedications}
                         title="Improve grammar and spelling with AI"
@@ -4622,7 +5075,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </button>
                     </div>
                     <textarea 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                       id="editLongTermMedications" 
                       rows="3" 
                       bind:value={editPatientData.longTermMedications}
@@ -4639,7 +5092,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <label for="editEmergencyContact" class="block text-sm font-medium text-gray-700 mb-1">Emergency Contact</label>
                         <input 
                           type="text" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                           id="editEmergencyContact" 
                           bind:value={editPatientData.emergencyContact}
                           disabled={savingPatient}
@@ -4651,7 +5104,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <label for="editEmergencyPhone" class="block text-sm font-medium text-gray-700 mb-1">Emergency Phone</label>
                         <input 
                           type="tel" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                           id="editEmergencyPhone" 
                           bind:value={editPatientData.emergencyPhone}
                           disabled={savingPatient}
@@ -4693,7 +5146,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     <p class="text-xs text-gray-500 mb-2">Danger zone</p>
                     <button
                       type="button"
-                      class="w-full inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:bg-red-300 disabled:cursor-not-allowed transition-colors duration-200"
+                      class="w-full inline-flex items-center justify-center px-4 py-2 bg-red-800 hover:bg-red-900 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 disabled:bg-red-300 disabled:cursor-not-allowed transition-colors duration-200"
                       on:click={handleDeletePatient}
                       disabled={savingPatient || deletingPatient}
                     >
@@ -4772,7 +5225,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 <div class="flex gap-2">
                                   <select
                                     id="bioTitle"
-                                    class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                     bind:value={bioEditData.title}
                                     disabled={savingBio}
                                   >
@@ -4783,7 +5236,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                   </select>
                                   <input
                                     type="text"
-                                    class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                     id="bioFirstName"
                                     bind:value={bioEditData.firstName}
                                     required
@@ -4797,7 +5250,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 <label for="bioLastName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Last Name</label>
                                 <input
                                   type="text"
-                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                   id="bioLastName"
                                   bind:value={bioEditData.lastName}
                                   disabled={savingBio}
@@ -4814,7 +5267,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 </label>
                                 <input
                                   type="email"
-                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                   id="bioEmail"
                                   bind:value={bioEditData.email}
                                   disabled={savingBio}
@@ -4829,7 +5282,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 <div class="flex gap-2">
                                   <select
                                     id="bioPhoneCountryCode"
-                                    class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    class="w-28 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                     bind:value={bioEditData.phoneCountryCode}
                                     disabled={savingBio}
                                   >
@@ -4840,7 +5293,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                   </select>
                                   <input
                                     type="tel"
-                                    class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                    class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                     id="bioPhone"
                                     value={bioEditData.phone}
                                     on:input={(e) => bioEditData.phone = normalizePhoneInput(e.target.value, bioEditData.phoneCountryCode)}
@@ -4860,7 +5313,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 </label>
                                 <select
                                   id="bioGender"
-                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                   bind:value={bioEditData.gender}
                                   disabled={savingBio}
                                 >
@@ -4898,7 +5351,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 </label>
                                 <input
                                   type="number"
-                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                   id="bioAge"
                                   min="0"
                                   bind:value={bioEditData.age}
@@ -4914,7 +5367,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 </label>
                                 <input
                                   type="text"
-                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                   id="bioAddress"
                                   bind:value={bioEditData.address}
                                   disabled={savingBio}
@@ -4929,7 +5382,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 <label for="bioEmergencyContact" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Emergency Contact</label>
                                 <input
                                   type="text"
-                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                   id="bioEmergencyContact"
                                   bind:value={bioEditData.emergencyContact}
                                   disabled={savingBio}
@@ -4941,7 +5394,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                 <label for="bioEmergencyPhone" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Emergency Phone</label>
                                 <input
                                   type="tel"
-                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                                   id="bioEmergencyPhone"
                                   bind:value={bioEditData.emergencyPhone}
                                   disabled={savingBio}
@@ -5110,7 +5563,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                               </label>
                               <button
                                 type="button"
-                                class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                                class="inline-flex items-center px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                                 on:click={() => handleImproveField('editLongTermMedicationsField', editLongTermMedications || '', (value) => editLongTermMedications = value)}
                                 disabled={improvingFields.editLongTermMedicationsField || improvedFields.editLongTermMedicationsField || !editLongTermMedications}
                                 title="Improve grammar and spelling with AI"
@@ -5128,7 +5581,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                               </button>
                             </div>
                             <textarea 
-                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500" 
                               id="editLongTermMedicationsField" 
                               rows="3" 
                               bind:value={editLongTermMedications}
@@ -5162,7 +5615,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                 <!-- Next Button -->
                 <div class="mt-4 text-center">
                     <button
-                    class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+                    class="inline-flex items-center px-4 py-2 bg-red-800 hover:bg-red-900 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200"
                       on:click={goToNextTab}
                       title="Continue to Symptoms tab"
                     >
@@ -5185,7 +5638,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               <i class="fas fa-thermometer-half mr-2"></i>Symptoms
             </h6>
             <button 
-              class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+              class="inline-flex items-center px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200" 
               on:click={() => showSymptomsForm = true}
             >
               <i class="fas fa-plus mr-1"></i>Add Symptoms
@@ -5231,7 +5684,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </div>
                     </div>
                     <button 
-                      class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 ml-3" 
+                      class="inline-flex items-center px-2 py-1 border border-red-500 text-red-800 bg-white hover:bg-red-100 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200 ml-3" 
                       on:click={() => handleDeleteSymptom(symptom.id, index)}
                       title="Delete symptom"
                     >
@@ -5301,14 +5754,14 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           <!-- Navigation Buttons -->
           <div class="mt-4 text-center">
               <button 
-              class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
+              class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
                 on:click={goToPreviousTab}
                 title="Go back to Overview tab"
               >
               <i class="fas fa-arrow-left mr-2"></i>Back
               </button>
               <button 
-              class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+              class="inline-flex items-center px-4 py-2 bg-red-800 hover:bg-red-900 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200"
                 on:click={goToNextTab}
                 title="Continue to Reports tab"
               >
@@ -5326,7 +5779,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               <i class="fas fa-heartbeat mr-2"></i>Illnesses
             </h6>
             <button 
-              class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+              class="inline-flex items-center px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200" 
               on:click={() => showIllnessForm = true}
             >
               <i class="fas fa-plus me-1"></i>Add Illness
@@ -5370,7 +5823,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </small>
                     </div>
                     <button 
-                      class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+                      class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200" 
                       on:click={() => toggleExpanded('illnesses', index)}
                     >
                       <i class="fas fa-{expandedIllnesses[index] ? 'chevron-up' : 'chevron-down'}"></i>
@@ -5438,7 +5891,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           <div class="flex justify-center mt-3">
             <div class="w-full text-center">
                 <button 
-                class="inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+                class="inline-flex items-center px-3 py-2 bg-red-800 hover:bg-red-900 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200"
                 on:click={goToNextTab}
                 title="Continue to Prescriptions tab"
               >
@@ -5457,7 +5910,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               <i class="fas fa-file-medical mr-2"></i>Medical Reports
             </h6>
               <button 
-              class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
+              class="inline-flex items-center px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200" 
               on:click={() => showReportForm = true}
             >
               <i class="fas fa-plus mr-1"></i>Add Report
@@ -5483,7 +5936,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         <label class="block text-sm font-medium text-gray-700 mb-1">Report Title</label>
                         <input 
                           type="text" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500" 
                           bind:value={reportTitle}
                           placeholder="e.g., Blood Test Results, X-Ray Report"
                         />
@@ -5496,7 +5949,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Report Date</label>
                         <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500" 
                           bind:value={reportDate} />
                       </div>
                     </div>
@@ -5504,6 +5957,17 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     <div class="mb-4">
                       <label class="block text-sm font-medium text-gray-700 mb-2">Report Type</label>
                       <div class="flex rounded-lg border border-gray-200 bg-gray-100 p-1">
+                        <input
+                          type="radio"
+                          class="sr-only"
+                          id="report-camera"
+                          bind:group={reportType}
+                          value="camera"
+                        />
+                        <label class="flex-1 flex items-center justify-center px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 {reportType === 'camera' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}" for="report-camera" role="tab">
+                          <i class="fas fa-camera mr-2"></i>Camera Scan
+                        </label>
+
                         <input 
                           type="radio" 
                           class="sr-only" 
@@ -5538,8 +6002,216 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         </label>
                       </div>
                     </div>
-                
-                {#if reportType === 'text'}
+
+                {#if reportType === 'camera'}
+                  <div class="mb-4 space-y-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Camera Capture</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        class="text-left rounded-xl border p-3 transition-all duration-200 {cameraSource === 'mobile' ? 'bg-cyan-600 border-cyan-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-800 hover:bg-gray-50'}"
+                        on:click={() => {
+                          cameraSource = 'mobile'
+                          mobileCameraAccessCode = ''
+                          cameraCaptureError = ''
+                          stopCameraScan()
+                          updateMobileCameraLinks()
+                        }}
+                      >
+                        <div class="flex items-center gap-2">
+                          <i class="fas fa-mobile-screen-button text-sm"></i>
+                          <span class="text-sm font-semibold">Mobile Phone</span>
+                        </div>
+                        <p class="mt-1 text-xs {cameraSource === 'mobile' ? 'text-cyan-100' : 'text-gray-500'}">Scan QR and capture on phone</p>
+                      </button>
+                      <button
+                        type="button"
+                        class="text-left rounded-xl border p-3 transition-all duration-200 {cameraSource === 'laptop' ? 'bg-cyan-600 border-cyan-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-800 hover:bg-gray-50'}"
+                        on:click={() => {
+                          cameraSource = 'laptop'
+                          cameraCaptureError = ''
+                        }}
+                      >
+                        <div class="flex items-center gap-2">
+                          <i class="fas fa-laptop text-sm"></i>
+                          <span class="text-sm font-semibold">Laptop Camera</span>
+                        </div>
+                        <p class="mt-1 text-xs {cameraSource === 'laptop' ? 'text-cyan-100' : 'text-gray-500'}">Capture directly from this device</p>
+                      </button>
+                    </div>
+                    {#if reportFilePreview}
+                      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
+                        <div class="space-y-1">
+                          <p class="text-xs font-medium text-gray-600">Captured Photo</p>
+                          <div class="relative rounded-lg border border-gray-200 overflow-hidden aspect-[4/3] bg-black/5">
+                            <img src={reportFilePreview} alt="Captured report" class="w-full h-full object-contain" />
+                            {#if reportDetectedCorners.length === 4}
+                              <svg
+                                bind:this={cornerOverlayEl}
+                                class="absolute inset-0 w-full h-full touch-none"
+                                viewBox="0 0 100 100"
+                                preserveAspectRatio="none"
+                                aria-label="Detected document corners overlay"
+                                on:pointermove={updateDraggedCorner}
+                                on:pointerup={endCornerDrag}
+                                on:pointercancel={endCornerDrag}
+                                on:lostpointercapture={endCornerDrag}
+                              >
+                                <polygon
+                                  points={getCornerPolygonPoints(reportDetectedCorners)}
+                                  fill="rgba(20, 184, 166, 0.12)"
+                                  stroke="#0d9488"
+                                  stroke-width="0.7"
+                                />
+                                {#each reportDetectedCorners as corner, index}
+                                  <circle
+                                    cx={corner.x * 100}
+                                    cy={corner.y * 100}
+                                    r="2"
+                                    fill="#0f766e"
+                                    stroke="white"
+                                    stroke-width="0.5"
+                                    style="cursor: grab;"
+                                    on:pointerdown={(event) => startCornerDrag(index, event)}
+                                  />
+                                {/each}
+                              </svg>
+                            {/if}
+                          </div>
+                        </div>
+                        {#if reportSelectedAreaDataUrl}
+                          <div class="space-y-1">
+                            <p class="text-xs font-medium text-teal-700">Selected Area (Saved)</p>
+                            <div class="rounded-lg border border-teal-200 bg-teal-50 overflow-hidden aspect-[4/3]">
+                              <img src={reportSelectedAreaDataUrl} alt="Selected text area preview" class="w-full h-full object-contain bg-white" />
+                            </div>
+                          </div>
+                        {/if}
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          on:click={retakeCameraPhoto}
+                        >
+                          <i class="fas fa-rotate-right mr-1"></i>Retake
+                        </button>
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700"
+                          on:click={detectPreviewCorners}
+                        >
+                          <i class="fas fa-vector-square mr-1"></i>Detect 4 Corners
+                        </button>
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                          on:click={runCameraOcr}
+                          disabled={cameraOcrLoading}
+                        >
+                          {#if cameraOcrLoading}
+                            <i class="fas fa-spinner fa-spin mr-1"></i>Extracting... {cameraOcrProgress}%
+                          {:else}
+                            <i class="fas fa-file-lines mr-1"></i>Extract Text
+                          {/if}
+                        </button>
+                      </div>
+                      {#if cameraOcrLoading}
+                        <div class="space-y-1">
+                          <div class="flex items-center justify-between text-xs text-teal-700">
+                            <span>{cameraOcrProgressLabel || 'Extracting text...'}</span>
+                            <span>{cameraOcrProgress}%</span>
+                          </div>
+                          <div class="w-full h-2 bg-teal-100 rounded-full overflow-hidden">
+                            <div
+                              class="h-full bg-teal-600 transition-all duration-200 ease-out"
+                              style={`width: ${cameraOcrProgress}%`}
+                              aria-label="OCR progress bar"
+                            ></div>
+                          </div>
+                        </div>
+                      {/if}
+                      {#if reportDetectedCorners.length === 4}
+                        <p class="text-xs text-teal-700">4-corner text area boundary detected and shown in preview. Drag corner dots to adjust.</p>
+                      {/if}
+                    {:else if cameraSource === 'laptop'}
+                      <div class="rounded-lg border border-gray-200 bg-black/5 overflow-hidden">
+                        <video bind:this={cameraVideoEl} autoplay playsinline muted class="w-full h-auto max-h-80 bg-black"></video>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                          on:click={startCameraScan}
+                          disabled={cameraStarting}
+                        >
+                          <i class="fas fa-video mr-1"></i>{cameraStarting ? 'Starting...' : 'Start Camera'}
+                        </button>
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-3 py-2 text-xs font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700"
+                          on:click={captureCameraPhoto}
+                        >
+                          <i class="fas fa-camera mr-1"></i>Capture Photo
+                        </button>
+                      </div>
+                    {:else}
+                      <div class="rounded-lg border border-cyan-200 bg-cyan-50 p-4">
+                        <p class="text-sm font-semibold text-cyan-800 mb-2">Scan on your mobile phone</p>
+                        <p class="text-xs text-cyan-700 mb-3">Open this report camera screen on your phone, capture the report image, then upload it.</p>
+                        {#if mobileCameraQrUrl}
+                          <div class="flex flex-col items-center gap-2">
+                            <img src={mobileCameraQrUrl} alt="Mobile camera QR code" class="w-40 h-40 rounded border border-cyan-200 bg-white p-1" />
+                            <p class="text-xs text-cyan-900">Security code: <span class="font-semibold tracking-wider">{mobileCameraAccessCode}</span></p>
+                            <a
+                              href={mobileCameraUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="text-xs text-cyan-800 underline break-all text-center"
+                            >
+                              {mobileCameraUrl}
+                            </a>
+                          </div>
+                        {/if}
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Upload photo captured from mobile</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500"
+                          on:change={handleMobileCameraUpload}
+                        />
+                      </div>
+                    {/if}
+                    {#if cameraCaptureError}
+                      <div class="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+                        {cameraCaptureError}
+                      </div>
+                    {/if}
+                    {#if cameraOcrError}
+                      <div class="bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded-lg px-3 py-2">
+                        {cameraOcrError}
+                      </div>
+                    {/if}
+                  </div>
+
+                  {#if cameraOcrLoading || (reportText && reportText.trim())}
+                    <div class="mb-4">
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Extracted Text (Editable)</label>
+                      <textarea
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500"
+                        rows="6"
+                        bind:value={reportText}
+                        placeholder={cameraOcrLoading ? 'Extracting text...' : 'Extracted text'}
+                      ></textarea>
+                    </div>
+                  {:else}
+                    <div class="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                      Extracted text will appear here after OCR is generated.
+                    </div>
+                  {/if}
+                {:else if reportType === 'text'}
                   <div class="mb-4">
                     <div class="flex items-center justify-between mb-1">
                       <label class="block text-sm font-medium text-gray-700">
@@ -5553,7 +6225,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </label>
                       <button
                         type="button"
-                        class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                        class="inline-flex items-center px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                         on:click={() => handleImproveField('reportText', reportText || '', (value) => reportText = value)}
                         disabled={improvingFields.reportText || improvedFields.reportText || !reportText}
                         title="Improve grammar and spelling with AI"
@@ -5571,7 +6243,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </button>
                     </div>
                     <textarea 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500" 
                       rows="6" 
                       bind:value={reportText}
                       on:input={(e) => handleFieldEdit('reportText', e.target.value)}
@@ -5585,7 +6257,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     </label>
                     <input 
                       type="file" 
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-blue-500" 
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-blue-500" 
                       accept={reportType === 'pdf' ? '.pdf' : 'image/*'}
                       on:change={handleFileUpload}
                       multiple={false}
@@ -5605,20 +6277,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     class="action-button action-button-primary" 
                     on:click={addReport}
                   >
-                    <i class="fas fa-save mr-1"></i>Save Report
+                    <i class="fas fa-save mr-1"></i>{editingReportId ? 'Update Report' : 'Save Report'}
                   </button>
                   <button 
                     class="action-button action-button-secondary" 
-                    on:click={() => {
-                      showReportForm = false
-                      reportTitle = ''
-                      reportText = ''
-                      reportFiles = []
-                      reportType = 'text'
-                      reportDate = new Date().toISOString().split('T')[0]
-                      reportFilePreview = null
-                      reportError = ''
-                    }}
+                    on:click={resetReportForm}
                   >
                     <i class="fas fa-times mr-1"></i>Cancel
             </button>
@@ -5645,13 +6308,29 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         {/if}
                         {report.title}
                       </h6>
-              <button 
-                      class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+                    <div class="flex items-center gap-1">
+                      <button
+                        class="inline-flex items-center px-2 py-1 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+                        on:click={() => viewReport(report)}
+                        title="View report"
+                      >
+                        <i class="fas fa-eye"></i>
+                      </button>
+                      <button
+                        class="inline-flex items-center px-2 py-1 border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 transition-colors duration-200"
+                        on:click={() => editReport(report)}
+                        title="Edit report"
+                      >
+                        <i class="fas fa-pen"></i>
+                      </button>
+                      <button 
+                        class="inline-flex items-center px-2 py-1 border border-red-500 text-red-800 bg-white hover:bg-red-100 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200"
                         on:click={() => removeReport(report.id)}
-                        title="Remove report"
+                        title="Delete report"
                       >
                         <i class="fas fa-trash"></i>
-              </button>
+                      </button>
+                    </div>
             </div>
                   <div class="p-4">
                     <p class="text-gray-500 text-xs mb-3">
@@ -5666,6 +6345,18 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       <div class="rounded-lg border border-gray-200 overflow-hidden">
                         <img src={report.previewUrl || report.dataUrl} alt="Report image" class="w-full h-auto" />
                       </div>
+                      {#if report.selectedAreaDataUrl}
+                        <div class="mt-2 rounded-lg border border-teal-200 overflow-hidden">
+                          <p class="text-xs font-medium text-teal-700 px-2 py-1 bg-teal-50 border-b border-teal-100">Selected Area</p>
+                          <img src={report.selectedAreaDataUrl} alt="Selected area image" class="w-full h-auto" />
+                        </div>
+                      {/if}
+                      {#if report.content}
+                        <div class="mt-2 p-2 bg-teal-50 border border-teal-100 rounded text-xs text-gray-700">
+                          <p class="font-medium text-teal-700 mb-1">Extracted Text</p>
+                          <p class="whitespace-pre-wrap">{report.content}</p>
+                        </div>
+                      {/if}
                       {#if report.analysisPending}
                         <p class="text-xs text-gray-500 mt-2">Analyzing image...</p>
                       {:else if report.analysisError}
@@ -5761,18 +6452,70 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               <p class="text-sm text-gray-400">Click the <span class="font-medium text-teal-600">"+ Add Report"</span> button to add lab results, imaging reports, and other medical documents.</p>
             </div>
           {/if}
+
+          {#if viewingReport}
+            <div class="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center p-4">
+              <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-base font-semibold text-gray-900 mb-0">{viewingReport.title}</h5>
+                  <button
+                    class="inline-flex items-center px-2 py-1 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-xs font-medium rounded"
+                    on:click={() => { viewingReport = null }}
+                    title="Close report view"
+                  >
+                    <i class="fas fa-times"></i>
+                  </button>
+                </div>
+                <div class="p-4">
+                  <p class="text-xs text-gray-500 mb-3">
+                    <i class="fas fa-calendar mr-1"></i>{formatDate(viewingReport.date, { country: currentUser?.country })}
+                  </p>
+                  {#if viewingReport.type === 'text'}
+                    <p class="text-sm text-gray-700 whitespace-pre-wrap">{viewingReport.content || 'No report details available.'}</p>
+                  {:else if viewingReport.type === 'image' && (viewingReport.previewUrl || viewingReport.dataUrl)}
+                    <img
+                      src={viewingReport.previewUrl || viewingReport.dataUrl}
+                      alt="Report image preview"
+                      class="w-full h-auto rounded border border-gray-200"
+                    />
+                    {#if viewingReport.selectedAreaDataUrl}
+                      <div class="mt-3">
+                        <p class="text-xs font-medium text-teal-700 mb-1">Selected Area</p>
+                        <img
+                          src={viewingReport.selectedAreaDataUrl}
+                          alt="Selected area preview"
+                          class="w-full h-auto rounded border border-teal-200"
+                        />
+                      </div>
+                    {/if}
+                    {#if viewingReport.content}
+                      <div class="mt-3 p-2 bg-teal-50 border border-teal-100 rounded text-xs text-gray-700">
+                        <p class="font-medium text-teal-700 mb-1">Extracted Text</p>
+                        <p class="whitespace-pre-wrap">{viewingReport.content}</p>
+                      </div>
+                    {/if}
+                  {:else}
+                    <div class="text-sm text-gray-700">
+                      <p class="mb-2">File report preview is not available in-app.</p>
+                      <p class="text-xs text-gray-500">{viewingReport.files?.[0]?.name || 'Uploaded file'}</p>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
           
           <!-- Navigation Buttons -->
           <div class="mt-4 text-center">
                       <button 
-              class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
+              class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
                 on:click={goToPreviousTab}
                 title="Go back to Symptoms tab"
               >
               <i class="fas fa-arrow-left mr-2"></i>Back
                       </button>
                       <button 
-              class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+              class="inline-flex items-center px-4 py-2 bg-red-800 hover:bg-red-900 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200"
                 on:click={goToNextTab}
                 title="Continue to Diagnoses tab"
               >
@@ -5789,14 +6532,23 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             <h6 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 mb-0">
               <i class="fas fa-stethoscope mr-1 sm:mr-2 text-sm sm:text-base md:text-lg"></i>Medical Diagnoses
             </h6>
-            <button 
-              class="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
-              on:click={() => showDiagnosticForm = true}
-            >
-              <i class="fas fa-plus mr-1 text-xs sm:text-sm"></i>
-              <span class="hidden sm:inline">Add Diagnosis</span>
-              <span class="sm:hidden">Add</span>
-            </button>
+            <div class="flex items-center gap-2">
+              <button
+                class="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200"
+                on:click={() => showAiAnalysisUnderDiagnoses = !showAiAnalysisUnderDiagnoses}
+              >
+                <i class="fas fa-brain mr-1 text-xs sm:text-sm"></i>
+                <span>{showAiAnalysisUnderDiagnoses ? 'Hide AI Analysis' : 'AI Analysis'}</span>
+              </button>
+              <button 
+                class="inline-flex items-center px-2 sm:px-3 py-1.5 sm:py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs sm:text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200" 
+                on:click={() => showDiagnosticForm = true}
+              >
+                <i class="fas fa-plus mr-1 text-xs sm:text-sm"></i>
+                <span class="hidden sm:inline">Add Diagnosis</span>
+                <span class="sm:hidden">Add</span>
+              </button>
+            </div>
                 </div>
           
           <!-- Add Diagnosis Form -->
@@ -5819,7 +6571,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnosis Title</label>
                     <input 
                       type="text" 
-                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                       bind:value={diagnosticTitle}
                       placeholder="e.g., Hypertension, Diabetes Type 2"
                     />
@@ -5827,7 +6579,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                   <div>
                     <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnosis Date</label>
                     <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
-                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                       bind:value={diagnosticDate} />
                   </div>
             </div>
@@ -5837,14 +6589,14 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Diagnostic Code (Optional)</label>
                     <input 
                       type="text" 
-                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                      class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                       bind:value={diagnosticCode}
                       placeholder="e.g., ICD-10: I10, E11.9"
                     />
                   </div>
                   <div>
                     <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Severity</label>
-                    <select class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" bind:value={diagnosticSeverity}>
+                    <select class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" bind:value={diagnosticSeverity}>
                       <option value="mild">Mild</option>
                       <option value="moderate">Moderate</option>
                       <option value="severe">Severe</option>
@@ -5865,7 +6617,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     </label>
                     <button
                       type="button"
-                      class="inline-flex items-center px-2.5 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                      class="inline-flex items-center px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
                       on:click={() => handleImproveField('diagnosticDescription', diagnosticDescription || '', (value) => diagnosticDescription = value)}
                       disabled={improvingFields.diagnosticDescription || improvedFields.diagnosticDescription || !diagnosticDescription}
                       title="Improve grammar and spelling with AI"
@@ -5883,7 +6635,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                     </button>
                   </div>
                   <textarea 
-                    class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                    class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-teal-500" 
                     rows="3" 
                     bind:value={diagnosticDescription}
                     on:input={(e) => handleFieldEdit('diagnosticDescription', e.target.value)}
@@ -5934,7 +6686,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       <span class="truncate">{diagnosis.title}</span>
                       </h6>
                     <button 
-                      class="inline-flex items-center px-1.5 sm:px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 flex-shrink-0"
+                      class="inline-flex items-center px-1.5 sm:px-2 py-1 border border-red-500 text-red-800 bg-white hover:bg-red-100 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200 flex-shrink-0"
                         on:click={() => removeDiagnosis(diagnosis.id)}
                         title="Remove diagnosis"
                       >
@@ -6019,58 +6771,60 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               <p class="text-sm text-gray-400">Click the <span class="font-medium text-teal-600">"+ Add Diagnosis"</span> button to record medical diagnoses, conditions, and assessments.</p>
             </div>
           {/if}
-          
-          <!-- AI Recommendations Component -->
-          <AIRecommendations 
-            {symptoms} 
-            currentMedications={currentMedications}
-            patientAge={selectedPatient ? (() => {
-              // Use stored age field if available
-              if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
-                return parseInt(selectedPatient.age)
-              }
-              
-              // Fallback to dateOfBirth calculation only if no age field
-              if (selectedPatient.dateOfBirth) {
-                const birthDate = new Date(selectedPatient.dateOfBirth)
-                if (!isNaN(birthDate.getTime())) {
-                  const today = new Date()
-                  const age = today.getFullYear() - birthDate.getFullYear()
-                  const monthDiff = today.getMonth() - birthDate.getMonth()
-                  return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-                }
-              }
-              
-              return null
-            })() : null}
-            patientAllergies={selectedPatient?.allergies || null}
-            {doctorId}
-        patientData={{
-          ...selectedPatient,
-          currentActiveMedications: getCurrentMedications(),
-          recentPrescriptions: getRecentPrescriptionsSummary(),
-          recentReports: getRecentReportsSummary(),
-          doctorCountry: effectiveDoctorSettings?.country || 'Not specified'
-        }}
-            bind:isShowingAIDiagnostics
-            on:ai-usage-updated={(event) => {
-              if (addToPrescription) {
-                addToPrescription('ai-usage', event.detail)
-              }
-            }}
-          />
+
+          {#if showAiAnalysisUnderDiagnoses}
+            <div class="mt-6 border-t border-gray-200 pt-4">
+              <h6 class="text-lg font-semibold text-gray-900 mb-4">
+                <i class="fas fa-brain mr-2"></i>AI Analysis
+              </h6>
+              <AIRecommendations 
+                {symptoms} 
+                currentMedications={currentMedications}
+                patientAge={selectedPatient ? (() => {
+                  if (selectedPatient.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+                    return parseInt(selectedPatient.age)
+                  }
+                  if (selectedPatient.dateOfBirth) {
+                    const birthDate = new Date(selectedPatient.dateOfBirth)
+                    if (!isNaN(birthDate.getTime())) {
+                      const today = new Date()
+                      const age = today.getFullYear() - birthDate.getFullYear()
+                      const monthDiff = today.getMonth() - birthDate.getMonth()
+                      return monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+                    }
+                  }
+                  return null
+                })() : null}
+                patientAllergies={selectedPatient?.allergies || null}
+                {doctorId}
+                patientData={{
+                  ...selectedPatient,
+                  currentActiveMedications: getCurrentMedications(),
+                  recentPrescriptions: getRecentPrescriptionsSummary(),
+                  recentReports: getRecentReportsSummary(),
+                  doctorCountry: effectiveDoctorSettings?.country || 'Not specified'
+                }}
+                bind:isShowingAIDiagnostics
+                on:ai-usage-updated={(event) => {
+                  if (addToPrescription) {
+                    addToPrescription('ai-usage', event.detail)
+                  }
+                }}
+              />
+            </div>
+          {/if}
           
           <!-- Navigation Buttons -->
           <div class="mt-8 text-center">
               <button 
-              class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
+              class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200 mr-3"
                 on:click={goToPreviousTab}
                 title="Go back to Reports tab"
               >
               <i class="fas fa-arrow-left mr-2"></i>Back
               </button>
               <button 
-              class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+              class="inline-flex items-center px-4 py-2 bg-red-800 hover:bg-red-900 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2 transition-colors duration-200"
                 on:click={goToNextTab}
                 title="Continue to Prescriptions tab"
               >
@@ -6377,7 +7131,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             type="button" 
             class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm p-1.5 ml-auto inline-flex items-center dark:hover:bg-gray-600 dark:hover:text-white" 
             data-modal-hide="pharmacyModal"
-            on:click={() => showPharmacyModal = false}
+            on:click={() => {
+              showPharmacyModal = false
+              pendingPharmacyMedications = null
+            }}
           >
             <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
               <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
@@ -6392,7 +7149,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           
           <!-- Select All / Deselect All Buttons -->
           <div class="flex gap-2 mb-3">
-            <button class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-teal-300 focus:ring-offset-2 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 transition-all duration-200" on:click={selectAllPharmacies}>
+            <button class="inline-flex items-center px-3 py-2 border border-teal-300 text-teal-700 bg-white hover:bg-teal-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-cyan-300 focus:ring-offset-2 dark:bg-white dark:text-teal-700 dark:border-teal-300 dark:hover:bg-teal-50 transition-all duration-200" on:click={selectAllPharmacies}>
               <i class="fas fa-check-square me-1"></i>
               Select All
             </button>
@@ -6407,7 +7164,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             {#each availablePharmacies as pharmacy}
               <label class="list-group-item flex items-center">
                 <input 
-                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-cyan-500 focus:ring-2 mr-3" 
                   type="checkbox" 
                   checked={selectedPharmacies.includes(pharmacy.id)}
                   on:change={() => togglePharmacySelection(pharmacy.id)}
@@ -6442,7 +7199,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           <button 
             type="button" 
             class="text-gray-500 bg-white hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 rounded-lg border border-gray-200 text-sm font-medium px-5 py-2.5 hover:text-gray-900 focus:z-10 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-500 dark:hover:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-600"
-            on:click={() => showPharmacyModal = false}
+            on:click={() => {
+              showPharmacyModal = false
+              pendingPharmacyMedications = null
+            }}
           >
             <i class="fas fa-times mr-2"></i>
             Cancel

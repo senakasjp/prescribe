@@ -25,6 +25,7 @@
   import PricingPage from './components/PricingPage.svelte'
   import RegisterPage from './components/RegisterPage.svelte'
   import PublicHeader from './components/PublicHeader.svelte'
+  import MobileCameraCapturePage from './components/MobileCameraCapturePage.svelte'
   import { notifyError, notifySuccess } from './stores/notifications.js'
   import { resolveCurrencyFromCountry } from './utils/currencyByCountry.js'
   
@@ -38,6 +39,8 @@
   let tawkScriptLoaded = false
   let authMode = 'doctor' // 'doctor' or 'pharmacist'
   let authOnly = false
+  let mobileCaptureOnly = false
+  let mobileCaptureCode = ''
   let privacyOnly = false
   let contactOnly = false
   let helpOnly = false
@@ -55,6 +58,8 @@
 
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search)
+    mobileCaptureOnly = params.get('mobile-capture') === '1'
+    mobileCaptureCode = (params.get('code') || '').trim().toUpperCase()
     authOnly = params.get('register') === '1'
     privacyOnly = params.get('privacy') === '1'
     contactOnly = params.get('contact') === '1'
@@ -785,7 +790,9 @@
     </div>
   {/if}
   
-  {#if showAdminPanel}
+  {#if mobileCaptureOnly}
+    <MobileCameraCapturePage accessCode={mobileCaptureCode} />
+  {:else if showAdminPanel}
     <!-- Admin Panel -->
     <AdminPanel {user} on:back-to-app={handleBackFromAdmin} />
   {:else if loading}

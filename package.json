@@ -10,10 +10,15 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "firebase emulators:exec --only firestore,auth \"vitest run\"",
+    "test:security:rules": "firebase emulators:exec --only firestore \"vitest run src/tests/integration/firestoreRules.security.test.js\"",
+    "test:security:deps": "npm audit --audit-level=high",
+    "test:security:ci": "npm run test:security:rules && npm run test:security:deps",
+    "backfill:doctor-uid": "node functions/scripts/backfillDoctorUid.cjs",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.58.2",
     "@sveltejs/vite-plugin-svelte": "^3.0.0",
     "@testing-library/jest-dom": "^6.9.0",

@@ -2,11 +2,22 @@
   import { onMount, onDestroy } from 'svelte'
   
   export let headerText = ''
+  export let headerFontSize = 16
   export let onContentChange = () => {}
   export let onSave = () => {}
+  export let onFontSizeChange = () => {}
   
   let editorElement = null
   let quill = null
+  const FONT_SIZE_OPTIONS = [12, 14, 16, 18, 20, 24, 28, 32]
+  let selectedTextSize = '16px'
+
+  $: {
+    const parsed = Number(headerFontSize)
+    if (Number.isFinite(parsed)) {
+      selectedTextSize = `${parsed}px`
+    }
+  }
   
   // Initialize Quill editor
   onMount(async () => {
@@ -14,14 +25,19 @@
     await loadQuill()
     
     if (editorElement) {
+      const Quill = window.Quill
+      const SizeStyle = Quill.import('attributors/style/size')
+      SizeStyle.whitelist = FONT_SIZE_OPTIONS.map((size) => `${size}px`)
+      Quill.register(SizeStyle, true)
+
       // Initialize Quill
       quill = new Quill(editorElement, {
         theme: 'snow',
         modules: {
           toolbar: [
             [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+            [{ 'size': FONT_SIZE_OPTIONS.map((size) => `${size}px`) }],
             ['bold', 'italic', 'underline'],
-            [{ 'size': ['small', false, 'large', 'huge'] }],
             [{ 'color': [] }, { 'background': [] }],
             [{ 'align': [] }],
             ['link', 'image'],
@@ -59,6 +75,14 @@
         setTimeout(() => {
           makeImagesResizable()
         }, 300)
+      })
+
+      quill.on('selection-change', () => {
+        if (!quill) return
+        const range = quill.getSelection()
+        if (!range) return
+        const format = quill.getFormat(range)
+        selectedTextSize = format.size || `${headerFontSize}px`
       })
       
       // Make existing images resizable
@@ -135,6 +159,13 @@
     if (quill) {
       quill.setContents([])
     }
+  }
+
+  const handleFontSizeSelection = (event) => {
+    if (!quill) return
+    selectedTextSize = event.target.value || '16px'
+    quill.format('size', selectedTextSize)
+    onFontSizeChange(selectedTextSize)
   }
   
   // Add resize functionality to images that works with Quill.js
@@ -302,6 +333,22 @@
       </span>
     </div>
   </div>
+
+  <div class="mb-3 flex items-center gap-3">
+    <label class="text-sm font-medium text-gray-700" for="header-font-size">
+      <i class="fas fa-text-height mr-1"></i>Selected Text Size
+    </label>
+    <select
+      id="header-font-size"
+      class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+      value={selectedTextSize}
+      on:change={handleFontSizeSelection}
+    >
+      {#each FONT_SIZE_OPTIONS as option}
+        <option value={`${option}px`}>{option}px</option>
+      {/each}
+    </select>
+  </div>
   
   <!-- Quill Editor -->
   <div class="editor-wrapper">
@@ -316,6 +363,7 @@
     </p>
     <ul class="text-xs text-gray-500 space-y-1">
       <li>• <strong>Text Formatting:</strong> Bold, italic, underline, headers, colors, alignment</li>
+      <li>• <strong>Font Size:</strong> Change size for selected text or next typed text</li>
       <li>• <strong>Images:</strong> Upload, drag to reposition, resize with corner handle</li>
       <li>• <strong>Auto-Save:</strong> Changes saved automatically</li>
       <li>• <strong>Image Controls:</strong> Drag to move, use blue handle to resize</li>
@@ -414,5 +462,3 @@
     position: relative;
   }
 </style>
-
-

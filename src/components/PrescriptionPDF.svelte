@@ -149,6 +149,16 @@
     }
     return base
   }
+
+  const sanitizeTemplateHtml = (html) => {
+    if (!html) return ''
+    return String(html)
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+      .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+      .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+      .replace(/javascript:/gi, '')
+  }
   
   // Generate PDF prescription
   const generatePDF = async () => {
@@ -304,8 +314,11 @@
           
           contentYStart = lineY + 5
         } else if (templateSettings.templateType === 'system') {
-          const headerContent = templateSettings.templatePreview?.formattedHeader || templateSettings.headerText
+          const headerContent = sanitizeTemplateHtml(
+            templateSettings.templatePreview?.formattedHeader || templateSettings.headerText
+          )
           if (headerContent) {
+            const headerFontSize = Number(templateSettings.headerFontSize || 24)
             const headerContainer = document.createElement('div')
             const style = document.createElement('style')
             headerContainer.style.position = 'absolute'
@@ -338,7 +351,7 @@
               .header-capture-container .ql-editor {
                 width: 100% !important;
                 padding: 0 !important;
-                font-size: 24px !important;
+                font-size: ${headerFontSize}px !important;
                 line-height: 1.4 !important;
                 font-family: inherit !important;
               }

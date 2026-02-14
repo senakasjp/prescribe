@@ -5,6 +5,38 @@ import { describe, it, expect } from 'vitest'
 import inventoryService from '../../services/pharmacist/inventoryService.js'
 
 describe('inventoryService', () => {
+  describe('validateInventoryItem integer fields', () => {
+    const validItem = {
+      brandName: 'Test Brand',
+      genericName: 'Test Generic',
+      strength: '500',
+      strengthUnit: 'mg',
+      initialStock: '10',
+      minimumStock: '2',
+      sellingPrice: '100',
+      expiryDate: '2027-01-01',
+      storageConditions: 'room temperature'
+    }
+
+    it('accepts valid integer values in stock fields', () => {
+      expect(() => inventoryService.validateInventoryItem(validItem)).not.toThrow()
+    })
+
+    it('rejects alphabetic characters in integer stock fields', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        initialStock: '10abc'
+      })).toThrow('Initial stock must be an integer')
+    })
+
+    it('rejects decimal values in integer stock fields', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        minimumStock: '2.5'
+      })).toThrow('Minimum stock must be an integer')
+    })
+  })
+
   describe('calculateStockTurnover', () => {
     it('should return 0 when sales are missing', () => {
       expect(inventoryService.calculateStockTurnover({ averageMonthlySales: 0, currentStock: 10 })).toBe(0)

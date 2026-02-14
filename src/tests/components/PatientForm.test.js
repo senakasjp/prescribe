@@ -302,3 +302,67 @@ describe('PatientForm - Flowbite Integration', () => {
     expect(inputs.length).toBeGreaterThan(0)
   })
 })
+
+describe('PatientForm DOB vs manual age behavior', () => {
+  it('auto-calculates age fields and makes them readonly when DOB is selected', async () => {
+    const { container } = render(PatientForm)
+    const dobInput = container.querySelector('#dateOfBirth')
+    const ageYears = container.querySelector('#ageYears')
+    const ageMonths = container.querySelector('#ageMonths')
+    const ageDays = container.querySelector('#ageDays')
+
+    expect(dobInput).toBeTruthy()
+    expect(ageYears).toBeTruthy()
+    expect(ageMonths).toBeTruthy()
+    expect(ageDays).toBeTruthy()
+
+    await fireEvent.input(dobInput, { target: { value: '2000-01-01' } })
+    await tick()
+
+    expect(ageYears.value).not.toBe('')
+    expect(ageMonths.value).not.toBe('')
+    expect(ageDays.value).not.toBe('')
+    expect(ageYears.hasAttribute('readonly')).toBe(true)
+    expect(ageMonths.hasAttribute('readonly')).toBe(true)
+    expect(ageDays.hasAttribute('readonly')).toBe(true)
+  })
+
+  it('allows manual years/months/days entry when DOB is cleared', async () => {
+    const { container } = render(PatientForm)
+    const dobInput = container.querySelector('#dateOfBirth')
+    const ageMonths = container.querySelector('#ageMonths')
+
+    await fireEvent.input(dobInput, { target: { value: '2000-01-01' } })
+    await tick()
+    await fireEvent.input(dobInput, { target: { value: '' } })
+    await tick()
+
+    expect(ageMonths.hasAttribute('readonly')).toBe(false)
+    await fireEvent.input(ageMonths, { target: { value: '6' } })
+    expect(ageMonths.value).toBe('6')
+  })
+
+  it('submits successfully with manual age parts when DOB is not provided', async () => {
+    const onAdded = vi.fn()
+    const { component, container } = render(PatientForm)
+    component.$on('patient-added', onAdded)
+
+    const firstNameInput = container.querySelector('#firstName')
+    const ageMonths = container.querySelector('#ageMonths')
+    const form = container.querySelector('form')
+
+    await fireEvent.input(firstNameInput, { target: { value: 'Manual' } })
+    await fireEvent.input(ageMonths, { target: { value: '5' } })
+    await fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dateOfBirth).toBe('')
+    expect(payload.age).toBe('')
+    expect(payload.ageMonths).toBe('5')
+    expect(payload.ageDays).toBe('')
+  })
+})

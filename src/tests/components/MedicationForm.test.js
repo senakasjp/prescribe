@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, waitFor } from '@testing-library/svelte'
 import MedicationForm from '../../components/MedicationForm.svelte'
+import openaiService from '../../services/openaiService.js'
 
 vi.mock('../../services/pharmacyMedicationService.js', () => ({
   pharmacyMedicationService: {
@@ -41,6 +42,13 @@ describe('MedicationForm qty behavior', () => {
     notes: '',
     ...overrides
   })
+  const setSelectValue = async (element, value) => {
+    await fireEvent.change(element, { target: { value } })
+    if (element.value !== value) {
+      element.value = value
+      await fireEvent.change(element)
+    }
+  }
 
   it('shows Qunatity and hides when-to-take for qts dosage forms', async () => {
     const { container } = render(MedicationForm, {
@@ -176,6 +184,31 @@ describe('MedicationForm qty behavior', () => {
     expect(onAdded).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(getByText('Please fill in all required fields')).toBeTruthy()
+    })
+  })
+
+  it('requires duration to be a positive integer for non-qts dosage forms', async () => {
+    const { component, container, getByText } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Tablet',
+          frequency: 'Once daily (OD)',
+          duration: 'abc days',
+          timing: 'After meals (PC)'
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    expect(onAdded).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(getByText('Please enter duration as a positive integer')).toBeTruthy()
     })
   })
 
@@ -382,5 +415,168 @@ describe('MedicationForm qty behavior', () => {
 
     expect(container.querySelector('#medicationQts')).toBeNull()
     expect(container.querySelector('#medicationTiming')).toBeTruthy()
+  })
+
+  describe('dosage form matrix', () => {
+    const DOSAGE_FORM_MATRIX = [
+      { form: 'Tablet', expectsQts: false },
+      { form: 'Capsule', expectsQts: false },
+      { form: 'Syrup', expectsQts: false },
+      { form: 'Liquid', expectsQts: false },
+      { form: 'Injection', expectsQts: true },
+      { form: 'Cream', expectsQts: true },
+      { form: 'Ointment', expectsQts: true },
+      { form: 'Gel', expectsQts: true },
+      { form: 'Suppository', expectsQts: true },
+      { form: 'Drops', expectsQts: true },
+      { form: 'Inhaler', expectsQts: true },
+      { form: 'Spray', expectsQts: true },
+      { form: 'Shampoo', expectsQts: true },
+      { form: 'Packet', expectsQts: true },
+      { form: 'Roll', expectsQts: true }
+    ]
+
+    it.each(DOSAGE_FORM_MATRIX)(
+      'applies qts/timing visibility rules for $form',
+      async ({ form, expectsQts }) => {
+        const { container } = render(MedicationForm, {
+          props: {
+            visible: true,
+            doctorId: 'doc-1',
+            editingMedication: buildEditingMedication({
+              dosageForm: form,
+              qts: expectsQts ? '2' : '',
+              frequency: expectsQts ? '' : 'Once daily (OD)',
+              duration: expectsQts ? '' : '5 days',
+              timing: expectsQts ? '' : 'After meals (PC)'
+            })
+          }
+        })
+
+        if (expectsQts) {
+          await waitFor(() => {
+            expect(container.querySelector('#medicationQts')).toBeTruthy()
+          })
+          expect(container.querySelector('#medicationTiming')).toBeNull()
+          expect(container.querySelector('#medicationFrequency')?.required).toBe(false)
+          expect(container.querySelector('#medicationDuration')?.required).toBe(false)
+        } else {
+          expect(container.querySelector('#medicationQts')).toBeNull()
+          expect(container.querySelector('#medicationTiming')).toBeTruthy()
+          expect(container.querySelector('#medicationTiming')?.required).toBe(true)
+          expect(container.querySelector('#medicationFrequency')?.required).toBe(true)
+          expect(container.querySelector('#medicationDuration')?.required).toBe(true)
+        }
+      }
+    )
+
+    it('treats ml strength units as non-qts even for qts forms', async () => {
+      const { container } = render(MedicationForm, {
+        props: {
+          visible: true,
+          doctorId: 'doc-1',
+          editingMedication: buildEditingMedication({
+            dosageForm: 'Cream',
+            strength: '100',
+            strengthUnit: 'ml',
+            qts: '2',
+            frequency: 'Once daily (OD)',
+            duration: '5 days',
+            timing: 'After meals (PC)'
+          })
+        }
+      })
+
+      expect(container.querySelector('#medicationQts')).toBeNull()
+      expect(container.querySelector('#medicationTiming')).toBeTruthy()
+      expect(container.querySelector('#medicationTiming')?.required).toBe(true)
+    })
+  })
+
+  describe('qts validation matrix', () => {
+    it.each(['0', '-1', '2.5', 'abc', '   '])(
+      'rejects invalid qts value "%s"',
+      async (invalidValue) => {
+        const { component, container, getByText } = render(MedicationForm, {
+          props: {
+            visible: true,
+            doctorId: 'doc-1',
+            editingMedication: buildEditingMedication({
+              dosageForm: 'Cream',
+              qts: '',
+              frequency: '',
+              duration: ''
+            })
+          }
+        })
+
+        const onAdded = vi.fn()
+        component.$on('medication-added', onAdded)
+
+        await fireEvent.input(container.querySelector('#medicationQts'), {
+          target: { value: invalidValue }
+        })
+        await fireEvent.submit(container.querySelector('form'))
+
+        expect(onAdded).not.toHaveBeenCalled()
+        await waitFor(() => {
+          expect(getByText('Please enter Qts as a positive integer')).toBeTruthy()
+        })
+      }
+    )
+
+    it('accepts a valid integer qts value', async () => {
+      const { component, container } = render(MedicationForm, {
+        props: {
+          visible: true,
+          doctorId: 'doc-1',
+          editingMedication: buildEditingMedication({
+            dosageForm: 'Cream',
+            qts: '',
+            frequency: '',
+            duration: ''
+          })
+        }
+      })
+
+      const onAdded = vi.fn()
+      component.$on('medication-added', onAdded)
+
+      await fireEvent.input(container.querySelector('#medicationQts'), {
+        target: { value: '4' }
+      })
+      await fireEvent.submit(container.querySelector('form'))
+
+      await waitFor(() => {
+        expect(onAdded).toHaveBeenCalledTimes(1)
+      })
+
+      const payload = onAdded.mock.calls[0][0].detail
+      expect(payload.qts).toBe('4')
+    })
+  })
+
+  it('passes medication context when improving brand name text', async () => {
+    const { container, getByRole } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1'
+      }
+    })
+
+    const brandInput = container.querySelector('#brandName')
+    await fireEvent.input(brandInput, { target: { value: 'amoxcillin 500mg' } })
+
+    await fireEvent.click(getByRole('button', { name: /Fix Spelling/i }))
+
+    await waitFor(() => {
+      expect(openaiService.improveText).toHaveBeenCalled()
+    })
+
+    expect(openaiService.improveText).toHaveBeenCalledWith(
+      'amoxcillin 500mg',
+      'doc-1',
+      { context: 'medication-name' }
+    )
   })
 })

@@ -24,6 +24,18 @@ class DoctorAuthService {
         if (!this.currentDoctor.email || this.currentDoctor.role !== 'doctor') {
           console.warn('DoctorAuthService: Invalid doctor data found, clearing')
           this.clearCurrentDoctor()
+        } else if (this.currentDoctor.isApproved === false) {
+          console.warn('DoctorAuthService: Unapproved doctor session found, clearing')
+          this.clearCurrentDoctor()
+        } else if (this.currentDoctor.isDisabled) {
+          console.warn('DoctorAuthService: Disabled doctor session found, clearing')
+          this.clearCurrentDoctor()
+        } else if (this.currentDoctor.accessExpiresAt) {
+          const expiresAt = new Date(this.currentDoctor.accessExpiresAt)
+          if (!Number.isNaN(expiresAt.getTime()) && Date.now() > expiresAt.getTime()) {
+            console.warn('DoctorAuthService: Expired doctor session found, clearing')
+            this.clearCurrentDoctor()
+          }
         } else {
           console.log('DoctorAuthService: Doctor data is valid')
         }

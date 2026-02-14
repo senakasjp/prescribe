@@ -230,4 +230,109 @@ describe('chargeCalculationService', () => {
       expect(result.medicationBreakdown[0].quantity).toBeCloseTo(300, 4)
     })
   })
+
+  describe('mixed qts and non-qts allocation', () => {
+    it('prices mixed qts and tablet medications with multi-batch allocation', () => {
+      const prescription = {
+        id: 'rx-mixed',
+        medications: [
+          {
+            name: 'TopiCream',
+            dosageForm: 'Cream',
+            qts: '3'
+          },
+          {
+            name: 'Paracetamol',
+            dosageForm: 'Tablet',
+            amount: '4'
+          }
+        ]
+      }
+
+      const inventoryItems = [
+        {
+          id: 'cream-b1',
+          brandName: 'TopiCream',
+          dosageForm: 'Cream',
+          currentStock: 2,
+          sellingPrice: 10,
+          expiryDate: '2026-06-01'
+        },
+        {
+          id: 'cream-b2',
+          brandName: 'TopiCream',
+          dosageForm: 'Cream',
+          currentStock: 2,
+          sellingPrice: 20,
+          expiryDate: '2026-07-01'
+        },
+        {
+          id: 'tab-b1',
+          brandName: 'Paracetamol',
+          dosageForm: 'Tablet',
+          currentStock: 10,
+          sellingPrice: 5,
+          expiryDate: '2026-08-01'
+        }
+      ]
+
+      const result = chargeCalculationService.calculateExpectedDrugChargesFromInventory(
+        prescription,
+        inventoryItems
+      )
+
+      expect(result.totalMedications).toBe(2)
+      expect(result.totalCost).toBeCloseTo(60, 4)
+
+      const creamLine = result.medicationBreakdown.find((line) => line.medicationName === 'TopiCream')
+      const tabletLine = result.medicationBreakdown.find((line) => line.medicationName === 'Paracetamol')
+
+      expect(creamLine.quantity).toBe(3)
+      expect(creamLine.totalCost).toBeCloseTo(40, 4)
+      expect(creamLine.allocationDetails).toHaveLength(2)
+
+      expect(tabletLine.quantity).toBe(4)
+      expect(tabletLine.totalCost).toBeCloseTo(20, 4)
+      expect(tabletLine.allocationDetails).toHaveLength(1)
+    })
+
+    it('marks partial allocation when qts exceeds available stock', async () => {
+      inventoryService.getInventoryItems.mockResolvedValue([
+        {
+          id: 'cream-b1',
+          brandName: 'TopiCream',
+          dosageForm: 'Cream',
+          currentStock: 3,
+          sellingPrice: 10,
+          expiryDate: '2026-06-01'
+        }
+      ])
+
+      const prescription = {
+        id: 'rx-partial',
+        prescriptions: [
+          {
+            id: 'rx-partial',
+            medications: [
+              {
+                name: 'TopiCream',
+                dosageForm: 'Cream',
+                qts: '5',
+                isDispensed: true
+              }
+            ]
+          }
+        ]
+      }
+
+      const result = await chargeCalculationService.calculateDrugCharges(prescription, { id: 'ph-1' })
+
+      expect(result.totalCost).toBeCloseTo(30, 4)
+      expect(result.totalMedications).toBe(1)
+      expect(result.medicationBreakdown[0].quantity).toBe(5)
+      expect(result.medicationBreakdown[0].pricedQuantity).toBe(3)
+      expect(result.medicationBreakdown[0].found).toBe(false)
+      expect(result.medicationBreakdown[0].note).toContain('Only priced 3 of 5')
+    })
+  })
 })

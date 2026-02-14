@@ -61,6 +61,7 @@
     displayValue = event.target.value
     const iso = toIso(displayValue)
     if (iso || displayValue === '') {
+      value = iso
       dispatch('input', iso)
     }
   }
@@ -87,8 +88,11 @@
     {max}
     placeholder={placeholder}
     aria-label={ariaLabel}
-    on:input={(event) => dispatch('input', event.target.value)}
-    on:blur={() => dispatch('change', { value: dateValue, display: dateValue })}
+    on:input={(event) => {
+      value = event.target.value
+      dispatch('input', value)
+    }}
+    on:blur={() => dispatch('change', { value, display: value })}
   />
 {:else}
   <input

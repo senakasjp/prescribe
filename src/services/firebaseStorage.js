@@ -20,6 +20,11 @@ import { formatPharmacyId } from '../utils/idFormat.js'
 import { capitalizePatientNames } from '../utils/nameUtils.js'
 import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
 
+const MAX_REPORT_FILE_SIZE_BYTES = 10 * 1024 * 1024
+const IMAGE_FILE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'])
+const PDF_MIME_TYPES = new Set(['application/pdf'])
+
 class FirebaseStorageService {
   constructor() {
     this.collections = {
@@ -1846,11 +1851,76 @@ class FirebaseStorageService {
     }
   }
 
+  validateReportUploadSecurity(reportData) {
+    const reportType = String(reportData?.type || 'text').toLowerCase()
+    if (reportType === 'text') {
+      return
+    }
+
+    const files = Array.isArray(reportData?.files) ? reportData.files : []
+    if (files.length === 0) {
+      throw new Error('Report file is required')
+    }
+
+    for (const file of files) {
+      const name = String(file?.name || '').trim()
+      const extension = name.includes('.') ? name.split('.').pop().toLowerCase() : ''
+      const mimeType = String(file?.type || '').trim().toLowerCase()
+      const size = Number(file?.size)
+
+      if (!name || /[<>]/.test(name) || name.includes('/') || name.includes('\\')) {
+        throw new Error('Invalid report filename')
+      }
+      if (!Number.isFinite(size) || size <= 0 || size > MAX_REPORT_FILE_SIZE_BYTES) {
+        throw new Error('Report file size is invalid')
+      }
+
+      if (reportType === 'pdf') {
+        if (extension !== 'pdf') {
+          throw new Error('PDF upload requires a .pdf file')
+        }
+        if (!PDF_MIME_TYPES.has(mimeType)) {
+          throw new Error('Invalid PDF MIME type')
+        }
+      }
+
+      if (reportType === 'image') {
+        if (!IMAGE_FILE_EXTENSIONS.has(extension)) {
+          throw new Error('Invalid image file extension')
+        }
+        if (!IMAGE_MIME_TYPES.has(mimeType)) {
+          throw new Error('Invalid image MIME type')
+        }
+      }
+    }
+
+    const dataUrl = String(reportData?.dataUrl || '').trim()
+    if (dataUrl) {
+      if (reportType === 'image' && !/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(dataUrl)) {
+        throw new Error('Invalid image data URL')
+      }
+      if (reportType === 'pdf' && !/^data:application\/pdf;base64,/i.test(dataUrl)) {
+        throw new Error('Invalid PDF data URL')
+      }
+    }
+
+    const selectedAreaDataUrl = String(reportData?.selectedAreaDataUrl || '').trim()
+    if (selectedAreaDataUrl) {
+      if (reportType !== 'image') {
+        throw new Error('Selected area image is only allowed for image reports')
+      }
+      if (!/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(selectedAreaDataUrl)) {
+        throw new Error('Invalid selected area image data URL')
+      }
+    }
+  }
+
   async createReport(reportData) {
     try {
       if (!reportData?.patientId) {
         throw new Error('Patient ID is required to create a report')
       }
+      this.validateReportUploadSecurity(reportData)
       const payload = {
         ...reportData,
         createdAt: reportData.createdAt || new Date().toISOString()
@@ -1859,6 +1929,24 @@ class FirebaseStorageService {
       return { id: docRef.id, ...payload }
     } catch (error) {
       console.error('Error creating report:', error)
+      throw error
+    }
+  }
+
+  async updateReport(reportId, reportData) {
+    try {
+      if (!reportId) {
+        throw new Error('Report ID is required to update a report')
+      }
+      this.validateReportUploadSecurity(reportData)
+      const payload = {
+        ...reportData,
+        updatedAt: new Date().toISOString()
+      }
+      await updateDoc(doc(db, this.collections.reports, reportId), payload)
+      return { id: reportId, ...payload }
+    } catch (error) {
+      console.error('Error updating report:', error)
       throw error
     }
   }

@@ -1,5 +1,29 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.6 - Security Hardening and Authorization Test Expansion (February 13, 2026)
+
+### 🔐 Firestore Rule Hardening
+- Added explicit secured rules for `pharmacistInventory` and `drugStock`.
+- Added admin-safe doctor create path for migration/admin operations.
+- Locked ownership on updates:
+- Doctor-owned records cannot be reassigned by changing `doctorId`.
+- Pharmacy inventory/stock records cannot be reassigned by changing `pharmacistId`.
+
+### 🧪 Security Test Coverage Expansion
+- Expanded integration rules tests in `src/tests/integration/firestoreRules.security.test.js` with:
+- Cross-tenant deny checks for doctor/pharmacist data.
+- Ownership reassignment attack-deny checks.
+- Unauthenticated deny checks for inventory data.
+- Added backup auth-deny integration case in `src/tests/integration/backupRestore.test.js`.
+- Added OpenAI proxy/client security unit tests:
+- `src/tests/unit/openaiProxy.security.test.js`
+- `src/tests/unit/optimizedOpenaiService.security.test.js`
+- Expanded SMS trigger security/guard tests in `src/tests/unit/doctorNotificationSmsTriggers.test.js`.
+- Expanded sanitization tests in `src/tests/unit/securityInputSanitization.test.js`.
+
+### ✅ Validation Status
+- Full suite green after changes: `431/431` tests passing.
+
 ## Version 2.3.5 - Qts-Based Non-Tablet Pricing (February 13, 2026)
 
 ### 💊 Qts Input + Pricing Rule
@@ -24,7 +48,7 @@
 ### 👤 Patient Registration UX
 - **Scrollable registration modals** in doctor and pharmacy portals
 - **Age entry upgraded to Years/Months/Days** with auto‑calculation from DOB
-- **Validation rule**: if DOB missing, Years required (Days required only if Years is empty)
+- **Validation rule**: if DOB missing, manual age accepts Years, Months, or Days (at least one required)
 - **Success notifications + auto‑close** after adding a patient
 
 ### 🔎 Patient Search

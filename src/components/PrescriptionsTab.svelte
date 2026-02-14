@@ -749,6 +749,30 @@
     const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
     return procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
   }
+
+  const handleSendToPharmacy = () => {
+    let internalMedications = getInternalMedications()
+
+    // New prescriptions can be sent before inventory lookup settles. In that case,
+    // avoid blocking send and pass all non-external meds to the pharmacy modal.
+    if ((!internalMedications || internalMedications.length === 0) && Array.isArray(currentMedications) && currentMedications.length > 0) {
+      const fallbackNonExternal = currentMedications.filter((medication) => !medication?.sendToExternalPharmacy)
+      if (fallbackNonExternal.length > 0 && (stockLoading || pharmacyStock.length === 0)) {
+        internalMedications = fallbackNonExternal
+      }
+    }
+
+    if (!internalMedications || internalMedications.length === 0) {
+      if (hasChargeableItems()) {
+        onShowPharmacyModal && onShowPharmacyModal([])
+        return
+      }
+      notifyWarning('All medications are marked for external pharmacy or not in stock.')
+      return
+    }
+
+    onShowPharmacyModal && onShowPharmacyModal(internalMedications)
+  }
   
   // Determine doctor identifier reactively and load stock
   $: resolvedDoctorIdentifier = (() => {
@@ -1191,18 +1215,7 @@
               {:else}
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200"
-                  on:click={() => {
-                    const internalMedications = getInternalMedications()
-                    if (!internalMedications || internalMedications.length === 0) {
-                      if (hasChargeableItems()) {
-                        onShowPharmacyModal && onShowPharmacyModal([])
-                        return
-                      }
-                      notifyWarning('All medications are marked for external pharmacy or not in stock.')
-                      return
-                    }
-                    onShowPharmacyModal && onShowPharmacyModal(internalMedications)
-                  }}
+                  on:click={handleSendToPharmacy}
                   title="Send to pharmacy"
                 >
                   <i class="fas fa-paper-plane mr-1"></i>Send to Pharmacy
