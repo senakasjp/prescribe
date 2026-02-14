@@ -175,8 +175,7 @@
           <div class="ml-2 sm:ml-4">
             <p class="text-xs sm:text-sm font-medium text-gray-500">Stock Value</p>
             <div class="flex flex-col">
-              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">Rs</p>
-              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{formatCurrency(analytics?.totalStockValue || 0)}</p>
+              <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">{formatCurrency(analytics?.totalStockValue || 0)}</p>
             </div>
           </div>
         </div>

@@ -319,12 +319,31 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
 
   const getMedicationMetaLine = (medication, headerLabel = '') => {
+    if (requiresQtsPricing(medication)) {
+      const formRaw = String(medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? '').trim()
+      if (formRaw) {
+        const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
+        const qtsRaw = String(medication?.qts ?? '').trim()
+        const parsedQts = Number.parseInt(qtsRaw, 10)
+        if (Number.isFinite(parsedQts) && parsedQts > 0) {
+          return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
+        }
+        return formLabel
+      }
+    }
     const parts = []
     if (!isLiquidMedication(medication)) {
       const doseLabel = getDoseLabel(medication)
       if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
     }
     return parts.join(' | ')
+  }
+
+  const getPrintableDuration = (duration) => {
+    const value = String(duration || '').trim()
+    if (!value) return ''
+    if (/^days?$/i.test(value)) return ''
+    return value
   }
 
   const getPdfDosageLabel = (medication) => {
@@ -1991,6 +2010,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+
 
   const stopCameraScan = () => {
     if (cameraStream) {
@@ -3705,23 +3725,33 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
           // Build horizontal medication details string (excluding dosage since it's now on header line)
           const doseLabel = getMedicationMetaLine(medication, headerLabel)
-          let medicationDetails = doseLabel ? `${doseLabel} | ${medication.frequency}` : `${medication.frequency}`
-          if (medication.timing) {
-            medicationDetails += ` | ${medication.timing}`
+          const medicationDetailsParts = []
+          if (doseLabel) {
+            medicationDetailsParts.push(doseLabel)
           }
-          
-          // Add duration if available
-          if (medication.duration) {
-            medicationDetails += ` | Duration: ${medication.duration}`
+          const frequencyText = String(medication?.frequency || '').trim()
+          if (frequencyText) {
+            medicationDetailsParts.push(frequencyText)
+          }
+          const timingText = String(medication?.timing || '').trim()
+          if (timingText) {
+            medicationDetailsParts.push(timingText)
+          }
+          const printableDuration = getPrintableDuration(medication?.duration)
+          if (printableDuration) {
+            medicationDetailsParts.push(`Duration: ${printableDuration}`)
           }
           
           // AI suggested indicator removed from PDF
           
-          yPos += 4
-          // Split text if too long for page width
-          const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
-          doc.text(detailsLines, margin, yPos)
-          yPos += detailsLines.length * 3
+          if (medicationDetailsParts.length > 0) {
+            yPos += 4
+            const medicationDetails = medicationDetailsParts.join(' | ')
+            // Split text if too long for page width
+            const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
+            doc.text(detailsLines, margin, yPos)
+            yPos += detailsLines.length * 3
+          }
           
           // Add instructions on next line if available
           if (medication.instructions) {
@@ -6164,26 +6194,16 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                   stroke="#1d4ed8"
                                   stroke-width="0.9"
                                 />
-                                {#each reportDetectedCorners as corner, index}
-                                  <g
-                                    transform={`translate(${corner.x * 100} ${corner.y * 100})`}
-                                    style="cursor: grab;"
-                                    on:pointerdown={(event) => startCornerDrag(index, event)}
-                                  >
-                                    <rect
-                                      x="-4.5"
-                                      y="-4.5"
-                                      width="9"
-                                      height="9"
-                                      fill="transparent"
-                                    />
-                                    <line x1="-2.7" y1="0" x2="2.7" y2="0" stroke="white" stroke-width="1.8" stroke-linecap="round" />
-                                    <line x1="0" y1="-2.7" x2="0" y2="2.7" stroke="white" stroke-width="1.8" stroke-linecap="round" />
-                                    <line x1="-2.7" y1="0" x2="2.7" y2="0" stroke="#e11d48" stroke-width="1" stroke-linecap="round" />
-                                    <line x1="0" y1="-2.7" x2="0" y2="2.7" stroke="#e11d48" stroke-width="1" stroke-linecap="round" />
-                                  </g>
-                                {/each}
                               </svg>
+                              {#each reportDetectedCorners as corner, index}
+                                <button
+                                  type="button"
+                                  class="absolute z-10 w-3.5 h-3.5 rounded-full border-2 border-white bg-rose-600 shadow cursor-grab -translate-x-1/2 -translate-y-1/2"
+                                  style={`left: ${corner.x * 100}%; top: ${corner.y * 100}%; touch-action: none;`}
+                                  aria-label={`Corner handle ${index + 1}`}
+                                  on:pointerdown={(event) => startCornerDrag(index, event)}
+                                ></button>
+                              {/each}
                             {/if}
                           </div>
                         </div>

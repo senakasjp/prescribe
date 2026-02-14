@@ -334,6 +334,77 @@ describe('Firestore Rules security', () => {
     }))
   })
 
+  it.skipIf(!shouldRun)('enforces mobile capture session lifecycle boundaries for doctor and unauthenticated mobile client', async () => {
+    const dbDoctorA = testEnv.authenticatedContext('uid-a', { email: 'doctor-a@example.com' }).firestore()
+    const dbAnon = testEnv.unauthenticatedContext().firestore()
+
+    await assertSucceeds(setDoc(doc(dbDoctorA, 'mobileCaptureSessions', 'SESSIONA1'), {
+      code: 'SESSIONA1',
+      doctorId: 'doc-a',
+      status: 'qr_ready',
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      updatedAt: new Date().toISOString()
+    }))
+
+    await assertSucceeds(updateDoc(doc(dbAnon, 'mobileCaptureSessions', 'SESSIONA1'), {
+      status: 'opened',
+      openedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }))
+
+    await assertSucceeds(updateDoc(doc(dbAnon, 'mobileCaptureSessions', 'SESSIONA1'), {
+      status: 'photo_ready',
+      photoUploadedAt: new Date().toISOString(),
+      imageDataUrl: 'data:image/jpeg;base64,TEST_PAYLOAD',
+      updatedAt: new Date().toISOString()
+    }))
+
+    await assertFails(updateDoc(doc(dbAnon, 'mobileCaptureSessions', 'SESSIONA1'), {
+      status: 'consumed',
+      updatedAt: new Date().toISOString()
+    }))
+
+    await assertSucceeds(updateDoc(doc(dbDoctorA, 'mobileCaptureSessions', 'SESSIONA1'), {
+      status: 'consumed',
+      updatedAt: new Date().toISOString()
+    }))
+  })
+
+  it.skipIf(!shouldRun)('blocks unauthenticated mobile capture updates that tamper immutable ownership fields', async () => {
+    const dbDoctorA = testEnv.authenticatedContext('uid-a', { email: 'doctor-a@example.com' }).firestore()
+    const dbAnon = testEnv.unauthenticatedContext().firestore()
+    const createdAt = new Date().toISOString()
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+
+    await assertSucceeds(setDoc(doc(dbDoctorA, 'mobileCaptureSessions', 'SESSIONB1'), {
+      code: 'SESSIONB1',
+      doctorId: 'doc-a',
+      status: 'qr_ready',
+      createdAt,
+      expiresAt,
+      updatedAt: createdAt
+    }))
+
+    await assertFails(setDoc(doc(dbAnon, 'mobileCaptureSessions', 'SESSIONB1'), {
+      code: 'SESSIONB1',
+      doctorId: 'doc-b',
+      status: 'opened',
+      createdAt,
+      expiresAt,
+      updatedAt: new Date().toISOString()
+    }))
+
+    await assertFails(updateDoc(doc(dbAnon, 'mobileCaptureSessions', 'SESSIONB1'), {
+      code: 'SESSIONB1',
+      doctorId: 'doc-a',
+      status: 'opened',
+      createdAt: new Date().toISOString(),
+      expiresAt,
+      updatedAt: new Date().toISOString()
+    }))
+  })
+
   it.skipIf(!shouldRun)('blocks non-admin users from writing to authLogs audit collection', async () => {
     const dbDoctorA = testEnv.authenticatedContext('uid-a', { email: 'doctor-a@example.com' }).firestore()
     const dbPharmacistA = testEnv.authenticatedContext('uid-ph-a', { email: 'pharmacist-a@example.com' }).firestore()

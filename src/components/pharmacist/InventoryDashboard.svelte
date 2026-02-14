@@ -673,8 +673,7 @@
               <div class="ml-2 sm:ml-4">
                 <p class="text-xs sm:text-sm font-medium text-gray-500">Stock Value</p>
                 <div class="flex flex-col">
-                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">Rs</p>
-                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 -mt-1">{formatCurrency(analytics?.totalStockValue || 0)}</p>
+                  <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">{formatCurrency(analytics?.totalStockValue || 0)}</p>
                 </div>
               </div>
             </div>
@@ -926,16 +925,9 @@
                   </div>
                   <div class="flex items-center text-xs">
                     <i class="fas fa-chart-line text-green-600 mr-2 w-3"></i>
-                    <div class="flex flex-col">
-                      <span class="text-gray-600 font-medium text-xs">Rs</span>
-                      <span class="text-gray-600 font-medium text-xs -mt-1">{formatCurrency(item.sellingPrice)}</span>
-                    </div>
+                    <span class="text-gray-600 font-medium text-xs">{formatCurrency(item.sellingPrice)}</span>
                     <div class="flex flex-col ml-2">
-                      <span class="text-gray-500 text-xs">Cost:</span>
-                      <div class="flex flex-col -mt-1">
-                        <span class="text-gray-500 text-xs">Rs</span>
-                        <span class="text-gray-500 text-xs -mt-1">{formatCurrency(item.costPrice)}</span>
-                      </div>
+                      <span class="text-gray-500 text-xs">Cost: {formatCurrency(item.costPrice)}</span>
                     </div>
                   </div>
                 </div>

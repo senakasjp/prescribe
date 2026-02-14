@@ -1,4 +1,5 @@
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+const distance = (a, b) => Math.hypot((b.x - a.x), (b.y - a.y))
 
 const fallbackNormalizedCorners = [
   { x: 0.08, y: 0.08 },
@@ -171,15 +172,14 @@ export const createSelectedAreaDataUrl = async (dataUrl, normalizedCorners = [])
     y: clamp(Number(corner?.y || 0), 0, 1) * image.height
   }))
 
-  const xs = points.map((p) => p.x)
-  const ys = points.map((p) => p.y)
-  const minX = Math.floor(Math.max(0, Math.min(...xs)))
-  const maxX = Math.ceil(Math.min(image.width, Math.max(...xs)))
-  const minY = Math.floor(Math.max(0, Math.min(...ys)))
-  const maxY = Math.ceil(Math.min(image.height, Math.max(...ys)))
-
-  const cropWidth = Math.max(1, maxX - minX)
-  const cropHeight = Math.max(1, maxY - minY)
+  // Rectify selected quadrilateral into a true rectangle (90° corners),
+  // compensating perspective deformation from angled phone photos.
+  const topWidth = distance(points[0], points[1])
+  const bottomWidth = distance(points[3], points[2])
+  const leftHeight = distance(points[0], points[3])
+  const rightHeight = distance(points[1], points[2])
+  const cropWidth = Math.max(1, Math.round((topWidth + bottomWidth) / 2))
+  const cropHeight = Math.max(1, Math.round((leftHeight + rightHeight) / 2))
 
   const canvas = document.createElement('canvas')
   canvas.width = cropWidth
@@ -189,17 +189,63 @@ export const createSelectedAreaDataUrl = async (dataUrl, normalizedCorners = [])
     return null
   }
 
-  ctx.save()
-  ctx.beginPath()
-  ctx.moveTo(points[0].x - minX, points[0].y - minY)
-  ctx.lineTo(points[1].x - minX, points[1].y - minY)
-  ctx.lineTo(points[2].x - minX, points[2].y - minY)
-  ctx.lineTo(points[3].x - minX, points[3].y - minY)
-  ctx.closePath()
-  ctx.clip()
+  const destination = [
+    { x: 0, y: 0 },
+    { x: cropWidth, y: 0 },
+    { x: cropWidth, y: cropHeight },
+    { x: 0, y: cropHeight }
+  ]
 
-  ctx.drawImage(image, -minX, -minY)
-  ctx.restore()
+  const drawTriangle = (srcTri, dstTri) => {
+    const [s1, s2, s3] = srcTri
+    const [d1, d2, d3] = dstTri
+    const det = (
+      s1.x * (s2.y - s3.y) +
+      s2.x * (s3.y - s1.y) +
+      s3.x * (s1.y - s2.y)
+    )
+    if (!Number.isFinite(det) || Math.abs(det) < 1e-6) {
+      return false
+    }
+
+    const a = (d1.x * (s2.y - s3.y) + d2.x * (s3.y - s1.y) + d3.x * (s1.y - s2.y)) / det
+    const c = (d1.x * (s3.x - s2.x) + d2.x * (s1.x - s3.x) + d3.x * (s2.x - s1.x)) / det
+    const e = (
+      d1.x * (s2.x * s3.y - s3.x * s2.y) +
+      d2.x * (s3.x * s1.y - s1.x * s3.y) +
+      d3.x * (s1.x * s2.y - s2.x * s1.y)
+    ) / det
+
+    const b = (d1.y * (s2.y - s3.y) + d2.y * (s3.y - s1.y) + d3.y * (s1.y - s2.y)) / det
+    const d = (d1.y * (s3.x - s2.x) + d2.y * (s1.x - s3.x) + d3.y * (s2.x - s1.x)) / det
+    const f = (
+      d1.y * (s2.x * s3.y - s3.x * s2.y) +
+      d2.y * (s3.x * s1.y - s1.x * s3.y) +
+      d3.y * (s1.x * s2.y - s2.x * s1.y)
+    ) / det
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(d1.x, d1.y)
+    ctx.lineTo(d2.x, d2.y)
+    ctx.lineTo(d3.x, d3.y)
+    ctx.closePath()
+    ctx.clip()
+    ctx.setTransform(a, b, c, d, e, f)
+    ctx.drawImage(image, 0, 0)
+    ctx.restore()
+    return true
+  }
+
+  if (!drawTriangle(
+    [points[0], points[1], points[2]],
+    [destination[0], destination[1], destination[2]]
+  ) || !drawTriangle(
+    [points[0], points[2], points[3]],
+    [destination[0], destination[2], destination[3]]
+  )) {
+    return null
+  }
 
   return canvas.toDataURL('image/png')
 }

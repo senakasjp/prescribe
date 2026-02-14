@@ -65,6 +65,15 @@ describe('PatientDetails import regression', () => {
     expect(source).not.toContain('Extracted Text (Editable)')
     expect(source).not.toContain('Detect 4 Corners')
     expect(source).not.toContain('Extracted text will appear here after OCR is generated.')
+    expect(source).not.toContain('Report Form Scanner')
+    expect(source).not.toContain('Scan / Choose Pages')
+    expect(source).toContain("mobileCaptureSessionStatus === 'photo_ready' ? 'Photo received. Processing...' : 'Waiting for photo upload...'")
+    expect(source).toContain('cameraOcrProgress}%')
+    expect(source).toContain('style={`width: ${cameraOcrProgress}%`}')
+    expect(source).toContain('firebaseStorage.subscribeMobileCaptureSession')
+    expect(source).toContain('mobileCaptureSessionUnsubscribe')
+    expect(source).toContain("mobileCaptureSessionStatus === 'opened'")
+    expect(source).toContain("status: 'consumed'")
   })
 
   it('keeps AI Analysis under Diagnoses instead of as a dedicated workflow tab', () => {

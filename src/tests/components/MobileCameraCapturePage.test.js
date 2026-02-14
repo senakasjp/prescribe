@@ -110,4 +110,46 @@ describe('MobileCameraCapturePage', () => {
       expect(screen.getByText(/Photo uploaded successfully/i)).toBeInTheDocument()
     })
   })
+
+  it('shows upload failure and allows retry to succeed', async () => {
+    const freshTs = Date.now()
+    window.history.pushState({}, '', `/?mobile-capture=1&code=ABCDEFGH12&ts=${freshTs}`)
+
+    let hasFailedOnce = false
+    vi.spyOn(firebaseStorage, 'upsertMobileCaptureSession').mockImplementation(async (_code, payload = {}) => {
+      if (payload.status !== 'photo_ready') return
+      if (!hasFailedOnce) {
+        hasFailedOnce = true
+        throw new Error('network interrupted')
+      }
+      return
+    })
+    vi.stubGlobal('FileReader', vi.fn(function FileReaderMock() {
+      this.readAsDataURL = () => {
+        this.result = 'data:image/jpeg;base64,TEST_IMAGE'
+        if (typeof this.onload === 'function') this.onload()
+      }
+    }))
+
+    const { container } = render(MobileCameraCapturePage, {
+      props: { accessCode: 'ABCDEFGH12' }
+    })
+
+    const input = container.querySelector('input[type="file"]')
+    const file = new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' })
+    await fireEvent.change(input, { target: { files: [file] } })
+
+    const uploadButton = await screen.findByRole('button', { name: /Upload Photo/i })
+    await fireEvent.click(uploadButton)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to upload photo/i)).toBeInTheDocument()
+    })
+
+    await fireEvent.click(screen.getByRole('button', { name: /Upload Photo/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/Photo uploaded successfully/i)).toBeInTheDocument()
+    })
+
+  })
 })

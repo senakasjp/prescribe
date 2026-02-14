@@ -48,8 +48,10 @@ vi.mock('jspdf', () => {
     const calls = {
       output: vi.fn(() => new Blob(['pdf'], { type: 'application/pdf' })),
       internal: { pageSize: { getWidth: () => 148, getHeight: () => 210 } },
+      splitTextToSize: vi.fn((text) => [String(text)]),
       _fns: {}
     }
+    calls._fns.splitTextToSize = calls.splitTextToSize
 
     const proxy = new Proxy(calls, {
       get(target, prop) {
@@ -253,6 +255,86 @@ describe('PrescriptionPDF', () => {
     expect(hasUnit).toBe(true)
   })
 
+  it('renders Qts scenario second line as dosage form with padded quantity', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const prescriptions = [
+      {
+        id: 'med-qts-1',
+        name: 'Dandex',
+        dosageForm: 'Shampoo',
+        qts: '1',
+        strength: '100',
+        strengthUnit: 'mg',
+        frequency: 'Once daily (OD)',
+        duration: '7 days'
+      }
+    ]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions,
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const textStrings = collectPdfTextStrings()
+    const mergedText = normalizeText(textStrings.join(' '))
+    const hasQtsLine = /Shampoo\s*\|\s*Quantity:\s*01/i.test(mergedText)
+    expect(hasQtsLine).toBe(true)
+  })
+
+  it('omits placeholder duration text for Qts scenario when duration is only "days"', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const prescriptions = [
+      {
+        id: 'med-qts-2',
+        name: 'Dandex',
+        dosageForm: 'Shampoo',
+        qts: '1',
+        strength: '100',
+        strengthUnit: 'mg',
+        frequency: '',
+        duration: 'days'
+      }
+    ]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions,
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Shampoo\s*\|\s*Quantity:\s*01/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Duration:\s*days/i.test(value))).toBe(false)
+  })
+
   it('includes current version label in PDF footer', async () => {
     const selectedPatient = {
       firstName: 'Test',
@@ -401,6 +483,56 @@ describe('PrescriptionPDF', () => {
     expect(payloads.some((value) => /Duration:\s*14 days/i.test(value))).toBe(true)
     expect(payloads.some((value) => /After meals/i.test(value))).toBe(true)
     expect(payloads.some((value) => /Instructions:\s*Take with warm water/i.test(value))).toBe(true)
+  })
+
+  it.each([
+    {
+      title: 'qts scenario with placeholder duration',
+      medications: [{
+        id: 'sep-qts-1',
+        name: 'Dandex',
+        dosageForm: 'Shampoo',
+        qts: '1',
+        strength: '100',
+        strengthUnit: 'mg',
+        frequency: '',
+        duration: 'days'
+      }]
+    },
+    {
+      title: 'non-qts scenario with missing timing and duration',
+      medications: [{
+        id: 'sep-tab-1',
+        name: 'Paracetamol',
+        dosageForm: 'Tablet',
+        dosage: '1',
+        strength: '500',
+        strengthUnit: 'mg',
+        frequency: 'Once daily (OD)',
+        duration: ''
+      }]
+    }
+  ])('does not emit malformed separators for $title', async ({ medications }) => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'Separator',
+      lastName: 'Guard',
+      idNumber: 'ID650',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions: medications, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    const merged = normalizeText(payloads.join(' '))
+    expect(merged).not.toMatch(/\|\|/)
+    expect(merged).not.toMatch(/\|\s*\|/)
+    expect(merged).not.toMatch(/\|\s*Duration:\s*days\b/i)
   })
 
   it('shows no medications fallback when prescription list is empty', async () => {
@@ -595,6 +727,7 @@ describe('PrescriptionPDF', () => {
     const strings = collectPdfTextStrings()
     expect(strings.some((value) => /Drug 1/i.test(value))).toBe(true)
     expect(strings.some((value) => /Drug 140/i.test(value))).toBe(true)
+    expect(lastPdfProxy?._fns?.addPage?.mock?.calls?.length || 0).toBeGreaterThan(0)
     expect(global.URL.createObjectURL).toHaveBeenCalled()
     expect(global.open).toHaveBeenCalled()
   })

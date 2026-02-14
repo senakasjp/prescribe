@@ -121,13 +121,49 @@
     ) || dosageForm === 'liquid' || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
   }
 
+  const requiresQtsPricing = (medication) => {
+    if (isLiquidMedication(medication)) return false
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    if (!dosageForm) return false
+    return !(
+      dosageForm.includes('tablet') ||
+      dosageForm.includes('tab') ||
+      dosageForm.includes('capsule') ||
+      dosageForm.includes('cap') ||
+      dosageForm.includes('syrup') ||
+      dosageForm.includes('liquid')
+    )
+  }
+
+  const getQtsMetaLine = (medication) => {
+    if (!requiresQtsPricing(medication)) return ''
+    const formRaw = String(medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? '').trim()
+    if (!formRaw) return ''
+    const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
+    const qtsRaw = String(medication?.qts ?? '').trim()
+    const parsedQts = Number.parseInt(qtsRaw, 10)
+    if (!Number.isFinite(parsedQts) || parsedQts <= 0) {
+      return formLabel
+    }
+    return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
+  }
+
   const getMedicationMetaLine = (medication, headerLabel = '') => {
+    const qtsMetaLine = getQtsMetaLine(medication)
+    if (qtsMetaLine) return qtsMetaLine
     const parts = []
     if (!isLiquidMedication(medication)) {
       const doseLabel = getDoseLabel(medication)
       if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
     }
     return parts.join(' | ')
+  }
+
+  const getPrintableDuration = (duration) => {
+    const value = String(duration || '').trim()
+    if (!value) return ''
+    if (/^days?$/i.test(value)) return ''
+    return value
   }
 
   const getPdfDosageLabel = (medication) => {
@@ -612,15 +648,23 @@
             yPos += metaLines.length * 3
           }
 
-          let medicationDetails = `${medication.frequency}`
-          if (medication.duration) {
-            medicationDetails += ` | Duration: ${medication.duration}`
+          const medicationDetailsParts = []
+          const frequencyText = String(medication?.frequency || '').trim()
+          if (frequencyText) {
+            medicationDetailsParts.push(frequencyText)
           }
-          
-          yPos += 4
-          const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
-          doc.text(detailsLines, margin, yPos)
-          yPos += detailsLines.length * 3
+          const printableDuration = getPrintableDuration(medication?.duration)
+          if (printableDuration) {
+            medicationDetailsParts.push(`Duration: ${printableDuration}`)
+          }
+
+          if (medicationDetailsParts.length > 0) {
+            yPos += 4
+            const medicationDetails = medicationDetailsParts.join(' | ')
+            const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
+            doc.text(detailsLines, margin, yPos)
+            yPos += detailsLines.length * 3
+          }
           
           if (medication.timing) {
             yPos += 2

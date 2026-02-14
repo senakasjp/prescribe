@@ -210,4 +210,214 @@ describe('PrescriptionsTab', () => {
       expect.objectContaining({ name: 'Derm, Keta Cream' })
     ])
   })
+
+  it('shows QTY scenario subtitle as dosage form and quantity', async () => {
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [
+          {
+            name: 'Dandex',
+            dosageForm: 'Shampoo',
+            qts: '1',
+            frequency: '',
+            duration: ''
+          }
+        ],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-qty-1', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Shampoo | Quantity: 01')).toBeTruthy()
+    })
+  })
+
+  it('supports core prescription actions without flow regression', async () => {
+    const onNewPrescription = vi.fn()
+    const onAddDrug = vi.fn()
+    const onFinalizePrescription = vi.fn()
+    const onPrintPrescriptions = vi.fn()
+
+    const { getByText, queryByText, rerender } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [{ name: 'Dandex', dosageForm: 'Shampoo', qts: '1' }],
+        prescriptionsFinalized: false,
+        currentPrescription: { id: 'rx-flow-1', doctorId: 'doc-1' },
+        onNewPrescription,
+        onAddDrug,
+        onFinalizePrescription,
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions,
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await fireEvent.click(getByText('New Prescription'))
+    await fireEvent.click(getByText('Add Drug'))
+    await fireEvent.click(getByText('Finalize Prescription'))
+
+    expect(onNewPrescription).toHaveBeenCalledTimes(1)
+    expect(onAddDrug).toHaveBeenCalledTimes(1)
+    expect(onFinalizePrescription).toHaveBeenCalledTimes(1)
+    expect(queryByText('Print (Full)')).toBeNull()
+
+    await rerender({
+      selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+      showMedicationForm: false,
+      editingMedication: null,
+      doctorId: 'doc-1',
+      currentMedications: [{ name: 'Dandex', dosageForm: 'Shampoo', qts: '1' }],
+      prescriptionsFinalized: true,
+      currentPrescription: { id: 'rx-flow-1', doctorId: 'doc-1' },
+      onNewPrescription,
+      onAddDrug,
+      onFinalizePrescription,
+      onShowPharmacyModal: vi.fn(),
+      onPrintPrescriptions,
+      onPrintExternalPrescriptions: vi.fn(),
+      onGenerateAIAnalysis: vi.fn(),
+      openaiService: { isConfigured: () => true }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Print (Full)')).toBeTruthy()
+    })
+    await fireEvent.click(getByText('Print (Full)'))
+    expect(onPrintPrescriptions).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    {
+      title: 'keeps QTY form label when qts is missing/invalid',
+      medication: { name: 'Dandex', dosageForm: 'Shampoo', qts: 'abc', frequency: '', duration: '' },
+      expected: 'Shampoo',
+      containsQuantity: false
+    },
+    {
+      title: 'shows padded quantity for qts values',
+      medication: { name: 'Dandex', dosageForm: 'Cream', qts: '7', frequency: '', duration: '' },
+      expected: 'Cream | Quantity: 07',
+      containsQuantity: true
+    },
+    {
+      title: 'does not apply QTY format to tablet forms',
+      medication: { name: 'Paracetamol', dosageForm: 'Tablet', qts: '5', frequency: 'Once daily (OD)', duration: '5 days' },
+      expected: 'Once daily (OD)',
+      containsQuantity: false
+    }
+  ])('$title', async ({ medication, expected, containsQuantity }) => {
+    const { getByText, container } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [medication],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-qty-matrix', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText(new RegExp(expected.replace(/[|()[\]\\.?+*^$]/g, '\\$&'), 'i'))).toBeTruthy()
+    })
+
+    const viewText = container.textContent || ''
+    expect(viewText).not.toMatch(/\|\|/)
+    if (containsQuantity) {
+      expect(viewText).toMatch(/Quantity:\s*\d{2}/i)
+    } else {
+      expect(viewText).not.toMatch(/Quantity:/i)
+    }
+  })
+
+  it('keeps secondary-line text snapshots stable for key medication scenarios', async () => {
+    const cases = [
+      {
+        name: 'QTY',
+        medication: { name: 'Dandex', dosageForm: 'Shampoo', qts: '1', frequency: '', duration: '' },
+        expected: 'Shampoo | Quantity: 01'
+      },
+      {
+        name: 'Tablet',
+        medication: {
+          name: 'Paracetamol',
+          dosageForm: 'Tablet',
+          dosage: '1',
+          frequency: 'Once daily (OD)',
+          duration: '5 days'
+        },
+        expected: '1 • Once daily (OD) • 5 days • Tablet'
+      },
+      {
+        name: 'Liquid',
+        medication: {
+          name: 'Cough Syrup',
+          dosageForm: 'Liquid',
+          dosage: '5',
+          strength: '5',
+          strengthUnit: 'ml',
+          frequency: 'Twice daily (BID)',
+          duration: '3 days'
+        },
+        expected: '5 ml 5 • Twice daily (BID) • 3 days • Liquid'
+      }
+    ]
+
+    for (const item of cases) {
+      const { container, unmount } = render(PrescriptionsTab, {
+        props: {
+          selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+          showMedicationForm: false,
+          editingMedication: null,
+          doctorId: 'doc-1',
+          currentMedications: [item.medication],
+          prescriptionsFinalized: true,
+          currentPrescription: { id: `rx-snapshot-${item.name}`, doctorId: 'doc-1', status: 'finalized' },
+          onNewPrescription: vi.fn(),
+          onAddDrug: vi.fn(),
+          onFinalizePrescription: vi.fn(),
+          onShowPharmacyModal: vi.fn(),
+          onPrintPrescriptions: vi.fn(),
+          onPrintExternalPrescriptions: vi.fn(),
+          onGenerateAIAnalysis: vi.fn(),
+          openaiService: { isConfigured: () => true }
+        }
+      })
+
+      await waitFor(() => {
+        const line = container.querySelector('.text-gray-500.text-sm')
+        expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe(item.expected)
+      })
+
+      unmount()
+    }
+  })
 })

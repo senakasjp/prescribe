@@ -513,6 +513,56 @@
     return dosage ? `${strengthText} ${dosage}` : strengthText
   }
 
+  const isLiquidMedication = (medication) => {
+    const unit = String(medication?.strengthUnit || '').trim().toLowerCase()
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    const strengthText = String(medication?.strength || '').trim().toLowerCase()
+    return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
+  }
+
+  const requiresQtsPricing = (medication) => {
+    if (isLiquidMedication(medication)) return false
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    if (!form) return false
+    return !(
+      form.includes('tablet') ||
+      form.includes('tab') ||
+      form.includes('capsule') ||
+      form.includes('cap') ||
+      form.includes('syrup') ||
+      form.includes('liquid')
+    )
+  }
+
+  const getQtsMetaLine = (medication) => {
+    if (!requiresQtsPricing(medication)) return ''
+    const formRaw = String(medication?.dosageForm || medication?.form || medication?.packUnit || medication?.unit || '').trim()
+    if (!formRaw) return ''
+    const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
+    const qtsRaw = String(medication?.qts ?? '').trim()
+    const parsedQts = Number.parseInt(qtsRaw, 10)
+    if (!Number.isFinite(parsedQts) || parsedQts <= 0) {
+      return formLabel
+    }
+    return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
+  }
+
+  const getMedicationSecondaryLine = (medication) => {
+    const qtsMeta = getQtsMetaLine(medication)
+    if (qtsMeta) return qtsMeta
+
+    return [
+      getMedicationDosageDisplay(medication),
+      medication?.frequency,
+      medication?.timing,
+      medication?.duration,
+      medication?.dosageForm
+    ]
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+      .join(' • ')
+  }
+
   const calculateMedicationQuantity = (medication) => {
     const parsePositiveInteger = (value) => {
       const parsed = chargeCalculationService.parseMedicationQuantity(value)
@@ -537,27 +587,9 @@
       return null
     }
 
-    const isLiquid = (() => {
-      const unit = String(medication?.strengthUnit || '').trim().toLowerCase()
-      const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
-      const strengthText = String(medication?.strength || '').trim().toLowerCase()
-      return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
-    })()
-    const requiresQtsPricing = (() => {
-      if (isLiquid) return false
-      const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
-      if (!form) return false
-      return !(
-        form.includes('tablet') ||
-        form.includes('tab') ||
-        form.includes('capsule') ||
-        form.includes('cap') ||
-        form.includes('syrup') ||
-        form.includes('liquid')
-      )
-    })()
+    const isLiquid = isLiquidMedication(medication)
 
-    if (requiresQtsPricing) {
+    if (requiresQtsPricing(medication)) {
       const qtsQuantity = parsePositiveInteger(medication.qts)
       if (qtsQuantity) {
         return qtsQuantity
@@ -936,9 +968,7 @@
                       {/if}
                     </div>
                     <div class="text-gray-500 text-sm">
-                      {getMedicationDosageDisplay(medication)} • {medication.frequency}
-                      {#if medication.timing} • {medication.timing}{/if}
-                      • {medication.duration}{#if medication.dosageForm} • {medication.dosageForm}{/if}
+                      {getMedicationSecondaryLine(medication)}
                     </div>
                     {#if !stockLoading}
                       {@const availability = isMedicationAvailable(medication)}

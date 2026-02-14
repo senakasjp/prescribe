@@ -2515,12 +2515,8 @@
                 <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
                 <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
                 <div class="flex gap-4">
-                  {#if selectedPrescription.patientAge}
-                    <p><strong>Age:</strong> {selectedPrescription.patientAge}</p>
-                  {/if}
-                  {#if selectedPrescription.patientSex || selectedPrescription.patientGender}
-                    <p><strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender}</p>
-                  {/if}
+                  <p><strong>Age:</strong> {selectedPrescription.patientAge || selectedPrescription.age || 'Not specified'}</p>
+                  <p><strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}</p>
                 </div>
               </div>
             </div>
@@ -2865,33 +2861,21 @@
                     <div class="flex justify-between">
                       <span class="text-gray-600">Consultation Charge:</span>
                       <span class="text-gray-900">
-                      {#if displayCurrency === 'LKR'}
-                        Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, displayCurrency)}
-                      {:else}
                         {formatCurrencyDisplay(chargeBreakdown.doctorCharges.consultationCharge, displayCurrency)}
-                      {/if}
                       </span>
                     </div>
                     {#if chargeBreakdown.doctorCharges.excludeConsultationCharge}
                       <div class="flex justify-between text-xs text-gray-500">
                         <span>Consultation charge excluded</span>
                         <span>
-                        {#if displayCurrency === 'LKR'}
-                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, displayCurrency)}
-                        {:else}
                           {formatCurrencyDisplay(chargeBreakdown.doctorCharges.baseConsultationCharge, displayCurrency)}
-                        {/if}
                         </span>
                       </div>
                     {/if}
                     <div class="flex justify-between">
                       <span class="text-gray-600">Hospital Charge:</span>
                       <span class="text-gray-900">
-                      {#if displayCurrency === 'LKR'}
-                        Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, displayCurrency)}
-                      {:else}
                         {formatCurrencyDisplay(chargeBreakdown.doctorCharges.hospitalCharge, displayCurrency)}
-                      {/if}
                       </span>
                     </div>
                     {#if chargeBreakdown.doctorCharges.procedureCharges?.breakdown?.length}
@@ -2901,11 +2885,7 @@
                           <div class="flex justify-between">
                             <span class="text-gray-600">{procedure.name}</span>
                             <span class="text-gray-900">
-                          {#if displayCurrency === 'LKR'}
-                            Rs {formatCurrencyDisplay(procedure.price, displayCurrency)}
-                          {:else}
                             {formatCurrencyDisplay(procedure.price, displayCurrency)}
-                          {/if}
                             </span>
                           </div>
                         {/each}
@@ -2923,11 +2903,7 @@
                         <span class="text-gray-600">{medication.medicationName}</span>
                         <span class="text-gray-900">
                           {#if medication.found}
-                        {#if displayCurrency === 'LKR'}
-                          Rs {formatCurrencyDisplay(medication.totalCost, displayCurrency)}
-                        {:else}
                           {formatCurrencyDisplay(medication.totalCost, displayCurrency)}
-                        {/if}
                           {:else}
                             <span class="text-gray-400 italic">Not available</span>
                           {/if}
@@ -2937,11 +2913,7 @@
                     <div class="flex justify-between border-t pt-1">
                       <span class="text-gray-600 font-medium">Total Drug Cost:</span>
                       <span class="text-gray-900 font-medium">
-                      {#if displayCurrency === 'LKR'}
-                        Rs {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, displayCurrency)}
-                      {:else}
                         {formatCurrencyDisplay(chargeBreakdown.drugCharges.totalCost, displayCurrency)}
-                      {/if}
                       </span>
                     </div>
                   </div>
@@ -2959,22 +2931,14 @@
                           </span>
                         </span>
                         <span class="text-green-600">
-                        -{#if displayCurrency === 'LKR'}
-                          Rs {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, displayCurrency)}
-                        {:else}
-                          {formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, displayCurrency)}
-                        {/if}
+                        -{formatCurrencyDisplay(chargeBreakdown.doctorCharges.discountAmount, displayCurrency)}
                         </span>
                       </div>
                     {/if}
                     <div class="flex justify-between">
                       <span class="text-gray-600">Subtotal:</span>
                       <span class="text-gray-900">
-                      {#if displayCurrency === 'LKR'}
-                        Rs {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, displayCurrency)}
-                      {:else}
                         {formatCurrencyDisplay(chargeBreakdown.totalBeforeRounding, displayCurrency)}
-                      {/if}
                       </span>
                     </div>
                     {#if chargeBreakdown.roundingAdjustment !== 0}
@@ -2988,11 +2952,8 @@
                           {/if}:
                         </span>
                         <span class="{chargeBreakdown.roundingAdjustment >= 0 ? 'text-blue-600' : 'text-red-600'}">
-                      {chargeBreakdown.roundingAdjustment >= 0 ? '+' : ''}{#if displayCurrency === 'LKR'}
-                        Rs {formatCurrencyDisplay(Math.abs(chargeBreakdown.roundingAdjustment), displayCurrency)}
-                      {:else}
+                      {chargeBreakdown.roundingAdjustment >= 0 ? '+' : ''}
                         {formatCurrencyDisplay(chargeBreakdown.roundingAdjustment, displayCurrency)}
-                      {/if}
                         </span>
                       </div>
                     {/if}
@@ -3004,11 +2965,7 @@
                   <div class="flex justify-between items-center">
                     <span class="font-bold text-gray-900 text-sm sm:text-base">Total Charge:</span>
                     <span class="font-bold text-blue-600 text-sm sm:text-base">
-                    {#if displayCurrency === 'LKR'}
-                      Rs {formatCurrencyDisplay(chargeBreakdown.totalCharge, displayCurrency)}
-                    {:else}
                       {formatCurrencyDisplay(chargeBreakdown.totalCharge, displayCurrency)}
-                    {/if}
                     </span>
                   </div>
                 </div>

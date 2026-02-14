@@ -4,6 +4,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, waitFor } from '@testing-library/svelte'
 import PharmacistDashboard from '../../components/PharmacistDashboard.svelte'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const firebaseStorageMock = vi.hoisted(() => ({
   getPharmacistByEmail: vi.fn(() => Promise.resolve(null)),
@@ -140,5 +143,15 @@ describe('PharmacistDashboard', () => {
 
     await findByText('New')
     expect(getByText('New')).toBeTruthy()
+  })
+
+  it('keeps patient Age and Sex fields visible with fallback values in prescription details modal', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain("<strong>Age:</strong> {selectedPrescription.patientAge || selectedPrescription.age || 'Not specified'}")
+    expect(source).toContain("<strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}")
   })
 })

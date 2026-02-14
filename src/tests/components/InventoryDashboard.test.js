@@ -186,6 +186,13 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     expect(screen.getByLabelText(/Expiry Date/i)).toBeDisabled()
   })
 
+  it('renders a single currency label format without Rs + currency duplication', async () => {
+    const { container } = await renderDashboard()
+    expect(container.textContent || '').toMatch(/\b(?:USD|LKR|GBP|EUR)\b/)
+    expect(screen.queryByText(/Rs\s+LKR/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Rs$/i)).not.toBeInTheDocument()
+  })
+
   it('updates an inventory item and maps current stock to initialStock', async () => {
     const { container } = await renderDashboard()
     await userEvent.click(screen.getByText('Inventory Items'))
