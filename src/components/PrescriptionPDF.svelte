@@ -17,6 +17,10 @@
   
   let loading = false
   let pharmacyStrengthLookup = new Map()
+  let htmlPreviewContent = ''
+  let cachedTemplateSettings = null
+  let currentDateLabel = ''
+  let currentPrescriptionId = ''
 
   const normalizeName = (value) => (value || '')
     .toString()
@@ -194,6 +198,323 @@
       .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
       .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
       .replace(/javascript:/gi, '')
+  }
+
+  const escapeHtml = (value) => String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+  const getPatientAgeText = () => {
+    if (selectedPatient?.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
+      return `${selectedPatient.age} years`
+    }
+    if (selectedPatient?.dateOfBirth) {
+      const birthDate = new Date(selectedPatient.dateOfBirth)
+      if (!isNaN(birthDate.getTime())) {
+        const today = new Date()
+        const age = today.getFullYear() - birthDate.getFullYear()
+        const monthDiff = today.getMonth() - birthDate.getMonth()
+        const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
+        return `${calculatedAge} years`
+      }
+    }
+    return 'Not specified'
+  }
+
+  const loadTemplateSettings = async () => {
+    try {
+      const currentDoctor = doctorAuthService.getCurrentDoctor()
+      if (!currentDoctor) return null
+      if (currentDoctor.externalDoctor && currentDoctor.invitedByDoctorId) {
+        const ownerDoctor = await firebaseStorage.getDoctorById(currentDoctor.invitedByDoctorId)
+        if (ownerDoctor?.id) {
+          return await firebaseStorage.getDoctorTemplateSettings(ownerDoctor.id)
+        }
+        return null
+      }
+      if (currentDoctor.email) {
+        const doctor = await firebaseStorage.getDoctorByEmail(currentDoctor.email)
+        if (doctor?.id) {
+          return await firebaseStorage.getDoctorTemplateSettings(doctor.id)
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not load template settings:', error)
+    }
+    return null
+  }
+
+  const loadPharmacyStrengthLookup = async () => {
+    try {
+      const currentDoctor = doctorAuthService.getCurrentDoctor()
+      let doctorId = currentDoctor?.id || currentDoctor?.uid || null
+      if (currentDoctor?.externalDoctor && currentDoctor?.invitedByDoctorId) {
+        doctorId = currentDoctor.invitedByDoctorId
+      }
+      if (!doctorId && selectedPatient?.doctorId) {
+        doctorId = selectedPatient.doctorId
+      }
+      if (!doctorId && currentDoctor?.email) {
+        const doctor = await firebaseStorage.getDoctorByEmail(currentDoctor.email)
+        doctorId = doctor?.id || null
+      }
+
+      if (!doctorId) return
+      const stock = await pharmacyMedicationService.getPharmacyStock(doctorId)
+      const lookup = new Map()
+      stock.forEach(item => {
+        const strengthText = getStrengthText(item.strength, item.strengthUnit)
+        if (!strengthText) return
+        const nameKey = normalizeName(item.drugName || item.brandName)
+        const genericKey = normalizeName(item.genericName)
+        if (nameKey && !lookup.has(nameKey)) lookup.set(nameKey, strengthText)
+        if (genericKey && !lookup.has(genericKey)) lookup.set(genericKey, strengthText)
+      })
+      pharmacyStrengthLookup = lookup
+    } catch (error) {
+      console.warn('⚠️ Could not load pharmacy inventory strengths:', error)
+    }
+  }
+
+  const getHeaderHtml = (templateSettings) => {
+    if (!templateSettings) {
+      return `
+        <div class="rx-default-header">
+          <div class="rx-title">MEDICAL PRESCRIPTION</div>
+          <div class="rx-clinic">Your Medical Clinic</div>
+          <div class="rx-clinic">123 Medical Street, City</div>
+          <div class="rx-clinic">Phone: (555) 123-4567</div>
+        </div>
+      `
+    }
+
+    if (templateSettings.templateType === 'upload' && templateSettings.uploadedHeader) {
+      const headerHeight = Number(templateSettings.headerSize || 220)
+      return `
+        <div class="rx-upload-header" style="height:${Math.max(80, headerHeight)}px;">
+          <img src="${templateSettings.uploadedHeader}" alt="Prescription Header" />
+        </div>
+      `
+    }
+
+    if (templateSettings.templateType === 'printed') {
+      const headerHeight = Number(templateSettings.headerSize || 220)
+      return `
+        <div class="rx-printed-header" style="height:${Math.max(80, headerHeight)}px;">
+          Printed letterhead space
+        </div>
+      `
+    }
+
+    if (templateSettings.templateType === 'system') {
+      const headerContent = sanitizeTemplateHtml(
+        templateSettings.templatePreview?.formattedHeader || templateSettings.headerText
+      )
+      if (headerContent) {
+        return `
+          <div class="rx-system-header">
+            <div class="ql-editor">${headerContent}</div>
+          </div>
+        `
+      }
+    }
+
+    return ''
+  }
+
+  const buildPrescriptionPaperHtml = (templateSettings) => {
+    const patientTitle = selectedPatient?.title ? `${selectedPatient.title} ` : ''
+    const patientName = `${patientTitle}${selectedPatient?.firstName || ''} ${selectedPatient?.lastName || ''}`.trim()
+    const patientSex = selectedPatient?.gender || selectedPatient?.sex || 'Not specified'
+    const patientAge = getPatientAgeText()
+    const dateLabel = currentDateLabel || formatDate(new Date(), { country: selectedPatient?.country })
+    const prescriptionId = currentPrescriptionId || formatPrescriptionId(Date.now().toString())
+
+    const medicationsHtml = (prescriptions || []).length > 0
+      ? prescriptions.map((medication, index) => {
+          const medName = medication?.genericName
+            ? `${escapeHtml(medication.name)} (${escapeHtml(medication.genericName)})`
+            : escapeHtml(medication?.name)
+          const metaLine = escapeHtml(getMedicationMetaLine(medication, getPdfDosageLabel(medication)))
+          const dosageLabel = escapeHtml(getPdfDosageLabel(medication))
+          const detailsParts = []
+          const frequencyText = String(medication?.frequency || '').trim()
+          if (frequencyText) detailsParts.push(escapeHtml(frequencyText))
+          const printableDuration = getPrintableDuration(medication?.duration)
+          if (printableDuration) detailsParts.push(`Duration: ${escapeHtml(printableDuration)}`)
+          const detailsText = detailsParts.join(' | ')
+          const timingText = escapeHtml(medication?.timing || '')
+          const instructionsText = escapeHtml(medication?.instructions || '')
+
+          return `
+            <div class="rx-med-item">
+              <div class="rx-med-top">
+                <div class="rx-med-name">${index + 1}. ${medName}</div>
+                <div class="rx-med-dose">${dosageLabel}</div>
+              </div>
+              ${metaLine ? `<div class="rx-med-meta">${metaLine}</div>` : ''}
+              ${detailsText ? `<div class="rx-med-details">${detailsText}</div>` : ''}
+              ${timingText ? `<div class="rx-med-timing">${timingText}</div>` : ''}
+              ${instructionsText ? `<div class="rx-med-instructions">Instructions: ${instructionsText}</div>` : ''}
+            </div>
+          `
+        }).join('')
+      : '<p class="rx-empty">No medications prescribed.</p>'
+
+    return `
+      <article class="rx-paper">
+        ${getHeaderHtml(templateSettings)}
+        <div class="rx-divider"></div>
+        <section class="rx-patient-info">
+          <div class="rx-section-title">PATIENT INFORMATION</div>
+          <div class="rx-row">
+            <span><strong>Name:</strong> ${escapeHtml(patientName)}</span>
+            <span><strong>Date:</strong> ${escapeHtml(dateLabel)}</span>
+          </div>
+          <div class="rx-row">
+            <span><strong>Age:</strong> ${escapeHtml(patientAge)}</span>
+            <span><strong>Prescription #:</strong> ${escapeHtml(prescriptionId)}</span>
+          </div>
+          <div class="rx-row">
+            <span><strong>Sex:</strong> ${escapeHtml(patientSex)}</span>
+          </div>
+        </section>
+        <section class="rx-medications">
+          <div class="rx-section-title">PRESCRIPTION MEDICATIONS</div>
+          ${medicationsHtml}
+        </section>
+        <footer class="rx-footer">
+          <span>This prescription is valid for 30 days from the date of issue.</span>
+          <span>Keep this prescription in a safe place.</span>
+        </footer>
+      </article>
+    `
+  }
+
+  const prescriptionPaperCss = `
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f5f7fb;
+      color: #111827;
+    }
+    .print-wrap {
+      padding: 14mm 0;
+      display: flex;
+      justify-content: center;
+    }
+    .rx-paper {
+      width: 148mm;
+      min-height: 210mm;
+      background: #fff;
+      padding: 10mm;
+      border: 1px solid #d1d5db;
+    }
+    .rx-default-header .rx-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .rx-clinic { font-size: 12px; margin-bottom: 2px; }
+    .rx-upload-header img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .rx-system-header .ql-editor { font-size: 12px; line-height: 1.4; }
+    .rx-printed-header {
+      width: 100%;
+      border: 1px dashed #9ca3af;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #6b7280;
+      font-size: 12px;
+    }
+    .rx-divider { border-bottom: 1px solid #111827; margin: 6px 0 10px; }
+    .rx-section-title { font-weight: 700; font-size: 12px; margin-bottom: 6px; }
+    .rx-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+    .rx-medications { margin-top: 10px; }
+    .rx-med-item { margin-bottom: 10px; font-size: 11px; }
+    .rx-med-top { display: flex; justify-content: space-between; gap: 10px; }
+    .rx-med-name { font-weight: 700; }
+    .rx-med-dose { font-weight: 700; text-align: right; }
+    .rx-med-meta { color: #4b5563; margin-top: 2px; font-size: 10px; }
+    .rx-med-details,
+    .rx-med-timing,
+    .rx-med-instructions { margin-top: 2px; }
+    .rx-empty { font-size: 11px; color: #6b7280; }
+    .rx-footer {
+      margin-top: 14px;
+      padding-top: 8px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: #374151;
+    }
+    @media print {
+      @page { size: A5 portrait; margin: 8mm; }
+      body { background: white; }
+      .print-wrap { padding: 0; }
+      .rx-paper { border: none; padding: 0; width: auto; min-height: auto; }
+    }
+  `
+
+  const ensureHtmlPreview = async () => {
+    currentDateLabel = formatDate(new Date(), { country: selectedPatient?.country })
+    if (!currentPrescriptionId) {
+      currentPrescriptionId = formatPrescriptionId(Date.now().toString())
+    }
+    cachedTemplateSettings = await loadTemplateSettings()
+    await loadPharmacyStrengthLookup()
+    htmlPreviewContent = buildPrescriptionPaperHtml(cachedTemplateSettings)
+  }
+
+  const getHtmlPrintDocument = (paperHtml) => `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Prescription</title>
+        <style>
+          ${prescriptionPaperCss}
+        </style>
+      </head>
+      <body>
+        <div class="print-wrap">${paperHtml}</div>
+      </body>
+    </html>
+  `
+
+  const generateHTML5PDF = async () => {
+    loading = true
+    try {
+      await ensureHtmlPreview()
+      const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1000,height=1200')
+      if (!printWindow) {
+        throw new Error('Unable to open print window')
+      }
+      printWindow.document.open()
+      printWindow.document.write(getHtmlPrintDocument(htmlPreviewContent))
+      printWindow.document.close()
+      printWindow.focus()
+      setTimeout(() => {
+        printWindow.print()
+      }, 250)
+    } catch (error) {
+      console.error('Error generating HTML5 PDF:', error)
+    } finally {
+      loading = false
+    }
   }
   
   // Generate PDF prescription
@@ -715,6 +1036,10 @@
   const handleClose = () => {
     dispatch('close')
   }
+
+  onMount(() => {
+    ensureHtmlPreview()
+  })
 </script>
 
 <!-- Flowbite Modal Backdrop -->
@@ -760,6 +1085,18 @@
       
       <!-- Flowbite Modal Body -->
       <div class="p-4 md:p-5 space-y-6">
+        <div class="space-y-2">
+          <h6 class="text-lg font-semibold text-gray-900 dark:text-white">HTML5 Prescription Preview (WYSIWYG)</h6>
+          <p class="text-xs text-gray-500 dark:text-gray-300">
+            This preview uses the same HTML layout that will be printed/saved as PDF.
+          </p>
+          <div class="border border-gray-200 rounded-lg bg-gray-100 dark:bg-gray-800 p-3 overflow-auto max-h-96">
+            <div class="bg-white mx-auto shadow-sm" style="width: 148mm; min-height: 210mm; padding: 10mm;">
+              {@html `<style>${prescriptionPaperCss}</style>${htmlPreviewContent}`}
+            </div>
+          </div>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div class="space-y-3">
             <h6 class="text-lg font-semibold text-gray-900 dark:text-white">Patient Information</h6>
@@ -872,6 +1209,21 @@
         >
           <i class="fas fa-times mr-1"></i>
           Cancel
+        </button>
+        <button 
+          type="button" 
+          class="text-white bg-cyan-600 hover:bg-cyan-700 focus:ring-4 focus:outline-none focus:ring-cyan-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+          on:click={generateHTML5PDF}
+          disabled={loading}
+        >
+          {#if loading}
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          {/if}
+          <i class="fas fa-print mr-1"></i>
+          Print / Save PDF (HTML5)
         </button>
         <button 
           type="button" 

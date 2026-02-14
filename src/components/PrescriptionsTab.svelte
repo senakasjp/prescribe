@@ -87,6 +87,18 @@
   let lastImprovedNotes = ''
   let lastLowStockSignature = ''
   let pharmacyNameCache = new Map()
+  const hasText = (value) => String(value ?? '').trim().length > 0
+
+  $: hasEnteredPrescriptionContent = Boolean(
+    (currentMedications?.length || 0) > 0 ||
+    hasText(prescriptionNotes) ||
+    hasText(nextAppointmentDate) ||
+    (prescriptionProcedures?.length || 0) > 0 ||
+    hasText(otherProcedurePrice) ||
+    Number(prescriptionDiscount || 0) > 0 ||
+    excludeConsultationCharge
+  )
+  $: disableNewPrescriptionButton = Boolean(currentPrescription) && !hasEnteredPrescriptionContent
   
   $: if (!prescriptionProcedures?.includes('Other')) {
     otherProcedurePrice = ''
@@ -861,9 +873,12 @@
         <div class="flex flex-wrap gap-2">
           <!-- New Prescription Button -->
           <button 
-            class="text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-all duration-200" 
+            class="text-white bg-cyan-600 hover:bg-cyan-700 focus:ring-4 focus:outline-none focus:ring-cyan-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-cyan-600 dark:hover:bg-cyan-700 dark:focus:ring-cyan-800 transition-all duration-200" 
             on:click={onNewPrescription}
-            title="Create a new prescription"
+            disabled={disableNewPrescriptionButton}
+            title={disableNewPrescriptionButton
+              ? "Enter at least one prescription detail first (e.g., add a drug or note)"
+              : "Create a new prescription"}
             data-tour="prescription-new"
           >
             <i class="fas fa-plus mr-1"></i>New Prescription
@@ -871,7 +886,7 @@
           
           <!-- Add Drug Button -->
           <button 
-              class="text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
+              class="text-white bg-cyan-600 hover:bg-cyan-700 focus:ring-4 focus:outline-none focus:ring-cyan-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-cyan-600 dark:hover:bg-cyan-700 dark:focus:ring-cyan-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
               on:click={onAddDrug}
               disabled={showMedicationForm || !currentPrescription}
               title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
@@ -882,7 +897,7 @@
           
           <!-- AI Analysis Button -->
           <button 
-              class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:outline-none focus:ring-purple-300 font-medium rounded-lg text-sm px-3 py-1 text-center dark:bg-purple-600 dark:hover:bg-purple-700 dark:focus:ring-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
+              class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:outline-none focus:ring-purple-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-purple-600 dark:hover:bg-purple-700 dark:focus:ring-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
               on:click={onGenerateAIAnalysis}
               disabled={loadingAIAnalysis || !currentPrescription || !openaiService.isConfigured() || !currentMedications || currentMedications.length === 0}
               title={!currentPrescription ? "Create a prescription first" : (!currentMedications || currentMedications.length === 0) ? "Add medications first" : "Run AI analysis for this prescription"}
@@ -1136,7 +1151,7 @@
                       Improving...
                     {:else}
                       <i class="fas fa-sparkles mr-1.5"></i>
-                      Improve English AI
+                      Improve English
                     {/if}
                   </button>
                 {/if}

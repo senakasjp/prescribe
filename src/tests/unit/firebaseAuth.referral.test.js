@@ -6,6 +6,7 @@ const firebaseStorageMock = vi.hoisted(() => ({
   getDoctorById: vi.fn(),
   getDoctorByEmail: vi.fn(),
   createDoctor: vi.fn(),
+  seedOnboardingDummyDataForDoctor: vi.fn(),
   updateDoctor: vi.fn(),
   createPatient: vi.fn(),
   createPrescription: vi.fn(),
@@ -56,6 +57,7 @@ describe('firebaseAuth referral and access flow', () => {
     firebaseStorageMock.getDoctorById.mockResolvedValue(null)
     firebaseStorageMock.getDoctorByEmail.mockResolvedValue(null)
     firebaseStorageMock.createDoctor.mockResolvedValue({ id: 'new-doc-1', isApproved: false })
+    firebaseStorageMock.seedOnboardingDummyDataForDoctor.mockResolvedValue(true)
     firebaseStorageMock.createPatient.mockResolvedValue({ id: 'sample-patient-1' })
     firebaseStorageMock.createPrescription.mockResolvedValue({ id: 'sample-rx-1' })
     authMocks.createUserWithEmailAndPassword.mockResolvedValue({ user: { uid: 'uid-1', email: 'new@doc.com' } })
@@ -118,7 +120,27 @@ describe('firebaseAuth referral and access flow', () => {
         authProvider: 'firebase-email'
       })
     )
+    expect(firebaseStorageMock.seedOnboardingDummyDataForDoctor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'new-doc-1' })
+    )
     expect(authMocks.signOut).toHaveBeenCalled()
+  })
+
+  it('seeds onboarding dummy data when creating mock Google doctor', async () => {
+    const { default: firebaseAuth } = await import('../../services/firebaseAuth.js')
+    firebaseStorageMock.getDoctorByEmail.mockResolvedValueOnce(null)
+    firebaseStorageMock.createDoctor.mockResolvedValueOnce({
+      id: 'mock-doc-2',
+      email: 'google.user.doctor@example.com',
+      isApproved: false
+    })
+
+    const result = await firebaseAuth.createMockGoogleUser('doctor')
+
+    expect(result).toEqual(expect.objectContaining({ id: 'mock-doc-2' }))
+    expect(firebaseStorageMock.seedOnboardingDummyDataForDoctor).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'mock-doc-2' })
+    )
   })
 
   it('blocks doctor sign-in when access has expired', async () => {

@@ -951,7 +951,7 @@
               Improving...
             {:else}
               <i class="fas fa-sparkles mr-1.5"></i>
-              Improve English AI
+              Improve English
             {/if}
           </button>
         </div>
@@ -1028,7 +1028,7 @@
               Improving...
             {:else}
               <i class="fas fa-sparkles mr-1.5"></i>
-              Improve English AI
+              Improve English
             {/if}
           </button>
         </div>

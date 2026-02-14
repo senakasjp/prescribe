@@ -9,6 +9,7 @@
   import DateInput from '../DateInput.svelte'
   import { formatDate as formatDateByLocale } from '../../utils/dataProcessing.js'
   import { formatCurrency as formatCurrencyByLocale } from '../../utils/formatting.js'
+  import LoadingSpinner from '../LoadingSpinner.svelte'
   
   export let item
   export let onClose
@@ -226,10 +227,7 @@
         
         <!-- Batches Table -->
         {#if loading}
-          <div class="text-center py-8">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p class="text-gray-500 mt-2">Loading batches...</p>
-          </div>
+          <LoadingSpinner text="Loading batches..." size="medium" color="blue" />
         {:else if batches.length === 0}
           <div class="text-center py-8">
             <i class="fas fa-boxes text-4xl text-gray-400 mb-3"></i>

@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte'
+  import LoadingSpinner from './LoadingSpinner.svelte'
   
   let isVisible = false
   
@@ -153,10 +154,7 @@ Email: support@mprescribe.net`
             {#if privacyContent}
               {@html privacyContent.replace(/\n/g, '<br>').replace(/#{1,6}\s/g, '<br><br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')}
             {:else}
-              <div class="flex items-center justify-center py-8">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span class="ml-2 text-gray-600">Loading privacy policy...</span>
-              </div>
+              <LoadingSpinner text="Loading privacy policy..." size="medium" color="blue" />
             {/if}
           </div>
         </div>

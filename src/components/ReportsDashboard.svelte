@@ -5,6 +5,7 @@
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import { formatDate } from '../utils/dataProcessing.js'
   import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
+  import LoadingSpinner from './LoadingSpinner.svelte'
 
   export let user
   
@@ -466,8 +467,8 @@
   </div>
 
   {#if loading}
-    <div class="bg-white rounded-lg border border-gray-200 p-4 text-sm text-gray-500">
-      Loading reports...
+    <div class="bg-white rounded-lg border border-gray-200">
+      <LoadingSpinner text="Loading reports..." size="medium" color="teal" />
     </div>
   {:else if errorMessage}
     <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">

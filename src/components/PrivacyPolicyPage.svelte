@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import BrandName from './BrandName.svelte'
   import PublicHeader from './PublicHeader.svelte'
+  import LoadingSpinner from './LoadingSpinner.svelte'
 
   const defaultPrivacyContent = `# Privacy Policy
 
@@ -128,10 +129,7 @@ Email: support@mprescribe.net`
 
     <div class="rounded-3xl border border-gray-200 bg-white/90 p-6 shadow-sm">
       {#if !privacyContent && !hasLoaded}
-        <div class="flex items-center justify-center py-8">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-          <span class="ml-2 text-gray-600">Loading privacy policy...</span>
-        </div>
+        <LoadingSpinner text="Loading privacy policy..." size="medium" color="teal" />
       {:else}
         <div class="prose prose-sm max-w-none text-gray-700">
           {@html renderMarkdown(privacyContent)}

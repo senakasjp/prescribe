@@ -74,9 +74,12 @@ src/tests/
 - Backup/restore signed-out deny behavior.
 - SMS trigger guard-path behavior (template disabled, missing sender, invalid recipient).
 - Input sanitization guard checks for script/event-handler patterns.
+- Onboarding dummy-data lifecycle:
+- seed/check/delete behavior for new-doctor sample data in Firebase storage.
+- auth-path assertions that new doctor creation triggers dummy-data seeding.
 
 ## Current Baseline
-- Full suite status at last run: `431` passed, `0` failed (`npm run test:run`).
+- Full suite status at last run: `528` passed, `0` failed (`npm run test:run`).
 
 ## Emulator Notes
 `npm run test:run` uses Firebase emulators for Firestore + Auth.

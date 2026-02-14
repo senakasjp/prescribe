@@ -21,6 +21,8 @@
   import { formatPrescriptionId } from '../utils/idFormat.js'
   import { formatDate } from '../utils/dataProcessing.js'
   import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import JsBarcode from 'jsbarcode'
   
   const dispatch = createEventDispatcher()
@@ -120,8 +122,11 @@
   let selectedPatient = null
   let showPatientForm = false
   let chartInstance = null
+  let incomeChartInstance = null
+  let incomeChartRenderToken = 0
   let loading = true
   let chartLoading = false
+  let incomeChartLoading = false
   let lastUserEmail = null
   let searchQuery = ''
   let filteredPatients = []
@@ -218,7 +223,10 @@
   let totalPrescriptions = 0
   let totalDrugs = 0
   let connectedPharmacies = 0
+  let newPatientsCount = 0
+  let existingPatientsCount = 0
   let statisticsLoading = false
+  const NEW_PATIENT_WINDOW_DAYS = 30
   
   // Confirmation modal state
   let showConfirmationModal = false
@@ -562,6 +570,7 @@
   $: if (patients.length > 0) {
     setTimeout(() => {
       createPrescriptionsChart()
+      createIncomeComparisonChart()
     }, 100)
   }
   
@@ -612,11 +621,23 @@
     
     statisticsLoading = true
     try {
+      const now = Date.now()
+      const newPatientWindowMs = NEW_PATIENT_WINDOW_DAYS * 24 * 60 * 60 * 1000
+      newPatientsCount = patients.filter((patient) => {
+        if (!patient?.createdAt) return false
+        const createdAtMs = new Date(patient.createdAt).getTime()
+        if (Number.isNaN(createdAtMs)) return false
+        return (now - createdAtMs) <= newPatientWindowMs
+      }).length
+      existingPatientsCount = Math.max(0, patients.length - newPatientsCount)
+
       totalPrescriptions = await getTotalPrescriptions()
       totalDrugs = await getTotalDrugs()
       connectedPharmacies = await getConnectedPharmacies()
     } catch (error) {
       console.error('Error loading statistics:', error)
+      newPatientsCount = 0
+      existingPatientsCount = 0
       totalPrescriptions = 0
       totalDrugs = 0
       connectedPharmacies = 0
@@ -905,6 +926,7 @@
       
       let last30Days = []
       let prescriptionsPerDay = []
+      let returningPerDay = []
       
       // Force reload fresh data (skip cache for now to test deduplication)
       console.log('Force loading fresh chart data (cache disabled for testing)')
@@ -922,7 +944,12 @@
         for (const patient of patients) {
           try {
             const patientPrescriptions = await firebaseStorage.getMedicationsByPatientId(patient.id) || []
-            allPrescriptions.push(...patientPrescriptions)
+            allPrescriptions.push(
+              ...patientPrescriptions.map((prescription) => ({
+                ...prescription,
+                patientId: prescription?.patientId || patient.id
+              }))
+            )
           } catch (error) {
             console.warn(`Failed to load prescriptions for patient ${patient.id}:`, error)
           }
@@ -957,22 +984,51 @@
           })
         }
         
+        const toDateKey = (dateValue) => {
+          const createdDate = new Date(dateValue)
+          if (Number.isNaN(createdDate.getTime())) return null
+          const year = createdDate.getFullYear()
+          const month = createdDate.getMonth() + 1
+          const day = createdDate.getDate()
+          return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        }
+
+        // Build first seen date per patient, then derive total + returning activity per day
+        const firstPrescriptionByPatient = new Map()
+        deduplicatedPrescriptions.forEach((prescription) => {
+          const patientId = prescription?.patientId
+          const dateStr = toDateKey(prescription?.createdAt || prescription?.dateCreated)
+          if (!patientId || !dateStr) return
+          const existing = firstPrescriptionByPatient.get(patientId)
+          if (!existing || new Date(dateStr) < new Date(existing)) {
+            firstPrescriptionByPatient.set(patientId, dateStr)
+          }
+        })
+
+        const totalByDay = new Map()
+        const returningByDay = new Map()
+        deduplicatedPrescriptions.forEach((prescription) => {
+          const patientId = prescription?.patientId
+          const dateStr = toDateKey(prescription?.createdAt || prescription?.dateCreated)
+          if (!dateStr) return
+
+          totalByDay.set(dateStr, (totalByDay.get(dateStr) || 0) + 1)
+
+          const firstDate = patientId ? firstPrescriptionByPatient.get(patientId) : null
+          if (firstDate && firstDate !== dateStr) {
+            returningByDay.set(dateStr, (returningByDay.get(dateStr) || 0) + 1)
+          }
+        })
+
         // Count prescriptions per day using deduplicated data
         last30Days = dateRange.map(d => d.displayDate)
         prescriptionsPerDay = dateRange.map(({ dateStr }) => {
-          return deduplicatedPrescriptions.filter(prescription => {
-            const createdDate = new Date(prescription.createdAt || prescription.dateCreated)
-            const prescriptionYear = createdDate.getFullYear()
-            const prescriptionMonth = createdDate.getMonth() + 1
-            const prescriptionDay = createdDate.getDate()
-            const prescriptionDateStr = `${prescriptionYear}-${String(prescriptionMonth).padStart(2, '0')}-${String(prescriptionDay).padStart(2, '0')}`
-            
-            return prescriptionDateStr === dateStr
-          }).length
+          return totalByDay.get(dateStr) || 0
         })
+        returningPerDay = dateRange.map(({ dateStr }) => returningByDay.get(dateStr) || 0)
         
         // Cache the results
-        const cacheData = { last30Days, prescriptionsPerDay }
+        const cacheData = { last30Days, prescriptionsPerDay, returningPerDay }
         localStorage.setItem(cacheKey, JSON.stringify(cacheData))
         localStorage.setItem(`${cacheKey}-timestamp`, now.toString())
       // }
@@ -993,21 +1049,30 @@
         
         const options = {
           chart: {
-          type: 'bar',
+            type: 'area',
             height: 250,
             toolbar: {
               show: false
             },
             animations: {
               enabled: true,
-              easing: 'easeinout',
-              speed: 750
+              easing: 'easeout',
+              speed: 650
+            },
+            zoom: {
+              enabled: false
             }
           },
-          series: [{
-            name: 'Prescriptions',
-            data: prescriptionsPerDay
-          }],
+          series: [
+            {
+              name: 'Total Prescriptions',
+              data: prescriptionsPerDay
+            },
+            {
+              name: 'Returning',
+              data: returningPerDay
+            }
+          ],
           xaxis: {
             categories: last30Days,
             labels: {
@@ -1021,6 +1086,9 @@
               hideOverlappingLabels: true,
               trim: true
             },
+            tooltip: {
+              enabled: false
+            },
             axisBorder: {
               show: false
             },
@@ -1031,6 +1099,7 @@
           yaxis: {
             min: 0,
             forceNiceScale: true,
+            tickAmount: 5,
             labels: {
               style: {
                 colors: '#6b7280', // gray-500
@@ -1041,9 +1110,14 @@
               }
             }
           },
-                grid: {
+          grid: {
             borderColor: 'rgba(31, 41, 55, 0.1)', // gray-800 with low opacity
-            strokeDashArray: 3,
+            strokeDashArray: 4,
+            padding: {
+              left: 4,
+              right: 8,
+              top: 4
+            },
             xaxis: {
               lines: {
                 show: false
@@ -1055,32 +1129,71 @@
               }
             }
           },
-          colors: ['#36807a'], // teal-600 - matching theme
-          plotOptions: {
-            bar: {
-              borderRadius: 4,
-              columnWidth: '60%',
-              dataLabels: {
-                position: 'top'
-              }
+          colors: ['#0891b2', '#f97316'], // cyan-600, orange-500
+          legend: {
+            show: true,
+            position: 'top',
+            horizontalAlign: 'right',
+            labels: {
+              colors: '#4b5563'
+            }
+          },
+          stroke: {
+            curve: 'smooth',
+            width: [3, 3],
+            dashArray: [0, 6]
+          },
+          fill: {
+            type: 'gradient',
+            gradient: {
+              shadeIntensity: 0.25,
+              opacityFrom: 0.4,
+              opacityTo: 0.08,
+              stops: [0, 95, 100]
+            }
+          },
+          markers: {
+            size: 3,
+            strokeWidth: 2,
+            strokeColors: '#ffffff',
+            hover: {
+              size: 5
             }
           },
           dataLabels: {
             enabled: false
           },
           tooltip: {
-            theme: 'light',
+            theme: 'dark',
+            shared: true,
+            intersect: false,
             style: {
               fontSize: '12px'
             },
-            fillSeriesColor: false,
-            custom: function({series, seriesIndex, dataPointIndex, w}) {
+            x: {
+              show: true
+            },
+            y: {
+              formatter: function(value) {
+                return `${value} prescription${value !== 1 ? 's' : ''}`
+              }
+            },
+            custom: function({series, dataPointIndex, w}) {
               const date = w.globals.labels[dataPointIndex]
-              const value = series[seriesIndex][dataPointIndex]
+              const rows = w.globals.seriesNames
+                .map((name, index) => {
+                  const value = series[index]?.[dataPointIndex] ?? 0
+                  const color = w.globals.colors[index] || '#0891b2'
+                  return `<div class="flex items-center justify-between gap-3">
+                    <span class="flex items-center"><span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${color};margin-right:6px;"></span>${name}</span>
+                    <span class="font-semibold">${value}</span>
+                  </div>`
+                })
+                .join('')
               return `
-                <div class="bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg border border-teal-500">
+                <div class="bg-slate-900 text-white px-3 py-2 rounded-xl shadow-lg border border-cyan-500/60">
                   <div class="font-semibold">${date}</div>
-                  <div>${value} prescription${value !== 1 ? 's' : ''}</div>
+                  <div class="mt-1 text-cyan-100">${rows}</div>
                 </div>
               `
             }
@@ -1140,6 +1253,148 @@
     localStorage.removeItem(cacheKey)
     localStorage.removeItem(`${cacheKey}-timestamp`)
     console.log('Chart cache invalidated')
+  }
+
+  const createIncomeComparisonChart = async () => {
+    const renderToken = ++incomeChartRenderToken
+    try {
+      incomeChartLoading = true
+
+      if (incomeChartInstance) {
+        incomeChartInstance.destroy()
+        incomeChartInstance = null
+      }
+
+      const now = new Date()
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const currentMonthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      const previousMonthDays = new Date(now.getFullYear(), now.getMonth(), 0).getDate()
+      const daysToShow = Math.max(currentMonthDays, previousMonthDays)
+
+      const categories = Array.from({ length: daysToShow }, (_, index) => `Day ${index + 1}`)
+      const currentMonthIncome = Array.from({ length: daysToShow }, () => 0)
+      const previousMonthIncome = Array.from({ length: daysToShow }, () => 0)
+
+      const resolvedDoctorId = settingsDoctor?.id || doctorId
+      if (!resolvedDoctorId) {
+        return
+      }
+
+      const prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(resolvedDoctorId)
+      const pharmacyStock = await pharmacyMedicationService.getPharmacyStock(resolvedDoctorId)
+      if (renderToken !== incomeChartRenderToken) return
+
+      prescriptions.forEach((prescription) => {
+        const prescriptionDate = new Date(prescription?.createdAt || prescription?.dateCreated || prescription?.sentAt || 0)
+        if (Number.isNaN(prescriptionDate.getTime())) return
+
+        const expectedCharge = chargeCalculationService.calculateExpectedChargeFromStock(
+          prescription,
+          settingsDoctor || doctorData || user,
+          pharmacyStock,
+          {
+            roundingPreference: (settingsDoctor || doctorData || user)?.roundingPreference || 'none',
+            currency: (settingsDoctor || doctorData || user)?.currency || resolveCurrencyFromCountry((settingsDoctor || doctorData || user)?.country),
+            ignoreAvailability: false,
+            assumeDispensedForAvailable: true
+          }
+        )
+
+        const totalIncome = (expectedCharge?.doctorCharges?.totalAfterDiscount || 0) + (expectedCharge?.drugCharges?.totalCost || 0)
+        const dayIndex = prescriptionDate.getDate() - 1
+        if (dayIndex < 0 || dayIndex >= daysToShow) return
+
+        if (prescriptionDate >= currentMonthStart && prescriptionDate < nextMonthStart) {
+          currentMonthIncome[dayIndex] += totalIncome
+        } else if (prescriptionDate >= previousMonthStart && prescriptionDate < currentMonthStart) {
+          previousMonthIncome[dayIndex] += totalIncome
+        }
+      })
+
+      const options = {
+        chart: {
+          type: 'bar',
+          height: 260,
+          toolbar: { show: false },
+          zoom: { enabled: false },
+          animations: {
+            enabled: true,
+            easing: 'easeout',
+            speed: 650
+          }
+        },
+        series: [
+          { name: 'This Month', data: currentMonthIncome.map((value) => Number(value.toFixed(2))) },
+          { name: 'Last Month', data: previousMonthIncome.map((value) => Number(value.toFixed(2))) }
+        ],
+        xaxis: {
+          categories,
+          labels: {
+            style: { colors: '#6b7280', fontSize: '10px' },
+            rotate: -45,
+            maxHeight: 60,
+            hideOverlappingLabels: true
+          },
+          axisBorder: { show: false },
+          axisTicks: { show: false }
+        },
+        yaxis: {
+          min: 0,
+          forceNiceScale: true,
+          labels: {
+            style: { colors: '#6b7280', fontSize: '11px' },
+            formatter: (value) => Math.round(value).toString()
+          }
+        },
+        colors: ['#0891b2', '#a855f7'],
+        plotOptions: {
+          bar: {
+            borderRadius: 4,
+            columnWidth: '70%',
+            dataLabels: { position: 'top' }
+          }
+        },
+        dataLabels: { enabled: false },
+        grid: {
+          borderColor: 'rgba(31, 41, 55, 0.1)',
+          strokeDashArray: 4,
+          xaxis: { lines: { show: false } },
+          yaxis: { lines: { show: true } }
+        },
+        legend: {
+          show: true,
+          position: 'top',
+          horizontalAlign: 'right',
+          labels: { colors: '#4b5563' }
+        },
+        tooltip: {
+          theme: 'dark',
+          shared: true,
+          intersect: false
+        }
+      }
+
+      // Ensure the chart container is in the DOM after loading state flips.
+      incomeChartLoading = false
+      await tick()
+      if (renderToken !== incomeChartRenderToken) return
+      const chartElement = document.getElementById('incomeComparisonChart')
+      if (!chartElement) {
+        return
+      }
+      chartElement.innerHTML = ''
+
+      incomeChartInstance = new ApexCharts(chartElement, options)
+      incomeChartInstance.render()
+    } catch (error) {
+      console.error('Error creating income comparison chart:', error)
+    } finally {
+      if (renderToken === incomeChartRenderToken) {
+        incomeChartLoading = false
+      }
+    }
   }
 
   // Navigation functions for dashboard cards
@@ -1765,6 +2020,7 @@
     // Create chart after a short delay to ensure DOM is ready
     setTimeout(() => {
       createPrescriptionsChart()
+      createIncomeComparisonChart()
     }, 500)
     
     // Listen for prescription save events to invalidate cache
@@ -1773,6 +2029,7 @@
       // Recreate chart with fresh data
       setTimeout(() => {
         createPrescriptionsChart()
+        createIncomeComparisonChart()
       }, 100)
     }
     
@@ -1810,36 +2067,69 @@
       chartInstance.destroy()
       chartInstance = null
     }
+    if (incomeChartInstance) {
+      incomeChartInstance.destroy()
+      incomeChartInstance = null
+    }
     chartLoading = false
+    incomeChartLoading = false
   })
 </script>
 
 <div>
 {#if currentView === 'home'}
 <!-- Home Dashboard - Quick Stats and Chart -->
-<div class="space-y-3 sm:space-y-4">
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-    <div class="text-center">
-      {#if authUser?.photoURL || user?.photoURL}
-        <img
-          src={authUser?.photoURL || user?.photoURL}
-          alt="Doctor profile"
-          class="h-16 w-16 sm:h-20 sm:w-20 rounded-full object-cover border-2 border-teal-200 mx-auto mb-2 sm:mb-3"
-          loading="lazy"
-        />
-      {:else}
-        <i class="fas fa-user-md text-3xl sm:text-4xl md:text-5xl text-teal-600 mb-2 sm:mb-3"></i>
-      {/if}
-      <h2 class="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-1 sm:mb-2">Welcome, Dr. {doctorName}!</h2>
-      <p class="text-sm sm:text-base text-gray-600">{doctorCountry}{doctorCity !== 'Not specified' ? `, ${doctorCity}` : ''}</p>
-      
+<div class="space-y-4 sm:space-y-6">
+  <div class="relative overflow-hidden rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-600 via-teal-600 to-emerald-600 p-5 sm:p-7 shadow-lg">
+    <div class="absolute -right-20 -top-20 h-52 w-52 rounded-full bg-white/10 blur-3xl"></div>
+    <div class="absolute -left-12 -bottom-16 h-40 w-40 rounded-full bg-black/10 blur-3xl"></div>
+    <div class="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-center gap-4">
+        {#if authUser?.photoURL || user?.photoURL}
+          <img
+            src={authUser?.photoURL || user?.photoURL}
+            alt="Doctor profile"
+            class="h-14 w-14 sm:h-16 sm:w-16 rounded-full object-cover border-2 border-white/70 shadow-sm"
+            loading="lazy"
+          />
+        {:else}
+          <div class="h-14 w-14 sm:h-16 sm:w-16 rounded-full bg-white/15 border border-white/30 flex items-center justify-center">
+            <i class="fas fa-user-md text-2xl sm:text-3xl text-white"></i>
+          </div>
+        {/if}
+        <div>
+          <h2 class="text-xl sm:text-2xl font-semibold text-white">Welcome, Dr. {doctorName}!</h2>
+          <p class="text-sm sm:text-base text-cyan-50 mt-1">Your clinic dashboard is ready for today.</p>
+          <p class="text-xs sm:text-sm text-cyan-100/90 mt-1.5">
+            <i class="fas fa-map-marker-alt mr-1"></i>
+            {doctorCity || 'Not specified'}, {doctorCountry || 'Not specified'}
+          </p>
+        </div>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center px-3 py-2 rounded-lg bg-white text-cyan-700 hover:bg-cyan-50 text-sm font-semibold transition-colors duration-200"
+          on:click={navigateToPatients}
+        >
+          <i class="fas fa-users mr-2 text-xs"></i>
+          Patients
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center px-3 py-2 rounded-lg bg-white text-cyan-700 hover:bg-cyan-50 text-sm font-semibold transition-colors duration-200"
+          on:click={handleEditProfile}
+        >
+          <i class="fas fa-cog mr-2 text-xs"></i>
+          Settings
+        </button>
+      </div>
     </div>
   </div>
-  
-  <!-- Desktop Grid Layout -->
-  <div class="hidden md:grid grid-cols-4 gap-4">
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4">
     <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200"
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
       role="button"
       tabindex="0"
       on:click={navigateToPatients}
@@ -1847,29 +2137,16 @@
     >
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Patients</p>
-          <p class="text-2xl sm:text-3xl font-bold text-teal-600">{patients.length}</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Patients</p>
+          <p class="text-3xl font-bold text-cyan-700 mt-1">{patients.length}</p>
         </div>
-        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-teal-100 flex items-center justify-center">
-          <i class="fas fa-users text-teal-600 text-lg sm:text-xl"></i>
-        </div>
-      </div>
-    </div>
-    <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6"
-    >
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Total Prescriptions</p>
-          <p class="text-2xl sm:text-3xl font-bold text-rose-600">{totalPrescriptions}</p>
-        </div>
-        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-rose-100 flex items-center justify-center">
-          <i class="fas fa-prescription-bottle-alt text-rose-600 text-lg sm:text-xl"></i>
+        <div class="h-11 w-11 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center">
+          <i class="fas fa-users text-lg"></i>
         </div>
       </div>
     </div>
     <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200"
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
       role="button"
       tabindex="0"
       on:click={navigateToPrescriptions}
@@ -1877,130 +2154,117 @@
     >
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Drug Count</p>
-          <p class="text-2xl sm:text-3xl font-bold text-emerald-600">{totalDrugs}</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Prescriptions</p>
+          <p class="text-3xl font-bold text-rose-600 mt-1">{totalPrescriptions}</p>
         </div>
-        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-emerald-100 flex items-center justify-center">
-          <i class="fas fa-capsules text-emerald-600 text-lg sm:text-xl"></i>
+        <div class="h-11 w-11 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+          <i class="fas fa-prescription-bottle-alt text-lg"></i>
         </div>
       </div>
     </div>
     <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 cursor-pointer hover:shadow-md transition-all duration-200"
-      role="button"
-      tabindex="0"
-      on:click={navigateToPharmacies}
-      on:keydown={(e) => handleCardKeydown(e, navigateToPharmacies)}
-    >
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-xs sm:text-sm font-medium text-gray-600 mb-1">Connected Pharmacies</p>
-          <p class="text-2xl sm:text-3xl font-bold text-purple-600">{connectedPharmacies}</p>
-        </div>
-        <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-purple-100 flex items-center justify-center">
-          <i class="fas fa-store text-purple-600 text-lg sm:text-xl"></i>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Mobile Card Layout -->
-  <div class="md:hidden space-y-3">
-    <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200"
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
       role="button"
       tabindex="0"
       on:click={navigateToPatients}
       on:keydown={(e) => handleCardKeydown(e, navigateToPatients)}
     >
-      <div class="flex items-center justify-between">
-        <div class="flex items-center">
-          <div class="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center mr-3">
-            <i class="fas fa-users text-teal-600 text-lg"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-gray-600">Total Patients</p>
-            <p class="text-xl font-bold text-teal-600">{patients.length}</p>
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Existing vs New</p>
+          <div class="mt-2 space-y-1.5">
+            <p class="text-sm text-gray-700">
+              <span class="font-semibold text-slate-700">{existingPatientsCount}</span>
+              existing
+            </p>
+            <p class="text-sm text-gray-700">
+              <span class="font-semibold text-cyan-700">{newPatientsCount}</span>
+              new ({NEW_PATIENT_WINDOW_DAYS}d)
+            </p>
           </div>
         </div>
-        <i class="fas fa-chevron-right text-gray-400"></i>
-      </div>
-    </div>
-    
-    <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4"
-    >
-      <div class="flex items-center justify-between">
-        <div class="flex items-center">
-          <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center mr-3">
-            <i class="fas fa-prescription-bottle-alt text-rose-600 text-lg"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-gray-600">Total Prescriptions</p>
-            <p class="text-xl font-bold text-rose-600">{totalPrescriptions}</p>
-          </div>
+        <div class="h-11 w-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+          <i class="fas fa-user-plus text-lg"></i>
         </div>
       </div>
     </div>
-
     <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200"
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
       role="button"
       tabindex="0"
       on:click={navigateToPrescriptions}
       on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
     >
       <div class="flex items-center justify-between">
-        <div class="flex items-center">
-          <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mr-3">
-            <i class="fas fa-capsules text-emerald-600 text-lg"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-gray-600">Drug Count</p>
-            <p class="text-xl font-bold text-emerald-600">{totalDrugs}</p>
-          </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Drug Count</p>
+          <p class="text-3xl font-bold text-emerald-600 mt-1">{totalDrugs}</p>
         </div>
-        <i class="fas fa-chevron-right text-gray-400"></i>
+        <div class="h-11 w-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+          <i class="fas fa-capsules text-lg"></i>
+        </div>
       </div>
     </div>
-    
     <div
-      class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-md transition-all duration-200"
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
       role="button"
       tabindex="0"
       on:click={navigateToPharmacies}
       on:keydown={(e) => handleCardKeydown(e, navigateToPharmacies)}
     >
       <div class="flex items-center justify-between">
-        <div class="flex items-center">
-          <div class="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mr-3">
-            <i class="fas fa-store text-purple-600 text-lg"></i>
-          </div>
-          <div>
-            <p class="text-xs font-medium text-gray-600">Connected Pharmacies</p>
-            <p class="text-xl font-bold text-purple-600">{connectedPharmacies}</p>
-          </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Connected Pharmacies</p>
+          <p class="text-3xl font-bold text-indigo-600 mt-1">{connectedPharmacies}</p>
         </div>
-        <i class="fas fa-chevron-right text-gray-400"></i>
+        <div class="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+          <i class="fas fa-store text-lg"></i>
+        </div>
       </div>
     </div>
   </div>
-  
-  <!-- Prescriptions Per Day Chart -->
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-    <div class="flex items-center mb-3 sm:mb-4">
-      <i class="fas fa-chart-bar text-teal-600 text-base sm:text-lg mr-2 sm:mr-3"></i>
-      <h3 class="text-base sm:text-lg font-semibold text-gray-900">Prescriptions Per Day (Last 30 Days)</h3>
-    </div>
-    
-    <div class="relative">
-      {#if chartLoading}
-        <div class="flex items-center justify-center h-48 sm:h-64">
-          <div class="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-teal-600"></div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+        <div class="flex items-center">
+          <i class="fas fa-chart-bar text-cyan-700 text-base sm:text-lg mr-2 sm:mr-3"></i>
+          <h3 class="text-base sm:text-lg font-semibold text-gray-900">Prescription Activity</h3>
         </div>
-      {:else}
-        <div id="prescriptionsChart" class="rounded" style="min-height: 200px;"></div>
-      {/if}
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-200">
+          Last 30 days
+        </span>
+      </div>
+      <div class="relative rounded-xl border border-gray-100 bg-gray-50/70 p-2 sm:p-3">
+        {#if chartLoading}
+          <div class="flex items-center justify-center h-48 sm:h-64">
+            <ThreeDots size="medium" color="teal" />
+          </div>
+        {:else}
+          <div id="prescriptionsChart" class="rounded" style="min-height: 200px;"></div>
+        {/if}
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+        <div class="flex items-center">
+          <i class="fas fa-coins text-teal-700 text-base sm:text-lg mr-2 sm:mr-3"></i>
+          <h3 class="text-base sm:text-lg font-semibold text-gray-900">Income Comparison</h3>
+        </div>
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+          This month vs last month
+        </span>
+      </div>
+      <div class="relative rounded-xl border border-gray-100 bg-gray-50/70 p-2 sm:p-3">
+        {#if incomeChartLoading}
+          <div class="flex items-center justify-center h-48 sm:h-64">
+            <ThreeDots size="medium" color="teal" />
+          </div>
+        {:else}
+          <div id="incomeComparisonChart" class="rounded" style="min-height: 220px;"></div>
+        {/if}
+      </div>
     </div>
   </div>
 </div>

@@ -301,6 +301,9 @@
                 <option value="Ms">Ms</option>
                 <option value="Master">Master</option>
                 <option value="Baby">Baby</option>
+                <option value="Dr">Dr</option>
+                <option value="Prof">Prof</option>
+                <option value="Rev.">Rev.</option>
               </select>
               <input 
                 type="text" 
@@ -554,7 +557,7 @@
               Improving...
             {:else}
               <i class="fas fa-sparkles mr-1.5"></i>
-              Improve English AI
+              Improve English
             {/if}
           </button>
         </div>
@@ -594,7 +597,7 @@
               Improving...
             {:else}
               <i class="fas fa-sparkles mr-1.5"></i>
-              Improve English AI
+              Improve English
             {/if}
           </button>
         </div>
@@ -636,7 +639,7 @@
               Improving...
             {:else}
               <i class="fas fa-sparkles mr-1.5"></i>
-              Improve English AI
+              Improve English
             {/if}
           </button>
         </div>

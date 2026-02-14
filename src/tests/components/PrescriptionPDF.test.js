@@ -162,6 +162,42 @@ describe('PrescriptionPDF', () => {
     expect(global.open).toHaveBeenCalled()
   })
 
+  it('opens print window for HTML5 print/save path', async () => {
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const printWindowMock = {
+      document: {
+        open: vi.fn(),
+        write: vi.fn(),
+        close: vi.fn()
+      },
+      focus: vi.fn(),
+      print: vi.fn()
+    }
+    global.open = vi.fn(() => printWindowMock)
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions: [],
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Print / Save PDF (HTML5)'))
+
+    await waitFor(() => {
+      expect(global.open).toHaveBeenCalled()
+      expect(printWindowMock.document.write).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('includes unit from pharmacy inventory in PDF dosage text', async () => {
     pharmacyMedicationService.getPharmacyStock.mockResolvedValue([
       {
@@ -889,5 +925,60 @@ describe('PrescriptionPDF', () => {
     expect(html.toLowerCase()).not.toContain('onerror=')
     expect(html.toLowerCase()).not.toContain('javascript:')
     expect(captureNode?.textContent || '').toContain('Safe Header')
+  })
+
+  it('keeps entered system header content identical in HTML5 print output (preview-to-pdf parity)', async () => {
+    doctorAuthService.getCurrentDoctor.mockReturnValue({ id: 'doctor-1', email: 'doc@test.com' })
+    firebaseStorage.getDoctorByEmail.mockResolvedValue({ id: 'doctor-1' })
+
+    const enteredHeaderHtml = `
+      <h2>Dr. WYSIWYG Match</h2>
+      <p><strong>Reg No:</strong> 17607</p>
+      <p>Mobile: 071 845 4397</p>
+    `
+    firebaseStorage.getDoctorTemplateSettings.mockResolvedValue({
+      templateType: 'system',
+      templatePreview: {
+        formattedHeader: enteredHeaderHtml
+      },
+      headerText: '<p>fallback should not appear</p>'
+    })
+
+    const printWindowMock = {
+      document: {
+        open: vi.fn(),
+        write: vi.fn(),
+        close: vi.fn()
+      },
+      focus: vi.fn(),
+      print: vi.fn()
+    }
+    global.open = vi.fn(() => printWindowMock)
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient: parityPatient, illnesses: [], prescriptions: [], symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Print / Save PDF (HTML5)'))
+
+    await waitFor(() => {
+      expect(printWindowMock.document.write).toHaveBeenCalledTimes(1)
+    })
+
+    const printedHtml = printWindowMock.document.write.mock.calls[0][0]
+    const container = document.createElement('div')
+    container.innerHTML = printedHtml
+
+    const printedEditor = container.querySelector('.rx-system-header .ql-editor')
+    expect(printedEditor).toBeTruthy()
+    expect(normalizeHtml(printedEditor?.innerHTML)).toBe(normalizeHtml(enteredHeaderHtml))
+
+    const printedText = normalizeText(container.textContent)
+    expect(printedText).toContain(normalizeText('Dr. WYSIWYG Match Reg No: 17607 Mobile: 071 845 4397'))
+    expect(printedText).not.toContain('fallback should not appear')
+
+    const printedStyles = normalizeText(container.querySelector('style')?.textContent || '')
+    expect(printedStyles).toContain(normalizeText('@page { size: A5 portrait; margin: 8mm; }'))
+    expect(printedStyles).toContain(normalizeText('.rx-paper'))
   })
 })

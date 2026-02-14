@@ -13,6 +13,7 @@
   import AdminPanel from './components/AdminPanel.svelte'
   import SettingsPage from './components/SettingsPage.svelte'
   import ReportsDashboard from './components/ReportsDashboard.svelte'
+  import DoctorInventoryAlertsPage from './components/DoctorInventoryAlertsPage.svelte'
   import DoctorGettingStarted from './components/DoctorGettingStarted.svelte'
   import NotificationContainer from './components/NotificationContainer.svelte'
   import LoadingSpinner from './components/LoadingSpinner.svelte'
@@ -50,6 +51,11 @@
   let currentView = 'home' // Navigation state: 'home', 'patients', 'pharmacies', 'reports', 'settings'
   let settingsDoctor = null
   let wasOffline = false
+  let hasOnboardingDummyData = false
+  let checkingOnboardingDummyData = false
+  let deletingOnboardingDummyData = false
+  let lastDummyDataUserKey = ''
+  let onboardingDummyStatusRequestId = 0
 
   $: effectiveCurrency = settingsDoctor?.currency
     || user?.currency
@@ -210,6 +216,66 @@
     }
   }
 
+  const resolveDoctorIdForDummyData = async () => {
+    if (user?.id) {
+      return user.id
+    }
+    if (user?.email) {
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      return doctor?.id || ''
+    }
+    return ''
+  }
+
+  const loadOnboardingDummyDataStatus = async () => {
+    if (!user || user?.role !== 'doctor' || isExternalDoctor) {
+      hasOnboardingDummyData = false
+      checkingOnboardingDummyData = false
+      return
+    }
+    const requestId = ++onboardingDummyStatusRequestId
+    checkingOnboardingDummyData = true
+    try {
+      const doctorId = await resolveDoctorIdForDummyData()
+      const nextStatus = doctorId
+        ? await firebaseStorage.hasOnboardingDummyDataForDoctor(doctorId)
+        : false
+      if (requestId === onboardingDummyStatusRequestId) {
+        hasOnboardingDummyData = nextStatus
+      }
+    } catch (error) {
+      console.error('❌ Failed to load onboarding dummy data status:', error)
+      if (requestId === onboardingDummyStatusRequestId) {
+        hasOnboardingDummyData = false
+      }
+    } finally {
+      if (requestId === onboardingDummyStatusRequestId) {
+        checkingOnboardingDummyData = false
+      }
+    }
+  }
+
+  const handleDeleteOnboardingDummyData = async () => {
+    if (deletingOnboardingDummyData) {
+      return
+    }
+    deletingOnboardingDummyData = true
+    try {
+      const doctorId = await resolveDoctorIdForDummyData()
+      if (!doctorId) {
+        throw new Error('Doctor profile not found')
+      }
+      await firebaseStorage.deleteOnboardingDummyDataForDoctor(doctorId)
+      hasOnboardingDummyData = false
+      notifySuccess('Dummy onboarding data deleted.', 3000)
+    } catch (error) {
+      console.error('❌ Failed to delete dummy onboarding data:', error)
+      notifyError(error?.message || 'Failed to delete dummy onboarding data.', 5000)
+    } finally {
+      deletingOnboardingDummyData = false
+    }
+  }
+
   const setAppView = (view) => {
     currentView = view
   }
@@ -221,6 +287,25 @@
 
   $: if (currentView === 'reports' && isExternalDoctor) {
     currentView = 'home'
+  }
+
+  $: if (currentView === 'notifications' && isExternalDoctor) {
+    currentView = 'home'
+  }
+
+  $: {
+    const nextUserKey = user?.role === 'doctor' && !isExternalDoctor
+      ? (user?.id || user?.email || '')
+      : ''
+    if (!nextUserKey) {
+      hasOnboardingDummyData = false
+      checkingOnboardingDummyData = false
+      deletingOnboardingDummyData = false
+      lastDummyDataUserKey = ''
+    } else if (nextUserKey !== lastDummyDataUserKey) {
+      lastDummyDataUserKey = nextUserKey
+      loadOnboardingDummyDataStatus()
+    }
   }
   
   
@@ -991,28 +1076,53 @@
             {#if !isExternalDoctor}
               <button
                 type="button"
-                class="hidden sm:inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-teal-700 bg-white border border-teal-200 rounded-full hover:bg-teal-100 transition-colors duration-200"
+                class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 text-white bg-cyan-600 hover:bg-cyan-700"
                 on:click={handleStartSettingsTour}
                 title="Start Settings Tour"
               >
                 <i class="fas fa-route"></i>
                 Start tour
               </button>
+              {#if hasOnboardingDummyData}
+                <button
+                  type="button"
+                  class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  on:click={handleDeleteOnboardingDummyData}
+                  title="Delete dummy onboarding data"
+                  disabled={deletingOnboardingDummyData || checkingOnboardingDummyData}
+                >
+                  <i class="fas fa-trash"></i>
+                  {deletingOnboardingDummyData ? 'Deleting...' : 'Delete dummy data'}
+                </button>
+              {/if}
               <button
                 type="button"
-                class="inline-flex sm:hidden items-center justify-center p-2 text-teal-700 bg-white border border-teal-200 rounded-full hover:bg-teal-100 transition-colors duration-200"
+                class="inline-flex sm:hidden items-center justify-center p-2 rounded-lg transition-colors duration-200 text-white bg-cyan-600 hover:bg-cyan-700"
                 on:click={handleStartSettingsTour}
                 aria-label="Start Settings Tour"
                 title="Start Settings Tour"
               >
                 <i class="fas fa-route"></i>
               </button>
+              {#if hasOnboardingDummyData}
+                <button
+                  type="button"
+                  class="inline-flex sm:hidden items-center justify-center p-2 rounded-lg transition-colors duration-200 text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  on:click={handleDeleteOnboardingDummyData}
+                  aria-label="Delete dummy onboarding data"
+                  title="Delete dummy onboarding data"
+                  disabled={deletingOnboardingDummyData || checkingOnboardingDummyData}
+                >
+                  <i class="fas fa-trash"></i>
+                </button>
+              {/if}
             {/if}
             <button
               type="button"
-              class="p-2 text-gray-600 hover:text-teal-600 hover:bg-gray-50 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              class="p-2 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 {currentView === 'notifications' ? 'text-teal-600 bg-teal-50' : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'}"
               aria-label="Notifications"
               title="Notifications"
+              on:click={() => handleMenuNavigation('notifications')}
             >
               <i class="fas fa-bell"></i>
             </button>
@@ -1032,6 +1142,10 @@
       {:else if currentView === 'reports'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <ReportsDashboard user={effectiveUser} />
+        </div>
+      {:else if currentView === 'notifications'}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <DoctorInventoryAlertsPage user={effectiveUser} />
         </div>
       {:else if currentView === 'help'}
         <DoctorGettingStarted {user} />

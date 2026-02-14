@@ -1661,6 +1661,192 @@ class FirebaseStorageService {
     }
   }
 
+  async deleteDrug(drugId) {
+    try {
+      if (!drugId) return false
+      await deleteDoc(doc(db, this.collections.drugDatabase, drugId))
+      return true
+    } catch (error) {
+      console.error('Error deleting drug:', error)
+      throw error
+    }
+  }
+
+  async hasOnboardingDummyDataForDoctor(doctorId) {
+    try {
+      if (!doctorId) return false
+      const [patients, prescriptions, drugs, doctor] = await Promise.all([
+        this.getPatientsByDoctorId(doctorId),
+        this.getPrescriptionsByDoctorId(doctorId),
+        this.getDoctorDrugs(doctorId),
+        this.getDoctorById(doctorId)
+      ])
+      const hasDummyPatients = patients.some((patient) => patient?.isOnboardingDummy === true)
+      const hasDummyPrescriptions = prescriptions.some((prescription) => prescription?.isOnboardingDummy === true)
+      const hasDummyDrugs = drugs.some((drug) => drug?.isOnboardingDummy === true)
+      const hasDummyTemplate = doctor?.templateSettings?.isOnboardingDummy === true
+      return hasDummyPatients || hasDummyPrescriptions || hasDummyDrugs || hasDummyTemplate
+    } catch (error) {
+      console.error('Error checking onboarding dummy data:', error)
+      return false
+    }
+  }
+
+  async seedOnboardingDummyDataForDoctor(doctor) {
+    try {
+      const doctorId = String(doctor?.id || '').trim()
+      if (!doctorId) {
+        throw new Error('Doctor ID is required to seed onboarding data')
+      }
+
+      const doctorEmail = String(doctor?.email || '').trim()
+      const [existingPatients, existingPrescriptions, existingDrugs, latestDoctor] = await Promise.all([
+        this.getPatientsByDoctorId(doctorId),
+        this.getPrescriptionsByDoctorId(doctorId),
+        this.getDoctorDrugs(doctorId),
+        this.getDoctorById(doctorId)
+      ])
+
+      const dummyPatient = existingPatients.find((patient) => patient?.isOnboardingDummy === true)
+      let createdDummyPatient = dummyPatient || null
+
+      if (!createdDummyPatient) {
+        createdDummyPatient = await this.createPatient({
+          firstName: 'Demo',
+          lastName: 'Patient',
+          dateOfBirth: '1992-04-18',
+          age: '34',
+          ageType: 'years',
+          gender: 'Female',
+          phone: '+15550001001',
+          doctorId,
+          doctorEmail,
+          isOnboardingDummy: true
+        })
+      }
+
+      const dummyDrugsSeed = [
+        { name: 'Paracetamol', genericName: 'Acetaminophen', dosageForm: 'Tablet', strength: '500', strengthUnit: 'mg' },
+        { name: 'Amoxicillin', genericName: 'Amoxicillin', dosageForm: 'Capsule', strength: '500', strengthUnit: 'mg' },
+        { name: 'Omeprazole', genericName: 'Omeprazole', dosageForm: 'Capsule', strength: '20', strengthUnit: 'mg' },
+        { name: 'Cetirizine', genericName: 'Cetirizine', dosageForm: 'Tablet', strength: '10', strengthUnit: 'mg' },
+        { name: 'Metformin', genericName: 'Metformin', dosageForm: 'Tablet', strength: '500', strengthUnit: 'mg' }
+      ]
+
+      const existingDummyDrugNames = new Set(
+        existingDrugs
+          .filter((drug) => drug?.isOnboardingDummy === true)
+          .map((drug) => String(drug?.name || '').trim().toLowerCase())
+      )
+
+      for (const dummyDrug of dummyDrugsSeed) {
+        const normalizedName = String(dummyDrug.name || '').trim().toLowerCase()
+        if (!normalizedName || existingDummyDrugNames.has(normalizedName)) {
+          continue
+        }
+        await this.addDrug(doctorId, {
+          ...dummyDrug,
+          isOnboardingDummy: true
+        })
+      }
+
+      const hasDummyPrescription = existingPrescriptions.some((prescription) => prescription?.isOnboardingDummy === true)
+      if (!hasDummyPrescription && createdDummyPatient?.id) {
+        await this.createPrescription({
+          patientId: createdDummyPatient.id,
+          doctorId,
+          doctorEmail,
+          patient: {
+            id: createdDummyPatient.id,
+            firstName: createdDummyPatient.firstName || 'Demo',
+            lastName: createdDummyPatient.lastName || 'Patient',
+            age: createdDummyPatient.age || '34',
+            gender: createdDummyPatient.gender || 'Female',
+            email: createdDummyPatient.email || '',
+            phone: createdDummyPatient.phone || ''
+          },
+          name: 'Demo Prescription',
+          notes: 'This is demo data for onboarding and tour guidance.',
+          medications: [
+            {
+              name: 'Paracetamol',
+              genericName: 'Acetaminophen',
+              dosage: '500 mg',
+              dosageForm: 'Tablet',
+              strength: '500',
+              strengthUnit: 'mg',
+              frequency: 'Every 8 hours',
+              duration: '5 days',
+              instructions: 'Take after meals'
+            }
+          ],
+          procedures: [],
+          status: 'draft',
+          isOnboardingDummy: true
+        })
+      }
+
+      if (!latestDoctor?.templateSettings) {
+        await this.saveDoctorTemplateSettings(doctorId, {
+          templateType: 'system',
+          headerSize: 260,
+          headerText: 'Dr. Demo Clinic\nGeneral Practice\nPhone: +1 (555) 000-1001',
+          headerFontSize: 24,
+          templatePreview: {
+            formattedHeader: 'Dr. Demo Clinic<br>General Practice<br>Phone: +1 (555) 000-1001'
+          },
+          procedurePricing: [
+            { name: 'General Consultation', price: '30' },
+            { name: 'Follow-up Consultation', price: '20' }
+          ],
+          isOnboardingDummy: true
+        })
+      }
+
+      return true
+    } catch (error) {
+      console.error('Error seeding onboarding dummy data:', error)
+      throw error
+    }
+  }
+
+  async deleteOnboardingDummyDataForDoctor(doctorId) {
+    try {
+      if (!doctorId) return false
+
+      const [patients, prescriptions, drugs, doctor] = await Promise.all([
+        this.getPatientsByDoctorId(doctorId),
+        this.getPrescriptionsByDoctorId(doctorId),
+        this.getDoctorDrugs(doctorId),
+        this.getDoctorById(doctorId)
+      ])
+
+      const dummyPrescriptions = prescriptions.filter((prescription) => prescription?.isOnboardingDummy === true)
+      for (const prescription of dummyPrescriptions) {
+        await this.deletePrescription(prescription.id)
+      }
+
+      const dummyPatients = patients.filter((patient) => patient?.isOnboardingDummy === true)
+      for (const patient of dummyPatients) {
+        await this.deletePatient(patient.id)
+      }
+
+      const dummyDrugs = drugs.filter((drug) => drug?.isOnboardingDummy === true)
+      for (const drug of dummyDrugs) {
+        await this.deleteDrug(drug.id)
+      }
+
+      if (doctor?.templateSettings?.isOnboardingDummy === true) {
+        await this.saveDoctorTemplateSettings(doctorId, null)
+      }
+
+      return true
+    } catch (error) {
+      console.error('Error deleting onboarding dummy data:', error)
+      throw error
+    }
+  }
+
   // Real-time listeners
   onPatientsChange(doctorId, callback) {
     const q = query(

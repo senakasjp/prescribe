@@ -1,5 +1,67 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.10 - HTML5 WYSIWYG Prescription Export (February 14, 2026)
+
+### 🧾 Same-Look Preview and PDF
+- Added a new HTML5-based prescription print/export path in `PrescriptionPDF`:
+- New action button: `Print / Save PDF (HTML5)`.
+- Uses browser print-to-PDF from HTML/CSS (`@page A5`) so output matches preview layout.
+- Added WYSIWYG prescription paper preview inside the modal using the same HTML structure and CSS used for printing.
+
+### 🔁 Backward Compatibility
+- Kept existing `Generate PDF` (jsPDF) flow unchanged for compatibility.
+
+### 🧪 Tests
+- Added test coverage for the HTML5 export button in:
+- `src/tests/components/PrescriptionPDF.test.js`
+- Verified: `27/27` tests passing for PrescriptionPDF component tests.
+
+## Version 2.3.9 - Patient Title Prefix Expansion (February 14, 2026)
+
+### 👤 Patient Registration + Edit Title Options
+- Added new patient title options in registration form:
+- `Dr`
+- `Prof`
+- `Rev.`
+- Updated patient edit/bio edit title options to match new registration options.
+
+### 🔎 Name Parsing Compatibility
+- Expanded title parsing support for patient names to recognize:
+- `Dr`, `Prof`, `Rev.`
+- Also accepts dotted/alias variants for existing records:
+- `Dr.`, `Prof.`, `Rev`
+
+### 🧪 Test Coverage
+- Extended component tests in:
+- `src/tests/components/PatientForm.test.js`
+- Added unit tests for title parsing in:
+- `src/tests/unit/patientName.test.js`
+
+## Version 2.3.8 - Onboarding Dummy Data + Tour Toolbar Controls (February 14, 2026)
+
+### 🧪 New Doctor Onboarding Seed Data
+- Added automatic onboarding dummy-data seeding for newly created doctors.
+- Seed package now includes:
+- 5 dummy drugs in doctor drug database.
+- 1 dummy patient.
+- 1 dummy prescription linked to the dummy patient.
+- Dummy PDF template editor settings in doctor `templateSettings`.
+- All onboarding seed records are tagged with `isOnboardingDummy: true` for safe cleanup.
+
+### 🧹 Dummy Data Cleanup Action
+- Added `Delete dummy data` button next to `Start tour` in app top bar (desktop + mobile icon variant).
+- Button visibility is data-driven:
+- Visible only when onboarding dummy data exists for the logged-in doctor.
+- Automatically hides after successful deletion.
+- Cleanup removes only records marked as onboarding dummy data and clears dummy template settings.
+
+### ✅ Test Coverage Expansion
+- Added dedicated unit tests for onboarding dummy-data lifecycle:
+- `src/tests/unit/firebaseStorage.onboardingDummyData.test.js`
+- Expanded auth flow tests to assert onboarding seed behavior for new doctor creation paths:
+- `src/tests/unit/firebaseAuth.referral.test.js`
+- Current full suite baseline: `73/73` test files, `528/528` tests passing.
+
 ## Version 2.3.7 - Camera Capture UX + OCR Guardrails (February 14, 2026)
 
 ### 📱 Mobile Camera Capture Flow Refinement

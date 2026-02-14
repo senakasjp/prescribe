@@ -6,6 +6,7 @@
   import inventoryService from '../../services/pharmacist/inventoryService.js'
   import { notifyError } from '../../stores/notifications.js'
   import { formatCurrency as formatCurrencyByLocale } from '../../utils/formatting.js'
+  import LoadingSpinner from '../LoadingSpinner.svelte'
   
   export let pharmacist
   let pharmacyId = null
@@ -151,10 +152,7 @@
   </div>
   
   {#if loading}
-    <div class="text-center py-12">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-      <p class="text-gray-500 mt-4">Loading analytics...</p>
-    </div>
+    <LoadingSpinner text="Loading analytics..." size="large" color="blue" />
   {:else}
     <!-- Key Metrics -->
     <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6">

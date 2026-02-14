@@ -17,6 +17,7 @@
     normalizeStrengthUnitValue,
     normalizeDosageFormValue
   } from '../../utils/medicationOptions.js'
+  import LoadingSpinner from '../LoadingSpinner.svelte'
   
   export let pharmacist
   export let currency = 'USD'
@@ -647,10 +648,7 @@
   <!-- Main Content -->
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
     {#if loading}
-      <div class="text-center py-12">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p class="text-gray-500 mt-4">Loading inventory data...</p>
-      </div>
+      <LoadingSpinner text="Loading inventory data..." size="large" color="blue" />
     {:else if activeTab === 'overview'}
       <!-- Overview Tab -->
       <div class="space-y-4 sm:space-y-6">

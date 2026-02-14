@@ -32,11 +32,12 @@
   export let settingsDoctor = null
 export let initialTab = 'overview' // Allow parent to set initial tab
 
-  const TITLE_OPTIONS = ['Mr', 'Ms', 'Master', 'Baby']
+  const TITLE_OPTIONS = ['Mr', 'Ms', 'Master', 'Baby', 'Dr', 'Prof', 'Rev.']
+  const TITLE_PARSE_OPTIONS = [...TITLE_OPTIONS, 'Dr.', 'Prof.', 'Rev']
 
   const splitTitleFromName = (name) => {
     const trimmed = String(name || '').trim()
-    for (const title of TITLE_OPTIONS) {
+    for (const title of TITLE_PARSE_OPTIONS) {
       if (trimmed.startsWith(`${title} `)) {
         return { title, firstName: trimmed.slice(title.length + 1).trim() }
       }
@@ -2180,8 +2181,12 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     activeCornerDragIndex = index
     event.preventDefault()
     event.stopPropagation()
-    if (event?.currentTarget?.setPointerCapture) {
-      event.currentTarget.setPointerCapture(event.pointerId)
+    if (cornerOverlayEl?.setPointerCapture && event?.pointerId !== undefined) {
+      try {
+        cornerOverlayEl.setPointerCapture(event.pointerId)
+      } catch (_) {
+        // no-op
+      }
     }
     updateDraggedCorner(event)
   }
@@ -2190,9 +2195,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     if (activeCornerDragIndex < 0) {
       return
     }
-    if (event?.currentTarget?.releasePointerCapture && event?.pointerId !== undefined) {
+    if (cornerOverlayEl?.releasePointerCapture && event?.pointerId !== undefined) {
       try {
-        event.currentTarget.releasePointerCapture(event.pointerId)
+        cornerOverlayEl.releasePointerCapture(event.pointerId)
       } catch (_) {
         // no-op
       }
@@ -5120,7 +5125,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           Improving...
                         {:else}
                           <i class="fas fa-sparkles mr-1.5"></i>
-                          Improve English AI
+                          Improve English
                         {/if}
                       </button>
                     </div>
@@ -5160,7 +5165,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           Improving...
                         {:else}
                           <i class="fas fa-sparkles mr-1.5"></i>
-                          Improve English AI
+                          Improve English
                         {/if}
                       </button>
                     </div>
@@ -5202,7 +5207,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           Improving...
                         {:else}
                           <i class="fas fa-sparkles mr-1.5"></i>
-                          Improve English AI
+                          Improve English
                         {/if}
                       </button>
                     </div>
@@ -5708,7 +5713,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                                   Improving...
                                 {:else}
                                   <i class="fas fa-sparkles mr-1.5"></i>
-                                  Improve English AI
+                                  Improve English
                                 {/if}
                               </button>
                             </div>
@@ -6350,7 +6355,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                           Improving...
                         {:else}
                           <i class="fas fa-sparkles mr-1.5"></i>
-                          Improve English AI
+                          Improve English
                         {/if}
                       </button>
                     </div>
@@ -6742,7 +6747,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                         Improving...
                       {:else}
                         <i class="fas fa-sparkles mr-1.5"></i>
-                        Improve English AI
+                        Improve English
                       {/if}
                     </button>
                   </div>

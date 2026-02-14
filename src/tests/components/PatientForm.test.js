@@ -145,6 +145,17 @@ describe('PatientForm Component', () => {
       }
     })
 
+    it('should include Dr/Prof/Rev. options in title selector', async () => {
+      const { container: renderedContainer } = render(PatientForm)
+      const titleSelect = renderedContainer.querySelector('#title')
+      expect(titleSelect).toBeTruthy()
+
+      const optionValues = Array.from(titleSelect.options).map((option) => option.value)
+      expect(optionValues).toContain('Dr')
+      expect(optionValues).toContain('Prof')
+      expect(optionValues).toContain('Rev.')
+    })
+
     it('should handle cancel button', async () => {
       const handleCancel = vi.fn()
       const { component, container: renderedContainer } = render(PatientForm)

@@ -8,6 +8,47 @@ const fallbackNormalizedCorners = [
   { x: 0.08, y: 0.92 }
 ]
 
+export const normalizeCornerOrder = (corners = []) => {
+  if (!Array.isArray(corners) || corners.length !== 4) {
+    return fallbackNormalizedCorners
+  }
+
+  const points = corners.map((corner) => ({
+    x: clamp(Number(corner?.x || 0), 0, 1),
+    y: clamp(Number(corner?.y || 0), 0, 1)
+  }))
+
+  const centroid = points.reduce((acc, point) => ({
+    x: acc.x + point.x,
+    y: acc.y + point.y
+  }), { x: 0, y: 0 })
+  centroid.x /= points.length
+  centroid.y /= points.length
+
+  // In screen coordinates (y increases downward), angle sort gives TL->TR->BR->BL.
+  const ordered = [...points].sort((a, b) => (
+    Math.atan2(a.y - centroid.y, a.x - centroid.x) -
+    Math.atan2(b.y - centroid.y, b.x - centroid.x)
+  ))
+
+  let topLeftIndex = 0
+  let topLeftScore = Number.POSITIVE_INFINITY
+  for (let i = 0; i < ordered.length; i += 1) {
+    const score = ordered[i].x + ordered[i].y
+    if (score < topLeftScore) {
+      topLeftScore = score
+      topLeftIndex = i
+    }
+  }
+
+  return [
+    ordered[topLeftIndex],
+    ordered[(topLeftIndex + 1) % 4],
+    ordered[(topLeftIndex + 2) % 4],
+    ordered[(topLeftIndex + 3) % 4]
+  ]
+}
+
 export const detectDocumentCornersFromImageData = (imageData) => {
   const width = Number(imageData?.width || 0)
   const height = Number(imageData?.height || 0)
@@ -167,7 +208,8 @@ export const createSelectedAreaDataUrl = async (dataUrl, normalizedCorners = [])
     img.src = source
   })
 
-  const points = normalizedCorners.map((corner) => ({
+  const orderedCorners = normalizeCornerOrder(normalizedCorners)
+  const points = orderedCorners.map((corner) => ({
     x: clamp(Number(corner?.x || 0), 0, 1) * image.width,
     y: clamp(Number(corner?.y || 0), 0, 1) * image.height
   }))
