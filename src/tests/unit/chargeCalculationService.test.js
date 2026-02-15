@@ -334,5 +334,47 @@ describe('chargeCalculationService', () => {
       expect(result.medicationBreakdown[0].found).toBe(false)
       expect(result.medicationBreakdown[0].note).toContain('Only priced 3 of 5')
     })
+
+    it('uses edited inventory stock and selling price values as calculation source of truth', () => {
+      const prescription = {
+        id: 'rx-edited',
+        medications: [
+          {
+            name: 'Corex',
+            dosageForm: 'Tablet',
+            amount: '10'
+          }
+        ]
+      }
+
+      const baseline = chargeCalculationService.calculateExpectedDrugChargesFromInventory(
+        prescription,
+        [{
+          id: 'corex-batch',
+          brandName: 'Corex',
+          dosageForm: 'Tablet',
+          currentStock: 10,
+          sellingPrice: 50,
+          expiryDate: '2026-12-23'
+        }]
+      )
+
+      const afterEdit = chargeCalculationService.calculateExpectedDrugChargesFromInventory(
+        prescription,
+        [{
+          id: 'corex-batch',
+          brandName: 'Corex',
+          dosageForm: 'Tablet',
+          currentStock: 10,
+          sellingPrice: 80,
+          expiryDate: '2026-12-23'
+        }]
+      )
+
+      expect(baseline.totalCost).toBeCloseTo(500, 4)
+      expect(afterEdit.totalCost).toBeCloseTo(800, 4)
+      expect(afterEdit.totalCost).toBeGreaterThan(baseline.totalCost)
+      expect(afterEdit.medicationBreakdown[0].pricedQuantity).toBe(10)
+    })
   })
 })

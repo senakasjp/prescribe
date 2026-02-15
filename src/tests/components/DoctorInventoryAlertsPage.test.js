@@ -66,4 +66,47 @@ describe('DoctorInventoryAlertsPage', () => {
     expect(printedHtml).toContain('Expiring Soon')
     expect(printWindowMock.print).toHaveBeenCalled()
   })
+
+  it('emits alerts-updated summary for doctor portal notification badge', async () => {
+    const nearFuture = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()
+    const pastDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([
+      {
+        id: 'stock-low',
+        pharmacyId: 'ph-1',
+        drugName: 'Drug A',
+        currentStock: 2,
+        minimumStock: 10,
+        expiryDate: nearFuture
+      },
+      {
+        id: 'stock-expired',
+        pharmacyId: 'ph-1',
+        drugName: 'Drug B',
+        currentStock: 20,
+        minimumStock: 10,
+        expiryDate: pastDate
+      }
+    ])
+
+    const { component } = render(DoctorInventoryAlertsPage, {
+      props: {
+        user: { id: 'doc-1', name: 'Dr Demo' }
+      }
+    })
+
+    const eventHandler = vi.fn()
+    component.$on('alerts-updated', eventHandler)
+
+    await fireEvent.click(screen.getByRole('button', { name: /Refresh/i }))
+
+    const latestPayload = eventHandler.mock.calls.at(-1)?.[0]?.detail
+    expect(latestPayload).toMatchObject({
+      lowStock: 1,
+      expiringSoon: 1,
+      expired: 1,
+      total: 3,
+      hasOwnPharmacy: true
+    })
+  })
 })

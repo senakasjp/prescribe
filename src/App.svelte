@@ -56,6 +56,7 @@
   let deletingOnboardingDummyData = false
   let lastDummyDataUserKey = ''
   let onboardingDummyStatusRequestId = 0
+  let doctorNotificationAlertCount = 0
 
   $: effectiveCurrency = settingsDoctor?.currency
     || user?.currency
@@ -164,6 +165,10 @@
 
   $: if (user?.email) {
     loadSettingsDoctor()
+  }
+
+  $: if (!user || user?.role !== 'doctor') {
+    doctorNotificationAlertCount = 0
   }
 
   const canAccessAdminPanel = (currentUser) => {
@@ -278,6 +283,11 @@
 
   const setAppView = (view) => {
     currentView = view
+  }
+
+  const handleDoctorAlertsUpdated = (event) => {
+    const total = Number(event?.detail?.total || 0)
+    doctorNotificationAlertCount = Number.isFinite(total) ? Math.max(0, total) : 0
   }
 
   $: if (currentView === 'settings' && isExternalDoctor) {
@@ -1119,12 +1129,17 @@
             {/if}
             <button
               type="button"
-              class="p-2 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 {currentView === 'notifications' ? 'text-teal-600 bg-teal-50' : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'}"
+              class="relative p-2 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 {currentView === 'notifications' ? 'text-teal-600 bg-teal-50' : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'}"
               aria-label="Notifications"
               title="Notifications"
               on:click={() => handleMenuNavigation('notifications')}
             >
               <i class="fas fa-bell"></i>
+              {#if doctorNotificationAlertCount > 0}
+                <span class="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] leading-4 text-center font-semibold">
+                  {doctorNotificationAlertCount > 99 ? '99+' : doctorNotificationAlertCount}
+                </span>
+              {/if}
             </button>
           </div>
         </div>
@@ -1145,7 +1160,7 @@
         </div>
       {:else if currentView === 'notifications'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <DoctorInventoryAlertsPage user={effectiveUser} />
+          <DoctorInventoryAlertsPage user={effectiveUser} on:alerts-updated={handleDoctorAlertsUpdated} />
         </div>
       {:else if currentView === 'help'}
         <DoctorGettingStarted {user} />

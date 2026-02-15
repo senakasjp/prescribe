@@ -152,4 +152,37 @@ describe('MobileCameraCapturePage', () => {
     })
 
   })
+
+  it('auto-closes the window after successful upload', async () => {
+    const freshTs = Date.now()
+    window.history.pushState({}, '', `/?mobile-capture=1&code=ABCDEFGH12&ts=${freshTs}`)
+
+    vi.spyOn(firebaseStorage, 'upsertMobileCaptureSession').mockResolvedValue(undefined)
+    vi.stubGlobal('FileReader', vi.fn(function FileReaderMock() {
+      this.readAsDataURL = () => {
+        this.result = 'data:image/jpeg;base64,TEST_IMAGE'
+        if (typeof this.onload === 'function') this.onload()
+      }
+    }))
+    const closeSpy = vi.spyOn(window, 'close').mockImplementation(() => {})
+
+    const { container } = render(MobileCameraCapturePage, {
+      props: { accessCode: 'ABCDEFGH12' }
+    })
+
+    const input = container.querySelector('input[type="file"]')
+    const file = new File(['image-bytes'], 'capture.jpg', { type: 'image/jpeg' })
+    await fireEvent.change(input, { target: { files: [file] } })
+
+    const uploadButton = await screen.findByRole('button', { name: /Upload Photo/i })
+    await fireEvent.click(uploadButton)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Closing this window/i)).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      expect(closeSpy).toHaveBeenCalled()
+    }, { timeout: 2500 })
+  })
 })

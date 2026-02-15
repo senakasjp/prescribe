@@ -3,14 +3,13 @@ export const STRENGTH_UNITS = ['mg', 'g', 'ml', 'l', 'mcg', 'IU', 'units', '%']
 export const DOSAGE_FORM_OPTIONS = [
   'Tablet',
   'Capsule',
-  'Liquid',
-  'Syrup',
+  'Liquid (bottles)',
+  'Liquid (measured)',
   'Injection',
   'Cream',
   'Ointment',
   'Gel',
   'Suppository',
-  'Drops',
   'Inhaler',
   'Spray',
   'Shampoo',
@@ -28,6 +27,9 @@ export const normalizeStrengthUnitValue = (value) => {
 export const normalizeDosageFormValue = (value) => {
   const raw = String(value || '').trim()
   if (!raw) return ''
+  const lowered = raw.toLowerCase()
+  if (lowered === 'liquid') return 'Liquid (bottles)'
+  if (lowered === 'syrup') return 'Liquid (measured)'
   const match = DOSAGE_FORM_OPTIONS.find(option => option.toLowerCase() === raw.toLowerCase())
   return match || raw
 }

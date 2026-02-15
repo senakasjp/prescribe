@@ -16,14 +16,13 @@ describe('medication option consistency', () => {
     expect(DOSAGE_FORM_OPTIONS).toEqual([
       'Tablet',
       'Capsule',
-      'Liquid',
-      'Syrup',
+      'Liquid (bottles)',
+      'Liquid (measured)',
       'Injection',
       'Cream',
       'Ointment',
       'Gel',
       'Suppository',
-      'Drops',
       'Inhaler',
       'Spray',
       'Shampoo',
@@ -37,6 +36,7 @@ describe('medication option consistency', () => {
     expect(normalizeStrengthUnitValue('ML')).toBe('ml')
     expect(normalizeStrengthUnitValue('%')).toBe('%')
     expect(normalizeDosageFormValue('tablet')).toBe('Tablet')
-    expect(normalizeDosageFormValue('syrup')).toBe('Syrup')
+    expect(normalizeDosageFormValue('syrup')).toBe('Liquid (measured)')
+    expect(normalizeDosageFormValue('liquid')).toBe('Liquid (bottles)')
   })
 })

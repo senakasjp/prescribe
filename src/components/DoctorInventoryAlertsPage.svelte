@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte'
+  import { onMount, createEventDispatcher } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { pharmacyInventoryIntegration } from '../services/pharmacyInventoryIntegration.js'
@@ -7,6 +7,7 @@
 
   export let user
 
+  const dispatch = createEventDispatcher()
   const EXPIRY_ALERT_DAYS = 30
   let effectiveDoctor = null
   let loading = true
@@ -58,6 +59,13 @@
         expiringSoonItems = []
         expiredItems = []
         lastUpdatedAt = new Date().toISOString()
+        dispatch('alerts-updated', {
+          total: 0,
+          lowStock: 0,
+          expiringSoon: 0,
+          expired: 0,
+          hasOwnPharmacy: false
+        })
         return
       }
 
@@ -92,9 +100,24 @@
         .sort((a, b) => a.daysToExpiry - b.daysToExpiry)
 
       lastUpdatedAt = new Date().toISOString()
+      dispatch('alerts-updated', {
+        total: lowStockItems.length + expiringSoonItems.length + expiredItems.length,
+        lowStock: lowStockItems.length,
+        expiringSoon: expiringSoonItems.length,
+        expired: expiredItems.length,
+        hasOwnPharmacy: true
+      })
     } catch (error) {
       console.error('❌ DoctorInventoryAlertsPage: Failed to load alerts:', error)
       errorMessage = error?.message || 'Failed to load stock alerts.'
+      dispatch('alerts-updated', {
+        total: 0,
+        lowStock: 0,
+        expiringSoon: 0,
+        expired: 0,
+        hasOwnPharmacy: ownPharmacies.length > 0,
+        error: errorMessage
+      })
     } finally {
       loading = false
       refreshing = false
@@ -158,7 +181,7 @@
 
     const nowLabel = formatDate(new Date(), { includeTime: true })
     const doctorLabel = effectiveDoctor?.name || effectiveDoctor?.email || 'Doctor'
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1024,height=768')
+    const printWindow = window.open('', '_blank', 'width=1024,height=768')
     if (!printWindow) return
 
     const expiredSection = expiredItems.length ? `

@@ -9,6 +9,7 @@
   let captureError = ''
   let uploadPending = false
   let uploadComplete = false
+  let closingWindow = false
   let isCodeValid = false
   let isCodeExpired = false
   let captureInputEl
@@ -114,12 +115,21 @@
         imageDataUrl: selectedImageDataUrl
       })
       uploadComplete = true
+      closingWindow = true
+      setTimeout(() => {
+        try {
+          window.close()
+        } catch (_) {
+          // no-op when browser blocks closing
+        }
+      }, 1000)
     } catch (error) {
       console.error('❌ Mobile photo upload failed:', error)
       const message = String(error?.message || '')
       captureError = /too large|maximum allowed size|resource-exhausted/i.test(message)
         ? 'Photo is too large. Retake and upload a closer crop.'
         : 'Failed to upload photo.'
+      closingWindow = false
     } finally {
       uploadPending = false
     }
@@ -130,6 +140,7 @@
     captureError = ''
     uploadComplete = false
     uploadPending = false
+    closingWindow = false
   }
 
   $: isCodeValid = validateAccessCode()
@@ -215,7 +226,7 @@
               </div>
               {#if uploadComplete}
                 <div class="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs px-3 py-2">
-                  Photo uploaded successfully. You can return to desktop.
+                  Photo uploaded successfully. {closingWindow ? 'Closing this window...' : 'You can return to desktop.'}
                 </div>
               {/if}
             </div>

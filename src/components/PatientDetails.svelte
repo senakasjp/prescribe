@@ -1914,6 +1914,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let reportFilePreview = null
   let reportFileDataUrl = null
   let reportError = ''
+  let savingReport = false
+  let savingReportProgress = 0
+  let savingReportProgressLabel = ''
+  let savingReportProgressTimer = null
   let editingReportId = null
   let viewingReport = null
   let cameraVideoEl = null
@@ -2387,6 +2391,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
   // Report functions
   const addReport = async () => {
+    if (savingReport) return
     const editingReport = editingReportId
       ? reports.find((report) => report.id === editingReportId)
       : null
@@ -2416,105 +2421,158 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       return
     }
     
-    let imageDataUrl = reportFileDataUrl
-    if (effectiveReportType === 'image' && !imageDataUrl && reportFiles[0]) {
-      try {
-        imageDataUrl = await readFileAsDataUrl(reportFiles[0])
-      } catch (error) {
-        reportError = 'Failed to read image file.'
-        return
+    savingReport = true
+    savingReportProgress = 8
+    savingReportProgressLabel = reportType === 'camera' ? 'Uploading selected area...' : 'Uploading report...'
+    if (savingReportProgressTimer) {
+      clearInterval(savingReportProgressTimer)
+      savingReportProgressTimer = null
+    }
+    savingReportProgressTimer = setInterval(() => {
+      if (!savingReport) return
+      savingReportProgress = Math.min(94, savingReportProgress + Math.floor(Math.random() * 5) + 1)
+      if (savingReportProgress < 45) {
+        savingReportProgressLabel = reportType === 'camera' ? 'Uploading selected area...' : 'Uploading report...'
+      } else if (savingReportProgress < 75) {
+        savingReportProgressLabel = 'Saving report...'
+      } else {
+        savingReportProgressLabel = 'Finalizing...'
       }
-    }
-    if (effectiveReportType === 'image' && !imageDataUrl && editingReport?.type === 'image') {
-      imageDataUrl = editingReport.dataUrl || null
-    }
-
-    const reportFilesMeta = effectiveReportType !== 'text'
-      ? (
-        reportFiles.length > 0
-          ? reportFiles.map(file => ({ name: file.name, size: file.size, type: file.type }))
-          : (
-            reportType === 'camera' && imageDataUrl
-              ? [
-                { name: 'camera-capture.jpg', size: imageDataUrl.length, type: 'image/jpeg', source: 'camera' },
-                ...(reportSelectedAreaDataUrl
-                  ? [{ name: 'camera-selected-area.png', size: reportSelectedAreaDataUrl.length, type: 'image/png', source: 'camera-selected-area' }]
-                  : [])
-              ]
-              : (editingReport?.files || [])
-          )
-      )
-      : []
-
-    const reportPayload = {
-      title: reportTitle.trim(),
-      type: effectiveReportType,
-      date: reportDate,
-      content: effectiveReportType === 'text' ? reportText : (reportType === 'camera' ? (reportText || null) : null),
-      files: reportFilesMeta,
-      dataUrl: effectiveReportType === 'image' ? imageDataUrl : null,
-      selectedAreaDataUrl: effectiveReportType === 'image' ? (reportSelectedAreaDataUrl || null) : null,
-      patientId: selectedPatient?.id || null,
-      doctorId: doctorId || currentUser?.id || currentUser?.uid || null,
-      analysis: null,
-      analysisPending: false,
-      analysisError: '',
-      analysisUnclear: false
-    }
-
-    if (editingReport) {
-      try {
-        const savedReport = await firebaseStorage.updateReport(editingReport.id, {
-          ...editingReport,
-          ...reportPayload
-        })
-        reports = reports.map((report) => (
-          report.id === editingReport.id
-            ? {
-              ...report,
-              ...savedReport,
-              previewUrl: effectiveReportType === 'image'
-                ? (reportFilePreview || report.previewUrl || report.dataUrl || null)
-                : null
-            }
-            : report
-        ))
-        dispatch('dataUpdated', {
-          type: 'reports',
-          data: { ...savedReport, id: editingReport.id, updated: true }
-        })
-      } catch (error) {
-        reportError = error.message || 'Failed to update report.'
-        return
-      }
-      resetReportForm()
-      return
-    }
-
-    let savedReport = null
+    }, 250)
     try {
-      savedReport = await firebaseStorage.createReport({
-        ...reportPayload,
-        createdAt: new Date().toISOString()
-      })
-    } catch (error) {
-      reportError = error.message || 'Failed to save report.'
-      return
+      let imageDataUrl = reportFileDataUrl
+      if (effectiveReportType === 'image' && !imageDataUrl && reportFiles[0]) {
+        try {
+          imageDataUrl = await readFileAsDataUrl(reportFiles[0])
+        } catch (error) {
+          reportError = 'Failed to read image file.'
+          return
+        }
+      }
+      if (effectiveReportType === 'image' && !imageDataUrl && editingReport?.type === 'image') {
+        imageDataUrl = editingReport.dataUrl || null
+      }
+
+      // Camera reports must persist the selected/cropped area only.
+      if (reportType === 'camera' && effectiveReportType === 'image') {
+        if (!reportSelectedAreaDataUrl && reportFileDataUrl && reportDetectedCorners.length === 4) {
+          reportSelectedAreaDataUrl = await createSelectedAreaDataUrl(reportFileDataUrl, reportDetectedCorners)
+        }
+        if (!reportSelectedAreaDataUrl) {
+          reportError = 'Please select a valid area before saving.'
+          return
+        }
+        imageDataUrl = reportSelectedAreaDataUrl
+      }
+
+      const reportFilesMeta = effectiveReportType !== 'text'
+        ? (
+          reportFiles.length > 0 && reportType !== 'camera'
+            ? reportFiles.map(file => ({ name: file.name, size: file.size, type: file.type }))
+            : (
+              reportType === 'camera' && imageDataUrl
+                ? [{ name: 'camera-selected-area.png', size: imageDataUrl.length, type: 'image/png', source: 'camera-selected-area' }]
+                : (editingReport?.files || [])
+            )
+        )
+        : []
+
+      const reportPayload = {
+        title: reportTitle.trim(),
+        type: effectiveReportType,
+        date: reportDate,
+        content: effectiveReportType === 'text' ? reportText : (reportType === 'camera' ? (reportText || null) : null),
+        files: reportFilesMeta,
+        dataUrl: effectiveReportType === 'image' ? imageDataUrl : null,
+        selectedAreaDataUrl: effectiveReportType === 'image'
+          ? (reportType === 'camera' ? imageDataUrl : (reportSelectedAreaDataUrl || null))
+          : null,
+        patientId: selectedPatient?.id || null,
+        doctorId: doctorId || currentUser?.id || currentUser?.uid || null,
+        analysis: null,
+        analysisPending: false,
+        analysisError: '',
+        analysisUnclear: false
+      }
+
+      if (editingReport) {
+        try {
+          const savedReport = await firebaseStorage.updateReport(editingReport.id, {
+            ...editingReport,
+            ...reportPayload
+          })
+          reports = reports.map((report) => (
+            report.id === editingReport.id
+              ? {
+                ...report,
+                ...savedReport,
+                previewUrl: effectiveReportType === 'image'
+                  ? (
+                    reportType === 'camera'
+                      ? (reportSelectedAreaDataUrl || reportFilePreview || savedReport?.selectedAreaDataUrl || savedReport?.dataUrl || null)
+                      : (reportFilePreview || report.previewUrl || report.dataUrl || null)
+                  )
+                  : null
+              }
+              : report
+          ))
+          dispatch('dataUpdated', {
+            type: 'reports',
+            data: { ...savedReport, id: editingReport.id, updated: true }
+          })
+          savingReportProgress = 100
+          savingReportProgressLabel = 'Completed.'
+          notifySuccess('Report updated successfully!')
+        } catch (error) {
+          reportError = error.message || 'Failed to update report.'
+          return
+        }
+        resetReportForm()
+        return
+      }
+
+      let savedReport = null
+      try {
+        savedReport = await firebaseStorage.createReport({
+          ...reportPayload,
+          createdAt: new Date().toISOString()
+        })
+      } catch (error) {
+        reportError = error.message || 'Failed to save report.'
+        return
+      }
+      const newReport = {
+        ...savedReport,
+        previewUrl: effectiveReportType === 'image'
+          ? (
+            reportType === 'camera'
+              ? (reportSelectedAreaDataUrl || savedReport?.selectedAreaDataUrl || reportFilePreview || null)
+              : reportFilePreview
+          )
+          : null
+      }
+
+      reports = [...reports, newReport]
+
+      if (newReport.type === 'image') {
+        await analyzeReport(newReport)
+      }
+
+      dispatch('dataUpdated', { type: 'reports', data: newReport })
+      savingReportProgress = 100
+      savingReportProgressLabel = 'Completed.'
+      notifySuccess('Report saved successfully!')
+
+      resetReportForm()
+    } finally {
+      if (savingReportProgressTimer) {
+        clearInterval(savingReportProgressTimer)
+        savingReportProgressTimer = null
+      }
+      savingReport = false
+      savingReportProgress = 0
+      savingReportProgressLabel = ''
     }
-    const newReport = {
-      ...savedReport,
-      previewUrl: effectiveReportType === 'image' ? reportFilePreview : null
-    }
-
-    reports = [...reports, newReport]
-
-    if (newReport.type === 'image') {
-      await analyzeReport(newReport)
-    }
-
-    dispatch('dataUpdated', { type: 'reports', data: newReport })
-
-    resetReportForm()
   }
 
   const setReportFilePreview = (nextUrl) => {
@@ -2522,6 +2580,15 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       URL.revokeObjectURL(reportFilePreview)
     }
     reportFilePreview = nextUrl
+  }
+
+  const normalizeDataUrl = (value) => String(value || '').trim()
+
+  const shouldShowSelectedAreaPreview = (report) => {
+    const selected = normalizeDataUrl(report?.selectedAreaDataUrl)
+    if (!selected) return false
+    const primary = normalizeDataUrl(report?.previewUrl || report?.dataUrl)
+    return !primary || selected !== primary
   }
 
   const resetReportForm = () => {
@@ -4552,6 +4619,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       clearInterval(cameraOcrProgressTimer)
       cameraOcrProgressTimer = null
     }
+    if (savingReportProgressTimer) {
+      clearInterval(savingReportProgressTimer)
+      savingReportProgressTimer = null
+    }
     stopMobileWaitingProgress(true)
     if (mobileCaptureSessionUnsubscribe) {
       mobileCaptureSessionUnsubscribe()
@@ -6393,16 +6464,37 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             <button 
                     class="action-button action-button-primary" 
                     on:click={addReport}
+                    disabled={savingReport}
                   >
-                    <i class="fas fa-save mr-1"></i>{editingReportId ? 'Update Report' : 'Save Report'}
+                    {#if savingReport}
+                      <i class="fas fa-spinner fa-spin mr-1"></i>Saving...
+                    {:else}
+                      <i class="fas fa-save mr-1"></i>{editingReportId ? 'Update Report' : 'Save Report'}
+                    {/if}
                   </button>
                   <button 
                     class="action-button action-button-secondary" 
                     on:click={resetReportForm}
+                    disabled={savingReport}
                   >
                     <i class="fas fa-times mr-1"></i>Cancel
             </button>
                 </div>
+                {#if savingReport}
+                  <div class="mt-2 space-y-1">
+                    <div class="flex items-center justify-between text-xs text-teal-700">
+                      <span>{savingReportProgressLabel || 'Uploading report...'}</span>
+                      <span>{savingReportProgress}%</span>
+                    </div>
+                    <div class="w-full h-2 bg-teal-100 rounded-full overflow-hidden">
+                      <div
+                        class="h-full bg-teal-600 transition-all duration-200 ease-out"
+                        style={`width: ${savingReportProgress}%`}
+                        aria-label="Report save progress bar"
+                      ></div>
+                    </div>
+                  </div>
+                {/if}
                   </div>
                 </div>
               </div>
@@ -6458,11 +6550,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       <div class="report-content">
                       <p class="text-sm text-gray-700 mb-0">{report.content}</p>
                       </div>
-                    {:else if report.type === 'image' && (report.previewUrl || report.dataUrl)}
+                    {:else if report.type === 'image' && (report.previewUrl || report.dataUrl || report.selectedAreaDataUrl)}
                       <div class="rounded-lg border border-gray-200 overflow-hidden">
-                        <img src={report.previewUrl || report.dataUrl} alt="Report image" class="w-full h-auto" />
+                        <img src={report.previewUrl || report.dataUrl || report.selectedAreaDataUrl} alt="Report image" class="w-full h-auto" />
                       </div>
-                      {#if report.selectedAreaDataUrl}
+                      {#if shouldShowSelectedAreaPreview(report)}
                         <div class="mt-2 rounded-lg border border-teal-200 overflow-hidden">
                           <p class="text-xs font-medium text-teal-700 px-2 py-1 bg-teal-50 border-b border-teal-100">Selected Area</p>
                           <img src={report.selectedAreaDataUrl} alt="Selected area image" class="w-full h-auto" />
@@ -6589,13 +6681,13 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                   </p>
                   {#if viewingReport.type === 'text'}
                     <p class="text-sm text-gray-700 whitespace-pre-wrap">{viewingReport.content || 'No report details available.'}</p>
-                  {:else if viewingReport.type === 'image' && (viewingReport.previewUrl || viewingReport.dataUrl)}
+                  {:else if viewingReport.type === 'image' && (viewingReport.previewUrl || viewingReport.dataUrl || viewingReport.selectedAreaDataUrl)}
                     <img
-                      src={viewingReport.previewUrl || viewingReport.dataUrl}
+                      src={viewingReport.previewUrl || viewingReport.dataUrl || viewingReport.selectedAreaDataUrl}
                       alt="Report image preview"
                       class="w-full h-auto rounded border border-gray-200"
                     />
-                    {#if viewingReport.selectedAreaDataUrl}
+                    {#if shouldShowSelectedAreaPreview(viewingReport)}
                       <div class="mt-3">
                         <p class="text-xs font-medium text-teal-700 mb-1">Selected Area</p>
                         <img

@@ -187,12 +187,69 @@
     }
   }
   
+  const parseDateToTimestamp = (value) => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return null
+    const parsed = new Date(raw)
+    const time = parsed.getTime()
+    return Number.isFinite(time) ? time : null
+  }
+
+  const buildAlertsFromItems = (items = []) => {
+    const now = Date.now()
+    const dayMs = 24 * 60 * 60 * 1000
+    const expiringSoonDays = 60
+    const results = []
+
+    items.forEach((item) => {
+      const name = item.brandName || item.drugName || 'Unnamed item'
+      const currentStock = Number(item.currentStock ?? 0)
+      const minimumStock = Number(item.minimumStock ?? 0)
+      const expiryTs = parseDateToTimestamp(item.expiryDate)
+      const daysToExpiry = expiryTs !== null ? Math.ceil((expiryTs - now) / dayMs) : null
+
+      if (Number.isFinite(currentStock) && Number.isFinite(minimumStock) && currentStock <= minimumStock) {
+        results.push({
+          id: `low-${item.id || name}`,
+          type: 'low_stock',
+          message: `${name} is below minimum stock (${currentStock}/${minimumStock})`,
+          createdAt: new Date().toISOString(),
+          itemId: item.id || null,
+          itemName: name
+        })
+      }
+
+      if (daysToExpiry !== null && daysToExpiry <= expiringSoonDays) {
+        const expiryStatusText = daysToExpiry < 0
+          ? `${name} has expired`
+          : `${name} expires in ${daysToExpiry} day${daysToExpiry === 1 ? '' : 's'}`
+        results.push({
+          id: `exp-${item.id || name}`,
+          type: daysToExpiry < 0 ? 'expired' : 'expiring_soon',
+          message: expiryStatusText,
+          createdAt: item.expiryDate || new Date().toISOString(),
+          itemId: item.id || null,
+          itemName: name
+        })
+      }
+    })
+
+    return results.sort((a, b) => {
+      const priority = { expired: 0, expiring_soon: 1, low_stock: 2 }
+      return (priority[a.type] ?? 99) - (priority[b.type] ?? 99)
+    })
+  }
+
   // Load alerts
   const loadAlerts = async () => {
     try {
       if (!pharmacyId) return
-      // This would be implemented in the inventory service
-      alerts = []
+      const items = await inventoryService.getInventoryItems(pharmacyId, {
+        sortBy,
+        sortOrder,
+        legacyId: resolvedPharmacistNumber || undefined
+      })
+      alerts = buildAlertsFromItems(items)
     } catch (error) {
       console.error('Error loading alerts:', error)
       alerts = []
@@ -244,7 +301,7 @@
     { key: 'genericName', id: 'newItemGenericName', label: 'Generic Name' },
     { key: 'strength', id: 'newItemStrength', label: 'Strength' },
     { key: 'strengthUnit', id: 'newItemStrengthUnit', label: 'Strength Unit' },
-    { key: 'dosageForm', id: 'newItemDosageForm', label: 'Dosage Form' },
+    { key: 'dosageForm', id: 'newItemDosageForm', label: 'Dispense Form' },
     { key: 'initialStock', id: 'newItemInitialStock', label: 'Initial Stock' },
     { key: 'minimumStock', id: 'newItemMinimumStock', label: 'Minimum Stock' },
     { key: 'sellingPrice', id: 'newItemSellingPrice', label: 'Selling Price' },
@@ -419,6 +476,102 @@
   // Format date
   const formatDate = (dateString) =>
     dateString ? formatDateByLocale(dateString, { country: pharmacist?.country }) : 'N/A'
+
+  const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
+  const printInventoryAlertsReport = () => {
+    if (typeof window === 'undefined') return
+
+    const lowStockAlerts = alerts.filter((alert) => alert.type === 'low_stock')
+    const expiringAlerts = alerts.filter((alert) => alert.type === 'expiring_soon' || alert.type === 'expired')
+
+    if (lowStockAlerts.length === 0 && expiringAlerts.length === 0) {
+      notifyError('No low stock or expiring alerts to print')
+      return
+    }
+
+    const generatedAt = formatDateByLocale(new Date(), { includeTime: true, country: pharmacist?.country })
+    const pharmacyLabel = pharmacist?.name || pharmacist?.email || pharmacist?.id || 'Pharmacy'
+    const printWindow = window.open('', '_blank', 'width=1024,height=768')
+    if (!printWindow) {
+      notifyError('Unable to open print preview. Please allow popups for this site.')
+      return
+    }
+
+    const createRows = (rows) => {
+      if (rows.length === 0) {
+        return '<tr><td colspan="2">No items found.</td></tr>'
+      }
+      return rows.map((alert) => `
+        <tr>
+          <td>${escapeHtml(alert.message)}</td>
+          <td>${escapeHtml(formatDate(alert.createdAt))}</td>
+        </tr>
+      `).join('')
+    }
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Inventory Alerts Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 8px; font-size: 22px; }
+            h2 { margin: 24px 0 10px; font-size: 16px; }
+            p.meta { margin: 2px 0; font-size: 12px; color: #374151; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; text-align: left; }
+            th { background: #f3f4f6; }
+            @media print { body { margin: 14mm; } }
+          </style>
+        </head>
+        <body>
+          <h1>Inventory Alerts Report</h1>
+          <p class="meta">Pharmacy: ${escapeHtml(pharmacyLabel)}</p>
+          <p class="meta">Generated: ${escapeHtml(generatedAt)}</p>
+
+          <h2>Low Stock Items</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Alert</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${createRows(lowStockAlerts)}
+            </tbody>
+          </table>
+
+          <h2>Expiring & Expired Items</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Alert</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${createRows(expiringAlerts)}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `
+
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+  }
   
   // Handle confirmation
   const handleConfirmation = () => {
@@ -448,11 +601,15 @@
         return
       }
 
+      if (!String(selectedItem.dosageForm || '').trim()) {
+        notifyError('Dispense Form is required')
+        await focusFieldById('editItemDosageForm')
+        return
+      }
+
       const editIntegerValidationRules = [
-        { key: 'currentStock', id: 'editItemCurrentStock', label: 'Current Stock', required: true },
-        { key: 'minimumStock', id: 'editItemMinimumStock', label: 'Minimum Stock', required: true },
-        { key: 'maximumStock', id: 'editItemMaximumStock', label: 'Maximum Stock', required: false },
-        { key: 'packSize', id: 'editItemPackSize', label: 'Pack Size', required: false }
+        { key: 'currentStock', id: 'editItemInitialStock', label: 'Initial Stock', required: true },
+        { key: 'minimumStock', id: 'editItemMinimumStock', label: 'Minimum Stock', required: true }
       ]
       for (const rule of editIntegerValidationRules) {
         const raw = String(selectedItem[rule.key] ?? '').trim()
@@ -469,6 +626,7 @@
         ...selectedItem,
         // Map currentStock to initialStock for validation
         initialStock: selectedItem.currentStock,
+        category: selectedItem.category || 'prescription',
         // Ensure brandName is present (it should be readonly in the form)
         brandName: selectedItem.brandName || selectedItem.drugName
       }
@@ -552,6 +710,20 @@
     } finally {
       testDataLoading = false
     }
+  }
+
+  const handleAlertViewDetails = async (alert) => {
+    activeTab = 'items'
+    categoryFilter = 'all'
+    statusFilter = 'all'
+    currentPage = 1
+
+    const matchedItem = inventoryItems.find((item) => item.id === alert?.itemId)
+    const queryText = matchedItem
+      ? (matchedItem.brandName || matchedItem.drugName || '')
+      : (alert?.itemName || '')
+    searchQuery = queryText
+    await tick()
   }
 </script>
 
@@ -1051,7 +1223,17 @@
     {:else if activeTab === 'alerts'}
       <!-- Alerts Tab -->
       <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 class="text-lg font-semibold text-gray-900 mb-4">Inventory Alerts</h3>
+        <div class="flex items-center justify-between gap-3 mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">Inventory Alerts</h3>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg hover:bg-cyan-100 focus:ring-2 focus:ring-cyan-200"
+            on:click={printInventoryAlertsReport}
+          >
+            <i class="fas fa-print mr-2"></i>
+            Print Low Stock & Expiring
+          </button>
+        </div>
         {#if alerts.length > 0}
           <div class="space-y-3">
             {#each alerts as alert}
@@ -1061,7 +1243,10 @@
                   <p class="font-medium text-gray-900">{alert.message}</p>
                   <p class="text-sm text-gray-500">{formatDate(alert.createdAt)}</p>
                 </div>
-                <button class="text-blue-600 hover:text-blue-900 text-sm font-medium">
+                <button
+                  class="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                  on:click={() => handleAlertViewDetails(alert)}
+                >
                   View Details
                 </button>
               </div>
@@ -1165,6 +1350,22 @@
             <!-- Pharmaceutical Details -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
+                <label for="newItemDosageForm" class="block text-sm font-medium text-gray-700 mb-2">
+                  Dispense Form <span class="text-red-600">(Important)</span>
+                </label>
+                <select 
+                  id="newItemDosageForm"
+                  bind:value={newItemForm.dosageForm}
+                  required
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {#each DOSAGE_FORM_OPTIONS as option}
+                    <option value={option}>{option}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div>
                 <label for="newItemStrength" class="block text-sm font-medium text-gray-700 mb-2">Strength <span class="text-red-500">*</span></label>
                 <input 
                   id="newItemStrength"
@@ -1188,20 +1389,6 @@
                 >
                   {#each STRENGTH_UNITS as unit}
                     <option value={unit}>{unit}</option>
-                  {/each}
-                </select>
-              </div>
-              
-              <div>
-                <label for="newItemDosageForm" class="block text-sm font-medium text-gray-700 mb-2">Dosage Form</label>
-                <select 
-                  id="newItemDosageForm"
-                  bind:value={newItemForm.dosageForm}
-                  required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {#each DOSAGE_FORM_OPTIONS as option}
-                    <option value={option}>{option}</option>
                   {/each}
                 </select>
               </div>
@@ -1251,7 +1438,9 @@
               </div>
               
               <div>
-                <label for="newItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-2">Selling Price <span class="text-red-500">*</span></label>
+                <label for="newItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-2">
+                  Selling Price for <span class="text-red-600">{newItemForm.dosageForm || 'Dispense Form'}</span> <span class="text-red-500">*</span>
+                </label>
                 <input 
                   id="newItemSellingPrice"
                   type="number" 
@@ -1278,7 +1467,6 @@
                   bind:value={newItemForm.expiryDate}
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed after creation</p>
               </div>
               
               <div>
@@ -1376,282 +1564,232 @@
           </button>
         </div>
         
-        <form on:submit|preventDefault={handleEditItem}>
+        <form on:submit|preventDefault={handleEditItem} class="space-y-6">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Drug Information -->
-            <div class="space-y-4">
-              <h4 class="text-md font-medium text-gray-900 border-b pb-2">Drug Information</h4>
-              
-              <div>
-                <label for="editItemBrandName" class="block text-sm font-medium text-gray-700 mb-1">Brand Name <span class="text-red-500">*</span></label>
-                <input 
-                  id="editItemBrandName"
-                  type="text"
-                  value={selectedItem?.brandName || selectedItem?.drugName || ''}
-                  required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                  disabled
-                  readonly
-                  title="Brand Name cannot be changed (Primary Key)"
-                />
-                <p class="text-xs text-gray-500 mt-1">Brand Name is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
-              </div>
-              
-              <div>
-                <label for="editItemGenericName" class="block text-sm font-medium text-gray-700 mb-1">Generic Name <span class="text-red-500">*</span></label>
-                <input 
-                  id="editItemGenericName"
-                  type="text"
-                  bind:value={selectedItem.genericName}
-                  required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label for="editItemManufacturer" class="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
-                <input 
-                  id="editItemManufacturer"
-                  type="text"
-                  bind:value={selectedItem.manufacturer}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label for="editItemStrength" class="block text-sm font-medium text-gray-700 mb-1">Strength <span class="text-red-500">*</span></label>
-                  <input 
-                    id="editItemStrength"
-                    type="number"
-                    bind:value={selectedItem.strength}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                    disabled
-                    title="Strength cannot be changed (Primary Key)"
-                    min="0"
-                    step="0.01"
-                    inputmode="decimal"
-                  />
-                  <p class="text-xs text-gray-500 mt-1">Strength is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
-                </div>
-                <div>
-                <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-1">Strength Unit <span class="text-red-500">*</span></label>
-                  <select 
-                    id="editItemStrengthUnit"
-                    bind:value={selectedItem.strengthUnit}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                    disabled
-                    title="Strength Unit cannot be changed (Primary Key)"
-                  >
-                    {#each STRENGTH_UNITS as unit}
-                      <option value={unit}>{unit}</option>
-                    {/each}
-                  </select>
-                  <p class="text-xs text-gray-500 mt-1">Strength Unit is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
-                </div>
-              </div>
-              
-              <div>
-                <label for="editItemDosageForm" class="block text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
-                  <select 
-                    id="editItemDosageForm"
-                    bind:value={selectedItem.dosageForm}
-                    required
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {#each DOSAGE_FORM_OPTIONS as option}
-                      <option value={option}>{option}</option>
-                    {/each}
-                  </select>
-                </div>
+            <div>
+              <label for="editItemBrandName" class="block text-sm font-medium text-gray-700 mb-2">Brand Name <span class="text-red-500">*</span></label>
+              <input
+                id="editItemBrandName"
+                type="text"
+                value={selectedItem?.brandName || selectedItem?.drugName || ''}
+                required
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                disabled
+                readonly
+                title="Brand Name cannot be changed"
+              />
             </div>
-            
-            <!-- Stock & Pricing -->
-            <div class="space-y-4">
-              <h4 class="text-md font-medium text-gray-900 border-b pb-2">Stock & Pricing</h4>
-              
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label for="editItemPackSize" class="block text-sm font-medium text-gray-700 mb-1">Pack Size</label>
-                  <input 
-                    id="editItemPackSize"
-                    type="number"
-                    bind:value={selectedItem.packSize}
-                    min="0"
-                    step="1"
-                    inputmode="numeric"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label for="editItemPackUnit" class="block text-sm font-medium text-gray-700 mb-1">Pack Unit</label>
-                  <select 
-                    id="editItemPackUnit"
-                    bind:value={selectedItem.packUnit}
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="tablets">tablets</option>
-                    <option value="capsules">capsules</option>
-                    <option value="ml">ml</option>
-                    <option value="box">box</option>
-                    <option value="vial">vial</option>
-                    <option value="tube">tube</option>
-                    <option value="bottle">bottle</option>
-                    <option value="suppository">suppository</option>
-                    <option value="packet">packet</option>
-                    <option value="roll">roll</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div>
-                <label for="editItemCurrentStock" class="block text-sm font-medium text-gray-700 mb-1">Current Stock</label>
-                <input 
-                  id="editItemCurrentStock"
-                  type="number"
-                  bind:value={selectedItem.currentStock}
-                  min="0"
-                  step="1"
-                  inputmode="numeric"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label for="editItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-1">Minimum Stock <span class="text-red-500">*</span></label>
-                <input 
-                  id="editItemMinimumStock"
-                  type="number"
-                  bind:value={selectedItem.minimumStock}
-                  required
-                  min="0"
-                  step="1"
-                  inputmode="numeric"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                </div>
-                <div>
-                  <label for="editItemMaximumStock" class="block text-sm font-medium text-gray-700 mb-1">Maximum Stock</label>
-                <input 
-                  id="editItemMaximumStock"
-                  type="number"
-                  bind:value={selectedItem.maximumStock}
-                  min="0"
-                  step="1"
-                  inputmode="numeric"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                </div>
-              </div>
-              
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label for="editItemCostPrice" class="block text-sm font-medium text-gray-700 mb-1">Cost Price</label>
-                <input 
-                  id="editItemCostPrice"
-                  type="number"
-                  bind:value={selectedItem.costPrice}
-                  min="0"
-                  step="0.01"
-                  inputmode="decimal"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                </div>
-                <div>
-                  <label for="editItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-1">Selling Price <span class="text-red-500">*</span></label>
-                <input 
-                  id="editItemSellingPrice"
-                  type="number"
-                  bind:value={selectedItem.sellingPrice}
-                  min="0"
-                  step="0.01"
-                  inputmode="decimal"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled
-                  readonly
-                  title="Selling Price cannot be changed (Primary Key)"
-                />
-                  <p class="text-xs text-gray-500 mt-1">Selling Price is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
-                </div>
-              </div>
-              
-              <div>
-                <label for="editItemStorageLocation" class="block text-sm font-medium text-gray-700 mb-1">Storage Location</label>
-                <input 
-                  id="editItemStorageLocation"
-                  type="text"
-                  bind:value={selectedItem.storageLocation}
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label for="editItemStorageConditions" class="block text-sm font-medium text-gray-700 mb-1">Storage Conditions <span class="text-red-500">*</span></label>
-                <select 
-                  id="editItemStorageConditions"
-                  bind:value={selectedItem.storageConditions}
-                  required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select storage condition</option>
-                  <option value="room temperature">Room Temperature</option>
-                  <option value="refrigerated">Refrigerated (2-8°C)</option>
-                  <option value="frozen">Frozen (-20°C)</option>
-                  <option value="controlled">Controlled Temperature</option>
-                </select>
-              </div>
-              
-              <div>
-                <label for="editItemExpiryDate" class="block text-sm font-medium text-gray-700 mb-1">Expiry Date <span class="text-red-500">*</span></label>
-                <DateInput
-                  id="editItemExpiryDate"
-                  name="editItemExpiryDate"
-                  type="date"
-                  lang="en-GB"
-                  placeholder="dd/mm/yyyy"
-                  bind:value={selectedItem.expiryDate}
-                  required
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                  disabled
-                  readonly
-                  title="Expiry Date cannot be changed (Primary Key)" />
-                <p class="text-xs text-gray-500 mt-1">Expiry Date is part of the primary key (Brand + Strength + Unit + Expiry + Selling Price) and cannot be changed</p>
-              </div>
-              
-              <div>
-                <label for="inventoryBatchNumber" class="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
-                <input 
-                  type="text"
-                  id="inventoryBatchNumber"
-                  bind:value={selectedItem.batchNumber}
-                  placeholder="e.g., BATCH001"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label for="inventoryDescription" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea 
-                  id="inventoryDescription"
-                  bind:value={selectedItem.description}
-                  rows="3"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter any additional notes or description"
-                ></textarea>
-              </div>
-              
-              <div>
-                <label for="inventoryNotes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea 
-                  id="inventoryNotes"
-                  bind:value={selectedItem.notes}
-                  rows="2"
-                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Internal notes"
-                ></textarea>
-              </div>
+
+            <div>
+              <label for="editItemGenericName" class="block text-sm font-medium text-gray-700 mb-2">Generic Name <span class="text-red-500">*</span></label>
+              <input
+                id="editItemGenericName"
+                type="text"
+                bind:value={selectedItem.genericName}
+                required
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
+
+            <div>
+              <label for="editItemManufacturer" class="block text-sm font-medium text-gray-700 mb-2">Manufacturer</label>
+              <input
+                id="editItemManufacturer"
+                type="text"
+                bind:value={selectedItem.manufacturer}
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label for="editItemCategory" class="block text-sm font-medium text-gray-700 mb-2">Category</label>
+              <select
+                id="editItemCategory"
+                bind:value={selectedItem.category}
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="prescription">Prescription</option>
+                <option value="otc">Over-the-Counter</option>
+                <option value="controlled">Controlled Substance</option>
+                <option value="medical">Medical Device</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label for="editItemDosageForm" class="block text-sm font-medium text-gray-700 mb-2">
+                Dispense Form <span class="text-red-600">(Important)</span>
+              </label>
+              <select
+                id="editItemDosageForm"
+                bind:value={selectedItem.dosageForm}
+                required
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {#each DOSAGE_FORM_OPTIONS as option}
+                  <option value={option}>{option}</option>
+                {/each}
+              </select>
+            </div>
+
+            <div>
+              <label for="editItemStrength" class="block text-sm font-medium text-gray-700 mb-2">Strength <span class="text-red-500">*</span></label>
+              <input
+                id="editItemStrength"
+                type="number"
+                bind:value={selectedItem.strength}
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                disabled
+                title="Strength cannot be changed"
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+              />
+            </div>
+
+            <div>
+              <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-2">Strength Unit <span class="text-red-500">*</span></label>
+              <select
+                id="editItemStrengthUnit"
+                bind:value={selectedItem.strengthUnit}
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                disabled
+                title="Strength Unit cannot be changed"
+              >
+                {#each STRENGTH_UNITS as unit}
+                  <option value={unit}>{unit}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div>
+              <label for="editItemInitialStock" class="block text-sm font-medium text-gray-700 mb-2">Initial Stock <span class="text-red-500">*</span></label>
+              <input
+                id="editItemInitialStock"
+                type="number"
+                bind:value={selectedItem.currentStock}
+                required
+                min="0"
+                step="1"
+                inputmode="numeric"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label for="editItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock <span class="text-red-500">*</span></label>
+              <input
+                id="editItemMinimumStock"
+                type="number"
+                bind:value={selectedItem.minimumStock}
+                required
+                min="0"
+                step="1"
+                inputmode="numeric"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label for="editItemCostPrice" class="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
+              <input
+                id="editItemCostPrice"
+                type="number"
+                bind:value={selectedItem.costPrice}
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label for="editItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-2">
+                Selling Price for <span class="text-red-600">{selectedItem?.dosageForm || 'Dispense Form'}</span> <span class="text-red-500">*</span>
+              </label>
+              <input
+                id="editItemSellingPrice"
+                type="number"
+                bind:value={selectedItem.sellingPrice}
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled
+                readonly
+                title="Selling Price cannot be changed"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label for="editItemExpiryDate" class="block text-sm font-medium text-gray-700 mb-2">Expiry Date <span class="text-red-500">*</span></label>
+              <DateInput
+                id="editItemExpiryDate"
+                name="editItemExpiryDate"
+                type="date"
+                lang="en-GB"
+                placeholder="dd/mm/yyyy"
+                bind:value={selectedItem.expiryDate}
+                required
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                disabled
+                readonly
+                title="Expiry Date cannot be changed" />
+            </div>
+
+            <div>
+              <label for="editItemBatchNumber" class="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
+              <input
+                id="editItemBatchNumber"
+                type="text"
+                bind:value={selectedItem.batchNumber}
+                placeholder="e.g., BATCH001"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label for="editItemStorageLocation" class="block text-sm font-medium text-gray-700 mb-2">Storage Location</label>
+              <input
+                id="editItemStorageLocation"
+                type="text"
+                bind:value={selectedItem.storageLocation}
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label for="editItemStorageConditions" class="block text-sm font-medium text-gray-700 mb-2">Storage Conditions <span class="text-red-500">*</span></label>
+              <select
+                id="editItemStorageConditions"
+                bind:value={selectedItem.storageConditions}
+                required
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select storage condition</option>
+                <option value="room temperature">Room Temperature</option>
+                <option value="refrigerated">Refrigerated (2-8°C)</option>
+                <option value="frozen">Frozen (-20°C)</option>
+                <option value="controlled room">Controlled Room Temperature</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label for="editItemDescription" class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <textarea
+              id="editItemDescription"
+              bind:value={selectedItem.description}
+              rows="3"
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            ></textarea>
           </div>
           
           <div class="action-buttons mt-6">

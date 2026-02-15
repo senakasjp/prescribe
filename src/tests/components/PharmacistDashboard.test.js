@@ -1,7 +1,7 @@
 /**
  * Component tests for PharmacistDashboard
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, waitFor } from '@testing-library/svelte'
 import PharmacistDashboard from '../../components/PharmacistDashboard.svelte'
 import fs from 'node:fs'
@@ -62,17 +62,55 @@ vi.mock('jsbarcode', () => ({
   default: vi.fn()
 }))
 
+const chargeCalculationServiceMock = vi.hoisted(() => ({
+  calculatePrescriptionCharge: vi.fn(() => Promise.resolve({
+    doctorCharges: {
+      consultationCharge: 0,
+      excludeConsultationCharge: false,
+      baseConsultationCharge: 0,
+      hospitalCharge: 0,
+      procedureCharges: {
+        breakdown: []
+      },
+      discountPercentage: 0,
+      discountScope: 'consultation_only',
+      discountAmount: 0
+    },
+    drugCharges: {
+      medicationBreakdown: [],
+      totalCost: 0
+    },
+    totalBeforeRounding: 0,
+    roundingAdjustment: 0,
+    roundingPreference: 'none',
+    totalCharge: 0
+  }))
+}))
+
 vi.mock('../../services/pharmacist/chargeCalculationService.js', () => ({
-  default: {
-    calculatePrescriptionCharge: vi.fn(() => Promise.resolve({
+  default: chargeCalculationServiceMock
+}))
+
+const inventoryServiceMock = vi.hoisted(() => ({
+  getInventoryItems: vi.fn(() => Promise.resolve([])),
+  findMatchingDrugs: vi.fn(() => []),
+  migrateDrugStockToInventory: vi.fn(() => Promise.resolve({ migrated: 0 }))
+}))
+
+vi.mock('../../services/pharmacist/inventoryService.js', () => ({
+  default: inventoryServiceMock
+}))
+
+describe('PharmacistDashboard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    chargeCalculationServiceMock.calculatePrescriptionCharge.mockResolvedValue({
       doctorCharges: {
         consultationCharge: 0,
         excludeConsultationCharge: false,
         baseConsultationCharge: 0,
         hospitalCharge: 0,
-        procedureCharges: {
-          breakdown: []
-        },
+        procedureCharges: { breakdown: [] },
         discountPercentage: 0,
         discountScope: 'consultation_only',
         discountAmount: 0
@@ -85,18 +123,11 @@ vi.mock('../../services/pharmacist/chargeCalculationService.js', () => ({
       roundingAdjustment: 0,
       roundingPreference: 'none',
       totalCharge: 0
-    }))
-  }
-}))
+    })
+    inventoryServiceMock.getInventoryItems.mockResolvedValue([])
+    firebaseStorageMock.getPharmacistPrescriptions.mockResolvedValue([])
+  })
 
-vi.mock('../../services/pharmacist/inventoryService.js', () => ({
-  default: {
-    getInventoryItems: vi.fn(() => Promise.resolve([])),
-    findMatchingDrugs: vi.fn(() => [])
-  }
-}))
-
-describe('PharmacistDashboard', () => {
   it('renders header and actions', async () => {
     const { getByText } = render(PharmacistDashboard, {
       props: {
@@ -154,4 +185,5 @@ describe('PharmacistDashboard', () => {
     expect(source).toContain("<strong>Age:</strong> {selectedPrescription.patientAge || selectedPrescription.age || 'Not specified'}")
     expect(source).toContain("<strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}")
   })
+
 })
