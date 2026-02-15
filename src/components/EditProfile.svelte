@@ -490,7 +490,7 @@
 </script>
 
 <!-- Edit Profile Modal -->
-<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" tabindex="-1">
+<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 sm:text-sm" tabindex="-1">
   <div class="w-full max-w-4xl">
     <div class="bg-white rounded-lg shadow-lg">
       <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
@@ -752,15 +752,15 @@
           {#if activeTab === 'prescription-template'}
           <div class="p-6 bg-white" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
             <div class="mb-4">
-              <h6 class="fw-bold mb-3">
+              <h6 class="font-bold mb-3">
                 <i class="fas fa-file-medical mr-2"></i>
                 Prescription Template Settings
               </h6>
-              <p class="text-gray-600 dark:text-gray-300 small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
+              <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
             </div>
             
             <!-- Template Type Selection -->
-            <div class="row mb-4">
+            <div class="grid grid-cols-1 gap-4 mb-4">
               <div class="col-span-full">
                 <p class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</p>
                 
@@ -905,12 +905,12 @@
                         <p class="block text-sm font-medium text-gray-700 mb-2">System Header Preview:</p>
                         <div class="border rounded p-3 bg-gray-50">
                           <div class="text-center">
-                            <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>
-                            <p class="mb-1 fw-semibold">{templatePreview.practiceName}</p>
-                            <p class="mb-1 small">{templatePreview.address}</p>
-                            <p class="mb-1 small">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
+                            <h5 class="font-bold mb-1">{templatePreview.doctorName}</h5>
+                            <p class="mb-1 font-semibold">{templatePreview.practiceName}</p>
+                            <p class="mb-1 text-sm">{templatePreview.address}</p>
+                            <p class="mb-1 text-sm">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
                             <hr class="my-2">
-                            <p class="mb-0 fw-bold">PRESCRIPTION</p>
+                            <p class="mb-0 font-bold">PRESCRIPTION</p>
                           </div>
                         </div>
                       </div>
@@ -956,11 +956,11 @@
           {#if activeTab === 'backup-restore'}
           <div class="p-6 bg-white" id="backup-restore" role="tabpanel" aria-labelledby="backup-restore-tab">
             <div class="mb-4">
-              <h6 class="fw-bold mb-2">
+              <h6 class="font-bold mb-2">
                 <i class="fas fa-database mr-2"></i>
                 Backup & Restore
               </h6>
-              <p class="text-gray-600 dark:text-gray-300 small">
+              <p class="text-gray-600 dark:text-gray-300 text-sm">
                 Download a backup of your patients and prescriptions, then restore it if data is deleted.
               </p>
             </div>
@@ -1039,7 +1039,7 @@
             disabled={loading}
           >
           {#if loading}
-            <ThreeDots size="small" color="white" />
+            <ThreeDots size="text-sm" color="white" />
           {/if}
           <i class="fas fa-save mr-1 fa-sm"></i>
           Save Changes

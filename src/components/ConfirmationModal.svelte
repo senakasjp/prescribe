@@ -59,7 +59,7 @@
     id="confirmationModal" 
     tabindex="-1" 
     aria-hidden="true" 
-    class="fixed inset-0 z-[9999] w-full p-4 overflow-x-hidden overflow-y-auto bg-gray-900 bg-opacity-50"
+    class="fixed inset-0 z-[9999] w-full p-4 overflow-x-hidden overflow-y-auto bg-gray-900 bg-opacity-50 sm:text-sm"
     on:keydown={(e) => { if (e.key === 'Escape') handleClose() }}
     role="dialog"
     aria-modal="true"

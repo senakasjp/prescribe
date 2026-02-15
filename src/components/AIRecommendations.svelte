@@ -128,13 +128,13 @@
     // First, convert markdown-style formatting to HTML
     let formattedText = text
       // Convert headers with emojis and proper styling
-      .replace(/\*\*([📋🔍⚠️🎯📈🚨📝][^:]+):\*\*/g, '<h6 class="text-blue-600 mb-2 mt-3 fw-bold">$1:</h6>')
+      .replace(/\*\*([📋🔍⚠️🎯📈🚨📝][^:]+):\*\*/g, '<h6 class="text-blue-600 mb-2 mt-3 font-bold">$1:</h6>')
       // Convert other bold headers
-      .replace(/\*\*([^:]+):\*\*/g, '<h6 class="text-gray-600 mb-2 mt-3 fw-bold">$1:</h6>')
+      .replace(/\*\*([^:]+):\*\*/g, '<h6 class="text-gray-600 mb-2 mt-3 font-bold">$1:</h6>')
       // Convert bold text
-      .replace(/\*\*([^*]+)\*\*/g, '<strong class="fw-semibold">$1</strong>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold">$1</strong>')
       // Convert italic text
-      .replace(/\*([^*]+)\*/g, '<em class="fst-italic">$1</em>')
+      .replace(/\*([^*]+)\*/g, '<em class="italic">$1</em>')
       
     // Handle bullet points and lists
     formattedText = formattedText
@@ -168,6 +168,16 @@
       .replace(/<p[^>]*>\s*<br>/g, '<p class="mb-2">')
     
     return formattedText
+  }
+
+  const formatMessageTime = (value) => {
+    const parsed = value instanceof Date ? value : new Date(value)
+    if (Number.isNaN(parsed.getTime())) return ''
+    return parsed.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
   }
 
   // Chatbot functions
@@ -319,7 +329,7 @@ model: 'gpt-4o-mini',
   }
 </script>
 
-<div class="ai-recommendations">
+<div class="ai-recommendations sm:text-sm">
   <!-- AI Comprehensive Analysis Button -->
   {#if symptoms && symptoms.length > 0}
     <div class="mb-4 text-center">
@@ -463,7 +473,7 @@ model: 'gpt-4o-mini',
                         {message.content}
                       </div>
                       <div class="message-time">
-                        {message.timestamp.toLocaleTimeString()}
+                        {formatMessageTime(message.timestamp)}
                       </div>
                     </div>
                     <div class="message-avatar">
@@ -478,7 +488,7 @@ model: 'gpt-4o-mini',
                         {@html formatRecommendations(message.content)}
                       </div>
                       <div class="message-time">
-                        {message.timestamp.toLocaleTimeString()}
+                        {formatMessageTime(message.timestamp)}
                       </div>
                     </div>
                   {/if}

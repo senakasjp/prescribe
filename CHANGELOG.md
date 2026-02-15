@@ -1,5 +1,102 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.12 - Doctor Payments + Stripe Checkout (February 15, 2026)
+
+### 💳 New In-App Payments Page
+- Added a dedicated doctor payments page:
+- `src/components/PaymentsPage.svelte`
+- Added a new `Payments` tab in doctor navigation in:
+- `src/App.svelte`
+- Supports two plans per currency (USD/LKR):
+- Professional Monthly
+- Professional Annual
+- Payment button shows a busy state during checkout session creation.
+
+### 🔗 Stripe Integration
+- Added new Firebase Cloud Function endpoint:
+- `createStripeCheckoutSession`
+- Added Stripe post-checkout verification endpoint:
+- `confirmStripeCheckoutSuccess`
+- Added Stripe webhook endpoint:
+- `stripeWebhook`
+- Endpoint verifies authenticated Firebase bearer token (`getAuthorizedUser`).
+- Stripe checkout session is created server-side with a fixed plan catalog to prevent client-side amount tampering.
+- Session creation is logged in Firestore collection:
+- `stripeCheckoutLogs`
+- Added return URL host allow-list guard for checkout success/cancel redirects.
+- Webhook events now update doctor payment status automatically:
+- `checkout.session.completed`
+- `invoice.paid`
+- `invoice.payment_failed`
+- `customer.subscription.deleted`
+- On successful payment, doctor account is marked paid and `accessExpiresAt` is extended based on plan interval.
+- Activated post-payment notifications for successful payments:
+- Sends `paymentThanksEmail` automatically to the doctor (when enabled/configured).
+- Sends payment-success SMS automatically using messaging templates:
+  `paymentSuccessTemplateEnabled` / `paymentSuccessTemplate` (with fallback text).
+- Added backend idempotency guard for Stripe payment references to prevent duplicate success processing (e.g., webhook + manual confirmation for the same checkout session).
+
+### ⚙️ Backend Dependency
+- Added Stripe SDK to Cloud Functions:
+- `functions/package.json` (`stripe`)
+
+### 🧪 Tests
+- Added new component test:
+- `src/tests/components/PaymentsPage.test.js`
+- Verifies checkout session request is sent to:
+- `createStripeCheckoutSession`
+- Verifies auth bearer token and selected plan are included in request payload.
+- Verifies auth-token missing case shows the correct payment error state.
+- Verifies backend checkout failures surface the server error message to doctors.
+- Added new functions unit test suite:
+- `src/tests/unit/stripeFunctions.test.js`
+- Verifies Stripe endpoints/webhook guardrails:
+- auth required for checkout endpoint,
+- missing Stripe secret handling,
+- required `sessionId` validation for checkout confirmation,
+- webhook method + signature/config validation.
+- Added idempotency notification test:
+- `src/tests/unit/stripePaymentNotifications.test.js`
+- Verifies duplicate payment callbacks (same Stripe payment reference) do not send duplicate payment-success email/SMS and do not duplicate payment ledger records.
+- Added admin doctor-wallet detail coverage:
+- `src/tests/components/AdminDashboard.test.js`
+- Verifies doctor detail page shows billing wallet records and referral free-month availability.
+
+### 🧾 Admin Doctor Billing Page
+- Extended Admin doctor detail view with a dedicated billing wallet section.
+- Added wallet summary metrics:
+- wallet value (months),
+- payment status,
+- referral free months available,
+- referred doctor counts and referral status counts.
+- Added billing ledger table per doctor (payments + referral credits).
+- Added new storage service APIs:
+- `getDoctorPaymentRecords`
+- `getDoctorReferralWalletStats`
+- `addDoctorPaymentRecord`
+
+## Version 2.3.11 - Global Small Theme + Flowbite Alignment (February 15, 2026)
+
+### 🎨 System-Wide UI Standardization
+- Enforced a global small-size baseline in `src/app.css`:
+- `body` now defaults to `text-sm`.
+- Standardized default styles for `input`, `select`, and `textarea` (Flowbite-like small controls with cyan focus ring).
+- Standardized base button text size to `text-sm`.
+
+### 🧩 Flowbite Configuration Alignment
+- Enabled Tailwind plugins in `tailwind.config.js`:
+- `@tailwindcss/forms`
+- `flowbite/plugin`
+- Removed CDN Flowbite runtime from `index.html` to avoid version drift.
+- Added Flowbite runtime import from installed package in `src/main.js`:
+- `flowbite/dist/flowbite.min.js`
+
+### ✅ Validation
+- Production build verified successfully (`npm run build`).
+- Targeted component tests verified:
+- `src/tests/components/InventoryDashboard.test.js`
+- `src/tests/components/DoctorInventoryAlertsPage.test.js`
+
 ## Version 2.3.10 - HTML5 WYSIWYG Prescription Export (February 14, 2026)
 
 ### 🧾 Same-Look Preview and PDF

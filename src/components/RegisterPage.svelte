@@ -14,7 +14,7 @@
   }
 </script>
 
-<div class="flex justify-center">
+<div class="flex justify-center sm:text-sm">
   <div class="w-full max-w-md">
     <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
       <div class="px-6 py-6 border-b border-gray-200">

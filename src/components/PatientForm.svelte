@@ -271,7 +271,7 @@
 
 </script>
 
-<div class="bg-white rounded-lg shadow-lg border border-gray-200">
+<div class="bg-white rounded-lg shadow-lg border border-gray-200 sm:text-sm">
   <div class="bg-teal-600 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
     <h5 class="text-lg font-semibold mb-0">
       <i class="fas fa-user-plus mr-2"></i>

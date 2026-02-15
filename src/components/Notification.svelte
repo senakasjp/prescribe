@@ -102,7 +102,7 @@
 {#if visible}
   <div 
     bind:this={notificationElement}
-    class="w-full transform transition-all duration-300 ease-in-out translate-x-full opacity-0"
+    class="w-full transform transition-all duration-300 ease-in-out translate-x-full opacity-0 sm:text-sm"
     role="alert" 
     aria-live="assertive" 
     aria-atomic="true"

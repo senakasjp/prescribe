@@ -230,8 +230,8 @@ export const VALIDATION_RULES = {
 export const DATE_FORMATS = {
   DISPLAY: 'dd/MM/yyyy',
   INPUT: 'yyyy-MM-dd', // HTML date input format (always YYYY-MM-DD)
-  DATETIME: 'dd/MM/yyyy HH:mm',
-  TIME: 'HH:mm',
+  DATETIME: 'dd/MM/yyyy hh:mm a',
+  TIME: 'hh:mm a',
   ISO: 'yyyy-MM-ddTHH:mm:ss.SSSZ'
 }
 

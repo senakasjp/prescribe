@@ -55,7 +55,7 @@
   $: dateValue = toIso(value)
 
   $: ({ class: restClass = '', ...restProps } = $$restProps)
-  $: inputClass = className || restClass || ''
+  $: inputClass = `${className || restClass || ''} sm:text-sm`.trim()
 
   const handleInput = (event) => {
     displayValue = event.target.value

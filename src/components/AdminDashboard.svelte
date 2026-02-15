@@ -238,9 +238,21 @@
   let authLogs = []
   let authLogsLoading = false
   let authLogsError = ''
+  let smsLogs = []
+  let smsLogsLoading = false
+  let smsLogsError = ''
   let logView = 'email'
   let showReferralPendingOnly = false
   let selectedDoctorView = null
+  let doctorPaymentRecords = []
+  let doctorPaymentRecordsLoading = false
+  let doctorPaymentRecordsError = ''
+  let doctorReferralWalletStats = {
+    totalReferredDoctors: 0,
+    referralBonusAppliedCount: 0,
+    referralBonusPendingCount: 0,
+    referralFreeMonthsAvailable: 0
+  }
   
   // Reactive statement to reload data when currentAdmin changes
   $: if (currentAdmin) {
@@ -338,6 +350,20 @@
       authLogs = []
     } finally {
       authLogsLoading = false
+    }
+  }
+
+  const loadSmsLogs = async () => {
+    try {
+      smsLogsError = ''
+      smsLogsLoading = true
+      smsLogs = await firebaseStorage.getSmsLogs(200)
+    } catch (error) {
+      console.error('❌ Error loading sms logs:', error)
+      smsLogsError = error?.message || 'Failed to load SMS logs.'
+      smsLogs = []
+    } finally {
+      smsLogsLoading = false
     }
   }
 
@@ -1566,17 +1592,55 @@
     if (tab === 'logs' && !authLogsLoading && authLogs.length === 0) {
       loadAuthLogs()
     }
+    if (tab === 'logs' && !smsLogsLoading && smsLogs.length === 0) {
+      loadSmsLogs()
+    }
   }
 
-  const openDoctorView = (doctor) => {
+  const openDoctorView = async (doctor) => {
     if (!doctor) return
     selectedDoctorView = doctor
     activeTab = 'doctor-view'
+    await loadDoctorWalletData(doctor.id)
   }
 
   const closeDoctorView = () => {
     selectedDoctorView = null
+    doctorPaymentRecords = []
+    doctorPaymentRecordsError = ''
+    doctorReferralWalletStats = {
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    }
     activeTab = 'doctors'
+  }
+
+  const loadDoctorWalletData = async (doctorId) => {
+    const normalizedDoctorId = String(doctorId || '').trim()
+    if (!normalizedDoctorId) return
+    try {
+      doctorPaymentRecordsLoading = true
+      doctorPaymentRecordsError = ''
+      const [latestDoctor, paymentRecords, referralWalletStats] = await Promise.all([
+        firebaseStorage.getDoctorById(normalizedDoctorId),
+        firebaseStorage.getDoctorPaymentRecords(normalizedDoctorId, 200),
+        firebaseStorage.getDoctorReferralWalletStats(normalizedDoctorId)
+      ])
+      doctorPaymentRecords = paymentRecords
+      doctorReferralWalletStats = referralWalletStats
+      if (latestDoctor?.id) {
+        doctors = doctors.map((doctor) => doctor.id === latestDoctor.id ? { ...doctor, ...latestDoctor } : doctor)
+        selectedDoctorView = { ...selectedDoctorView, ...latestDoctor }
+      }
+    } catch (error) {
+      console.error('❌ Error loading doctor wallet data:', error)
+      doctorPaymentRecords = []
+      doctorPaymentRecordsError = error?.message || 'Failed to load doctor billing records.'
+    } finally {
+      doctorPaymentRecordsLoading = false
+    }
   }
   
   // Format date
@@ -1597,7 +1661,7 @@
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false
+      hour12: true
     })
   }
 
@@ -1687,6 +1751,14 @@
           referralBonusAppliedAt: new Date().toISOString()
         }
         await firebaseStorage.updateDoctor(updatedReferred)
+        await firebaseStorage.addDoctorPaymentRecord({
+          doctorId: updatedReferred.id,
+          type: 'referral_bonus',
+          source: 'referral',
+          status: 'credited',
+          monthsDelta: 1,
+          note: 'Referral free month credited'
+        })
 
         let updatedReferrer = null
         if (referrer) {
@@ -1695,6 +1767,15 @@
             accessExpiresAt: addOneMonthToDate(referrer.accessExpiresAt)
           }
           await firebaseStorage.updateDoctor(updatedReferrer)
+          await firebaseStorage.addDoctorPaymentRecord({
+            doctorId: updatedReferrer.id,
+            type: 'referral_reward',
+            source: 'referral',
+            status: 'credited',
+            monthsDelta: 1,
+            referenceId: updatedReferred.id,
+            note: `Referral reward from ${formatDoctorId(updatedReferred.id)}`
+          })
         }
 
         doctors = doctors.map(d => {
@@ -1803,6 +1884,12 @@
     if (abs >= 1e6) return format(1e6, 'M')
     if (abs >= 1e3) return format(1e3, 'K')
     return num.toLocaleString()
+  }
+
+  const formatMonthsLabel = (monthsValue) => {
+    const months = Number(monthsValue || 0)
+    if (!Number.isFinite(months)) return '0 months'
+    return `${months} month${months === 1 ? '' : 's'}`
   }
   
   // Refresh data
@@ -2637,7 +2724,7 @@
                   <h6 class="text-teal-600 font-semibold mb-2">
                     <i class="fas fa-clock mr-1"></i>Last Updated
                   </h6>
-                  <h6 class="text-teal-600 text-lg font-bold mb-1">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
+                  <h6 class="text-teal-600 text-lg font-bold mb-1">{aiUsageStats.lastUpdated ? formatDateTime(aiUsageStats.lastUpdated) : 'Never'}</h6>
                   <small class="text-gray-500">Usage Data</small>
                 </div>
               </div>
@@ -2738,7 +2825,7 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                             {#each aiTokenTracker.getRecentRequests(10) as request}
                             <tr class="hover:bg-gray-50">
-                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(request.timestamp).toLocaleString()}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDateTime(request.timestamp)}</td>
                               <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
                                     {request.type.replace('generate', '').replace('check', '')}
@@ -3100,6 +3187,12 @@
                   >
                     Login/Logout Logs
                   </button>
+                  <button
+                    class="px-4 py-2 text-sm font-medium border-b-2 {logView === 'sms' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                    on:click={() => logView = 'sms'}
+                  >
+                    SMS Logs
+                  </button>
                 </div>
               </div>
               <div class="p-4">
@@ -3172,7 +3265,7 @@
                       </table>
                     </div>
                   {/if}
-                {:else}
+                {:else if logView === 'auth'}
                   <div class="flex items-center justify-between mb-4">
                     <p class="text-sm text-gray-600">Authentication events (latest 200).</p>
                     <button
@@ -3212,6 +3305,58 @@
                               <td class="px-3 py-2 text-gray-700" title={log.doctorId || ''}>
                                 {log.doctorId ? formatDoctorId(log.doctorId) : '-'}
                               </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {/if}
+                {:else}
+                  <div class="flex items-center justify-between mb-4">
+                    <p class="text-sm text-gray-600">SMS delivery attempts (latest 200).</p>
+                    <button
+                      class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={loadSmsLogs}
+                      disabled={smsLogsLoading}
+                    >
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                  </div>
+                  {#if smsLogsError}
+                    <p class="text-sm text-red-600 mb-3">{smsLogsError}</p>
+                  {/if}
+                  {#if smsLogsLoading}
+                    <p class="text-sm text-gray-500">Loading logs...</p>
+                  {:else if smsLogs.length === 0}
+                    <p class="text-sm text-gray-500">No SMS logs yet.</p>
+                  {:else}
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor ID</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each smsLogs as log (log.id)}
+                            <tr>
+                              <td class="px-3 py-2 text-gray-900">{formatDateTime(log.createdAt)}</td>
+                              <td class="px-3 py-2 text-gray-700">{log.type || '-'}</td>
+                              <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {['sent', 'delivered', 'success'].includes((log.status || '').toLowerCase()) ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'}">
+                                  {log.status || 'unknown'}
+                                </span>
+                              </td>
+                              <td class="px-3 py-2 text-gray-700">{log.to || '-'}</td>
+                              <td class="px-3 py-2 text-gray-700" title={log.doctorId || ''}>
+                                {log.doctorId ? formatDoctorId(log.doctorId) : '-'}
+                              </td>
+                              <td class="px-3 py-2 text-gray-500 text-xs">{log.error || '-'}</td>
                             </tr>
                           {/each}
                         </tbody>
@@ -3744,25 +3889,125 @@ firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
               </div>
             </div>
             {#if selectedDoctorView}
-              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                  <h5 class="text-lg font-semibold text-gray-900 mb-0">{selectedDoctorView.name || selectedDoctorView.email}</h5>
-                </div>
-                <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                  <div class="space-y-2">
-                    <div><span class="text-gray-500">Email:</span> <span class="text-gray-900">{selectedDoctorView.email}</span></div>
-                    <div><span class="text-gray-500">Doctor ID:</span> <span class="text-gray-900">{formatDoctorId(selectedDoctorView.id)}</span></div>
-                    <div><span class="text-gray-500">Phone:</span> <span class="text-gray-900">{selectedDoctorView.phone || 'N/A'}</span></div>
-                    <div><span class="text-gray-500">Created:</span> <span class="text-gray-900">{formatDate(selectedDoctorView.createdAt)}</span></div>
-                    <div><span class="text-gray-500">Status:</span> <span class="text-gray-900">{getDoctorStatusLabel(selectedDoctorView)}</span></div>
-                    <div><span class="text-gray-500">Trial:</span> <span class="text-gray-900">{selectedDoctorView.accessExpiresAt ? formatDate(selectedDoctorView.accessExpiresAt) : 'N/A'}</span></div>
+              <div class="space-y-4">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">{selectedDoctorView.name || selectedDoctorView.email}</h5>
                   </div>
-                  <div class="space-y-2">
-                    <div><span class="text-gray-500">Country:</span> <span class="text-gray-900">{selectedDoctorView.country || 'N/A'}</span></div>
-                    <div><span class="text-gray-500">City:</span> <span class="text-gray-900">{selectedDoctorView.city || 'N/A'}</span></div>
-                    <div><span class="text-gray-500">Role:</span> <span class="text-gray-900">{selectedDoctorView.role}</span></div>
-                    <div><span class="text-gray-500">Referral:</span> <span class="text-gray-900">{selectedDoctorView.referredByDoctorId ? formatDoctorId(selectedDoctorView.referredByDoctorId) : 'N/A'}</span></div>
-                    <div><span class="text-gray-500">Referral Bonus:</span> <span class="text-gray-900">{selectedDoctorView.referralBonusAppliedAt ? `Applied ${formatDate(selectedDoctorView.referralBonusAppliedAt)}` : (selectedDoctorView.referralEligibleAt ? `Eligible ${formatDate(selectedDoctorView.referralEligibleAt)}` : 'N/A')}</span></div>
+                  <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                    <div class="space-y-2">
+                      <div><span class="text-gray-500">Email:</span> <span class="text-gray-900">{selectedDoctorView.email}</span></div>
+                      <div><span class="text-gray-500">Doctor ID:</span> <span class="text-gray-900">{formatDoctorId(selectedDoctorView.id)}</span></div>
+                      <div><span class="text-gray-500">Phone:</span> <span class="text-gray-900">{selectedDoctorView.phone || 'N/A'}</span></div>
+                      <div><span class="text-gray-500">Created:</span> <span class="text-gray-900">{formatDate(selectedDoctorView.createdAt)}</span></div>
+                      <div><span class="text-gray-500">Status:</span> <span class="text-gray-900">{getDoctorStatusLabel(selectedDoctorView)}</span></div>
+                      <div><span class="text-gray-500">Trial:</span> <span class="text-gray-900">{selectedDoctorView.accessExpiresAt ? formatDate(selectedDoctorView.accessExpiresAt) : 'N/A'}</span></div>
+                    </div>
+                    <div class="space-y-2">
+                      <div><span class="text-gray-500">Country:</span> <span class="text-gray-900">{selectedDoctorView.country || 'N/A'}</span></div>
+                      <div><span class="text-gray-500">City:</span> <span class="text-gray-900">{selectedDoctorView.city || 'N/A'}</span></div>
+                      <div><span class="text-gray-500">Role:</span> <span class="text-gray-900">{selectedDoctorView.role}</span></div>
+                      <div><span class="text-gray-500">Referral:</span> <span class="text-gray-900">{selectedDoctorView.referredByDoctorId ? formatDoctorId(selectedDoctorView.referredByDoctorId) : 'N/A'}</span></div>
+                      <div><span class="text-gray-500">Referral Bonus:</span> <span class="text-gray-900">{selectedDoctorView.referralBonusAppliedAt ? `Applied ${formatDate(selectedDoctorView.referralBonusAppliedAt)}` : (selectedDoctorView.referralEligibleAt ? `Eligible ${formatDate(selectedDoctorView.referralEligibleAt)}` : 'N/A')}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-wallet mr-2 text-teal-600"></i>Billing Wallet
+                    </h5>
+                    <button
+                      class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => loadDoctorWalletData(selectedDoctorView.id)}
+                      disabled={doctorPaymentRecordsLoading}
+                    >
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                  </div>
+                  <div class="p-4 space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div class="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-cyan-700 font-semibold">Wallet Value</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{formatMonthsLabel(selectedDoctorView.walletMonths || 0)}</p>
+                      </div>
+                      <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-blue-700 font-semibold">Payment Status</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{selectedDoctorView.paymentStatus || 'N/A'}</p>
+                      </div>
+                      <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-amber-700 font-semibold">Referral Free Months Available</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{formatMonthsLabel(doctorReferralWalletStats.referralFreeMonthsAvailable)}</p>
+                      </div>
+                      <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-gray-700 font-semibold">Total Referred Doctors</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{doctorReferralWalletStats.totalReferredDoctors}</p>
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
+                        <span class="font-semibold text-teal-700">Referral Applied:</span>
+                        <span class="ml-1 text-gray-900">{doctorReferralWalletStats.referralBonusAppliedCount}</span>
+                      </div>
+                      <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <span class="font-semibold text-amber-700">Referral Pending:</span>
+                        <span class="ml-1 text-gray-900">{doctorReferralWalletStats.referralBonusPendingCount}</span>
+                      </div>
+                      <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <span class="font-semibold text-gray-700">Access Until:</span>
+                        <span class="ml-1 text-gray-900">{selectedDoctorView.accessExpiresAt ? formatDate(selectedDoctorView.accessExpiresAt) : 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    {#if doctorPaymentRecordsError}
+                      <p class="text-sm text-red-600">{doctorPaymentRecordsError}</p>
+                    {/if}
+                    {#if doctorPaymentRecordsLoading}
+                      <p class="text-sm text-gray-500">Loading billing records...</p>
+                    {:else if doctorPaymentRecords.length === 0}
+                      <p class="text-sm text-gray-500">No billing records yet.</p>
+                    {:else}
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                          <thead class="bg-gray-50">
+                            <tr>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Months</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Note</th>
+                            </tr>
+                          </thead>
+                          <tbody class="bg-white divide-y divide-gray-200">
+                            {#each doctorPaymentRecords as record (record.id)}
+                              <tr>
+                                <td class="px-3 py-2 text-gray-900">{formatDateTime(record.createdAt)}</td>
+                                <td class="px-3 py-2 text-gray-700">{record.type || '-'}</td>
+                                <td class="px-3 py-2 text-gray-700">{Number(record.monthsDelta || 0)}</td>
+                                <td class="px-3 py-2 text-gray-700">
+                                  {#if Number(record.amount || 0) > 0}
+                                    {record.currency ? `${record.currency} ` : ''}{Number(record.amount || 0).toFixed(2)}
+                                  {:else}
+                                    -
+                                  {/if}
+                                </td>
+                                <td class="px-3 py-2 text-gray-700">{record.source || '-'}</td>
+                                <td class="px-3 py-2 text-gray-700">{record.status || '-'}</td>
+                                <td class="px-3 py-2 text-gray-700 text-xs" title={record.referenceId || ''}>
+                                  {record.referenceId || '-'}
+                                </td>
+                                <td class="px-3 py-2 text-gray-500 text-xs">{record.note || '-'}</td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                    {/if}
                   </div>
                 </div>
               </div>

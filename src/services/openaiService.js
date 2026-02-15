@@ -1499,7 +1499,9 @@ IMPORTANT FORMATTING RULES:
 
       // Track token usage
       if (doctorId && !data.__fromCache) {
-        await aiTokenTracker.trackUsage(userId, tokensUsed, 'patientSummary')
+        const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
+        const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
+        await aiTokenTracker.trackUsage('patientSummary', promptTokens, completionTokens, 'gpt-4o-mini', userId)
       }
 
       return {
@@ -1601,7 +1603,9 @@ IMPORTANT FORMATTING RULES:
       const tokensUsed = data.__fromCache ? 0 : (data?.usage?.total_tokens || 0)
 
       if (doctorId && !data.__fromCache) {
-        await aiTokenTracker.trackUsage(doctorId, tokensUsed, 'reportImageOcr')
+        const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
+        const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
+        await aiTokenTracker.trackUsage('reportImageOcr', promptTokens, completionTokens, 'gpt-4o-mini', doctorId)
       }
 
       return {
@@ -1672,8 +1676,9 @@ Output: "Take 5 mg after meals."`
 
       // Track token usage
       if (doctorId && !data.__fromCache) {
-        const userId = doctorId
-        await aiTokenTracker.trackUsage(userId, tokensUsed, 'improveText')
+        const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
+        const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
+        await aiTokenTracker.trackUsage('improveText', promptTokens, completionTokens, 'gpt-4o-mini', doctorId)
       }
 
       return {

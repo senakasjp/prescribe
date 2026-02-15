@@ -73,7 +73,7 @@
   
 </script>
 
-<div class="admin-panel">
+<div class="admin-panel sm:text-sm">
   {#if loading}
     <LoadingSpinner 
       size="large" 

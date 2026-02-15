@@ -22,7 +22,7 @@
 
 {#if showIllnessForm}
   <div
-    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto sm:text-sm"
     on:click={onCancelIllness}
     role="button"
     tabindex="0"

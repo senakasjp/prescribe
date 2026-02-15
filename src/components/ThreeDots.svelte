@@ -33,7 +33,7 @@
 </script>
 
 <!-- Three dots dancing loader -->
-<div class="flex items-center {config.spacing}">
+<div class="flex items-center {config.spacing} sm:text-sm">
   <div class="{config.dot} {colorClass} rounded-full animate-bounce" style="animation-delay: 0ms"></div>
   <div class="{config.dot} {colorClass} rounded-full animate-bounce" style="animation-delay: 150ms"></div>
   <div class="{config.dot} {colorClass} rounded-full animate-bounce" style="animation-delay: 300ms"></div>

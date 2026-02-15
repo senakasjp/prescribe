@@ -1821,12 +1821,12 @@
   const updateHeaderText = () => {
     if (templatePreview) {
       headerText = `
-        <h5 class="fw-bold mb-1 text-lg">${templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
-        <p class="mb-1 fw-semibold text-base">${templatePreview.practiceName || '[Your Practice Name]'}</p>
-        <p class="mb-1 small text-sm text-gray-600">${templatePreview.address || '[Your Address]'}</p>
-        <p class="mb-1 small text-sm text-gray-600">Tel: ${templatePreview.phone || '[Your Phone]'} | Email: ${templatePreview.email || '[Your Email]'}</p>
+        <h5 class="font-bold mb-1 text-lg">${templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
+        <p class="mb-1 font-semibold text-base">${templatePreview.practiceName || '[Your Practice Name]'}</p>
+        <p class="mb-1 text-sm text-sm text-gray-600">${templatePreview.address || '[Your Address]'}</p>
+        <p class="mb-1 text-sm text-sm text-gray-600">Tel: ${templatePreview.phone || '[Your Phone]'} | Email: ${templatePreview.email || '[Your Email]'}</p>
         <hr class="my-2">
-        <p class="mb-0 fw-bold text-teal-600">PRESCRIPTION</p>
+        <p class="mb-0 font-bold text-teal-600">PRESCRIPTION</p>
       `
     }
   }
@@ -1847,13 +1847,13 @@
     }
     
     // Extract practice name (first p element after h5)
-    const practiceNameMatch = text.match(/<p class="mb-1 fw-semibold[^>]*>(.*?)<\/p>/)
+    const practiceNameMatch = text.match(/<p class="mb-1 font-semibold[^>]*>(.*?)<\/p>/)
     if (practiceNameMatch) {
       templatePreview.practiceName = practiceNameMatch[1].replace(/<[^>]*>/g, '')
     }
     
     // Extract address (p with text-gray-600 class)
-    const addressMatch = text.match(/<p class="mb-1 small text-sm text-gray-600">(.*?)<\/p>/)
+    const addressMatch = text.match(/<p class="mb-1 text-sm text-sm text-gray-600">(.*?)<\/p>/)
     if (addressMatch) {
       templatePreview.address = addressMatch[1].replace(/<[^>]*>/g, '')
     }
@@ -2660,9 +2660,9 @@
                           <i class="fas fa-pills mr-1"></i>{medication.dosage || medication.dose || 'N/A'}
                         </span>
                         {#if medication.frequency || medication.duration}
-                          <small class="text-gray-500 text-xs">
+                          <text-sm class="text-gray-500 text-xs">
                             <i class="fas fa-clock mr-1"></i>{medication.frequency || ''}{#if medication.frequency && medication.duration} · {/if}{medication.duration || ''}
-                          </small>
+                          </text-sm>
                         {/if}
                       </div>
                       {#if medication.instructions}
@@ -2697,10 +2697,10 @@
                 {/if}
             </div>
             {:else}
-              <small class="text-gray-500 text-xs block text-center py-2">No medications in any prescription</small>
+              <text-sm class="text-gray-500 text-xs block text-center py-2">No medications in any prescription</text-sm>
             {/if}
           {:else}
-            <small class="text-gray-500 text-xs block text-center py-2">No prescriptions found</small>
+            <text-sm class="text-gray-500 text-xs block text-center py-2">No prescriptions found</text-sm>
           {/if}
         </div>
       </div>
@@ -2830,8 +2830,8 @@
                 </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-blue-600" id="totalPatients">{patients.length}</h4>
-                <small class="text-blue-500 hidden sm:block">Patients Registered</small>
-                <small class="text-blue-500 sm:hidden">Patients</small>
+                <text-sm class="text-blue-500 hidden sm:block">Patients Registered</text-sm>
+                <text-sm class="text-blue-500 sm:hidden">Patients</text-sm>
               </div>
             </div>
           </div>
@@ -2854,8 +2854,8 @@
                 </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-orange-600" id="totalPrescriptions">{totalPrescriptions}</h4>
-                <small class="text-orange-500 hidden sm:block">Total Prescriptions</small>
-                <small class="text-orange-500 sm:hidden">Prescriptions</small>
+                <text-sm class="text-orange-500 hidden sm:block">Total Prescriptions</text-sm>
+                <text-sm class="text-orange-500 sm:hidden">Prescriptions</text-sm>
               </div>
             </div>
           </div>
@@ -2878,8 +2878,8 @@
                 </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-green-600" id="totalDrugs">{totalDrugs}</h4>
-                <small class="text-green-500 hidden sm:block">Total Drugs</small>
-                <small class="text-green-500 sm:hidden">Drugs</small>
+                <text-sm class="text-green-500 hidden sm:block">Total Drugs</text-sm>
+                <text-sm class="text-green-500 sm:hidden">Drugs</text-sm>
               </div>
             </div>
           </div>
@@ -2902,8 +2902,8 @@
                 </div>
               <div class="flex-1 ml-3">
                 <h4 class="text-2xl font-bold mb-0 text-purple-600" id="connectedPharmacies">{connectedPharmacies}</h4>
-                <small class="text-purple-500 hidden sm:block">Connected Pharmacies</small>
-                <small class="text-purple-500 sm:hidden">Pharmacies</small>
+                <text-sm class="text-purple-500 hidden sm:block">Connected Pharmacies</text-sm>
+                <text-sm class="text-purple-500 sm:hidden">Pharmacies</text-sm>
                 </div>
               </div>
             </div>
@@ -3141,7 +3141,7 @@
                         disabled={profileLoading}
                       >
                         {#if profileLoading}
-                          <ThreeDots size="small" color="white" />
+                          <ThreeDots size="text-sm" color="white" />
                         {/if}
                         <i class="fas fa-save mr-1 fa-sm"></i>
                         Save Changes
@@ -3155,15 +3155,15 @@
                 {#if activeTab === 'prescription-template'}
               <div class="p-4 rounded-lg bg-white" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
                   <div class="mb-4">
-                    <h6 class="fw-bold mb-3">
+                    <h6 class="font-bold mb-3">
                       <i class="fas fa-file-medical mr-2"></i>
                       Prescription Template Settings
                     </h6>
-                    <p class="text-gray-600 dark:text-gray-300 small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
+                    <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
                   </div>
                   
                   <!-- Template Type Selection -->
-                  <div class="row mb-4">
+                  <div class="grid grid-cols-1 gap-4 mb-4">
                     <div class="col-span-full">
                       <p class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</p>
                       
@@ -3230,27 +3230,27 @@
                                     <div class="flex items-center justify-center h-full">
                                       <div class="text-center text-gray-600 dark:text-gray-300">
                                         <i class="fas fa-print fa-2x mb-2"></i>
-                                        <div class="small">Printed Letterhead Area</div>
-                                        <div class="small fw-bold">{headerSize}px height</div>
+                                        <div class="text-sm">Printed Letterhead Area</div>
+                                        <div class="text-sm font-bold">{headerSize}px height</div>
                                       </div>
                                     </div>
                                   </div>
                                   
                                   <!-- Prescription Content Area -->
                                   <div class="prescription-content">
-                                    <div class="row mb-2">
-                                      <div class="col-6">
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                      <div class="col-span-1">
                                         <strong>Patient Name:</strong> [Patient Name]
                                       </div>
-                                      <div class="col-6 text-right">
+                                      <div class="col-span-1 text-right">
                                         <strong>Date:</strong> [Date]
                                       </div>
                                     </div>
-                                    <div class="row mb-2">
-                                      <div class="col-6">
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                      <div class="col-span-1">
                                         <strong>Age:</strong> [Age]
                                       </div>
-                                      <div class="col-6 text-right">
+                                      <div class="col-span-1 text-right">
                                         <strong>Prescription #:</strong> [Rx Number]
                                       </div>
                                     </div>
@@ -3262,15 +3262,15 @@
                                           <span>• Medication Name</span>
                                           <span><strong>Dosage</strong></span>
                                         </div>
-                                        <div class="small text-gray-600 dark:text-gray-300">Instructions and notes here</div>
+                                        <div class="text-sm text-gray-600 dark:text-gray-300">Instructions and notes here</div>
                                       </div>
                                     </div>
                                     <div class="signature-area border-top pt-2 mt-3">
-                                      <div class="row">
-                                        <div class="col-6">
+                                      <div class="grid grid-cols-2 gap-2">
+                                        <div class="col-span-1">
                                           <strong>Doctor's Signature:</strong> _______________
                                         </div>
-                                        <div class="col-6 text-right">
+                                        <div class="col-span-1 text-right">
                                           <strong>Date:</strong> _______________
                                         </div>
                                       </div>
@@ -3362,27 +3362,27 @@
                                     >
                                       <div class="flex items-center justify-center h-full">
                                         <div class="text-center text-gray-600 dark:text-gray-300" style="background: rgba(255,255,255,0.8); padding: 0.5rem; border-radius: 0.25rem;">
-                                          <div class="small">Custom Header Image</div>
-                                          <div class="small fw-bold">{headerSize}px height</div>
+                                          <div class="text-sm">Custom Header Image</div>
+                                          <div class="text-sm font-bold">{headerSize}px height</div>
                                         </div>
                                       </div>
                                     </div>
                                     
                                     <!-- Prescription Content Area -->
                                     <div class="prescription-content">
-                                      <div class="row mb-2">
-                                        <div class="col-6">
+                                      <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div class="col-span-1">
                                           <strong>Patient Name:</strong> [Patient Name]
                                         </div>
-                                        <div class="col-6 text-right">
+                                        <div class="col-span-1 text-right">
                                           <strong>Date:</strong> [Date]
                                         </div>
                                       </div>
-                                      <div class="row mb-2">
-                                        <div class="col-6">
+                                      <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div class="col-span-1">
                                           <strong>Age:</strong> [Age]
                                         </div>
-                                        <div class="col-6 text-right">
+                                        <div class="col-span-1 text-right">
                                           <strong>Prescription #:</strong> [Rx Number]
                                         </div>
                                       </div>
@@ -3394,15 +3394,15 @@
                                             <span>• Medication Name</span>
                                             <span><strong>Dosage</strong></span>
                                           </div>
-                                          <div class="small text-gray-600 dark:text-gray-300">Instructions and notes here</div>
+                                          <div class="text-sm text-gray-600 dark:text-gray-300">Instructions and notes here</div>
                                         </div>
                                       </div>
                                       <div class="signature-area border-top pt-2 mt-3">
-                                        <div class="row">
-                                          <div class="col-6">
+                                        <div class="grid grid-cols-2 gap-2">
+                                          <div class="col-span-1">
                                             <strong>Doctor's Signature:</strong> _______________
                                           </div>
-                                          <div class="col-6 text-right">
+                                          <div class="col-span-1 text-right">
                                             <strong>Date:</strong> _______________
                                           </div>
                                         </div>
@@ -3462,12 +3462,12 @@
                                        bind:innerHTML={headerText}
                                        on:input={handleHeaderTextChange}
                                        on:blur={parseHeaderText}>
-                                    <h5 class="fw-bold mb-1 text-lg">{templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
-                                    <p class="mb-1 fw-semibold text-base">{templatePreview.practiceName || '[Your Practice Name]'}</p>
-                                    <p class="mb-1 small text-sm text-gray-600">{templatePreview.address || '[Your Address]'}</p>
-                                    <p class="mb-1 small text-sm text-gray-600">Tel: {templatePreview.phone || '[Your Phone]'} | Email: {templatePreview.email || '[Your Email]'}</p>
+                                    <h5 class="font-bold mb-1 text-lg">{templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
+                                    <p class="mb-1 font-semibold text-base">{templatePreview.practiceName || '[Your Practice Name]'}</p>
+                                    <p class="mb-1 text-sm text-sm text-gray-600">{templatePreview.address || '[Your Address]'}</p>
+                                    <p class="mb-1 text-sm text-sm text-gray-600">Tel: {templatePreview.phone || '[Your Phone]'} | Email: {templatePreview.email || '[Your Email]'}</p>
                                     <hr class="my-2">
-                                    <p class="mb-0 fw-bold text-teal-600">PRESCRIPTION</p>
+                                    <p class="mb-0 font-bold text-teal-600">PRESCRIPTION</p>
                                   </div>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-2">
@@ -3510,11 +3510,11 @@
                 {#if activeTab === 'backup-restore'}
               <div class="p-4 rounded-lg bg-white" id="backup-restore" role="tabpanel" aria-labelledby="backup-restore-tab">
                   <div class="mb-4">
-                    <h6 class="fw-bold mb-2">
+                    <h6 class="font-bold mb-2">
                       <i class="fas fa-database mr-2"></i>
                       Backup & Restore
                     </h6>
-                    <p class="text-gray-600 dark:text-gray-300 small mb-4">
+                    <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">
                       Download a full backup of your patients and prescriptions, then restore it if data is deleted.
                     </p>
                   </div>

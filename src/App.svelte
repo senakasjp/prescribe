@@ -24,6 +24,7 @@
   import HelpPage from './components/HelpPage.svelte'
   import FaqPage from './components/FaqPage.svelte'
   import PricingPage from './components/PricingPage.svelte'
+  import PaymentsPage from './components/PaymentsPage.svelte'
   import RegisterPage from './components/RegisterPage.svelte'
   import PublicHeader from './components/PublicHeader.svelte'
   import MobileCameraCapturePage from './components/MobileCameraCapturePage.svelte'
@@ -47,8 +48,11 @@
   let helpOnly = false
   let faqOnly = false
   let pricingOnly = false
+  let paymentReturnStatus = ''
+  let paymentReturnSessionId = ''
+  let paymentReturnHandled = false
   let userJustUpdated = false // Flag to prevent Firebase from overriding recent updates
-  let currentView = 'home' // Navigation state: 'home', 'patients', 'pharmacies', 'reports', 'settings'
+  let currentView = 'home' // Navigation state: 'home', 'patients', 'pharmacies', 'reports', 'payments', 'settings'
   let settingsDoctor = null
   let wasOffline = false
   let hasOnboardingDummyData = false
@@ -73,6 +77,8 @@
     helpOnly = params.get('help') === '1'
     faqOnly = params.get('faq') === '1'
     pricingOnly = params.get('pricing') === '1'
+    paymentReturnStatus = params.get('checkout') || params.get('payment') || ''
+    paymentReturnSessionId = params.get('session_id') || ''
   }
 
   const shouldEnableChat = () => {
@@ -290,6 +296,10 @@
     doctorNotificationAlertCount = Number.isFinite(total) ? Math.max(0, total) : 0
   }
 
+  const handlePaymentNavigateHome = () => {
+    currentView = 'home'
+  }
+
   $: if (currentView === 'settings' && isExternalDoctor) {
     currentView = 'home'
   }
@@ -301,6 +311,25 @@
 
   $: if (currentView === 'notifications' && isExternalDoctor) {
     currentView = 'home'
+  }
+
+  $: if (currentView === 'payments' && isExternalDoctor) {
+    currentView = 'home'
+  }
+
+  $: if (user?.role === 'doctor' && !isExternalDoctor && paymentReturnStatus && !paymentReturnHandled) {
+    currentView = 'payments'
+    if (paymentReturnStatus === 'success') {
+      notifySuccess(
+        paymentReturnSessionId ?
+          'Stripe payment completed. Verifying account update...' :
+          'Stripe payment completed.',
+        6000
+      )
+    } else if (paymentReturnStatus === 'cancel') {
+      notifyError('Stripe payment was canceled.', 5000)
+    }
+    paymentReturnHandled = true
   }
 
   $: {
@@ -1058,6 +1087,19 @@
               {/if}
               {#if !isExternalDoctor}
                 <li>
+                  <button
+                    type="button"
+                    class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 {currentView === 'payments' ? 'text-teal-600 bg-teal-50 font-semibold dark:text-teal-400 dark:bg-teal-900' : 'text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700'}"
+                    on:click={() => handleMenuNavigation('payments')}
+                  >
+                    <i class="fas fa-credit-card mr-1 sm:mr-2"></i>
+                    <span class="hidden sm:inline">Payments</span>
+                    <span class="sm:hidden hidden xs:inline">Pay</span>
+                  </button>
+                </li>
+              {/if}
+              {#if !isExternalDoctor}
+                <li>
                 <button 
                   type="button"
                   class="px-2 sm:px-4 py-2 rounded-lg transition-colors duration-200 text-gray-700 hover:text-teal-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:text-teal-400 dark:hover:bg-gray-700"
@@ -1161,6 +1203,14 @@
       {:else if currentView === 'notifications'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <DoctorInventoryAlertsPage user={effectiveUser} on:alerts-updated={handleDoctorAlertsUpdated} />
+        </div>
+      {:else if currentView === 'payments'}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <PaymentsPage
+            user={effectiveUser}
+            on:profile-updated={handleProfileUpdate}
+            on:navigate-home={handlePaymentNavigateHome}
+          />
         </div>
       {:else if currentView === 'help'}
         <DoctorGettingStarted {user} />

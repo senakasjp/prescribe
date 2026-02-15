@@ -48,7 +48,7 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-50">
+<div class="min-h-screen bg-gray-50 sm:text-sm">
   <div class="flex items-center justify-center h-screen px-4">
     <div class="w-full max-w-md">
       <div class="bg-white rounded-lg shadow-xl border border-gray-200">

@@ -29,7 +29,17 @@ vi.mock('../../services/firebaseStorage.js', () => ({
     savePaymentThanksEmailTemplate: vi.fn().mockResolvedValue(null),
     updateDoctor: vi.fn().mockResolvedValue(null),
     getEmailLogs: vi.fn().mockResolvedValue([]),
-    getAuthLogs: vi.fn().mockResolvedValue([])
+    getAuthLogs: vi.fn().mockResolvedValue([]),
+    getSmsLogs: vi.fn().mockResolvedValue([]),
+    getDoctorPaymentRecords: vi.fn().mockResolvedValue([]),
+    getDoctorReferralWalletStats: vi.fn().mockResolvedValue({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    }),
+    getDoctorById: vi.fn().mockResolvedValue(null),
+    addDoctorPaymentRecord: vi.fn().mockResolvedValue(null)
   }
 }));
 
@@ -772,5 +782,96 @@ describe('AdminDashboard.svelte', () => {
     );
 
     vi.unstubAllGlobals();
+  });
+
+  it('shows SMS logs tab and loads SMS logs when opening system logs', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getSmsLogs.mockResolvedValueOnce([
+      {
+        id: 'sms-1',
+        createdAt: '2026-02-15T08:30:00.000Z',
+        type: 'patient-welcome',
+        status: 'sent',
+        to: '+94771234567',
+        doctorId: 'doctor-1',
+        error: ''
+      }
+    ]);
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Logs' }));
+
+    await waitFor(() => {
+      expect(firebaseStorage.getSmsLogs).toHaveBeenCalledWith(200);
+    });
+
+    expect(screen.getByRole('button', { name: 'SMS Logs' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'SMS Logs' }));
+    expect(screen.getByText('SMS delivery attempts (latest 200).')).toBeInTheDocument();
+    expect(screen.getByText('patient-welcome')).toBeInTheDocument();
+  });
+
+  it('shows doctor billing wallet records and referral free months in doctor details', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-wallet-1',
+        email: 'wallet@test.com',
+        name: 'Dr. Wallet',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z',
+        accessExpiresAt: '2026-03-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-wallet-1',
+      email: 'wallet@test.com',
+      name: 'Dr. Wallet',
+      role: 'doctor',
+      paymentStatus: 'paid',
+      walletMonths: 3,
+      accessExpiresAt: '2026-05-01T00:00:00.000Z'
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([
+      {
+        id: 'rec-1',
+        createdAt: '2026-02-15T08:30:00.000Z',
+        type: 'stripe_payment',
+        monthsDelta: 1,
+        amount: 20,
+        currency: 'USD',
+        source: 'stripe',
+        status: 'paid',
+        referenceId: 'sub_test_1',
+        note: 'professional_monthly_usd'
+      }
+    ]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 2,
+      referralBonusAppliedCount: 1,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 1
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    expect(await screen.findByText('Billing Wallet')).toBeInTheDocument();
+    expect(await screen.findByText('Referral Free Months Available')).toBeInTheDocument();
+    expect(await screen.findByText('1 month')).toBeInTheDocument();
+    expect(await screen.findByText('stripe_payment')).toBeInTheDocument();
   });
 });

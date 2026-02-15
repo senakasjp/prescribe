@@ -9,7 +9,18 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gray-50 text-gray-900 text-sm;
+  }
+
+  /* Global small-theme baseline aligned with Flowbite form controls */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    @apply w-full rounded-lg border-gray-300 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:ring-cyan-500;
+  }
+
+  button {
+    @apply text-sm;
   }
 }
 
@@ -28,7 +39,7 @@
   }
   
   .form-input {
-    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm;
+    @apply block w-full rounded-lg border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm;
   }
   
   .form-label {

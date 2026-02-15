@@ -53,7 +53,7 @@
   }
 </script>
 
-<div class="flex flex-wrap gap-2 mb-4 p-4 border border-gray-300 rounded-lg shadow-sm bg-white">
+<div class="flex flex-wrap gap-2 mb-4 p-4 border border-gray-300 rounded-lg shadow-sm bg-white sm:text-sm">
   <button 
     class={overviewClasses}
     on:click={() => isTabEnabled('overview') && onTabChange('overview')}

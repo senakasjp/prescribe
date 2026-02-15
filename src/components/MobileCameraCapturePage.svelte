@@ -159,7 +159,7 @@
   })
 </script>
 
-<section class="min-h-screen bg-gray-50 px-4 py-6">
+<section class="min-h-screen bg-gray-50 px-4 py-6 sm:text-sm">
   <div class="mx-auto w-full max-w-xl">
     <div class="rounded-2xl border border-cyan-200 bg-white shadow-sm overflow-hidden">
       <div class="bg-cyan-600 text-white px-4 py-3">

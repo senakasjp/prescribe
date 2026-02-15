@@ -10,7 +10,7 @@
 
 {#each $notifications as notification, index (notification.id)}
   <div 
-    class="fixed right-4 z-50 max-w-sm w-full"
+    class="fixed right-4 z-50 max-w-sm w-full sm:text-sm"
     style="top: {getTopPosition(index)};"
   >
     <Notification 

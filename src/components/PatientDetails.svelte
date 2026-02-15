@@ -1920,6 +1920,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let savingReportProgressTimer = null
   let editingReportId = null
   let viewingReport = null
+  let expandedReportImage = null
   let cameraVideoEl = null
   let cameraStream = null
   let cameraStarting = false
@@ -2649,6 +2650,25 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
   const viewReport = (report) => {
     viewingReport = report
+  }
+
+  const openReportImagePreview = (report, imageType = 'primary') => {
+    const primarySrc = report?.previewUrl || report?.dataUrl || report?.selectedAreaDataUrl || ''
+    const selectedAreaSrc = report?.selectedAreaDataUrl || ''
+    const src = imageType === 'selected' ? selectedAreaSrc : primarySrc
+    if (!src) {
+      return
+    }
+    expandedReportImage = {
+      src,
+      title: report?.title || 'Report image',
+      label: imageType === 'selected' ? 'Selected Area' : 'Report Image',
+      date: report?.date || ''
+    }
+  }
+
+  const closeReportImagePreview = () => {
+    expandedReportImage = null
   }
 
   const editReport = (report) => {
@@ -6552,12 +6572,30 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       </div>
                     {:else if report.type === 'image' && (report.previewUrl || report.dataUrl || report.selectedAreaDataUrl)}
                       <div class="rounded-lg border border-gray-200 overflow-hidden">
-                        <img src={report.previewUrl || report.dataUrl || report.selectedAreaDataUrl} alt="Report image" class="w-full h-auto" />
+                        <button
+                          type="button"
+                          class="block w-full focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          on:click={() => openReportImagePreview(report, 'primary')}
+                          title="Click to enlarge image"
+                        >
+                          <img
+                            src={report.previewUrl || report.dataUrl || report.selectedAreaDataUrl}
+                            alt="Report image"
+                            class="w-full h-64 object-contain bg-gray-50"
+                          />
+                        </button>
                       </div>
                       {#if shouldShowSelectedAreaPreview(report)}
                         <div class="mt-2 rounded-lg border border-teal-200 overflow-hidden">
                           <p class="text-xs font-medium text-teal-700 px-2 py-1 bg-teal-50 border-b border-teal-100">Selected Area</p>
-                          <img src={report.selectedAreaDataUrl} alt="Selected area image" class="w-full h-auto" />
+                          <button
+                            type="button"
+                            class="block w-full focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            on:click={() => openReportImagePreview(report, 'selected')}
+                            title="Click to enlarge selected area"
+                          >
+                            <img src={report.selectedAreaDataUrl} alt="Selected area image" class="w-full h-64 object-contain bg-gray-50" />
+                          </button>
                         </div>
                       {/if}
                       {#if report.content}
@@ -6709,6 +6747,34 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                       <p class="text-xs text-gray-500">{viewingReport.files?.[0]?.name || 'Uploaded file'}</p>
                     </div>
                   {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          {#if expandedReportImage}
+            <div class="fixed inset-0 bg-black/75 z-[60] flex items-center justify-center p-4" on:click|self={closeReportImagePreview}>
+              <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[92vh] overflow-hidden">
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                  <div>
+                    <h5 class="text-base font-semibold text-gray-900 mb-0">{expandedReportImage.title}</h5>
+                    <p class="text-xs text-gray-500 mt-1">{expandedReportImage.label}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="inline-flex items-center px-2 py-1 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-xs font-medium rounded"
+                    on:click={closeReportImagePreview}
+                    title="Close image preview"
+                  >
+                    <i class="fas fa-times"></i>
+                  </button>
+                </div>
+                <div class="p-4 bg-gray-50">
+                  <img
+                    src={expandedReportImage.src}
+                    alt={`${expandedReportImage.label} preview`}
+                    class="w-full max-h-[78vh] object-contain bg-white rounded border border-gray-200"
+                  />
                 </div>
               </div>
             </div>

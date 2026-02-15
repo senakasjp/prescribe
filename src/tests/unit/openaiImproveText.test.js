@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const { trackUsageMock } = vi.hoisted(() => ({
+  trackUsageMock: vi.fn(async () => ({}))
+}))
+
 vi.mock('../../services/aiTokenTracker.js', () => ({
   default: {
-    trackUsage: vi.fn(async () => ({}))
+    trackUsage: trackUsageMock
   }
 }))
 
@@ -25,8 +29,8 @@ describe('openaiService improveText', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    const module = await import('../../services/openaiService.js')
-    openaiService = module.default
+    const openaiModule = await import('../../services/openaiService.js')
+    openaiService = openaiModule.default
   })
 
   it('post-processes unit terms and capitalizes first letter', () => {
@@ -50,6 +54,12 @@ describe('openaiService improveText', () => {
     expect(requestBody.messages[1].content).toContain('Context: medication-instructions')
     expect(result.improvedText).toBe('Take 250 mg after meals')
     expect(result.tokensUsed).toBe(33)
+    expect(trackUsageMock).toHaveBeenCalledWith(
+      'improveText',
+      33,
+      0,
+      'gpt-4o-mini',
+      'doc-1'
+    )
   })
 })
-

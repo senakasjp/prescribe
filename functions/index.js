@@ -21,6 +21,7 @@ const bwipjs = require("bwip-js");
 const nodemailer = require("nodemailer");
 const QRCode = require("qrcode");
 const twilio = require("twilio");
+const Stripe = require("stripe");
 
 admin.initializeApp();
 
@@ -31,6 +32,8 @@ const TWILIO_AUTH_TOKEN = defineSecret("TWILIO_AUTH_TOKEN");
 const TWILIO_WHATSAPP_FROM = defineSecret("TWILIO_WHATSAPP_FROM");
 const NOTIFY_USER_ID = defineSecret("NOTIFY_USER_ID");
 const NOTIFY_API_KEY = defineSecret("NOTIFY_API_KEY");
+const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
+const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const DEFAULT_APP_URL = "https://prescribe-7e1e8.web.app";
 const OPENAI_PROXY_ALLOWED_ENDPOINTS = new Set(["chat/completions"]);
 const OPENAI_PROXY_MAX_BODY_BYTES = 100 * 1024; // 100 KB hard cap
@@ -39,10 +42,46 @@ const OPENAI_PROXY_RATE_LIMIT_MAX_REQUESTS = 30;
 const openaiProxyRateLimits = new Map();
 const smsDedupeCache = new Map();
 const SMS_DEDUPE_WINDOW_MS = 60 * 1000;
+const STRIPE_ALLOWED_RETURN_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "prescribe-7e1e8.web.app",
+  "www.mprescribe.net",
+  "mprescribe.net",
+]);
+const STRIPE_PLAN_CATALOG = {
+  professional_monthly_usd: {
+    name: "Professional Monthly",
+    currency: "usd",
+    unitAmount: 2000,
+    interval: "month",
+  },
+  professional_annual_usd: {
+    name: "Professional Annual",
+    currency: "usd",
+    unitAmount: 20000,
+    interval: "year",
+  },
+  professional_monthly_lkr: {
+    name: "Professional Monthly",
+    currency: "lkr",
+    unitAmount: 500000,
+    interval: "month",
+  },
+  professional_annual_lkr: {
+    name: "Professional Annual",
+    currency: "lkr",
+    unitAmount: 5000000,
+    interval: "year",
+  },
+};
 
 const cleanupExpiredInMemoryGuards = (now = Date.now()) => {
   for (const [key, entry] of openaiProxyRateLimits.entries()) {
-    if (!entry || now - entry.windowStart >= OPENAI_PROXY_RATE_LIMIT_WINDOW_MS) {
+    if (
+      !entry ||
+      now - entry.windowStart >= OPENAI_PROXY_RATE_LIMIT_WINDOW_MS
+    ) {
       openaiProxyRateLimits.delete(key);
     }
   }
@@ -89,6 +128,28 @@ const logEmailEvent = async (event) => {
   }
 };
 
+const logSmsEvent = async (event) => {
+  try {
+    const logsRef = admin.firestore().collection("smsLogs");
+    await logsRef.add({
+      ...event,
+      createdAt: new Date().toISOString(),
+    });
+
+    const snapshot = await logsRef
+        .orderBy("createdAt", "desc")
+        .offset(500)
+        .get();
+    const batch = admin.firestore().batch();
+    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+    if (!snapshot.empty) {
+      await batch.commit();
+    }
+  } catch (error) {
+    logger.error("Failed to log SMS event:", error);
+  }
+};
+
 const normalizeNotifyRecipient = (input) => {
   const digits = String(input || "").replace(/\D/g, "");
   if (!digits) return "";
@@ -114,7 +175,8 @@ const sendNotifySms = async ({recipient, senderId, message, type}) => {
 
   const now = Date.now();
   cleanupExpiredInMemoryGuards(now);
-  const dedupeKey = `${formattedRecipient}|${String(senderId || "")}|${String(message || "")}`;
+  const dedupeKey = `${formattedRecipient}|${String(senderId || "")}|` +
+    `${String(message || "")}`;
   if (smsDedupeCache.has(dedupeKey)) {
     return {ok: true, skipped: true, reason: "duplicate"};
   }
@@ -983,6 +1045,315 @@ const getAuthorizedUser = async (req) => {
   } catch (error) {
     logger.error("Auth token verification failed:", error);
     return null;
+  }
+};
+
+const getSafeStripeReturnUrl = (rawUrl) => {
+  try {
+    const parsed = new URL(String(rawUrl || ""));
+    if (!/^https?:$/.test(parsed.protocol)) {
+      return DEFAULT_APP_URL;
+    }
+    if (!STRIPE_ALLOWED_RETURN_HOSTS.has(parsed.hostname)) {
+      return DEFAULT_APP_URL;
+    }
+    return parsed.toString();
+  } catch (error) {
+    return DEFAULT_APP_URL;
+  }
+};
+
+const addIntervalToIsoDate = (isoDate, interval) => {
+  const base = new Date(isoDate || Date.now());
+  if (Number.isNaN(base.getTime())) {
+    return new Date().toISOString();
+  }
+  if (interval === "year") {
+    base.setFullYear(base.getFullYear() + 1);
+  } else {
+    base.setMonth(base.getMonth() + 1);
+  }
+  return base.toISOString();
+};
+
+const resolveDoctorIdForStripe = async (
+    {doctorId = "", metadataDoctorId = "", userEmail = "", customerId = ""},
+) => {
+  const doctorsRef = admin.firestore().collection("doctors");
+  const directDoctorId = String(doctorId || "").trim();
+  if (directDoctorId) {
+    const directDoc = await doctorsRef.doc(directDoctorId).get();
+    if (directDoc.exists) return directDoc.id;
+  }
+
+  const metadataId = String(metadataDoctorId || "").trim();
+  if (metadataId) {
+    const metadataDoc = await doctorsRef.doc(metadataId).get();
+    if (metadataDoc.exists) return metadataDoc.id;
+  }
+
+  const stripeCustomerId = String(customerId || "").trim();
+  if (stripeCustomerId) {
+    const byCustomer = await doctorsRef
+        .where("stripeCustomerId", "==", stripeCustomerId)
+        .limit(1)
+        .get();
+    if (!byCustomer.empty) return byCustomer.docs[0].id;
+  }
+
+  const normalizedEmail = String(userEmail || "").trim().toLowerCase();
+  if (normalizedEmail) {
+    const byEmailLower = await doctorsRef
+        .where("emailLower", "==", normalizedEmail)
+        .limit(1)
+        .get();
+    if (!byEmailLower.empty) return byEmailLower.docs[0].id;
+
+    const byEmail = await doctorsRef
+        .where("email", "==", normalizedEmail)
+        .limit(1)
+        .get();
+    if (!byEmail.empty) return byEmail.docs[0].id;
+  }
+
+  return "";
+};
+
+const applyDoctorPaymentSuccess = async ({
+  resolvedDoctorId,
+  planId = "",
+  interval = "month",
+  sessionId = "",
+  customerId = "",
+  subscriptionId = "",
+  paidAt = "",
+  paymentReferenceId = "",
+}) => {
+  const normalizedReferenceId = String(
+      paymentReferenceId || sessionId || "",
+  ).trim();
+  if (normalizedReferenceId) {
+    const lockIdRaw = `${resolvedDoctorId}|${normalizedReferenceId}`;
+    const lockId = lockIdRaw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 240);
+    const lockRef = admin.firestore()
+        .collection("stripePaymentLocks")
+        .doc(lockId);
+    try {
+      await lockRef.create({
+        doctorId: resolvedDoctorId,
+        paymentReferenceId: normalizedReferenceId,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error && error.code === 6) {
+        const currentDoctorSnap = await admin.firestore()
+            .collection("doctors")
+            .doc(resolvedDoctorId)
+            .get();
+        if (currentDoctorSnap.exists) {
+          return {id: currentDoctorSnap.id, ...currentDoctorSnap.data()};
+        }
+        return {id: resolvedDoctorId};
+      }
+      throw error;
+    }
+  }
+
+  const selectedPlan = STRIPE_PLAN_CATALOG[String(planId || "")] || null;
+  const normalizedInterval = interval === "year" ? "year" : "month";
+  const monthsDelta = normalizedInterval === "year" ? 12 : 1;
+  const doctorRef = admin.firestore()
+      .collection("doctors")
+      .doc(resolvedDoctorId);
+  const doctorSnap = await doctorRef.get();
+  const doctorData = doctorSnap.exists ? doctorSnap.data() : {};
+  const nowIso = paidAt || new Date().toISOString();
+  const accessBaseIso = doctorData && doctorData.accessExpiresAt &&
+    new Date(doctorData.accessExpiresAt).getTime() > Date.now() ?
+    doctorData.accessExpiresAt :
+    nowIso;
+  const nextAccessExpiresAt = addIntervalToIsoDate(accessBaseIso, interval);
+
+  const updatePayload = {
+    paymentDone: true,
+    paymentStatus: "paid",
+    paymentDoneAt: nowIso,
+    accessExpiresAt: nextAccessExpiresAt,
+    isDisabled: false,
+    stripeCheckoutSessionId: String(sessionId || ""),
+    stripeCustomerId: String(customerId || ""),
+    stripeSubscriptionId: String(subscriptionId || ""),
+    stripePlanId: String(planId || ""),
+    stripeLastPaymentAt: nowIso,
+    walletMonths: Number(doctorData.walletMonths || 0) + monthsDelta,
+  };
+  await doctorRef.set(updatePayload, {merge: true});
+  await logDoctorPaymentRecord({
+    doctorId: resolvedDoctorId,
+    type: "stripe_payment",
+    source: "stripe",
+    status: "paid",
+    monthsDelta,
+    amount: selectedPlan ? Number(selectedPlan.unitAmount || 0) / 100 : 0,
+    currency: selectedPlan ? selectedPlan.currency : "",
+    referenceId: String(
+        normalizedReferenceId || subscriptionId || sessionId || "",
+    ),
+    note: String(planId || normalizedInterval),
+    metadata: {
+      planId: String(planId || ""),
+      interval: normalizedInterval,
+      sessionId: String(sessionId || ""),
+      subscriptionId: String(subscriptionId || ""),
+      customerId: String(customerId || ""),
+    },
+  });
+  const updatedDoctorSnap = await doctorRef.get();
+  const updatedDoctor = updatedDoctorSnap.exists ?
+    {id: updatedDoctorSnap.id, ...updatedDoctorSnap.data()} :
+    {id: resolvedDoctorId, ...updatePayload};
+
+  try {
+    const templateDoc = await admin
+        .firestore()
+        .collection("systemSettings")
+        .doc("paymentThanksEmail")
+        .get();
+    const paymentThanksTemplate = templateDoc.exists ? templateDoc.data() : {};
+    if (paymentThanksTemplate && paymentThanksTemplate.enabled !== false) {
+      const smtpConfig = await getSmtpConfig();
+      const from = getFromAddress();
+      if (
+        smtpConfig &&
+        smtpConfig.host &&
+        smtpConfig.auth &&
+        smtpConfig.auth.user &&
+        smtpConfig.auth.pass &&
+        from &&
+        updatedDoctor.email
+      ) {
+        const transporter = nodemailer.createTransport(smtpConfig);
+        const appUrl = await getAppUrl();
+        const {subject, text, html} = await buildWelcomeEmail(
+            updatedDoctor,
+            paymentThanksTemplate || {},
+            appUrl,
+        );
+        const fromEmail =
+          (paymentThanksTemplate && paymentThanksTemplate.fromEmail) || from;
+        const fromName =
+          (paymentThanksTemplate && paymentThanksTemplate.fromName) || "";
+        const replyTo =
+          (paymentThanksTemplate && paymentThanksTemplate.replyTo) || undefined;
+        const fromAddress = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
+        await transporter.sendMail({
+          from: fromAddress,
+          to: updatedDoctor.email,
+          subject,
+          text,
+          html,
+          replyTo,
+        });
+        await logEmailEvent({
+          type: "paymentThanksEmail",
+          status: "sent",
+          to: updatedDoctor.email,
+          doctorId: resolvedDoctorId,
+        });
+      }
+    }
+  } catch (error) {
+    logger.error("Payment success email send failed:", error);
+    await logEmailEvent({
+      type: "paymentThanksEmail",
+      status: "failed",
+      to: (updatedDoctor && updatedDoctor.email) || "",
+      doctorId: resolvedDoctorId,
+      error: String((error && error.message) || error),
+    });
+  }
+
+  try {
+    const templates = await getMessagingTemplates();
+    const paymentSuccessSmsEnabled =
+      templates.paymentSuccessTemplateEnabled !== false;
+    const senderId = templates.smsSenderId || "";
+    const phone = updatedDoctor.phone || updatedDoctor.phoneNumber || "";
+    if (paymentSuccessSmsEnabled && senderId && phone) {
+      const messageTemplate = String(
+          templates.paymentSuccessTemplate ||
+          "Hi {{doctorName}}, your payment was successful. " +
+          "Thank you for using M-Prescribe.",
+      );
+      const message = renderTemplate(messageTemplate, {
+        name: buildDoctorName(updatedDoctor),
+        doctorName: buildDoctorName(updatedDoctor),
+        doctorId: resolvedDoctorId,
+        email: updatedDoctor.email || "",
+        appUrl: templates.appUrl || DEFAULT_APP_URL,
+      });
+      const smsResult = await sendNotifySms({
+        recipient: phone,
+        senderId,
+        message,
+      });
+      await logSmsEvent({
+        type: "paymentSuccess",
+        status: smsResult.ok ?
+          (smsResult.skipped ? "skipped" : "sent") :
+          "failed",
+        to: normalizeNotifyRecipient(phone) || phone,
+        doctorId: resolvedDoctorId,
+        error: smsResult.ok ? "" : String(smsResult.error || ""),
+      });
+    }
+  } catch (error) {
+    logger.error("Payment success SMS send failed:", error);
+    await logSmsEvent({
+      type: "paymentSuccess",
+      status: "failed",
+      to: "",
+      doctorId: resolvedDoctorId,
+      error: String((error && error.message) || error),
+    });
+  }
+
+  return updatedDoctor;
+};
+
+// Test-only hook for payment idempotency and notification coverage.
+exports.__applyDoctorPaymentSuccessForTests = applyDoctorPaymentSuccess;
+
+const logDoctorPaymentRecord = async ({
+  doctorId = "",
+  type = "",
+  source = "",
+  status = "",
+  monthsDelta = 0,
+  amount = 0,
+  currency = "",
+  referenceId = "",
+  note = "",
+  metadata = {},
+}) => {
+  const normalizedDoctorId = String(doctorId || "").trim();
+  if (!normalizedDoctorId) return;
+  try {
+    await admin.firestore().collection("doctorPaymentRecords").add({
+      doctorId: normalizedDoctorId,
+      type: String(type || "unknown"),
+      source: String(source || "system"),
+      status: String(status || "recorded"),
+      monthsDelta: Number(monthsDelta || 0),
+      amount: Number(amount || 0),
+      currency: String(currency || "").toUpperCase(),
+      referenceId: String(referenceId || ""),
+      note: String(note || ""),
+      metadata: metadata || {},
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error("Failed to store doctor payment record:", error);
   }
 };
 
@@ -2078,7 +2449,10 @@ exports.openaiProxy = onRequest(
       cleanupExpiredInMemoryGuards(now);
       const rateKey = user.uid || user.email || "unknown";
       const existing = openaiProxyRateLimits.get(rateKey);
-      if (!existing || now - existing.windowStart >= OPENAI_PROXY_RATE_LIMIT_WINDOW_MS) {
+      if (
+        !existing ||
+        now - existing.windowStart >= OPENAI_PROXY_RATE_LIMIT_WINDOW_MS
+      ) {
         openaiProxyRateLimits.set(rateKey, {windowStart: now, count: 1});
       } else {
         existing.count += 1;
@@ -2368,6 +2742,390 @@ exports.sendSmsApi = onRequest(
             (error && error.message) || "Failed to send SMS",
         );
         res.status(500).send(message);
+      }
+    },
+);
+
+exports.createStripeCheckoutSession = onRequest(
+    {
+      secrets: [STRIPE_SECRET_KEY],
+    },
+    async (req, res) => {
+      setCors(req, res);
+      if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+      }
+      if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+      }
+
+      const currentUser = await getAuthorizedUser(req);
+      if (!currentUser) {
+        res.status(401).send("Unauthorized");
+        return;
+      }
+
+      const secretKey = STRIPE_SECRET_KEY.value();
+      if (!secretKey) {
+        res.status(500).json({
+          success: false,
+          error: "Stripe secret key is not configured.",
+        });
+        return;
+      }
+
+      const {planId, doctorId, email, successUrl, cancelUrl} = req.body || {};
+      const selectedPlan = STRIPE_PLAN_CATALOG[String(planId || "")];
+
+      if (!selectedPlan) {
+        res.status(400).json({
+          success: false,
+          error: "Invalid plan selected.",
+        });
+        return;
+      }
+
+      const safeSuccessUrl = getSafeStripeReturnUrl(successUrl);
+      const safeCancelUrl = getSafeStripeReturnUrl(cancelUrl);
+      const checkoutSuccessUrl =
+        `${safeSuccessUrl}${safeSuccessUrl.includes("?") ? "&" : "?"}` +
+        "checkout=success&session_id={CHECKOUT_SESSION_ID}";
+      const checkoutCancelUrl =
+        `${safeCancelUrl}${safeCancelUrl.includes("?") ? "&" : "?"}` +
+        "checkout=cancel";
+
+      try {
+        const stripe = new Stripe(secretKey, {
+          apiVersion: "2025-01-27.acacia",
+        });
+
+        const session = await stripe.checkout.sessions.create({
+          mode: "subscription",
+          success_url: checkoutSuccessUrl,
+          cancel_url: checkoutCancelUrl,
+          client_reference_id: currentUser.uid || undefined,
+          customer_email: currentUser.email || email || undefined,
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: selectedPlan.currency,
+                unit_amount: selectedPlan.unitAmount,
+                recurring: {
+                  interval: selectedPlan.interval,
+                },
+                product_data: {
+                  name: selectedPlan.name,
+                  description:
+                    "M-Prescribe subscription for clinic operations",
+                },
+              },
+            },
+          ],
+          metadata: {
+            planId: String(planId || ""),
+            doctorId: String(doctorId || ""),
+            userUid: String(currentUser.uid || ""),
+            userEmail: String(currentUser.email || email || ""),
+          },
+          allow_promotion_codes: true,
+        });
+
+        await admin.firestore().collection("stripeCheckoutLogs").add({
+          sessionId: session.id,
+          checkoutUrl: session.url || "",
+          userUid: currentUser.uid || null,
+          userEmail: currentUser.email || email || null,
+          doctorId: doctorId || null,
+          planId: String(planId || ""),
+          amount: selectedPlan.unitAmount,
+          currency: selectedPlan.currency,
+          interval: selectedPlan.interval,
+          status: "created",
+          createdAt: new Date().toISOString(),
+        });
+
+        res.json({
+          success: true,
+          sessionId: session.id,
+          url: session.url,
+        });
+      } catch (error) {
+        logger.error("Failed to create Stripe checkout session:", error);
+        res.status(500).json({
+          success: false,
+          error: error.message || "Failed to start Stripe checkout.",
+        });
+      }
+    },
+);
+
+exports.confirmStripeCheckoutSuccess = onRequest(
+    {
+      secrets: [STRIPE_SECRET_KEY],
+    },
+    async (req, res) => {
+      setCors(req, res);
+      if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+      }
+      if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+      }
+
+      const currentUser = await getAuthorizedUser(req);
+      if (!currentUser) {
+        res.status(401).send("Unauthorized");
+        return;
+      }
+
+      const secretKey = STRIPE_SECRET_KEY.value();
+      if (!secretKey) {
+        res.status(500).json({
+          success: false,
+          error: "Stripe secret key is not configured.",
+        });
+        return;
+      }
+
+      const {sessionId, doctorId} = req.body || {};
+      const parsedSessionId = String(sessionId || "").trim();
+      if (!parsedSessionId) {
+        res.status(400).json({
+          success: false,
+          error: "sessionId is required.",
+        });
+        return;
+      }
+
+      try {
+        const stripe = new Stripe(secretKey, {
+          apiVersion: "2025-01-27.acacia",
+        });
+
+        const session = await stripe.checkout.sessions
+            .retrieve(parsedSessionId);
+        const sessionEmail = String(session.customer_email || "").toLowerCase();
+        const userEmail = String(currentUser.email || "").toLowerCase();
+        if (sessionEmail && userEmail && sessionEmail !== userEmail) {
+          res.status(403).json({
+            success: false,
+            error: "Session does not belong to current user.",
+          });
+          return;
+        }
+
+        if (session.status !== "complete") {
+          res.status(409).json({
+            success: false,
+            error: "Checkout is not completed yet.",
+          });
+          return;
+        }
+
+        const planId = String(
+            (session.metadata && session.metadata.planId) || "",
+        );
+        const selectedPlan = STRIPE_PLAN_CATALOG[planId];
+        const interval = selectedPlan ? selectedPlan.interval : "month";
+
+        const resolvedDoctorId = await resolveDoctorIdForStripe({
+          doctorId: String(doctorId || ""),
+          metadataDoctorId: String(
+              (session.metadata && session.metadata.doctorId) || "",
+          ),
+          userEmail,
+          customerId: String(session.customer || ""),
+        });
+
+        if (!resolvedDoctorId) {
+          res.status(404).json({
+            success: false,
+            error: "Doctor profile not found for this payment.",
+          });
+          return;
+        }
+
+        const nowIso = new Date().toISOString();
+        const subscriptionId = typeof session.subscription === "string" ?
+          session.subscription :
+          "";
+
+        const updatedDoctor = await applyDoctorPaymentSuccess({
+          resolvedDoctorId,
+          planId,
+          interval,
+          sessionId: session.id || parsedSessionId,
+          paymentReferenceId: session.id || parsedSessionId,
+          customerId: String(session.customer || ""),
+          subscriptionId,
+          paidAt: nowIso,
+        });
+
+        const logSnapshot = await admin.firestore()
+            .collection("stripeCheckoutLogs")
+            .where("sessionId", "==", parsedSessionId)
+            .limit(10)
+            .get();
+        if (!logSnapshot.empty) {
+          const batch = admin.firestore().batch();
+          logSnapshot.docs.forEach((doc) => {
+            batch.set(doc.ref, {
+              status: "confirmed",
+              confirmedAt: nowIso,
+              doctorId: resolvedDoctorId,
+            }, {merge: true});
+          });
+          await batch.commit();
+        }
+
+        res.json({
+          success: true,
+          doctor: updatedDoctor,
+        });
+      } catch (error) {
+        logger.error("Failed to confirm Stripe checkout session:", error);
+        res.status(500).json({
+          success: false,
+          error: error.message || "Failed to confirm Stripe payment.",
+        });
+      }
+    },
+);
+
+exports.stripeWebhook = onRequest(
+    {
+      secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET],
+    },
+    async (req, res) => {
+      if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+      }
+
+      const secretKey = STRIPE_SECRET_KEY.value();
+      const webhookSecret = STRIPE_WEBHOOK_SECRET.value();
+      if (!secretKey || !webhookSecret) {
+        res.status(500).send("Stripe webhook is not configured");
+        return;
+      }
+
+      const stripeSignature = req.headers["stripe-signature"];
+      if (!stripeSignature) {
+        res.status(400).send("Missing stripe signature");
+        return;
+      }
+
+      const stripe = new Stripe(secretKey, {
+        apiVersion: "2025-01-27.acacia",
+      });
+
+      let event;
+      try {
+        const payload = req.rawBody || Buffer.from(JSON.stringify(req.body));
+        event = stripe.webhooks.constructEvent(
+            payload,
+            stripeSignature,
+            webhookSecret,
+        );
+      } catch (error) {
+        logger.error("Stripe webhook signature verification failed:", error);
+        res.status(400).send("Invalid webhook signature");
+        return;
+      }
+
+      try {
+        if (event.type === "checkout.session.completed") {
+          const session = event.data.object;
+          const planId = String(
+              (session.metadata && session.metadata.planId) || "",
+          );
+          const selectedPlan = STRIPE_PLAN_CATALOG[planId];
+          const interval = selectedPlan ? selectedPlan.interval : "month";
+          const resolvedDoctorId = await resolveDoctorIdForStripe({
+            doctorId: String(
+                (session.metadata && session.metadata.doctorId) || "",
+            ),
+            metadataDoctorId: String(
+                (session.metadata && session.metadata.doctorId) || "",
+            ),
+            userEmail: String(session.customer_email || ""),
+            customerId: String(session.customer || ""),
+          });
+          if (resolvedDoctorId) {
+            await applyDoctorPaymentSuccess({
+              resolvedDoctorId,
+              planId,
+              interval,
+              sessionId: String(session.id || ""),
+              paymentReferenceId: String(session.id || ""),
+              customerId: String(session.customer || ""),
+              subscriptionId: String(session.subscription || ""),
+              paidAt: new Date().toISOString(),
+            });
+          }
+        } else if (event.type === "invoice.paid") {
+          const invoice = event.data.object;
+          const recurringInterval = (
+            invoice &&
+            invoice.lines &&
+            invoice.lines.data &&
+            invoice.lines.data[0] &&
+            invoice.lines.data[0].price &&
+            invoice.lines.data[0].price.recurring &&
+            invoice.lines.data[0].price.recurring.interval
+          ) || "month";
+          const resolvedDoctorId = await resolveDoctorIdForStripe({
+            doctorId: "",
+            metadataDoctorId: "",
+            userEmail: String(invoice.customer_email || ""),
+            customerId: String(invoice.customer || ""),
+          });
+          if (resolvedDoctorId) {
+            await applyDoctorPaymentSuccess({
+              resolvedDoctorId,
+              planId: "",
+              interval: recurringInterval === "year" ? "year" : "month",
+              sessionId: "",
+              paymentReferenceId: String(invoice.id || ""),
+              customerId: String(invoice.customer || ""),
+              subscriptionId: String(invoice.subscription || ""),
+              paidAt: new Date().toISOString(),
+            });
+          }
+        } else if (
+          event.type === "invoice.payment_failed" ||
+          event.type === "customer.subscription.deleted"
+        ) {
+          const obj = event.data.object;
+          const resolvedDoctorId = await resolveDoctorIdForStripe({
+            doctorId: "",
+            metadataDoctorId: "",
+            userEmail: String(obj.customer_email || ""),
+            customerId: String(obj.customer || ""),
+          });
+          if (resolvedDoctorId) {
+            await admin.firestore()
+                .collection("doctors")
+                .doc(resolvedDoctorId)
+                .set({
+                  paymentStatus: event.type === "invoice.payment_failed" ?
+                    "failed" :
+                    "canceled",
+                  stripeLastEvent: event.type,
+                  stripeLastEventAt: new Date().toISOString(),
+                }, {merge: true});
+          }
+        }
+
+        res.json({received: true});
+      } catch (error) {
+        logger.error("Stripe webhook processing failed:", error);
+        res.status(500).send("Webhook processing failed");
       }
     },
 );

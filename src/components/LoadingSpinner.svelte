@@ -41,7 +41,7 @@
 
 {#if fullScreen}
   <!-- Full Screen Loading -->
-  <div class="fixed inset-0 bg-white bg-opacity-90 backdrop-blur-sm z-50 flex items-center justify-center">
+  <div class="fixed inset-0 bg-white bg-opacity-90 backdrop-blur-sm z-50 flex items-center justify-center sm:text-sm">
     <div class="text-center">
       <!-- Three dots dancing loader -->
       <div class="flex justify-center items-center mb-4 {config.spacing}">

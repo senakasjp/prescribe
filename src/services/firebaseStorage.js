@@ -2526,6 +2526,180 @@ class FirebaseStorageService {
       throw error
     }
   }
+
+  async getSmsLogs(limitCount = 200) {
+    try {
+      const q = query(
+        collection(db, 'smsLogs'),
+        orderBy('createdAt', 'desc'),
+        limit(limitCount)
+      )
+      const querySnapshot = await getDocs(q)
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }))
+    } catch (error) {
+      console.error('❌ Error getting sms logs:', error)
+      throw error
+    }
+  }
+
+  async getDoctorPaymentRecords(doctorId, limitCount = 200) {
+    try {
+      const normalizedDoctorId = String(doctorId || '').trim()
+      if (!normalizedDoctorId) {
+        return []
+      }
+
+      const walletSnapshot = await getDocs(
+        query(
+          collection(db, 'doctorPaymentRecords'),
+          where('doctorId', '==', normalizedDoctorId),
+          limit(limitCount)
+        )
+      )
+
+      const walletRecords = walletSnapshot.docs.map(doc => ({
+        id: doc.id,
+        sourceCollection: 'doctorPaymentRecords',
+        ...doc.data()
+      }))
+
+      const stripeSnapshot = await getDocs(
+        query(
+          collection(db, 'stripeCheckoutLogs'),
+          where('doctorId', '==', normalizedDoctorId),
+          limit(limitCount)
+        )
+      )
+
+      const stripeRecords = stripeSnapshot.docs.map(doc => {
+        const data = doc.data()
+        const interval = String(data?.interval || '').toLowerCase()
+        const monthsDelta = interval === 'year' ? 12 : interval === 'month' ? 1 : 0
+        return {
+          id: `stripe-${doc.id}`,
+          doctorId: normalizedDoctorId,
+          type: 'stripe_checkout',
+          source: 'stripeCheckoutLogs',
+          status: data?.status || 'created',
+          monthsDelta,
+          amount: Number(data?.amount || 0),
+          currency: String(data?.currency || '').toUpperCase(),
+          referenceId: data?.sessionId || doc.id,
+          note: data?.planId || '',
+          createdAt: data?.createdAt || '',
+          sourceCollection: 'stripeCheckoutLogs'
+        }
+      })
+
+      return [...walletRecords, ...stripeRecords]
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, limitCount)
+    } catch (error) {
+      console.error('❌ Error getting doctor payment records:', error)
+      throw error
+    }
+  }
+
+  async addDoctorPaymentRecord(record) {
+    try {
+      const doctorId = String(record?.doctorId || '').trim()
+      if (!doctorId) {
+        throw new Error('doctorId is required')
+      }
+      const payload = {
+        doctorId,
+        type: String(record?.type || 'manual'),
+        source: String(record?.source || 'admin'),
+        status: String(record?.status || 'recorded'),
+        monthsDelta: Number(record?.monthsDelta || 0),
+        amount: Number(record?.amount || 0),
+        currency: String(record?.currency || '').toUpperCase(),
+        referenceId: String(record?.referenceId || ''),
+        note: String(record?.note || ''),
+        metadata: record?.metadata || {},
+        createdAt: new Date().toISOString()
+      }
+      const docRef = await addDoc(collection(db, 'doctorPaymentRecords'), payload)
+      return { id: docRef.id, ...payload }
+    } catch (error) {
+      console.error('❌ Error adding doctor payment record:', error)
+      throw error
+    }
+  }
+
+  async getDoctorReferralWalletStats(doctorId) {
+    try {
+      const normalizedDoctorId = String(doctorId || '').trim()
+      if (!normalizedDoctorId) {
+        return {
+          totalReferredDoctors: 0,
+          referralBonusAppliedCount: 0,
+          referralBonusPendingCount: 0,
+          referralFreeMonthsAvailable: 0
+        }
+      }
+
+      const shortDoctorId = this.formatDoctorId(normalizedDoctorId)
+      const [directSnapshot, shortSnapshot] = await Promise.all([
+        getDocs(
+          query(
+            collection(db, this.collections.doctors),
+            where('referredByDoctorId', '==', normalizedDoctorId),
+            limit(500)
+          )
+        ),
+        getDocs(
+          query(
+            collection(db, this.collections.doctors),
+            where('referredByDoctorId', '==', shortDoctorId),
+            limit(500)
+          )
+        )
+      ])
+
+      const byId = new Map()
+      directSnapshot.docs.forEach((docSnap) => {
+        byId.set(docSnap.id, { id: docSnap.id, ...docSnap.data() })
+      })
+      shortSnapshot.docs.forEach((docSnap) => {
+        if (!byId.has(docSnap.id)) {
+          byId.set(docSnap.id, { id: docSnap.id, ...docSnap.data() })
+        }
+      })
+
+      const referredDoctors = Array.from(byId.values())
+      const now = Date.now()
+      let referralBonusAppliedCount = 0
+      let referralBonusPendingCount = 0
+      let referralFreeMonthsAvailable = 0
+
+      referredDoctors.forEach((doctor) => {
+        if (doctor?.referralBonusApplied) {
+          referralBonusAppliedCount += 1
+          return
+        }
+        const eligibleTime = new Date(doctor?.referralEligibleAt || '').getTime()
+        if (Number.isFinite(eligibleTime) && eligibleTime <= now) {
+          referralFreeMonthsAvailable += 1
+        } else {
+          referralBonusPendingCount += 1
+        }
+      })
+
+      return {
+        totalReferredDoctors: referredDoctors.length,
+        referralBonusAppliedCount,
+        referralBonusPendingCount,
+        referralFreeMonthsAvailable
+      }
+    } catch (error) {
+      console.error('❌ Error getting doctor referral wallet stats:', error)
+      throw error
+    }
+  }
 }
 
 // Create singleton instance

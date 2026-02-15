@@ -282,7 +282,7 @@
   const getHeaderHtml = (templateSettings) => {
     if (!templateSettings) {
       return `
-        <div class="rx-default-header">
+        <div class="rx-default-header sm:text-sm">
           <div class="rx-title">MEDICAL PRESCRIPTION</div>
           <div class="rx-clinic">Your Medical Clinic</div>
           <div class="rx-clinic">123 Medical Street, City</div>

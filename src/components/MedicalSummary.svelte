@@ -31,6 +31,7 @@
   let storedSummarySignature = ''
   let isLoadingStoredSummary = false
   let summaryLoadRequestId = 0
+  let savedReports = []
 
   const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 
@@ -90,14 +91,28 @@
       illnessesCount,
       prescriptionsCount,
       medicationsCount,
-      reportsCount: reports?.length || 0,
+      reportsCount: summaryReports?.length || 0,
       medicationsSignature: buildMedicationsSignature(),
       symptomsLatest: getLatestTimestamp(symptoms),
       illnessesLatest: getLatestTimestamp(illnesses),
       prescriptionsLatest: getLatestTimestamp(getSummaryPrescriptions()),
-      reportsLatest: getLatestTimestamp(reports)
+      reportsLatest: getLatestTimestamp(summaryReports)
     }
     return JSON.stringify(base)
+  }
+
+  const mergeReports = (primary = [], secondary = []) => {
+    const map = new Map()
+    const allReports = [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])]
+    allReports.forEach((report, index) => {
+      if (!report) return
+      const fallbackKey = `${report?.title || 'untitled'}|${report?.date || report?.createdAt || ''}|${report?.type || ''}|${index}`
+      const key = report?.id || fallbackKey
+      if (!map.has(key)) {
+        map.set(key, report)
+      }
+    })
+    return Array.from(map.values())
   }
 
   const stripRiskFactorsSection = (html) => {
@@ -138,17 +153,31 @@
     const requestId = ++summaryLoadRequestId
     isLoadingStoredSummary = true
     try {
+      const persistedReportsPromise = firebaseStorage.getReportsByPatientId(selectedPatient.id)
+        .catch(() => [])
+
       if (selectedPatient?.medicalSummary?.content) {
         storedSummary = selectedPatient.medicalSummary.content || ''
         storedSummarySignature = selectedPatient.medicalSummary.signature || ''
+        const persistedReports = await persistedReportsPromise
+        if (requestId === summaryLoadRequestId) {
+          savedReports = Array.isArray(persistedReports) ? persistedReports : []
+        }
         return
       }
-      const patientRecord = await firebaseStorage.getPatientById(selectedPatient.id)
+      const [patientRecord, persistedReports] = await Promise.all([
+        firebaseStorage.getPatientById(selectedPatient.id),
+        persistedReportsPromise
+      ])
       if (requestId !== summaryLoadRequestId) return
       storedSummary = patientRecord?.medicalSummary?.content || ''
       storedSummarySignature = patientRecord?.medicalSummary?.signature || ''
+      savedReports = Array.isArray(persistedReports) ? persistedReports : []
     } catch (error) {
       console.warn('Failed to load stored medical summary', error)
+      if (requestId === summaryLoadRequestId) {
+        savedReports = []
+      }
     } finally {
       if (requestId === summaryLoadRequestId) {
         isLoadingStoredSummary = false
@@ -209,7 +238,7 @@
         symptoms: symptoms || [],
         illnesses: illnesses || [],
         prescriptions: summaryPrescriptions,
-        recentReports: reports || [],
+        recentReports: summaryReports || [],
         reportAnalyses: []
       }
 
@@ -232,6 +261,7 @@
   // Reactive tab counts
   $: symptomsCount = symptoms?.length || 0
   $: illnessesCount = illnesses?.length || 0
+  $: summaryReports = mergeReports(reports, savedReports)
   $: summaryPrescriptions = getSummaryPrescriptions()
   $: prescriptionsCount = summaryPrescriptions?.length || 0
   $: medicationsCount = summaryPrescriptions?.reduce((total, prescription) => {
@@ -303,7 +333,7 @@
 </script>
 
 {#if selectedPatient}
-  <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-3">
+  <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-3 sm:text-sm">
     <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
       <div class="flex justify-between items-center">
         <h6 class="text-lg font-semibold text-gray-900 mb-0">

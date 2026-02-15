@@ -292,7 +292,7 @@
   })
 </script>
 
-<div class="max-w-screen-xl mx-auto px-4 py-6">
+<div class="max-w-screen-xl mx-auto px-4 py-6 sm:text-sm">
   <!-- Header -->
   <div class="flex justify-between items-center mb-6">
     <div>

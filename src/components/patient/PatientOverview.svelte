@@ -56,7 +56,7 @@
   }
 </script>
 
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:text-sm">
   <div class="flex justify-between items-start mb-6">
     <div>
       <h2 class="text-2xl font-bold text-gray-900 mb-2">

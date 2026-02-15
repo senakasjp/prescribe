@@ -198,7 +198,14 @@
   }
 
   const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleString()
+    return new Date(timestamp).toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
   }
 
   const getPromptTypeColor = (type) => {
@@ -299,7 +306,7 @@
 
 </script>
 
-<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm sm:text-sm">
   <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
     <div class="flex justify-between items-center">
       <div>

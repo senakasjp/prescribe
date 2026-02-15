@@ -294,7 +294,7 @@
   })
 </script>
 
-<div class="header-editor-container">
+<div class="header-editor-container sm:text-sm">
   <!-- Logo Upload Section -->
   <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
     <div class="flex items-center justify-between mb-3">

@@ -14,4 +14,14 @@ describe('formatDate', () => {
   it('returns Unknown for empty date', () => {
     expect(formatDate(null)).toBe('Unknown')
   })
+
+  it('formats time in AM/PM when using time format', () => {
+    const value = formatDate('2026-02-15T15:31:10.000Z', { locale: 'en-US', format: 'time' })
+    expect(value).toMatch(/AM|PM/i)
+  })
+
+  it('formats includeTime output in AM/PM style', () => {
+    const value = formatDate('2026-02-15T15:31:10.000Z', { locale: 'en-US', includeTime: true })
+    expect(value).toMatch(/AM|PM/i)
+  })
 })

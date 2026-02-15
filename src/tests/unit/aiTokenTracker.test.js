@@ -204,6 +204,95 @@ describe('aiTokenTracker', () => {
     expect(stats.total.requests).toBe(1)
   })
 
+  it('derives today and this-month stats from requests to prevent bucket drift inconsistencies', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      totalTokens: 999999,
+      totalCost: 999,
+      dailyUsage: {
+        '2026-02-13': { tokens: 5000, cost: 50, requests: 5 }
+      },
+      monthlyUsage: {
+        '2026-02': { tokens: 200000, cost: 200, requests: 200 }
+      },
+      requests: [
+        {
+          id: 1,
+          type: 'improveText',
+          timestamp: '2026-02-13T09:00:00.000Z',
+          promptTokens: 10,
+          completionTokens: 5,
+          totalTokens: 15,
+          cost: 0.1,
+          doctorId: 'doc-a'
+        },
+        {
+          id: 2,
+          type: 'patientSummary',
+          timestamp: '2026-01-31T09:00:00.000Z',
+          promptTokens: 10,
+          completionTokens: 5,
+          totalTokens: 15,
+          cost: 0.1,
+          doctorId: 'doc-a'
+        }
+      ],
+      doctorQuotas: {},
+      defaultQuota: 50000,
+      tokenPricePerMillion: 0.5,
+      lastUpdated: null
+    }))
+
+    const tracker = await loadTracker()
+    const stats = tracker.getUsageStats()
+
+    expect(stats.total.tokens).toBe(30)
+    expect(stats.total.cost).toBe(0.2)
+    expect(stats.total.requests).toBe(2)
+    expect(stats.today.tokens).toBe(15)
+    expect(stats.today.cost).toBe(0.1)
+    expect(stats.today.requests).toBe(1)
+    expect(stats.thisMonth.tokens).toBe(15)
+    expect(stats.thisMonth.cost).toBe(0.1)
+    expect(stats.thisMonth.requests).toBe(1)
+  })
+
+  it('migrates legacy misordered trackUsage entries so doctor usage is attributed correctly', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      totalTokens: 40,
+      totalCost: 0,
+      dailyUsage: {},
+      monthlyUsage: {},
+      requests: [
+        {
+          id: 1,
+          type: 'doc-legacy-1',
+          timestamp: '2026-02-13T00:00:00.000Z',
+          promptTokens: 40,
+          completionTokens: 'improveText',
+          totalTokens: '40improveText',
+          cost: 0,
+          doctorId: 'unknown-doctor',
+          model: 'gpt-3.5-turbo'
+        }
+      ],
+      doctorQuotas: {},
+      defaultQuota: 50000,
+      tokenPricePerMillion: 0.5,
+      lastUpdated: null
+    }))
+
+    const tracker = await loadTracker()
+    const doctorStats = tracker.getDoctorUsageStats('doc-legacy-1')
+
+    expect(doctorStats.total.tokens).toBe(40)
+    expect(doctorStats.total.requests).toBe(1)
+
+    const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY))
+    expect(persisted.requests[0].type).toBe('improveText')
+    expect(persisted.requests[0].doctorId).toBe('doc-legacy-1')
+    expect(persisted.requests[0].completionTokens).toBe(0)
+  })
+
   it('clears usage data while preserving stable operation afterward', async () => {
     const tracker = await loadTracker()
     tracker.trackUsage('before-clear', 10, 5, 'gpt-4o-mini', 'doc-clear')

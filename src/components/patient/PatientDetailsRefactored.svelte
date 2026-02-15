@@ -308,7 +308,7 @@
   })
 </script>
 
-<div class="h-full flex flex-col">
+<div class="h-full flex flex-col sm:text-sm">
   <!-- Patient Tabs -->
   <PatientTabs
     {activeTab}

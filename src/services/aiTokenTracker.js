@@ -8,6 +8,7 @@ class AITokenTracker {
     
     // Run migration to fix any requests with missing doctorId
     this.migrateRequestsWithMissingDoctorId()
+    this.migrateLegacyMisorderedTrackUsage()
   }
 
   sanitizeNumber(value) {
@@ -96,8 +97,10 @@ class AITokenTracker {
 
   // Track token usage for a request
   trackUsage(requestType, promptTokens, completionTokens, model = 'gpt-3.5-turbo', doctorId = null) {
-    const totalTokens = promptTokens + completionTokens
-    const cost = this.calculateCost(promptTokens, completionTokens, model)
+    const safePromptTokens = this.sanitizeNumber(promptTokens)
+    const safeCompletionTokens = this.sanitizeNumber(completionTokens)
+    const totalTokens = safePromptTokens + safeCompletionTokens
+    const cost = this.calculateRequestCost(safePromptTokens, safeCompletionTokens, model)
     const timestamp = new Date().toISOString()
     const date = new Date().toISOString().split('T')[0]
     const month = new Date().toISOString().substring(0, 7) // YYYY-MM
@@ -108,7 +111,7 @@ class AITokenTracker {
     console.log(`📊 Tracking AI usage for doctor: ${validDoctorId}`)
     console.log(`📊 Original doctorId parameter: ${doctorId}`)
     console.log(`📊 Request type: ${requestType}`)
-    console.log(`📊 Tokens: ${promptTokens} + ${completionTokens} = ${totalTokens}`)
+    console.log(`📊 Tokens: ${safePromptTokens} + ${safeCompletionTokens} = ${totalTokens}`)
 
     // Add to requests history
     const request = {
@@ -116,8 +119,8 @@ class AITokenTracker {
       type: requestType,
       timestamp,
       model,
-      promptTokens,
-      completionTokens,
+      promptTokens: safePromptTokens,
+      completionTokens: safeCompletionTokens,
       totalTokens,
       cost,
       doctorId: validDoctorId
@@ -162,8 +165,8 @@ class AITokenTracker {
     return request
   }
 
-  // Calculate cost based on OpenAI pricing (updated for accuracy)
-  calculateCost(promptTokens, completionTokens, model) {
+  // Calculate request cost based on OpenAI pricing (updated for accuracy)
+  calculateRequestCost(promptTokens, completionTokens, model) {
     // Updated pricing based on OpenAI's current rates (2024)
     // Note: These are approximate and may not include taxes/fees
     const pricing = {
@@ -208,21 +211,32 @@ class AITokenTracker {
     this.normalizeUsageData()
     const today = new Date().toISOString().split('T')[0]
     const thisMonth = new Date().toISOString().substring(0, 7)
-    const totalTokens = Array.isArray(this.usageData.requests)
-      ? this.usageData.requests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
-      : 0
-    const totalCost = Array.isArray(this.usageData.requests)
-      ? this.usageData.requests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
-      : 0
+    const requests = Array.isArray(this.usageData.requests) ? this.usageData.requests : []
+    const totalTokens = requests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const totalCost = requests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
+    const todayStats = requests.reduce((acc, req) => {
+      if (!String(req?.timestamp || '').startsWith(today)) return acc
+      acc.tokens += this.sanitizeNumber(req.totalTokens)
+      acc.cost += this.sanitizeNumber(req.cost)
+      acc.requests += 1
+      return acc
+    }, { tokens: 0, cost: 0, requests: 0 })
+    const monthStats = requests.reduce((acc, req) => {
+      if (!String(req?.timestamp || '').startsWith(thisMonth)) return acc
+      acc.tokens += this.sanitizeNumber(req.totalTokens)
+      acc.cost += this.sanitizeNumber(req.cost)
+      acc.requests += 1
+      return acc
+    }, { tokens: 0, cost: 0, requests: 0 })
     
     return {
       total: {
         tokens: totalTokens,
         cost: totalCost,
-        requests: this.usageData.requests.length
+        requests: requests.length
       },
-      today: this.usageData.dailyUsage[today] || { tokens: 0, cost: 0, requests: 0 },
-      thisMonth: this.usageData.monthlyUsage[thisMonth] || { tokens: 0, cost: 0, requests: 0 },
+      today: todayStats,
+      thisMonth: monthStats,
       lastUpdated: this.usageData.lastUpdated
     }
   }
@@ -389,8 +403,8 @@ class AITokenTracker {
       req.doctorId === doctorId && req.timestamp.startsWith(currentMonth)
     )
     
-    const monthlyTokens = doctorRequests.reduce((sum, req) => sum + req.totalTokens, 0)
-    const monthlyCost = doctorRequests.reduce((sum, req) => sum + req.cost, 0)
+    const monthlyTokens = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const monthlyCost = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
     const monthlyRequests = doctorRequests.length
     
     return {
@@ -467,6 +481,65 @@ class AITokenTracker {
       this.saveUsageData()
     }
     
+    return migratedCount
+  }
+
+  // Migration for legacy calls where trackUsage args were passed as:
+  // trackUsage(doctorId, totalTokens, requestType)
+  migrateLegacyMisorderedTrackUsage() {
+    const knownRequestTypes = new Set([
+      'patientSummary',
+      'reportImageOcr',
+      'improveText',
+      'generateComprehensivePrescriptionAnalysis',
+      'generateAIDrugSuggestions',
+      'generateCombinedAnalysis',
+      'generateRecommendationsOptimized',
+      'generateMedicationSuggestionsOptimized',
+      'checkDrugInteractionsOptimized',
+      'generateCombinedAnalysisOptimized'
+    ])
+
+    let migratedCount = 0
+
+    this.usageData.requests.forEach((request) => {
+      if (!request || typeof request !== 'object') return
+
+      const looksLikeLegacyOrder = (
+        request.doctorId === 'unknown-doctor'
+        && typeof request.type === 'string'
+        && typeof request.completionTokens === 'string'
+        && knownRequestTypes.has(request.completionTokens)
+        && !knownRequestTypes.has(request.type)
+      )
+
+      if (!looksLikeLegacyOrder) return
+
+      const legacyDoctorId = request.type
+      const legacyRequestType = request.completionTokens
+      const promptTokens = this.sanitizeNumber(request.promptTokens)
+      const completionTokens = 0
+      const inferredModel = (
+        legacyRequestType === 'patientSummary'
+        || legacyRequestType === 'reportImageOcr'
+        || legacyRequestType === 'improveText'
+      ) ? 'gpt-4o-mini' : (request.model || 'gpt-3.5-turbo')
+
+      request.doctorId = legacyDoctorId
+      request.type = legacyRequestType
+      request.promptTokens = promptTokens
+      request.completionTokens = completionTokens
+      request.totalTokens = this.sanitizeNumber(request.totalTokens) || promptTokens
+      request.model = inferredModel
+      request.cost = this.calculateRequestCost(promptTokens, completionTokens, inferredModel)
+      migratedCount += 1
+    })
+
+    if (migratedCount > 0) {
+      console.log(`🔄 Migrated ${migratedCount} legacy AI usage records with misordered trackUsage args`)
+      this.saveUsageData()
+    }
+
     return migratedCount
   }
 

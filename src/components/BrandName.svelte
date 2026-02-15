@@ -2,7 +2,7 @@
   export let className = ''
 </script>
 
-<span class={`brand-name ${className}`.trim()}>
+<span class={`brand-name sm:text-sm ${className}`.trim()}>
   <span class="brand-initial">M</span><span class="brand-rest">-PRESCRIBE</span>
 </span>
 

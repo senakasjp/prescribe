@@ -93,7 +93,7 @@
     <div class="p-0 overflow-auto" style="max-height: calc(100vh - 200px);">
       {#if loading}
         <LoadingSpinner 
-          size="small" 
+          size="text-sm" 
           color="blue" 
           text="Loading patients..." 
           fullScreen={false}
@@ -130,23 +130,23 @@
                     </h6>
                   {/if}
                   {#if patient.dateOfBirth}
-                    <p class="mb-1 text-gray-600 dark:text-gray-300 small">
+                    <p class="mb-1 text-gray-600 dark:text-gray-300 text-sm">
                       <i class="fas fa-calendar mr-1"></i>
                       DOB: {formatDate(patient.dateOfBirth)}
                     </p>
                   {/if}
                   {#if patient.phone}
-                    <p class="mb-0 text-gray-600 dark:text-gray-300 small">
+                    <p class="mb-0 text-gray-600 dark:text-gray-300 text-sm">
                       <i class="fas fa-phone mr-1"></i>
                       {patient.phone}
                     </p>
                   {/if}
                 </div>
                 <div class="text-end">
-                  <small class="text-gray-600 dark:text-gray-300">
+                  <text-sm class="text-gray-600 dark:text-gray-300">
                     <i class="fas fa-id-card mr-1"></i>
                     ID: {formatPatientId(patient.id)}
-                  </small>
+                  </text-sm>
                 </div>
               </div>
             </button>

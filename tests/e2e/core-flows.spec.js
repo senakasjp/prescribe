@@ -51,6 +51,27 @@ test('doctor can open add patient form', async ({ page }) => {
   await expect(page.getByText(/First Name/i)).toBeVisible()
 })
 
+test('doctor menu shows reports and omits standalone prescriptions button', async ({ page }) => {
+  await setDoctorSession(page, {
+    id: 'doc-1',
+    email: 'doctor@example.com',
+    role: 'doctor',
+    firstName: 'Test',
+    lastName: 'Doctor',
+    country: 'United States'
+  })
+
+  await page.goto('/')
+
+  const menuBarNav = page.locator('main nav').nth(1)
+
+  await expect(page.getByRole('heading', { name: /welcome, dr\. test doctor/i })).toBeVisible()
+  await expect(menuBarNav.getByRole('button', { name: /reports/i })).toBeVisible()
+  await expect(menuBarNav.getByRole('button', { name: /patients/i })).toBeVisible()
+  await expect(menuBarNav.getByRole('button', { name: /settings/i })).toBeVisible()
+  await expect(menuBarNav.getByRole('button', { name: /prescriptions/i })).toHaveCount(0)
+})
+
 test('pharmacy owner can view prescriptions and inventory tabs', async ({ page }) => {
   await setPharmacistSession(page, {
     id: 'ph-1',

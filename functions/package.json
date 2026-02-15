@@ -19,6 +19,7 @@
     "firebase-functions": "^7.0.5",
     "nodemailer": "^7.0.12",
     "qrcode": "^1.5.4",
+    "stripe": "^18.5.0",
     "twilio": "^4.23.0"
   },
   "devDependencies": {

@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const { trackUsageMock } = vi.hoisted(() => ({
+  trackUsageMock: vi.fn(async () => ({}))
+}))
+
 vi.mock('../../services/aiTokenTracker.js', () => ({
   default: {
-    trackUsage: vi.fn(async () => ({}))
+    trackUsage: trackUsageMock
   }
 }))
 
@@ -25,8 +29,8 @@ describe('openaiService extractTextFromImage', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    const module = await import('../../services/openaiService.js')
-    openaiService = module.default
+    const openaiModule = await import('../../services/openaiService.js')
+    openaiService = openaiModule.default
   })
 
   it('builds a vision request and returns OCR text', async () => {
@@ -46,6 +50,13 @@ describe('openaiService extractTextFromImage', () => {
     expect(requestBody.messages[1].content[1].image_url.url).toBe(imageDataUrl)
     expect(result.extractedText).toContain('HB: 11.2 g/dL')
     expect(result.tokensUsed).toBe(45)
+    expect(trackUsageMock).toHaveBeenCalledWith(
+      'reportImageOcr',
+      45,
+      0,
+      'gpt-4o-mini',
+      'doc-123'
+    )
   })
 
   it('throws when image source is missing', async () => {

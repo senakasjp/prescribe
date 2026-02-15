@@ -35,7 +35,8 @@ export function formatDate(date, options = {}) {
         day: 'numeric',
         ...(includeTime && {
           hour: '2-digit',
-          minute: '2-digit'
+          minute: '2-digit',
+          hour12: true
         })
       })
     } else if (format === 'short') {
@@ -45,13 +46,15 @@ export function formatDate(date, options = {}) {
         year: 'numeric',
         ...(includeTime && {
           hour: '2-digit',
-          minute: '2-digit'
+          minute: '2-digit',
+          hour12: true
         })
       })
     } else if (format === 'time') {
       return dateObj.toLocaleTimeString(resolvedLocale, {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        hour12: true
       })
     }
     

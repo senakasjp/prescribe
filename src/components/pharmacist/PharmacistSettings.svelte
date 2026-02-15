@@ -400,7 +400,7 @@
   }
 </script>
 
-<div class="bg-white rounded-lg shadow-sm border border-gray-200">
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 sm:text-sm">
   <!-- Header -->
   <div class="bg-blue-600 text-white px-6 py-4 rounded-t-lg">
     <div class="flex items-center justify-between">
