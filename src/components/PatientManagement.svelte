@@ -2036,12 +2036,18 @@
       // Recreate chart with fresh data
       scheduleHomeChartsRender(100)
     }
+
+    const handleWindowResize = () => {
+      scheduleHomeChartsRender(150)
+    }
     
     window.addEventListener('prescriptionSaved', handlePrescriptionSaved)
+    window.addEventListener('resize', handleWindowResize)
 
     // Cleanup function
     return () => {
       window.removeEventListener('prescriptionSaved', handlePrescriptionSaved)
+      window.removeEventListener('resize', handleWindowResize)
     }
   })
 

@@ -211,6 +211,73 @@ describe('PrescriptionsTab', () => {
     ])
   })
 
+  it('keeps a stable pharmacy payload schema for mixed medication fields', async () => {
+    const onShowPharmacyModal = vi.fn()
+    const medication = {
+      id: 'med-contract-1',
+      name: 'Amoxicillin',
+      genericName: 'Amoxicillin',
+      dosage: '500mg',
+      dosageForm: 'Tablet',
+      frequency: 'Twice daily (BD)',
+      duration: 'days',
+      strength: '',
+      strengthUnit: 'mg',
+      qts: '2',
+      amount: '12',
+      liquidDosePerFrequencyMl: '5',
+      liquidAmountMl: '80',
+      inventoryStrengthText: '100 ml',
+      sendToExternalPharmacy: false
+    }
+
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [medication],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-contract-1', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal,
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Send to Pharmacy')).toBeTruthy()
+    })
+
+    await fireEvent.click(getByText('Send to Pharmacy'))
+    expect(onShowPharmacyModal).toHaveBeenCalledTimes(1)
+    const payload = onShowPharmacyModal.mock.calls[0][0]
+    expect(payload).toHaveLength(1)
+    expect(payload[0]).toEqual(expect.objectContaining({
+      id: 'med-contract-1',
+      name: 'Amoxicillin',
+      genericName: 'Amoxicillin',
+      dosage: '500mg',
+      dosageForm: 'Tablet',
+      frequency: 'Twice daily (BD)',
+      duration: '',
+      strength: '',
+      strengthUnit: '',
+      qts: '2',
+      amount: '12',
+      liquidDosePerFrequencyMl: '5',
+      liquidAmountMl: '80',
+      inventoryStrengthText: '100 ml',
+      sendToExternalPharmacy: false
+    }))
+  })
+
   it('shows QTY scenario subtitle as dosage form and quantity', async () => {
     const { getByText } = render(PrescriptionsTab, {
       props: {

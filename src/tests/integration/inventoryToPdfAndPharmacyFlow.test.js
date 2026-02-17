@@ -167,6 +167,16 @@ const renderAndGeneratePdf = async (medications) => {
 }
 
 describe('inventory -> pdf + pharmacy send flow matrix', () => {
+  const UNIT_ONLY_DURATION_CASES = [
+    'days',
+    'weeks',
+    'months',
+    'years',
+    'hours',
+    'minutes'
+  ]
+  const UNIT_ONLY_STRENGTH_UNIT_CASES = ['mg', 'ml', 'IU', 'units']
+
   beforeEach(() => {
     vi.clearAllMocks()
     global.URL.createObjectURL = vi.fn(() => 'blob:mock')
@@ -379,4 +389,89 @@ describe('inventory -> pdf + pharmacy send flow matrix', () => {
     expect(/Duration:\s*days/i.test(fullText)).toBe(false)
     expect(/\|\s*days\s*(\||$)/i.test(fullText)).toBe(false)
   })
+
+  it.each(UNIT_ONLY_DURATION_CASES)(
+    'strips unit-only duration "%s" from pharmacy payload and PDF',
+    async (durationValue) => {
+      pharmacyMedicationService.getPharmacyStock.mockResolvedValueOnce([
+        {
+          pharmacyId: 'ph-1',
+          drugName: 'EdgeDurationDrug',
+          genericName: 'EdgeDurationDrug',
+          strength: '',
+          strengthUnit: '',
+          quantity: 15,
+          minimumStock: 1
+        }
+      ])
+
+      const medications = [
+        {
+          id: `med-duration-${durationValue}`,
+          source: 'inventory',
+          name: 'EdgeDurationDrug',
+          genericName: 'EdgeDurationDrug',
+          dosageForm: 'Tablet',
+          dosage: '1',
+          frequency: 'Twice daily (BD)',
+          duration: durationValue
+        }
+      ]
+
+      const payload = await renderAndSendToPharmacy(medications)
+      expect(payload).toHaveLength(1)
+      expect(payload[0].duration).toBe('')
+
+      await renderAndGeneratePdf(medications)
+      const splitPayloads = collectSplitPayloads()
+      const fullText = splitPayloads.join(' ')
+      const escaped = durationValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      expect(new RegExp(`Duration:\\s*${escaped}`, 'i').test(fullText)).toBe(false)
+      expect(new RegExp(`\\|\\s*${escaped}\\s*(\\||$)`, 'i').test(fullText)).toBe(false)
+    }
+  )
+
+  it.each(UNIT_ONLY_STRENGTH_UNIT_CASES)(
+    'strips strength unit-only "%s" when strength number is missing',
+    async (strengthUnitValue) => {
+      pharmacyMedicationService.getPharmacyStock.mockResolvedValueOnce([
+        {
+          pharmacyId: 'ph-1',
+          drugName: 'EdgeStrengthDrug',
+          genericName: 'EdgeStrengthDrug',
+          strength: '',
+          strengthUnit: '',
+          quantity: 15,
+          minimumStock: 1
+        }
+      ])
+
+      const medications = [
+        {
+          id: `med-strength-${strengthUnitValue}`,
+          source: 'inventory',
+          name: 'EdgeStrengthDrug',
+          genericName: 'EdgeStrengthDrug',
+          dosageForm: 'Tablet',
+          dosage: '1',
+          strength: '',
+          strengthUnit: strengthUnitValue,
+          frequency: 'Twice daily (BD)',
+          duration: '5 days'
+        }
+      ]
+
+      const payload = await renderAndSendToPharmacy(medications)
+      expect(payload).toHaveLength(1)
+      expect(payload[0].strength).toBe('')
+      expect(payload[0].strengthUnit).toBe('')
+
+      await renderAndGeneratePdf(medications)
+      const splitPayloads = collectSplitPayloads()
+      const fullText = splitPayloads.join(' ')
+      const escaped = String(strengthUnitValue).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      expect(new RegExp(`Strength:\\s*\\d+\\s*${escaped}`, 'i').test(fullText)).toBe(false)
+      expect(new RegExp(`\\|\\s*${escaped}\\s*(\\||$)`, 'i').test(fullText)).toBe(false)
+    }
+  )
 })

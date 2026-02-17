@@ -183,7 +183,7 @@ describe('stripe payment notifications idempotency', () => {
   })
 
   it('sends payment success SMS and email only once for duplicate payment reference', async () => {
-    await functionsModule.__applyDoctorPaymentSuccessForTests({
+    const firstResult = await functionsModule.__applyDoctorPaymentSuccessForTests({
       resolvedDoctorId: 'doctor-1',
       planId: 'professional_monthly_lkr',
       interval: 'month',
@@ -194,7 +194,7 @@ describe('stripe payment notifications idempotency', () => {
       paidAt: '2026-02-15T10:00:00.000Z'
     })
 
-    await functionsModule.__applyDoctorPaymentSuccessForTests({
+    const secondResult = await functionsModule.__applyDoctorPaymentSuccessForTests({
       resolvedDoctorId: 'doctor-1',
       planId: 'professional_monthly_lkr',
       interval: 'month',
@@ -218,5 +218,8 @@ describe('stripe payment notifications idempotency', () => {
       (entry) => entry.type === 'paymentSuccess' && entry.status === 'sent'
     )
     expect(smsSuccessLogs).toHaveLength(1)
+    expect(firstResult.walletMonths).toBe(1)
+    expect(secondResult.walletMonths).toBe(1)
+    expect(doctorsStore.get('doctor-1')?.walletMonths).toBe(1)
   })
 })

@@ -190,6 +190,28 @@ describe('AdminDashboard.svelte', () => {
     );
   });
 
+  it('saves payment pricing settings with custom pricing disabled', async () => {
+    const user = userEvent.setup();
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Payments' }));
+
+    const enableToggle = await screen.findByLabelText('Enable custom pricing');
+    await user.click(enableToggle);
+    await user.click(screen.getByRole('button', { name: 'Save Pricing' }));
+
+    expect(firebaseStorage.savePaymentPricingSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: false
+      })
+    );
+  });
+
   it('saves messaging templates updates', async () => {
     const user = userEvent.setup();
     render(AdminDashboard, {

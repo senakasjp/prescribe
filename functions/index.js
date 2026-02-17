@@ -336,6 +336,7 @@ exports.__resetInMemoryGuardsForTests = () => {
 };
 exports.__resolvePlanCatalogForCheckoutForTests = resolvePlanCatalogForCheckout;
 exports.__hasDoctorPriorPaymentHistoryForTests = hasDoctorPriorPaymentHistory;
+exports.__resolvePromoForCheckoutForTests = resolvePromoForCheckout;
 
 const setCors = (req, res) => {
   const origin = req.headers.origin || "*";

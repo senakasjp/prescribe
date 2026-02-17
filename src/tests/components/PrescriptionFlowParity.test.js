@@ -151,4 +151,102 @@ describe('Prescription flow formatting parity', () => {
     expect(/Shampoo\s*\|\s*Quantity:\s*01/i.test(merged)).toBe(true)
     expect(/Duration:\s*days/i.test(merged)).toBe(false)
   })
+
+  it.each([
+    {
+      name: 'QTY',
+      medication: {
+        id: 'parity-qty-1',
+        name: 'Dandex',
+        dosageForm: 'Shampoo',
+        qts: '1',
+        frequency: '',
+        duration: 'days'
+      },
+      expectedSecondaryLine: 'Shampoo | Quantity: 01',
+      expectedPdfTokens: ['Shampoo', 'Quantity: 01'],
+      forbiddenPdfTokens: ['Duration: days']
+    },
+    {
+      name: 'Tablet',
+      medication: {
+        id: 'parity-tab-1',
+        name: 'Paracetamol',
+        dosageForm: 'Tablet',
+        dosage: '1',
+        frequency: 'Once daily (OD)',
+        duration: '5 days'
+      },
+      expectedSecondaryLine: '1 • Once daily (OD) • 5 days • Tablet',
+      expectedPdfTokens: ['Once daily (OD)', 'Duration: 5 days'],
+      forbiddenPdfTokens: []
+    },
+    {
+      name: 'Liquid',
+      medication: {
+        id: 'parity-liq-1',
+        name: 'Cough Syrup',
+        dosageForm: 'Liquid',
+        dosage: '5',
+        strength: '5',
+        strengthUnit: 'ml',
+        frequency: 'Twice daily (BID)',
+        duration: '3 days'
+      },
+      expectedSecondaryLine: '5 ml 5 • Twice daily (BID) • 3 days • Liquid',
+      expectedPdfTokens: ['Twice daily (BID)', 'Duration: 3 days'],
+      forbiddenPdfTokens: []
+    }
+  ])('keeps UI/PDF parity for $name formatting semantics', async ({ medication, expectedSecondaryLine, expectedPdfTokens, forbiddenPdfTokens }) => {
+    const view = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [medication],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: `rx-parity-${medication.id}`, doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      const line = view.container.querySelector('.text-gray-500.text-sm')
+      expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe(expectedSecondaryLine)
+    })
+
+    const pdf = render(PrescriptionPDF, {
+      props: {
+        selectedPatient: {
+          firstName: 'Test',
+          lastName: 'Patient',
+          idNumber: 'ID123',
+          dateOfBirth: '1990-01-01'
+        },
+        illnesses: [],
+        prescriptions: [medication],
+        symptoms: []
+      }
+    })
+    await fireEvent.click(pdf.getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    const merged = payloads.join(' ')
+
+    expectedPdfTokens.forEach((token) => {
+      expect(merged).toContain(token)
+    })
+    forbiddenPdfTokens.forEach((token) => {
+      expect(merged).not.toContain(token)
+    })
+  })
 })

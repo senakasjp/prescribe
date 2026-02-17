@@ -28,6 +28,10 @@ describe("PaymentsPage.svelte", () => {
   const openBillingHistoryTab = async (user) => {
     await user.click(screen.getByRole("tab", { name: /Billing History/i }))
   }
+  const parseCheckoutRequestBody = () => {
+    const [, request] = fetch.mock.calls[0]
+    return JSON.parse(String(request.body || "{}"))
+  }
 
   beforeEach(() => {
     firebaseStorage.getDoctorById.mockResolvedValue(null)
@@ -70,7 +74,14 @@ describe("PaymentsPage.svelte", () => {
     expect(url).toBe("https://example-functions.test/createStripeCheckoutSession")
     expect(request.method).toBe("POST")
     expect(request.headers.Authorization).toBe("Bearer doctor-token")
-    expect(request.body).toContain("\"planId\":\"professional_monthly_usd\"")
+    const body = parseCheckoutRequestBody()
+    expect(body.planId).toBe("professional_monthly_usd")
+    expect(body.currency).toBe("USD")
+    expect(body.doctorId).toBe("doctor-1")
+    expect(body.email).toBe("doctor@test.com")
+    expect(body.promoCode).toBe("")
+    expect(body.successUrl).toContain("?payment=success")
+    expect(body.cancelUrl).toContain("?payment=cancel")
     expect(firebaseStorage.getDoctorPaymentRecords).toHaveBeenCalledWith(
       "doctor-1",
       200,
@@ -154,8 +165,12 @@ describe("PaymentsPage.svelte", () => {
     await user.type(screen.getByLabelText("Promo code (optional)"), "welcome25")
     await user.click(screen.getAllByRole("button", { name: /Pay with Stripe/i })[0])
 
-    const [, request] = fetch.mock.calls[0]
-    expect(request.body).toContain("\"promoCode\":\"WELCOME25\"")
+    const body = parseCheckoutRequestBody()
+    expect(body.planId).toBe("professional_monthly_usd")
+    expect(body.currency).toBe("USD")
+    expect(body.doctorId).toBe("doctor-1")
+    expect(body.email).toBe("doctor@test.com")
+    expect(body.promoCode).toBe("WELCOME25")
     expect(await screen.findByRole("alert")).toHaveTextContent(/promo WELCOME25 applied/i)
   })
 
@@ -582,6 +597,44 @@ describe("PaymentsPage.svelte", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Payment is in progress. Do not refresh, close this tab, or switch pages until payment is complete."
     )
+
+    resolveCheckout({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        success: true,
+        url: "https://checkout.stripe.com/c/pay/cs_test_123"
+      })
+    })
+  })
+
+  it("prevents duplicate checkout creation on rapid double-click", async () => {
+    const user = userEvent.setup()
+    let resolveCheckout
+    const pendingCheckout = new Promise((resolve) => {
+      resolveCheckout = resolve
+    })
+    fetch.mockReturnValueOnce(pendingCheckout)
+
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "Sri Lanka",
+          currency: "LKR"
+        }
+      }
+    })
+
+    const payButton = screen.getAllByRole("button", { name: /Pay with Stripe/i })[0]
+    await user.click(payButton)
+    await user.click(payButton)
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Payment is in progress. Do not refresh, close this tab, or switch pages until payment is complete."
+    )
+    expect(payButton).toBeDisabled()
 
     resolveCheckout({
       ok: true,

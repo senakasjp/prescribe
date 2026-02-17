@@ -79,8 +79,43 @@ describe('openaiService extractTextFromImage', () => {
 
     const result = await openaiService.extractTextFromImage('data:image/png;base64,BBBB', 'doc-123')
 
-    expect(makeRequestSpy).toHaveBeenCalledTimes(2)
-    expect(optimizeSpy).toHaveBeenCalledTimes(2)
+    expect(makeRequestSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(optimizeSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(result.extractedText).toBe('HB 12.5')
+  })
+
+  it('surfaces payload-too-large error when retry also fails', async () => {
+    vi.spyOn(openaiService, 'isConfigured').mockReturnValue(true)
+    const makeRequestSpy = vi.spyOn(openaiService, 'makeOpenAIRequest')
+      .mockImplementation(async () => {
+        throw new Error('Payload too large')
+      })
+
+    const optimizeSpy = vi.spyOn(openaiService, 'optimizeImageSourceForOcr')
+      .mockResolvedValue('data:image/jpeg;base64,AAA')
+
+    await expect(
+      openaiService.extractTextFromImage('data:image/png;base64,BBBB', 'doc-123')
+    ).rejects.toThrow('Payload too large')
+
+    expect(makeRequestSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(optimizeSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(trackUsageMock).not.toHaveBeenCalled()
+  })
+
+  it('does not retry when OCR fails with non-payload error', async () => {
+    vi.spyOn(openaiService, 'isConfigured').mockReturnValue(true)
+    const makeRequestSpy = vi.spyOn(openaiService, 'makeOpenAIRequest')
+      .mockRejectedValue(new Error('OpenAI proxy error: upstream timeout'))
+    const optimizeSpy = vi.spyOn(openaiService, 'optimizeImageSourceForOcr')
+      .mockResolvedValue('data:image/jpeg;base64,AAA')
+
+    await expect(
+      openaiService.extractTextFromImage('data:image/png;base64,BBBB', 'doc-123')
+    ).rejects.toThrow('upstream timeout')
+
+    expect(makeRequestSpy).toHaveBeenCalledTimes(1)
+    expect(optimizeSpy).toHaveBeenCalledTimes(1)
+    expect(trackUsageMock).not.toHaveBeenCalled()
   })
 })

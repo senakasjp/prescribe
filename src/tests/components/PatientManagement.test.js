@@ -302,4 +302,36 @@ describe('PatientManagement home charts', () => {
       expect(incomeHost.querySelector('[data-series-first="This Month"]')).toBeTruthy()
     })
   })
+
+  it('re-renders home charts after tab return followed by window resize', async () => {
+    const view = render(PatientManagement, {
+      props: {
+        currentView: 'patients',
+        user: doctor,
+        authUser: null
+      }
+    })
+
+    await settleCharts()
+    await view.rerender({
+      currentView: 'home',
+      user: doctor,
+      authUser: null
+    })
+    await settleCharts()
+
+    window.dispatchEvent(new Event('resize'))
+    await settleCharts()
+
+    await waitFor(() => {
+      const prescriptionHost = document.getElementById('prescriptionsChart')
+      const incomeHost = document.getElementById('incomeComparisonChart')
+      expect(prescriptionHost).toBeTruthy()
+      expect(incomeHost).toBeTruthy()
+      expect(prescriptionHost.querySelector('[data-series-first="Total Prescriptions"]')).toBeTruthy()
+      expect(incomeHost.querySelector('[data-series-first="This Month"]')).toBeTruthy()
+      expect(prescriptionHost.querySelectorAll('[data-mock-apex="1"]').length).toBe(1)
+      expect(incomeHost.querySelectorAll('[data-mock-apex="1"]').length).toBe(1)
+    })
+  })
 })
