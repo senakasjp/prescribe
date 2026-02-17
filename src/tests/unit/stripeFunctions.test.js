@@ -729,6 +729,117 @@ describe('stripe functions: createStripeCheckoutSession pricing scope matrix', (
     }))
   })
 
+  it('applies higher individual discount when promo discount is lower', async () => {
+    doctorsStore.set('doctor-1', {
+      email: 'doctor@example.com',
+      walletMonths: 1,
+      paymentDone: true,
+      adminStripeDiscountPercent: 30
+    })
+    promoDocsByCode.set('SAVE10', {
+      id: 'promo-1',
+      data: {
+        code: 'SAVE10',
+        discountType: 'percent',
+        percentOff: 10,
+        isActive: true,
+        validFrom: '2026-01-01T00:00:00.000Z',
+        validUntil: '2026-12-31T23:59:59.999Z',
+        maxRedemptions: 100,
+        redemptionCount: 0
+      }
+    })
+
+    const req = {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        planId: 'professional_monthly_usd',
+        doctorId: 'doctor-1',
+        promoCode: 'save10',
+        successUrl: 'https://www.mprescribe.net/payments?ok=1',
+        cancelUrl: 'https://www.mprescribe.net/payments?cancel=1'
+      }
+    }
+    const res = createResponse()
+
+    await freshFunctionsModule.createStripeCheckoutSession(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual(expect.objectContaining({
+      success: true,
+      promoApplied: false,
+      promoValidated: true,
+      appliedDiscountSource: 'individual',
+      originalAmount: 2000,
+      discountedAmount: 1400
+    }))
+    const stripeArgs = stripeCreateMock.mock.calls[0][0]
+    expect(stripeArgs.line_items[0].price_data.unit_amount).toBe(1400)
+    expect(stripeArgs.metadata.promoCode).toBe('')
+    expect(checkoutLogs[0]).toEqual(expect.objectContaining({
+      amount: 1400,
+      promoCode: '',
+      appliedDiscountSource: 'individual'
+    }))
+  })
+
+  it('applies higher promo discount when individual discount is lower', async () => {
+    doctorsStore.set('doctor-1', {
+      email: 'doctor@example.com',
+      walletMonths: 1,
+      paymentDone: true,
+      adminStripeDiscountPercent: 10
+    })
+    promoDocsByCode.set('SAVE25', {
+      id: 'promo-25',
+      data: {
+        code: 'SAVE25',
+        discountType: 'percent',
+        percentOff: 25,
+        isActive: true,
+        validFrom: '2026-01-01T00:00:00.000Z',
+        validUntil: '2026-12-31T23:59:59.999Z',
+        maxRedemptions: 100,
+        redemptionCount: 0
+      }
+    })
+
+    const req = {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        planId: 'professional_monthly_usd',
+        doctorId: 'doctor-1',
+        promoCode: 'save25',
+        successUrl: 'https://www.mprescribe.net/payments?ok=1',
+        cancelUrl: 'https://www.mprescribe.net/payments?cancel=1'
+      }
+    }
+    const res = createResponse()
+
+    await freshFunctionsModule.createStripeCheckoutSession(req, res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual(expect.objectContaining({
+      success: true,
+      promoApplied: true,
+      promoValidated: true,
+      appliedDiscountSource: 'promo',
+      promoCode: 'SAVE25',
+      originalAmount: 2000,
+      discountedAmount: 1500
+    }))
+    const stripeArgs = stripeCreateMock.mock.calls[0][0]
+    expect(stripeArgs.line_items[0].price_data.unit_amount).toBe(1500)
+    expect(stripeArgs.metadata.promoCode).toBe('SAVE25')
+    expect(checkoutLogs[0]).toEqual(expect.objectContaining({
+      amount: 1500,
+      promoCode: 'SAVE25',
+      appliedDiscountSource: 'promo'
+    }))
+  })
+
   it('returns checkout error for invalid promo code in request', async () => {
     doctorsStore.set('doctor-1', { email: 'doctor@example.com', walletMonths: 0, paymentDone: false })
     pricingConfigDoc = {

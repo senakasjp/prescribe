@@ -176,6 +176,8 @@ describe("PaymentsPage.svelte", () => {
         success: true,
         url: "https://checkout.stripe.com/c/pay/cs_test_promo",
         promoApplied: true,
+        promoValidated: true,
+        appliedDiscountSource: "promo",
         promoCode: "WELCOME25",
         originalAmount: 2000,
         discountedAmount: 1500
@@ -205,6 +207,108 @@ describe("PaymentsPage.svelte", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/promo WELCOME25 applied/i)
   })
 
+  it("applies promo preview on cards when Apply is clicked", async () => {
+    const user = userEvent.setup()
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        success: true,
+        previewOnly: true,
+        promoApplied: true,
+        promoValidated: true,
+        appliedDiscountSource: "promo",
+        originalAmount: 2000,
+        discountedAmount: 1500
+      })
+    })
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        success: true,
+        previewOnly: true,
+        promoApplied: true,
+        promoValidated: true,
+        appliedDiscountSource: "promo",
+        originalAmount: 20000,
+        discountedAmount: 15000
+      })
+    })
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD"
+        }
+      }
+    })
+
+    await user.type(screen.getByLabelText("Promo code (optional)"), "  mpresc26  ")
+    await user.click(screen.getByRole("button", { name: "Apply" }))
+
+    expect(screen.getByLabelText("Promo code (optional)")).toHaveValue("MPRESC26")
+    expect(
+      screen.getByText(/promo code applied\. plan prices updated below/i)
+    ).toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const previewBodyOne = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body || "{}"))
+    const previewBodyTwo = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body || "{}"))
+    expect(previewBodyOne.previewOnly).toBe(true)
+    expect(previewBodyTwo.previewOnly).toBe(true)
+    expect(await screen.findByText(/USD 15\.00/)).toBeInTheDocument()
+    expect(await screen.findByText(/USD 150\.00/)).toBeInTheDocument()
+  })
+
+  it("keeps original prices when promo is not eligible", async () => {
+    const user = userEvent.setup()
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        success: true,
+        previewOnly: true,
+        promoApplied: false,
+        originalAmount: 2000,
+        discountedAmount: 2000
+      })
+    })
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        success: true,
+        previewOnly: true,
+        promoApplied: false,
+        originalAmount: 20000,
+        discountedAmount: 20000
+      })
+    })
+
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD"
+        }
+      }
+    })
+
+    expect(screen.getByText(/USD 20\.00/)).toBeInTheDocument()
+    expect(screen.getByText(/USD 200\.00/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText("Promo code (optional)"), "NOTELIGIBLE")
+    await user.click(screen.getByRole("button", { name: "Apply" }))
+
+    expect(
+      await screen.findByText(/promo code is not eligible for current plans/i)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/USD 20\.00/)).toBeInTheDocument()
+    expect(screen.getByText(/USD 200\.00/)).toBeInTheDocument()
+    expect(screen.queryByText(/USD 15\.00/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/USD 150\.00/)).not.toBeInTheDocument()
+  })
+
   it("shows admin discount message when server applies persistent doctor discount", async () => {
     fetch.mockResolvedValueOnce({
       ok: true,
@@ -232,7 +336,7 @@ describe("PaymentsPage.svelte", () => {
     await user.click(screen.getAllByRole("button", { name: /Pay with Stripe/i })[0])
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Admin discount 30% applied. USD 20.00 -> USD 14.00."
+      "Individual discount 30% applied. USD 20.00 -> USD 14.00."
     )
   })
 
@@ -302,6 +406,44 @@ describe("PaymentsPage.svelte", () => {
     })
 
     expect(await screen.findByText(/Full discount applied/i)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
+  })
+
+  it("hides Stripe payment buttons when individual discount is 100%", async () => {
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD",
+          individualStripeDiscountPercent: 100
+        }
+      }
+    })
+
+    expect(await screen.findByText(/Admin discount active:/i)).toBeInTheDocument()
+    expect(screen.getByText(/100%/)).toBeInTheDocument()
+    expect(screen.getAllByText("FREE").length).toBeGreaterThan(0)
+    expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
+  })
+
+  it("hides Stripe payment buttons when discount is provided via stripeDiscountPercent alias", async () => {
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD",
+          stripeDiscountPercent: 100
+        }
+      }
+    })
+
+    expect(await screen.findByText(/Admin discount active:/i)).toBeInTheDocument()
+    expect(screen.getByText(/100%/)).toBeInTheDocument()
+    expect(screen.getAllByText("FREE").length).toBeGreaterThan(0)
     expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
   })
 

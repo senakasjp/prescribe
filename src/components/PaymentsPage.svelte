@@ -24,6 +24,10 @@
   let billingHistoryCollapsed = false
   let canExpandBillingHistory = false
   let promoCode = ""
+  let promoPreviewLoading = false
+  let promoPreviewByPlan = {}
+  let promoFormatMessage = ""
+  let promoFormatTone = "info"
   let activeTab = "payments"
   let checkoutAdminDiscountPercent = 0
   let serverDoctorProfile = null
@@ -59,6 +63,118 @@
     return Number.isFinite(parsed) ? parsed : 0
   }
 
+  const resolveDoctorDiscountPercent = (doctor) => Math.max(
+    parseDiscountPercent(doctor?.adminStripeDiscountPercent),
+    parseDiscountPercent(doctor?.adminDiscountPercent),
+    parseDiscountPercent(doctor?.individualStripeDiscountPercent),
+    parseDiscountPercent(doctor?.individualDiscountPercent),
+    parseDiscountPercent(doctor?.stripeDiscountPercent),
+    parseDiscountPercent(doctor?.doctorDiscountPercent),
+    parseDiscountPercent(doctor?.discountPercent)
+  )
+
+  const normalizePromoCodeInput = (value = "") =>
+    String(value || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "")
+
+  const clearPromoPreview = () => {
+    promoPreviewByPlan = {}
+  }
+
+  const previewPromoForPlans = async (normalizedPromo) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      throw new Error("Payments service is not configured.")
+    }
+    const token = await getAuthToken()
+    if (!token) {
+      throw new Error("Please sign in again to validate promo.")
+    }
+    const successUrl = `${window.location.origin}${window.location.pathname}?payment=success`
+    const cancelUrl = `${window.location.origin}${window.location.pathname}?payment=cancel`
+    const responses = await Promise.all(plans.map(async (plan) => {
+      const response = await fetch(`${baseUrl}/createStripeCheckoutSession`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          planId: plan.id,
+          currency: doctorCurrency,
+          doctorId: user?.id || "",
+          email: user?.email || "",
+          promoCode: normalizedPromo,
+          successUrl,
+          cancelUrl,
+          previewOnly: true
+        })
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.error || "Unable to validate promo code.")
+      }
+      return {
+        planId: String(plan.id || ""),
+        promoApplied: Boolean(payload?.promoApplied),
+        promoValidated: Boolean(payload?.promoValidated),
+        appliedDiscountSource: String(
+          payload?.appliedDiscountSource ||
+          (payload?.promoApplied ? "promo" : "")
+        ),
+        originalMinor: Number(payload?.originalAmount || plan.amountMinor || 0),
+        finalMinor: Number(payload?.discountedAmount || plan.amountMinor || 0)
+      }
+    }))
+    const nextPreview = {}
+    responses.forEach((entry) => {
+      nextPreview[entry.planId] = {
+        promoApplied: entry.promoApplied,
+        promoValidated: entry.promoValidated,
+        appliedDiscountSource: entry.appliedDiscountSource,
+        originalMinor: Math.max(0, Number(entry.originalMinor || 0)),
+        finalMinor: Math.max(0, Number(entry.finalMinor || 0))
+      }
+    })
+    promoPreviewByPlan = nextPreview
+    return responses
+  }
+
+  const applyPromoFormat = async () => {
+    const normalizedPromo = normalizePromoCodeInput(promoCode)
+    promoCode = normalizedPromo
+    clearPromoPreview()
+    if (!normalizedPromo) {
+      promoFormatTone = "error"
+      promoFormatMessage = "Enter a promo code first."
+      return
+    }
+    promoPreviewLoading = true
+    try {
+      const previewResults = await previewPromoForPlans(normalizedPromo)
+      const appliedToAnyPlan = previewResults.some(
+        (entry) => entry.appliedDiscountSource === "promo" || entry.promoApplied
+      )
+      const promoValidated = previewResults.some(
+        (entry) => entry.promoValidated || entry.promoApplied
+      )
+      if (appliedToAnyPlan) {
+        promoFormatTone = "info"
+        promoFormatMessage = "Promo code applied. Plan prices updated below."
+      } else if (promoValidated) {
+        promoFormatTone = "info"
+        promoFormatMessage = "Promo code is valid, but your individual discount is already higher."
+      } else {
+        promoFormatTone = "error"
+        promoFormatMessage = "Promo code is not eligible for current plans."
+      }
+    } catch (error) {
+      promoFormatTone = "error"
+      promoFormatMessage = error?.message || "Unable to validate promo code."
+    } finally {
+      promoPreviewLoading = false
+    }
+  }
+
   const getProfileLookupKey = (sourceUser) => {
     const doctorId = String(sourceUser?.id || "").trim()
     if (doctorId) return doctorId
@@ -76,8 +192,7 @@
   $: doctorAdminDiscountPercent = Math.max(
     0,
     Math.min(100, Math.max(
-      parseDiscountPercent(effectiveDoctor?.adminStripeDiscountPercent),
-      parseDiscountPercent(effectiveDoctor?.adminDiscountPercent),
+      resolveDoctorDiscountPercent(effectiveDoctor),
       parseDiscountPercent(checkoutAdminDiscountPercent)
     ))
   )
@@ -132,6 +247,22 @@
           note: "Save two months compared with monthly billing"
         }
       ]
+
+  $: pricedPlans = plans.map((plan) => {
+    const baseMinor = Math.max(0, Number(plan?.amountMinor || 0))
+    const preview = promoPreviewByPlan?.[String(plan?.id || "")]
+    const previewFinalMinor = Number(preview?.finalMinor)
+    const adminAdjustedMinor = Math.max(0, Math.round(baseMinor * (1 - doctorAdminDiscountPercent / 100)))
+    const displayedMinor = Number.isFinite(previewFinalMinor)
+      ? Math.max(0, previewFinalMinor)
+      : adminAdjustedMinor
+    return {
+      ...plan,
+      baseMinor,
+      displayedMinor,
+      showCrossedPrice: displayedMinor < baseMinor
+    }
+  })
 
   const formatAmountMinor = (minorAmount = 0, currencyCode = "USD") => {
     const amount = Number(minorAmount || 0) / 100
@@ -346,7 +477,7 @@
           currency: doctorCurrency,
           doctorId: user?.id || "",
           email: user?.email || "",
-          promoCode: promoCode.trim().toUpperCase(),
+          promoCode: normalizePromoCodeInput(promoCode),
           successUrl,
           cancelUrl
         })
@@ -360,18 +491,25 @@
       const original = Number(payload?.originalAmount || 0) / 100
       const discounted = Number(payload?.discountedAmount || 0) / 100
       const adminDiscountPercent = Number(payload?.adminDiscountPercent || 0)
+      const appliedDiscountSource = String(
+        payload?.appliedDiscountSource ||
+        (payload?.promoApplied ? "promo" : (adminDiscountPercent > 0 ? "individual" : "none"))
+      )
       checkoutAdminDiscountPercent = Math.max(0, Math.min(100, adminDiscountPercent))
       if (checkoutAdminDiscountPercent >= 100) {
         statusTone = "info"
         statusMessage = "This account has 100% admin discount. Payment is not required."
         return
       }
-      if (payload?.promoApplied) {
+      if (appliedDiscountSource === "promo" && payload?.promoApplied) {
         statusTone = "info"
-        statusMessage = `${adminDiscountPercent > 0 ? `Admin discount ${adminDiscountPercent}% + ` : ""}promo ${payload?.promoCode || promoCode.trim().toUpperCase()} applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
+        statusMessage = `Promo ${payload?.promoCode || promoCode.trim().toUpperCase()} applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
+      } else if (payload?.promoValidated && appliedDiscountSource === "individual" && adminDiscountPercent > 0) {
+        statusTone = "info"
+        statusMessage = `Individual discount ${adminDiscountPercent}% is higher than promo and was applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
       } else if (adminDiscountPercent > 0) {
         statusTone = "info"
-        statusMessage = `Admin discount ${adminDiscountPercent}% applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
+        statusMessage = `Individual discount ${adminDiscountPercent}% applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
       }
 
       try {
@@ -550,33 +688,36 @@
               <button
                 type="button"
                 class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                on:click={() => {
-                  promoCode = promoCode.trim().toUpperCase()
-                }}
+                on:click={applyPromoFormat}
+                disabled={promoPreviewLoading || Boolean(loadingPlanId) || confirmingPayment}
               >
-                Apply Format
+                {promoPreviewLoading ? "Applying..." : "Apply"}
               </button>
             </div>
             <p class="mt-2 text-xs text-gray-500">Promo is validated securely on server during checkout creation.</p>
+            {#if promoFormatMessage}
+              <p class="mt-1 text-xs {promoFormatTone === 'error' ? 'text-red-600' : 'text-cyan-700'}">
+                {promoFormatMessage}
+              </p>
+            {/if}
           </div>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {#each plans as plan}
+            {#each pricedPlans as plan}
               <article class="rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
                 <h3 class="text-base sm:text-lg font-semibold text-gray-900">{plan.name}</h3>
-                {#if doctorAdminDiscountPercent > 0}
-                  {@const discountedMinor = Math.max(0, Math.round(Number(plan.amountMinor || 0) * (1 - doctorAdminDiscountPercent / 100)))}
+                {#if plan.showCrossedPrice}
                   <p class="mt-2 text-sm text-gray-500 line-through">
-                    {plan.price}
+                    {formatAmountMinor(plan.baseMinor, doctorCurrency)}
                     <span class="text-xs font-medium text-gray-400">{plan.cadence}</span>
                   </p>
                   <p class="text-2xl font-bold text-teal-700">
-                    {doctorAdminDiscountPercent >= 100 ? "FREE" : formatAmountMinor(discountedMinor, doctorCurrency)}
+                    {doctorAdminDiscountPercent >= 100 || plan.displayedMinor <= 0 ? "FREE" : formatAmountMinor(plan.displayedMinor, doctorCurrency)}
                     <span class="text-sm font-medium text-gray-500">{plan.cadence}</span>
                   </p>
                 {:else}
                   <p class="mt-2 text-2xl font-bold text-teal-700">
-                    {plan.price}
+                    {formatAmountMinor(plan.baseMinor, doctorCurrency)}
                     <span class="text-sm font-medium text-gray-500">{plan.cadence}</span>
                   </p>
                 {/if}

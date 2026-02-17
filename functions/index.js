@@ -3152,6 +3152,7 @@ exports.createStripeCheckoutSession = onRequest(
         successUrl,
         cancelUrl,
         promoCode,
+        previewOnly,
       } = req.body || {};
       const normalizedPlanId = String(planId || "");
       const baseSelectedPlan = STRIPE_PLAN_CATALOG[normalizedPlanId];
@@ -3191,7 +3192,12 @@ exports.createStripeCheckoutSession = onRequest(
               .get();
           doctorData = doctorSnap.exists ? doctorSnap.data() : {};
           const adminDiscountRaw = doctorData ?
-            doctorData.adminStripeDiscountPercent :
+            Math.max(
+                Number(doctorData.adminStripeDiscountPercent || 0),
+                Number(doctorData.adminDiscountPercent || 0),
+                Number(doctorData.individualStripeDiscountPercent || 0),
+                Number(doctorData.individualDiscountPercent || 0),
+            ) :
             0;
           adminDiscountPercent = Math.max(
               0,
@@ -3224,15 +3230,51 @@ exports.createStripeCheckoutSession = onRequest(
             ...selectedPlan,
             planId: String(planId || ""),
           },
-          baseUnitAmount: amountAfterAdminDiscount,
+          baseUnitAmount: originalUnitAmount,
         });
-        const finalUnitAmount = Number(
-            promoResolution.finalUnitAmount || amountAfterAdminDiscount,
+        const promoFinalUnitAmount = Number(
+            promoResolution.finalUnitAmount || originalUnitAmount,
         );
+        const promoDiscountAmount = Math.max(
+            0,
+            originalUnitAmount - promoFinalUnitAmount,
+        );
+        const hasPromoDiscount = Boolean(promoResolution.promo) &&
+          promoFinalUnitAmount < amountAfterAdminDiscount;
+        const appliedDiscountSource = hasPromoDiscount ?
+          "promo" :
+          (adminDiscountPercent > 0 ? "individual" : "none");
+        const finalUnitAmount = hasPromoDiscount ?
+          promoFinalUnitAmount :
+          amountAfterAdminDiscount;
+        const appliedPromo = hasPromoDiscount ? promoResolution.promo : null;
         const totalDiscountAmount = Math.max(
             0,
             originalUnitAmount - finalUnitAmount,
         );
+        const isPreviewOnly = previewOnly === true;
+        if (isPreviewOnly) {
+          res.json({
+            success: true,
+            previewOnly: true,
+            promoApplied: hasPromoDiscount,
+            promoValidated: Boolean(promoResolution.promo),
+            appliedDiscountSource,
+            promoCode: String(
+                (appliedPromo && appliedPromo.code) || "",
+            ),
+            originalAmount: originalUnitAmount,
+            discountedAmount: finalUnitAmount,
+            discountAmount: totalDiscountAmount,
+            adminDiscountPercent: Number(adminDiscountPercent || 0),
+            adminDiscountAmount: Number(
+                appliedDiscountSource === "individual" ?
+                  adminDiscountAmount :
+                  0,
+            ),
+          });
+          return;
+        }
         const stripe = new Stripe(secretKey, {
           apiVersion: "2025-01-27.acacia",
         });
@@ -3266,13 +3308,18 @@ exports.createStripeCheckoutSession = onRequest(
             userUid: String(currentUser.uid || ""),
             userEmail: String(currentUser.email || email || ""),
             promoCode: String(
-                (promoResolution.promo && promoResolution.promo.code) || "",
+                (appliedPromo && appliedPromo.code) || "",
             ),
             promoCodeId: String(
-                (promoResolution.promo && promoResolution.promo.id) || "",
+                (appliedPromo && appliedPromo.id) || "",
             ),
             adminDiscountPercent: String(adminDiscountPercent),
-            adminDiscountAmountMinor: String(adminDiscountAmount),
+            adminDiscountAmountMinor: String(
+                appliedDiscountSource === "individual" ?
+                  adminDiscountAmount :
+                  0,
+            ),
+            appliedDiscountSource,
           },
           allow_promotion_codes: true,
         });
@@ -3287,18 +3334,25 @@ exports.createStripeCheckoutSession = onRequest(
           amount: finalUnitAmount,
           originalAmount: originalUnitAmount,
           discountAmount: totalDiscountAmount,
+          appliedDiscountSource,
           adminDiscountPercent: Number(adminDiscountPercent || 0),
-          adminDiscountAmount: Number(adminDiscountAmount || 0),
+          adminDiscountAmount: Number(
+              appliedDiscountSource === "individual" ?
+                adminDiscountAmount :
+                0,
+          ),
           promoDiscountAmount: Number(
-              Math.max(0, amountAfterAdminDiscount - finalUnitAmount),
+              appliedDiscountSource === "promo" ?
+                promoDiscountAmount :
+                0,
           ),
           currency: selectedPlan.currency,
           interval: selectedPlan.interval,
           promoCode: String(
-              (promoResolution.promo && promoResolution.promo.code) || "",
+              (appliedPromo && appliedPromo.code) || "",
           ),
           promoCodeId: String(
-              (promoResolution.promo && promoResolution.promo.id) || "",
+              (appliedPromo && appliedPromo.id) || "",
           ),
           status: "created",
           createdAt: new Date().toISOString(),
@@ -3308,15 +3362,21 @@ exports.createStripeCheckoutSession = onRequest(
           success: true,
           sessionId: session.id,
           url: session.url,
-          promoApplied: Boolean(promoResolution.promo),
+          promoApplied: hasPromoDiscount,
+          promoValidated: Boolean(promoResolution.promo),
+          appliedDiscountSource,
           promoCode: String(
-              (promoResolution.promo && promoResolution.promo.code) || "",
+              (appliedPromo && appliedPromo.code) || "",
           ),
           originalAmount: originalUnitAmount,
           discountedAmount: finalUnitAmount,
           discountAmount: totalDiscountAmount,
           adminDiscountPercent: Number(adminDiscountPercent || 0),
-          adminDiscountAmount: Number(adminDiscountAmount || 0),
+          adminDiscountAmount: Number(
+              appliedDiscountSource === "individual" ?
+                adminDiscountAmount :
+                0,
+          ),
         });
       } catch (error) {
         logger.error("Failed to create Stripe checkout session:", error);
