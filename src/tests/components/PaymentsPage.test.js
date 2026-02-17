@@ -89,6 +89,37 @@ describe("PaymentsPage.svelte", () => {
     )
   })
 
+  it("shows referral explanation and opens referral link in a new tab", async () => {
+    const user = userEvent.setup()
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD",
+          doctorIdShort: "DR12345"
+        }
+      }
+    })
+
+    await user.click(screen.getByRole("tab", { name: /Referral/i }))
+    expect(await screen.findByText("Referral Link")).toBeInTheDocument()
+    expect(
+      screen.getByText(/continues using for a month will add a free month for you/i)
+    ).toBeInTheDocument()
+    const referralLink = screen.getByRole("link", {
+      name: /register=1&ref=DR12345#signin/i
+    })
+    expect(referralLink).toHaveAttribute("target", "_blank")
+    expect(referralLink).toHaveAttribute("rel", expect.stringContaining("noopener"))
+    expect(referralLink).toHaveAttribute("rel", expect.stringContaining("noreferrer"))
+    const whatsappShareLink = screen.getByRole("link", { name: /Share referral link on WhatsApp/i })
+    expect(whatsappShareLink).toHaveAttribute("target", "_blank")
+    expect(whatsappShareLink).toHaveAttribute("href", expect.stringContaining("https://wa.me/?text="))
+    expect(whatsappShareLink).toHaveAttribute("href", expect.stringContaining(encodeURIComponent("register=1&ref=DR12345#signin")))
+  })
+
   it("shows an auth error when token is unavailable", async () => {
     auth.currentUser.getIdToken.mockResolvedValueOnce("")
     const user = userEvent.setup()
@@ -333,6 +364,64 @@ describe("PaymentsPage.svelte", () => {
       }
     })
 
+    expect(await screen.findByText(/Full discount applied/i)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
+  })
+
+  it("hides Stripe payment buttons when user id is missing but email profile has 100% discount", async () => {
+    firebaseStorage.getDoctorByEmail.mockResolvedValueOnce({
+      id: "doctor-doc-id",
+      email: "doctor@test.com",
+      adminStripeDiscountPercent: 100
+    })
+
+    render(PaymentsPage, {
+      props: {
+        user: {
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD",
+          adminStripeDiscountPercent: 0
+        }
+      }
+    })
+
+    expect(await screen.findByText(/Full discount applied/i)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
+    expect(firebaseStorage.getDoctorById).not.toHaveBeenCalled()
+    expect(firebaseStorage.getDoctorByEmail).toHaveBeenCalledWith("doctor@test.com")
+  })
+
+  it("shows full-discount banner after async server profile load and removes all Stripe pay buttons", async () => {
+    let resolveDoctorProfile
+    const delayedDoctorProfile = new Promise((resolve) => {
+      resolveDoctorProfile = resolve
+    })
+
+    firebaseStorage.getDoctorById.mockImplementationOnce(() => delayedDoctorProfile)
+
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-async-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD",
+          adminStripeDiscountPercent: 0
+        }
+      }
+    })
+
+    expect(screen.queryByText(/Full discount applied/i)).not.toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /Pay with Stripe/i })).toHaveLength(2)
+
+    resolveDoctorProfile({
+      id: "doctor-async-1",
+      email: "doctor@test.com",
+      adminStripeDiscountPercent: 100
+    })
+
+    expect(await screen.findByText(/Admin discount active:/i)).toBeInTheDocument()
     expect(await screen.findByText(/Full discount applied/i)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
   })

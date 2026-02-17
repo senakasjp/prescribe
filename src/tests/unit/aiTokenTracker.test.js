@@ -197,6 +197,55 @@ describe('aiTokenTracker', () => {
     expect(tracker.calculateCost(500_000)).toBe(1.25)
   })
 
+  it('uses manually configured per-model pricing to calculate request cost', async () => {
+    const tracker = await loadTracker()
+    tracker.setModelPricing('gpt-4.1-mini', 0.0002, 0.0008)
+
+    // base = (1000/1000*0.0002) + (500/1000*0.0008) = 0.0006
+    // adjusted with 20% buffer = 0.00072
+    const cost = tracker.calculateRequestCost(1000, 500, 'gpt-4.1-mini')
+    expect(cost).toBeCloseTo(0.00072, 10)
+  })
+
+  it('returns zero request cost when model pricing is not configured', async () => {
+    const tracker = await loadTracker()
+    const cost = tracker.calculateRequestCost(1000, 500, 'unknown-model')
+    expect(cost).toBe(0)
+  })
+
+  it('returns configured model pricing map in current pricing summary', async () => {
+    const tracker = await loadTracker()
+    tracker.setModelPricing('gpt-4.1', 0.001, 0.002)
+
+    const currentPricing = tracker.getCurrentPricing()
+    expect(currentPricing).toEqual(expect.objectContaining({
+      'gpt-4.1': {
+        prompt: 0.001,
+        completion: 0.002
+      },
+      bufferFactor: 1.2
+    }))
+  })
+
+  it('fails fast in guard mode when tracking unpriced model usage', async () => {
+    const tracker = await loadTracker()
+    tracker.setModelPricingGuardEnabled(true)
+
+    expect(() => {
+      tracker.trackUsage('patientSummary', 10, 5, 'gpt-unpriced-model', 'doc-guard')
+    }).toThrow(/missing model pricing/i)
+  })
+
+  it('allows tracking in guard mode when model pricing is configured', async () => {
+    const tracker = await loadTracker()
+    tracker.setModelPricing('gpt-4.1-mini', 0.0002, 0.0008)
+    tracker.setModelPricingGuardEnabled(true)
+
+    const request = tracker.trackUsage('patientSummary', 10, 5, 'gpt-4.1-mini', 'doc-guard-ok')
+    expect(request.model).toBe('gpt-4.1-mini')
+    expect(request.totalTokens).toBe(15)
+  })
+
   it('normalizes string numeric fields when reading usage stats', async () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       totalTokens: '1,000',

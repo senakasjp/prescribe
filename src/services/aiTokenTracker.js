@@ -67,7 +67,9 @@ class AITokenTracker {
         requests: [],
         doctorQuotas: {}, // New: Store doctor token quotas
         defaultQuota: 50000, // Default monthly quota for new doctors
-        tokenPricePerMillion: 0.50, // Price per 1 million tokens (in USD)
+        tokenPricePerMillion: 0.50, // Legacy generic price per 1 million tokens (in USD)
+        modelPricing: {}, // Per-model pricing: { [model]: { prompt, completion } } per 1K tokens
+        enforceModelPricingGuard: false,
         lastUpdated: null
       }
     } catch (error) {
@@ -80,7 +82,9 @@ class AITokenTracker {
         requests: [],
         doctorQuotas: {}, // New: Store doctor token quotas
         defaultQuota: 50000, // Default monthly quota for new doctors
-        tokenPricePerMillion: 0.50, // Price per 1 million tokens (in USD)
+        tokenPricePerMillion: 0.50, // Legacy generic price per 1 million tokens (in USD)
+        modelPricing: {}, // Per-model pricing: { [model]: { prompt, completion } } per 1K tokens
+        enforceModelPricingGuard: false,
         lastUpdated: null
       }
     }
@@ -98,6 +102,10 @@ class AITokenTracker {
 
   // Track token usage for a request
   trackUsage(requestType, promptTokens, completionTokens, model = 'gpt-3.5-turbo', doctorId = null) {
+    if (this.shouldEnforceModelPricingGuard() && !this.isModelPricingConfigured(model)) {
+      throw new Error(`Missing model pricing for "${model}". Configure prompt/completion pricing before tracking usage.`)
+    }
+
     const safePromptTokens = this.sanitizeNumber(promptTokens)
     const safeCompletionTokens = this.sanitizeNumber(completionTokens)
     const totalTokens = safePromptTokens + safeCompletionTokens
@@ -189,36 +197,15 @@ class AITokenTracker {
     }
   }
 
-  // Calculate request cost based on OpenAI pricing (updated for accuracy)
+  // Calculate request cost based on configured per-model pricing.
+  // Pricing values are USD per 1K tokens for prompt/completion.
   calculateRequestCost(promptTokens, completionTokens, model) {
-    // Updated pricing based on OpenAI's current rates (2024)
-    // Note: These are approximate and may not include taxes/fees
-    const pricing = {
-      'gpt-3.5-turbo': { 
-        prompt: 0.0005,      // $0.0005 per 1K tokens (input)
-        completion: 0.0015   // $0.0015 per 1K tokens (output)
-      },
-      'gpt-4': { 
-        prompt: 0.03,        // $0.03 per 1K tokens (input)
-        completion: 0.06     // $0.06 per 1K tokens (output)
-      },
-      'gpt-4-turbo': { 
-        prompt: 0.01,        // $0.01 per 1K tokens (input)
-        completion: 0.03     // $0.03 per 1K tokens (output)
-      },
-      'gpt-4o': {
-        prompt: 0.005,       // $0.005 per 1K tokens (input)
-        completion: 0.015    // $0.015 per 1K tokens (output)
-      },
-      'gpt-4o-mini': {
-        prompt: 0.00015,     // $0.00015 per 1K tokens (input)
-        completion: 0.0006   // $0.0006 per 1K tokens (output)
-      }
-    }
-
-    const modelPricing = pricing[model] || pricing['gpt-3.5-turbo']
-    const promptCost = (promptTokens / 1000) * modelPricing.prompt
-    const completionCost = (completionTokens / 1000) * modelPricing.completion
+    const safeModel = String(model || '').trim()
+    const modelPricing = this.getModelPricing(safeModel)
+    const promptRate = this.sanitizeNumber(modelPricing?.prompt)
+    const completionRate = this.sanitizeNumber(modelPricing?.completion)
+    const promptCost = (promptTokens / 1000) * promptRate
+    const completionCost = (completionTokens / 1000) * completionRate
 
     const baseCost = promptCost + completionCost
     
@@ -317,15 +304,12 @@ class AITokenTracker {
 
   // Get current pricing information
   getCurrentPricing() {
+    const configuredPricing = this.getAllModelPricing()
     return {
-      'gpt-3.5-turbo': { prompt: 0.0005, completion: 0.0015 },
-      'gpt-4': { prompt: 0.03, completion: 0.06 },
-      'gpt-4-turbo': { prompt: 0.01, completion: 0.03 },
-      'gpt-4o': { prompt: 0.005, completion: 0.015 },
-      'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
+      ...configuredPricing,
       bufferFactor: 1.2,
-      lastUpdated: '2024-12-19',
-      note: 'Estimated costs with 20% buffer. Actual OpenAI billing may vary.'
+      lastUpdated: this.usageData.lastUpdated || null,
+      note: 'Costs are based on your manually configured per-model pricing with a 20% buffer.'
     }
   }
 
@@ -568,6 +552,61 @@ class AITokenTracker {
   }
 
   // Configuration Management Methods
+  setModelPricing(model, promptRatePer1k, completionRatePer1k) {
+    const normalizedModel = String(model || '').trim()
+    if (!normalizedModel) return
+    if (!this.usageData.modelPricing || typeof this.usageData.modelPricing !== 'object') {
+      this.usageData.modelPricing = {}
+    }
+    this.usageData.modelPricing[normalizedModel] = {
+      prompt: Math.max(0, this.sanitizeNumber(promptRatePer1k)),
+      completion: Math.max(0, this.sanitizeNumber(completionRatePer1k))
+    }
+    this.saveUsageData()
+  }
+
+  isModelPricingConfigured(model) {
+    const pricing = this.getModelPricing(model)
+    return this.sanitizeNumber(pricing.prompt) > 0 || this.sanitizeNumber(pricing.completion) > 0
+  }
+
+  setModelPricingGuardEnabled(enabled) {
+    this.usageData.enforceModelPricingGuard = Boolean(enabled)
+    this.saveUsageData()
+  }
+
+  shouldEnforceModelPricingGuard() {
+    return this.usageData.enforceModelPricingGuard === true
+  }
+
+  getModelPricing(model) {
+    const normalizedModel = String(model || '').trim()
+    if (!normalizedModel) return { prompt: 0, completion: 0 }
+    const configured = this.usageData?.modelPricing?.[normalizedModel]
+    if (!configured) return { prompt: 0, completion: 0 }
+    return {
+      prompt: Math.max(0, this.sanitizeNumber(configured.prompt)),
+      completion: Math.max(0, this.sanitizeNumber(configured.completion))
+    }
+  }
+
+  getAllModelPricing() {
+    const source = this.usageData?.modelPricing || {}
+    const result = {}
+    Object.keys(source).forEach((modelName) => {
+      const normalizedModel = String(modelName || '').trim()
+      if (!normalizedModel) return
+      result[normalizedModel] = this.getModelPricing(normalizedModel)
+    })
+    return result
+  }
+
+  removeModelPricing(model) {
+    const normalizedModel = String(model || '').trim()
+    if (!normalizedModel || !this.usageData?.modelPricing) return
+    delete this.usageData.modelPricing[normalizedModel]
+    this.saveUsageData()
+  }
   
   // Set default quota for all doctors
   setDefaultQuota(defaultQuota) {

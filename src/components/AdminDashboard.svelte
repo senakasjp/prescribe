@@ -22,6 +22,9 @@
     totalIllnesses: 0
   }
   let aiUsageStats = null
+  let aiWeeklyUsage = []
+  let aiMonthlyUsage = []
+  let aiRecentRequests = []
   let doctors = []
   let serverDoctorTokenUsageMap = {}
   // Removed patients array and doctorPatientCounts for HIPAA compliance
@@ -66,7 +69,22 @@
   
   // Configuration variables
   let defaultQuotaInput = 0
-  let tokenPriceInput = 0
+  let modelPricingRows = []
+  let modelPricingStatus = ''
+  let aiModelSettingsLoading = false
+  let aiModelSettingsSaving = false
+  let aiModelSettingsStatus = ''
+  let aiImageAnalysisModel = 'gpt-4o-mini'
+  let aiOtherAnalysisModel = 'gpt-4o-mini'
+  let aiSpellGrammarModel = 'gpt-4o-mini'
+  const aiModelOptions = [
+    'gpt-4o-mini',
+    'gpt-4o',
+    'gpt-4.1-mini',
+    'gpt-4.1',
+    'gpt-5-mini',
+    'gpt-5'
+  ]
 
   // Welcome email template (system setting)
   let welcomeEmailLoading = false
@@ -232,6 +250,7 @@
   let messagingTemplatesSaving = false
   let messagingTemplatesStatus = ''
   let emailTab = 'settings'
+  let aiUsageView = 'statistics'
   // Email logs
   let emailLogs = []
   let emailLogsLoading = false
@@ -340,7 +359,10 @@
       // Load AI usage statistics
       console.log('🔍 Loading AI usage stats...')
       await loadAIUsageStats()
+      loadModelPricingRows()
       console.log('✅ AI usage stats loaded')
+      await loadAIModelSettings()
+      console.log('✅ AI model settings loaded')
       
       // Load doctors data only (no patient data for HIPAA compliance)
       console.log('🔍 Loading doctors...')
@@ -1666,6 +1688,9 @@
           lastUpdated: null
         }
       }
+      aiWeeklyUsage = Array.isArray(aiUsageStats?.weeklyUsage) ? aiUsageStats.weeklyUsage : []
+      aiMonthlyUsage = Array.isArray(aiUsageStats?.monthlyUsage) ? aiUsageStats.monthlyUsage : []
+      aiRecentRequests = Array.isArray(aiUsageStats?.recentRequests) ? aiUsageStats.recentRequests : []
       
     } catch (error) {
       console.error('❌ Error loading AI usage stats:', error)
@@ -1675,7 +1700,75 @@
         thisMonth: { tokens: 0, cost: 0, requests: 0 },
         lastUpdated: null
       }
+      aiWeeklyUsage = []
+      aiMonthlyUsage = []
+      aiRecentRequests = []
     }
+  }
+
+  const normalizeAIModelInput = (value = '', fallback = 'gpt-4o-mini') => {
+    const model = String(value || '').trim()
+    return model || fallback
+  }
+
+  const loadAIModelSettings = async () => {
+    try {
+      aiModelSettingsLoading = true
+      const settings = await firebaseStorage.getAIModelSettings()
+      aiImageAnalysisModel = normalizeAIModelInput(settings?.imageAnalysisModel, 'gpt-4o-mini')
+      aiOtherAnalysisModel = normalizeAIModelInput(settings?.otherAnalysisModel, 'gpt-4o-mini')
+      aiSpellGrammarModel = normalizeAIModelInput(settings?.spellGrammarModel, 'gpt-4o-mini')
+    } catch (error) {
+      console.error('❌ Error loading AI model settings:', error)
+      aiImageAnalysisModel = 'gpt-4o-mini'
+      aiOtherAnalysisModel = 'gpt-4o-mini'
+      aiSpellGrammarModel = 'gpt-4o-mini'
+    } finally {
+      aiModelSettingsLoading = false
+    }
+  }
+
+  const saveAIModelSettings = async () => {
+    try {
+      aiModelSettingsSaving = true
+      aiModelSettingsStatus = ''
+      await firebaseStorage.saveAIModelSettings({
+        imageAnalysisModel: normalizeAIModelInput(aiImageAnalysisModel, 'gpt-4o-mini'),
+        otherAnalysisModel: normalizeAIModelInput(aiOtherAnalysisModel, 'gpt-4o-mini'),
+        spellGrammarModel: normalizeAIModelInput(aiSpellGrammarModel, 'gpt-4o-mini'),
+        updatedBy: currentAdmin?.email || currentAdmin?.id || ''
+      })
+      aiModelSettingsStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving AI model settings:', error)
+      aiModelSettingsStatus = error?.message || 'Save failed'
+    } finally {
+      aiModelSettingsSaving = false
+      setTimeout(() => {
+        aiModelSettingsStatus = ''
+      }, 2500)
+    }
+  }
+
+  const parseModelRate = (value = 0) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed < 0) return 0
+    return parsed
+  }
+
+  const loadModelPricingRows = () => {
+    const configuredPricing = typeof aiTokenTracker?.getAllModelPricing === 'function'
+      ? aiTokenTracker.getAllModelPricing()
+      : {}
+    const baseModels = Array.from(new Set([
+      ...aiModelOptions,
+      ...Object.keys(configuredPricing || {})
+    ]))
+    modelPricingRows = baseModels.map((modelName) => ({
+      model: modelName,
+      prompt: parseModelRate(configuredPricing?.[modelName]?.prompt),
+      completion: parseModelRate(configuredPricing?.[modelName]?.completion)
+    }))
   }
 
   const emptyTokenUsageStats = () => ({
@@ -1766,6 +1859,9 @@
   // Handle tab change
   const handleTabChange = (tab) => {
     activeTab = tab
+    if (tab === 'ai-usage') {
+      aiUsageView = 'statistics'
+    }
     if (tab === 'logs' && !emailLogsLoading && emailLogs.length === 0) {
       loadEmailLogs()
     }
@@ -2415,37 +2511,49 @@
     }
   }
   
-  // Save token price
-  const saveTokenPrice = () => {
-    if (!tokenPriceInput || tokenPriceInput < 0) return
-    
-    try {
-      aiTokenTracker.setTokenPricePerMillion(tokenPriceInput)
-      console.log(`✅ Token price saved: $${tokenPriceInput} per 1M tokens`)
-      
-      // Clear input
-      tokenPriceInput = 0
-      
-      // Refresh the page to show updated data
-      setTimeout(() => {
-        void loadAIUsageStats()
-      }, 100)
-      
-    } catch (error) {
-      console.error('❌ Error saving token price:', error)
-    }
+  const addModelPricingRow = () => {
+    modelPricingRows = [
+      ...modelPricingRows,
+      { model: '', prompt: 0, completion: 0 }
+    ]
   }
-  
-  // Refresh cost estimates
-  const refreshCostEstimates = async () => {
+
+  const removeModelPricingRow = (index) => {
+    modelPricingRows = modelPricingRows.filter((_, rowIndex) => rowIndex !== index)
+  }
+
+  const saveModelPricing = async () => {
     try {
-      console.log('🔄 Refreshing cost estimates...')
-      
-      // Refresh the page to show updated data
-      await loadAIUsageStats()
-      
+      modelPricingStatus = ''
+      const existing = typeof aiTokenTracker?.getAllModelPricing === 'function'
+        ? aiTokenTracker.getAllModelPricing()
+        : {}
+      const nextModels = new Set()
+
+      modelPricingRows.forEach((row) => {
+        const modelName = String(row?.model || '').trim()
+        if (!modelName) return
+        const promptRate = parseModelRate(row?.prompt)
+        const completionRate = parseModelRate(row?.completion)
+        aiTokenTracker.setModelPricing(modelName, promptRate, completionRate)
+        nextModels.add(modelName)
+      })
+
+      Object.keys(existing || {}).forEach((modelName) => {
+        if (!nextModels.has(modelName)) {
+          aiTokenTracker.removeModelPricing(modelName)
+        }
+      })
+
+      modelPricingStatus = 'Saved'
+      loadModelPricingRows()
     } catch (error) {
-      console.error('❌ Error refreshing cost estimates:', error)
+      console.error('❌ Error saving model pricing:', error)
+      modelPricingStatus = error?.message || 'Save failed'
+    } finally {
+      setTimeout(() => {
+        modelPricingStatus = ''
+      }, 2500)
     }
   }
 
@@ -3080,9 +3188,27 @@
               <button class="inline-flex items-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-red-300 focus:ring-offset-2 dark:bg-white dark:text-red-700 dark:border-red-300 dark:hover:bg-red-50 transition-all duration-200" on:click={loadAIUsageStats}>
                 <i class="fas fa-sync-alt mr-2"></i>Refresh
               </button>
-                    </div>
+            </div>
+
+            <div class="mb-6 border-b border-gray-200">
+              <div class="flex">
+                <button
+                  class="px-4 py-2 text-sm font-medium border-b-2 {aiUsageView === 'statistics' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                  on:click={() => (aiUsageView = 'statistics')}
+                >
+                  Statistics
+                </button>
+                <button
+                  class="px-4 py-2 text-sm font-medium border-b-2 {aiUsageView === 'settings' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                  on:click={() => (aiUsageView = 'settings')}
+                >
+                  Settings
+                </button>
+              </div>
+            </div>
             
             {#if aiUsageStats}
+              {#if aiUsageView === 'statistics'}
               <!-- Cost Disclaimer -->
               <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6" role="alert">
                 <i class="fas fa-exclamation-triangle mr-2 text-yellow-600"></i>
@@ -3168,7 +3294,7 @@
                             </tr>
                           </thead>
                           <tbody class="bg-white divide-y divide-gray-200">
-                            {#each aiTokenTracker.getWeeklyUsage() as day}
+                            {#each aiWeeklyUsage as day}
                               <tr class="hover:bg-gray-50">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(day.date).toLocaleDateString('en-GB', {
                                   day: '2-digit',
@@ -3207,7 +3333,7 @@
                             </tr>
                           </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
-                            {#each aiTokenTracker.getMonthlyUsage() as month}
+                            {#each aiMonthlyUsage as month}
                             <tr class="hover:bg-gray-50">
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{month.requests || 0}</td>
@@ -3242,7 +3368,7 @@
                             </tr>
                           </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
-                            {#each aiTokenTracker.getRecentRequests(10) as request}
+                            {#each aiRecentRequests as request}
                             <tr class="hover:bg-gray-50">
                               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDateTime(request.timestamp)}</td>
                               <td class="px-6 py-4 whitespace-nowrap">
@@ -3264,10 +3390,10 @@
                           </tbody>
                         </table>
                       </div>
-                    </div>
                   </div>
                 </div>
-              
+              </div>
+              {:else}
               <!-- AI Configuration Section -->
               <div class="mb-6">
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
@@ -3277,6 +3403,71 @@
                     </h5>
               </div>
                   <div class="p-4">
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                      <h6 class="text-lg font-semibold text-gray-900 mb-3">
+                        <i class="fas fa-microchip mr-2 text-teal-600"></i>AI Models
+                      </h6>
+                      <p class="text-sm text-gray-600 mb-4">
+                        Set model per workflow. Leave as default unless you need a specific model.
+                      </p>
+                      {#if aiModelSettingsLoading}
+                        <p class="text-sm text-gray-500">Loading model settings...</p>
+                      {:else}
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label for="aiImageAnalysisModel" class="block text-sm font-medium text-gray-700 mb-1">Image analysis model</label>
+                            <input
+                              id="aiImageAnalysisModel"
+                              type="text"
+                              bind:value={aiImageAnalysisModel}
+                              list="aiModelOptions"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="gpt-4o-mini"
+                            />
+                          </div>
+                          <div>
+                            <label for="aiOtherAnalysisModel" class="block text-sm font-medium text-gray-700 mb-1">Other analysis model</label>
+                            <input
+                              id="aiOtherAnalysisModel"
+                              type="text"
+                              bind:value={aiOtherAnalysisModel}
+                              list="aiModelOptions"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="gpt-4o-mini"
+                            />
+                          </div>
+                          <div>
+                            <label for="aiSpellGrammarModel" class="block text-sm font-medium text-gray-700 mb-1">Spell and grammar model</label>
+                            <input
+                              id="aiSpellGrammarModel"
+                              type="text"
+                              bind:value={aiSpellGrammarModel}
+                              list="aiModelOptions"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="gpt-4o-mini"
+                            />
+                          </div>
+                        </div>
+                        <datalist id="aiModelOptions">
+                          {#each aiModelOptions as modelOption}
+                            <option value={modelOption}></option>
+                          {/each}
+                        </datalist>
+                        <div class="flex items-center gap-3 mt-4">
+                          <button
+                            type="button"
+                            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+                            on:click={saveAIModelSettings}
+                            disabled={aiModelSettingsSaving}
+                          >
+                            <i class="fas fa-save mr-1"></i>{aiModelSettingsSaving ? 'Saving...' : 'Save AI Models'}
+                          </button>
+                          {#if aiModelSettingsStatus}
+                            <span class="text-sm text-gray-600">{aiModelSettingsStatus}</span>
+                          {/if}
+                        </div>
+                      {/if}
+                    </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <!-- Default Quota Configuration -->
                       <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -3321,45 +3512,87 @@
                         </div>
                       </div>
                       
-                      <!-- Token Pricing Configuration -->
+                      <!-- Model Pricing Configuration -->
                       <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <h6 class="text-lg font-semibold text-gray-900 mb-3">
-                          <i class="fas fa-dollar-sign mr-2 text-teal-600"></i>Token Pricing
+                          <i class="fas fa-dollar-sign mr-2 text-teal-600"></i>Model Pricing
                         </h6>
                         <p class="text-sm text-gray-600 mb-4">
-                          Set the cost per 1 million tokens. This affects cost calculations and estimates throughout the system.
+                          Set prompt/completion prices per 1K tokens for each model used in requests.
                         </p>
                         <div class="space-y-3">
-                          <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                              Price per 1M Tokens (USD):
-                            </label>
-                            <input
-                              type="number"
-                              bind:value={tokenPriceInput}
-                              placeholder="Enter price per million tokens"
-                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                              min="0"
-                              step="0.01"
-                            />
-                            <p class="text-xs text-gray-500 mt-1">
-                              Current: ${aiTokenTracker.getTokenPricePerMillion().toFixed(2)} per 1M tokens
-                            </p>
+                          <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                              <thead class="bg-gray-100">
+                                <tr>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prompt ($/1K)</th>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion ($/1K)</th>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody class="bg-white divide-y divide-gray-200">
+                                {#each modelPricingRows as row, rowIndex}
+                                  <tr>
+                                    <td class="px-3 py-2">
+                                      <input
+                                        type="text"
+                                        bind:value={row.model}
+                                        list="aiModelOptions"
+                                        class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                        placeholder="model-name"
+                                      />
+                                    </td>
+                                    <td class="px-3 py-2">
+                                      <input
+                                        type="number"
+                                        bind:value={row.prompt}
+                                        class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                        min="0"
+                                        step="0.000001"
+                                      />
+                                    </td>
+                                    <td class="px-3 py-2">
+                                      <input
+                                        type="number"
+                                        bind:value={row.completion}
+                                        class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                        min="0"
+                                        step="0.000001"
+                                      />
+                                    </td>
+                                    <td class="px-3 py-2">
+                                      <button
+                                        type="button"
+                                        class="px-2 py-1 text-xs font-medium text-red-700 border border-red-300 rounded hover:bg-red-50"
+                                        on:click={() => removeModelPricingRow(rowIndex)}
+                                        title="Remove model row"
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
                           </div>
-                          <div class="flex space-x-2">
+                          <div class="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                              on:click={addModelPricingRow}
+                            >
+                              <i class="fas fa-plus mr-1"></i>Add Model
+                            </button>
                             <button
                               class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
-                              on:click={saveTokenPrice}
-                              disabled={!tokenPriceInput || tokenPriceInput < 0}
+                              on:click={saveModelPricing}
                             >
-                              <i class="fas fa-save mr-1"></i>Save Price
+                              <i class="fas fa-save mr-1"></i>Save Pricing
                             </button>
-                            <button
-                              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
-                              on:click={refreshCostEstimates}
-                            >
-                              <i class="fas fa-sync-alt mr-1"></i>Refresh Costs
-                            </button>
+                            {#if modelPricingStatus}
+                              <span class="text-sm text-gray-600 self-center">{modelPricingStatus}</span>
+                            {/if}
                           </div>
                         </div>
                       </div>
@@ -3558,6 +3791,7 @@
                   </div>
                 </div>
               </div>
+              {/if}
             {:else}
               <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="text-center py-8">

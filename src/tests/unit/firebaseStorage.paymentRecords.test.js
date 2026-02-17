@@ -614,4 +614,74 @@ describe('firebaseStorage doctor AI usage server stats', () => {
     expect(result.today.requests).toBe(2)
     expect(result.lastUpdated).toBe('2026-02-15T11:00:00.000Z')
   })
+
+  it('builds this-month, weekly, monthly, and recent AI usage analytics from server logs', async () => {
+    const today = new Date()
+    const todayIso = today.toISOString()
+    const todayKey = todayIso.slice(0, 10)
+    const monthKey = todayIso.slice(0, 7)
+    const fiveDaysAgo = new Date(today)
+    fiveDaysAgo.setDate(today.getDate() - 5)
+    const previousMonth = new Date(today)
+    previousMonth.setMonth(today.getMonth() - 1)
+    const previousMonthIso = previousMonth.toISOString()
+    const previousMonthKey = previousMonthIso.slice(0, 7)
+
+    getDocs
+      .mockResolvedValueOnce({
+        docs: [
+          docSnap('doc-a', {
+            totalTokens: 500,
+            totalCost: 0.15,
+            totalRequests: 5,
+            todayDate: todayKey,
+            todayTokens: 100,
+            todayCost: 0.03,
+            todayRequests: 1,
+            updatedAt: '2026-02-15T11:00:00.000Z'
+          })
+        ]
+      })
+      .mockResolvedValueOnce({
+        docs: [
+          docSnap('log-1', {
+            doctorId: 'doc-a',
+            requestType: 'chatbotResponse',
+            totalTokens: 30,
+            cost: 0.01,
+            createdAt: todayIso
+          }),
+          docSnap('log-2', {
+            doctorId: 'doc-a',
+            requestType: 'improveText',
+            totalTokens: 20,
+            cost: 0.005,
+            createdAt: fiveDaysAgo.toISOString()
+          }),
+          docSnap('log-3', {
+            doctorId: 'doc-a',
+            requestType: 'patientSummary',
+            totalTokens: 10,
+            cost: 0.002,
+            createdAt: previousMonthIso
+          })
+        ]
+      })
+
+    const result = await firebaseStorage.getAllDoctorAIUsageSummary(100, 2000)
+    expect(result.thisMonth.tokens).toBe(50)
+    expect(result.thisMonth.requests).toBe(2)
+    expect(result.recentRequests).toHaveLength(3)
+    expect(result.recentRequests[0]).toEqual(expect.objectContaining({
+      type: expect.any(String),
+      totalTokens: expect.any(Number)
+    }))
+
+    const weeklyToday = result.weeklyUsage.find((row) => row.date === todayKey)
+    expect(weeklyToday?.tokens).toBe(30)
+    const monthlyCurrent = result.monthlyUsage.find((row) => row.month === monthKey)
+    expect(monthlyCurrent?.tokens).toBe(50)
+    const monthlyPrevious = result.monthlyUsage.find((row) => row.month === previousMonthKey)
+    expect(monthlyPrevious?.tokens).toBe(10)
+  })
 })

@@ -62,4 +62,27 @@ describe('openaiService improveText', () => {
       'doc-1'
     )
   })
+
+  it('uses configured spell/grammar model for request and usage tracking', async () => {
+    vi.spyOn(openaiService, 'isConfigured').mockReturnValue(true)
+    vi.spyOn(openaiService, 'getModelForCategory').mockResolvedValue('gpt-4.1-mini')
+
+    const makeRequestSpy = vi.spyOn(openaiService, 'makeOpenAIRequest').mockResolvedValue({
+      choices: [{ message: { content: 'clean text' } }],
+      usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 },
+      __fromCache: false
+    })
+
+    await openaiService.improveText('clean text', 'doc-2', { context: 'notes' })
+
+    const requestBody = makeRequestSpy.mock.calls[0][1]
+    expect(requestBody.model).toBe('gpt-4.1-mini')
+    expect(trackUsageMock).toHaveBeenCalledWith(
+      'improveText',
+      12,
+      5,
+      'gpt-4.1-mini',
+      'doc-2'
+    )
+  })
 })

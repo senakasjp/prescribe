@@ -1383,6 +1383,95 @@ const resolveDoctorIdForStripe = async (
   return "";
 };
 
+const resolveReferralReferrerDoctorId = async (rawReferrerId = "") => {
+  const normalized = String(rawReferrerId || "").trim();
+  if (!normalized) return "";
+  const doctorsRef = admin.firestore().collection("doctors");
+
+  const directDoc = await doctorsRef.doc(normalized).get();
+  if (directDoc.exists) return directDoc.id;
+
+  const shortIdMatch = await doctorsRef
+      .where("doctorIdShort", "==", normalized)
+      .limit(1)
+      .get();
+  if (!shortIdMatch.empty) {
+    return shortIdMatch.docs[0].id;
+  }
+
+  return "";
+};
+
+const applyReferralRewardForPaidDoctor = async ({
+  resolvedDoctorId,
+  doctorData = {},
+  nowIso,
+}) => {
+  const rawReferrerId = String(doctorData?.referredByDoctorId || "").trim();
+  if (!rawReferrerId) {
+    return {
+      referredDoctorUpdates: {},
+    };
+  }
+
+  const referrerDoctorId = await resolveReferralReferrerDoctorId(rawReferrerId);
+  const referredDoctorUpdates = {};
+  if (referrerDoctorId && referrerDoctorId !== rawReferrerId) {
+    referredDoctorUpdates.referredByDoctorId = referrerDoctorId;
+  }
+
+  if (doctorData?.referralBonusApplied) {
+    return {referredDoctorUpdates};
+  }
+
+  const eligibleAtMs = new Date(doctorData?.referralEligibleAt || "").getTime();
+  const nowMs = new Date(nowIso).getTime();
+  if (!Number.isFinite(eligibleAtMs) || !Number.isFinite(nowMs)) {
+    return {referredDoctorUpdates};
+  }
+  if (eligibleAtMs > nowMs) {
+    return {referredDoctorUpdates};
+  }
+  if (!referrerDoctorId || referrerDoctorId === resolvedDoctorId) {
+    return {referredDoctorUpdates};
+  }
+
+  const referrerRef = admin.firestore().collection("doctors").doc(referrerDoctorId);
+  const referrerSnap = await referrerRef.get();
+  if (!referrerSnap.exists) {
+    return {referredDoctorUpdates};
+  }
+  const referrerData = referrerSnap.data() || {};
+  const referrerBaseIso = referrerData.accessExpiresAt &&
+    new Date(referrerData.accessExpiresAt).getTime() > nowMs ?
+    referrerData.accessExpiresAt :
+    nowIso;
+  const referrerNextAccessExpiresAt = addIntervalToIsoDate(referrerBaseIso, "month");
+
+  await referrerRef.set({
+    accessExpiresAt: referrerNextAccessExpiresAt,
+    walletMonths: Number(referrerData.walletMonths || 0) + 1,
+  }, {merge: true});
+
+  await logDoctorPaymentRecord({
+    doctorId: referrerDoctorId,
+    type: "referral_reward",
+    source: "referral",
+    status: "credited",
+    monthsDelta: 1,
+    referenceId: resolvedDoctorId,
+    note: `Referral reward from ${resolvedDoctorId}`,
+    metadata: {
+      referredDoctorId: resolvedDoctorId,
+    },
+  });
+
+  referredDoctorUpdates.referralBonusApplied = true;
+  referredDoctorUpdates.referralBonusAppliedAt = nowIso;
+
+  return {referredDoctorUpdates};
+};
+
 const applyDoctorPaymentSuccess = async ({
   resolvedDoctorId,
   planId = "",
@@ -1434,6 +1523,11 @@ const applyDoctorPaymentSuccess = async ({
   const doctorSnap = await doctorRef.get();
   const doctorData = doctorSnap.exists ? doctorSnap.data() : {};
   const nowIso = paidAt || new Date().toISOString();
+  const referralRewardResult = await applyReferralRewardForPaidDoctor({
+    resolvedDoctorId,
+    doctorData,
+    nowIso,
+  });
   const accessBaseIso = doctorData && doctorData.accessExpiresAt &&
     new Date(doctorData.accessExpiresAt).getTime() > Date.now() ?
     doctorData.accessExpiresAt :
@@ -1452,6 +1546,7 @@ const applyDoctorPaymentSuccess = async ({
     stripePlanId: String(planId || ""),
     stripeLastPaymentAt: nowIso,
     walletMonths: Number(doctorData.walletMonths || 0) + monthsDelta,
+    ...(referralRewardResult?.referredDoctorUpdates || {}),
   };
   await doctorRef.set(updatePayload, {merge: true});
   await logDoctorPaymentRecord({

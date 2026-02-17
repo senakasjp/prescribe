@@ -118,4 +118,26 @@ describe('openaiService extractTextFromImage', () => {
     expect(optimizeSpy).toHaveBeenCalledTimes(1)
     expect(trackUsageMock).not.toHaveBeenCalled()
   })
+
+  it('uses configured image-analysis model for OCR request and usage tracking', async () => {
+    vi.spyOn(openaiService, 'isConfigured').mockReturnValue(true)
+    vi.spyOn(openaiService, 'getModelForCategory').mockResolvedValue('gpt-4.1-mini')
+    const makeRequestSpy = vi.spyOn(openaiService, 'makeOpenAIRequest').mockResolvedValue({
+      choices: [{ message: { content: 'WBC 8.2' } }],
+      usage: { prompt_tokens: 14, completion_tokens: 6, total_tokens: 20 },
+      __fromCache: false
+    })
+
+    await openaiService.extractTextFromImage('data:image/jpeg;base64,AAAA', 'doc-999')
+
+    const requestBody = makeRequestSpy.mock.calls[0][1]
+    expect(requestBody.model).toBe('gpt-4.1-mini')
+    expect(trackUsageMock).toHaveBeenCalledWith(
+      'reportImageOcr',
+      14,
+      6,
+      'gpt-4.1-mini',
+      'doc-999'
+    )
+  })
 })

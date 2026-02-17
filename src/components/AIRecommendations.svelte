@@ -248,8 +248,9 @@ Provide a brief, focused answer (max 200 words) with clear medical guidance. Use
 
       console.log('🤖 Chat request:', { userMessage, symptomsText, analysisSummary })
 
+      const selectedModel = await openaiService.getModelForCategory('other')
       const response = await openaiService.makeOpenAIRequest('chat/completions', {
-model: 'gpt-4o-mini',
+model: selectedModel,
         messages: [
           {
             role: 'system',
@@ -278,7 +279,7 @@ model: 'gpt-4o-mini',
           'chatbotResponse',
           response.usage.prompt_tokens,
           response.usage.completion_tokens,
-          'gpt-4o-mini',
+          selectedModel,
           doctorId
         )
       }

@@ -109,4 +109,17 @@ describe('DoctorInventoryAlertsPage', () => {
       hasOwnPharmacy: true
     })
   })
+
+  it('keeps header actions clear of modal close button area', async () => {
+    render(DoctorInventoryAlertsPage, {
+      props: {
+        user: { id: 'doc-1', name: 'Dr Demo' }
+      }
+    })
+
+    const heading = await screen.findByRole('heading', { name: /Pharmacy Stock Alerts/i })
+    const headerRow = heading.closest('div.flex')
+    expect(headerRow).not.toBeNull()
+    expect(headerRow.className).toContain('pr-12')
+  })
 })

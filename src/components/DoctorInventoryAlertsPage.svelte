@@ -281,7 +281,7 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex items-center justify-between">
+  <div class="flex flex-wrap items-start justify-between gap-3 pr-12 sm:pr-14">
     <div>
       <h2 class="text-lg font-semibold text-gray-900">
         <i class="fas fa-bell mr-2 text-cyan-600"></i>
@@ -289,7 +289,7 @@
       </h2>
       <p class="text-xs text-gray-500">Low stock and expiry notifications for connected own pharmacy inventory.</p>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 shrink-0">
       <button
         type="button"
         class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-lg hover:bg-cyan-100 focus:ring-2 focus:ring-cyan-200"
@@ -301,7 +301,7 @@
       </button>
       <button
         type="button"
-        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-gray-200"
+        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-gray-800 border border-gray-800 rounded-lg hover:bg-gray-900 focus:ring-2 focus:ring-gray-300"
         on:click={printReport}
       >
         <i class="fas fa-print mr-2"></i>

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import AdminDashboard from '../../components/AdminDashboard.svelte';
 import firebaseStorage from '../../services/firebaseStorage.js';
+import aiTokenTracker from '../../services/aiTokenTracker.js';
 import { auth } from '../../firebase-config.js';
 
 vi.mock('../../services/firebaseStorage.js', () => ({
@@ -20,9 +21,11 @@ vi.mock('../../services/firebaseStorage.js', () => ({
     getSmtpSettings: vi.fn().mockResolvedValue(null),
     getMessagingTemplates: vi.fn().mockResolvedValue(null),
     getPaymentPricingSettings: vi.fn().mockResolvedValue(null),
+    getAIModelSettings: vi.fn().mockResolvedValue(null),
     getEmailTemplate: vi.fn().mockResolvedValue(null),
     saveMessagingTemplates: vi.fn().mockResolvedValue(null),
     savePaymentPricingSettings: vi.fn().mockResolvedValue(null),
+    saveAIModelSettings: vi.fn().mockResolvedValue(null),
     saveWelcomeEmailTemplate: vi.fn().mockResolvedValue(null),
     savePatientWelcomeEmailTemplate: vi.fn().mockResolvedValue(null),
     saveAppointmentReminderEmailTemplate: vi.fn().mockResolvedValue(null),
@@ -43,6 +46,9 @@ vi.mock('../../services/firebaseStorage.js', () => ({
       total: { tokens: 0, cost: 0, requests: 0 },
       today: { tokens: 0, cost: 0, requests: 0 },
       thisMonth: { tokens: 0, cost: 0, requests: 0 },
+      weeklyUsage: [],
+      monthlyUsage: [],
+      recentRequests: [],
       lastUpdated: null
     }),
     getDoctorReferralWalletStats: vi.fn().mockResolvedValue({
@@ -84,7 +90,20 @@ vi.mock('../../services/aiTokenTracker.js', () => ({
       lastUpdated: null
     })),
     migrateRequestsWithMissingDoctorId: vi.fn(() => 0),
-    getDoctorUsageStats: vi.fn(() => null)
+    getDoctorUsageStats: vi.fn(() => null),
+    getAllDoctorsWithQuotas: vi.fn(() => []),
+    getDefaultQuota: vi.fn(() => 1000000),
+    getTokenPricePerMillion: vi.fn(() => 4.0),
+    setDoctorQuota: vi.fn(),
+    setDefaultQuota: vi.fn(),
+    applyDefaultQuotaToAllDoctors: vi.fn(() => 0),
+    setTokenPricePerMillion: vi.fn(),
+    getAllModelPricing: vi.fn(() => ({
+      'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
+      'gpt-4o': { prompt: 0.005, completion: 0.015 }
+    })),
+    setModelPricing: vi.fn(),
+    removeModelPricing: vi.fn()
   }
 }));
 
@@ -210,6 +229,128 @@ describe('AdminDashboard.svelte', () => {
         enabled: false
       })
     );
+  });
+
+  it('loads AI model settings in AI usage tab', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAIModelSettings.mockResolvedValueOnce({
+      imageAnalysisModel: 'gpt-4.1-mini',
+      otherAnalysisModel: 'gpt-4.1',
+      spellGrammarModel: 'gpt-4o-mini'
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'AI Usage' }));
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
+
+    expect(await screen.findByLabelText('Image analysis model')).toHaveValue('gpt-4.1-mini');
+    expect(screen.getByLabelText('Other analysis model')).toHaveValue('gpt-4.1');
+    expect(screen.getByLabelText('Spell and grammar model')).toHaveValue('gpt-4o-mini');
+    const modelOptions = Array.from(document.querySelectorAll('datalist#aiModelOptions option')).map((option) => option.value);
+    expect(modelOptions).toContain('gpt-5');
+    expect(screen.getByLabelText('Image analysis model')).toHaveAttribute('list', 'aiModelOptions');
+  });
+
+  it('saves AI model settings from AI usage tab', async () => {
+    const user = userEvent.setup();
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'AI Usage' }));
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
+
+    const imageModelInput = await screen.findByLabelText('Image analysis model');
+    const otherModelInput = screen.getByLabelText('Other analysis model');
+    const spellModelInput = screen.getByLabelText('Spell and grammar model');
+
+    await user.clear(imageModelInput);
+    await user.type(imageModelInput, 'gpt-4.1-mini');
+    await user.clear(otherModelInput);
+    await user.type(otherModelInput, 'gpt-4.1');
+    await user.clear(spellModelInput);
+    await user.type(spellModelInput, 'gpt-4.1-mini');
+
+    await user.click(screen.getByRole('button', { name: 'Save AI Models' }));
+
+    expect(firebaseStorage.saveAIModelSettings).toHaveBeenCalledTimes(1);
+    expect(firebaseStorage.saveAIModelSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageAnalysisModel: 'gpt-4.1-mini',
+        otherAnalysisModel: 'gpt-4.1',
+        spellGrammarModel: 'gpt-4.1-mini',
+        updatedBy: 'admin@test.com'
+      })
+    );
+  });
+
+  it('falls back to default model names when AI model inputs are blank', async () => {
+    const user = userEvent.setup();
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'AI Usage' }));
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
+
+    const imageModelInput = await screen.findByLabelText('Image analysis model');
+    const otherModelInput = screen.getByLabelText('Other analysis model');
+    const spellModelInput = screen.getByLabelText('Spell and grammar model');
+
+    await user.clear(imageModelInput);
+    await user.clear(otherModelInput);
+    await user.clear(spellModelInput);
+
+    await user.click(screen.getByRole('button', { name: 'Save AI Models' }));
+
+    expect(firebaseStorage.saveAIModelSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageAnalysisModel: 'gpt-4o-mini',
+        otherAnalysisModel: 'gpt-4o-mini',
+        spellGrammarModel: 'gpt-4o-mini'
+      })
+    );
+  });
+
+  it('saves per-model pricing from AI usage tab', async () => {
+    const user = userEvent.setup();
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'AI Usage' }));
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
+
+    const pricingSection = (await screen.findByRole('heading', { name: 'Model Pricing' })).closest('div.bg-gray-50');
+    expect(pricingSection).not.toBeNull();
+    const pricingScope = within(pricingSection);
+    const modelInputs = pricingScope.getAllByPlaceholderText('model-name');
+    const pricingNumberInputs = pricingScope.getAllByRole('spinbutton');
+
+    await user.clear(modelInputs[0]);
+    await user.type(modelInputs[0], 'gpt-4.1-mini');
+    await user.clear(pricingNumberInputs[0]);
+    await user.type(pricingNumberInputs[0], '0.0002');
+    await user.clear(pricingNumberInputs[1]);
+    await user.type(pricingNumberInputs[1], '0.0008');
+
+    await user.click(pricingScope.getByRole('button', { name: 'Save Pricing' }));
+
+    expect(aiTokenTracker.setModelPricing).toHaveBeenCalledWith('gpt-4.1-mini', 0.0002, 0.0008);
   });
 
   it('saves messaging templates updates', async () => {
@@ -1257,6 +1398,44 @@ describe('AdminDashboard.svelte', () => {
     await waitFor(() => {
       expect(firebaseStorage.getDoctorAIUsageStatsMap).toHaveBeenCalledWith([doctorRawId]);
     });
+  });
+
+  it('renders AI usage trend tables from server summary data', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctorAIUsageSummary.mockResolvedValueOnce({
+      total: { tokens: 100, cost: 0.1, requests: 3 },
+      today: { tokens: 40, cost: 0.04, requests: 1 },
+      thisMonth: { tokens: 70, cost: 0.07, requests: 2 },
+      weeklyUsage: [
+        { date: '2026-02-17', tokens: 12, cost: 0.012, requests: 2 }
+      ],
+      monthlyUsage: [
+        { month: '2026-02', tokens: 34, cost: 0.034, requests: 4 }
+      ],
+      recentRequests: [
+        {
+          id: 'req-1',
+          timestamp: '2026-02-17T10:00:00.000Z',
+          type: 'chatbotResponse',
+          totalTokens: 12,
+          cost: 0.012
+        }
+      ],
+      lastUpdated: '2026-02-17T10:00:00.000Z'
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'AI Usage' }));
+
+    expect(await screen.findByRole('heading', { name: /AI Usage Analytics/i })).toBeInTheDocument();
+    expect(await screen.findByText('chatbotResponse')).toBeInTheDocument();
+    expect(await screen.findAllByText('$0.0120')).toHaveLength(2);
+    expect(await screen.findByText('34')).toBeInTheDocument();
   });
 
   it('shows only stripe success/fail rows in doctor billing history and hides pending rows', async () => {

@@ -90,4 +90,56 @@ describe('firebaseStorage payment pricing settings', () => {
     }))
     expect(options).toEqual({ merge: true })
   })
+
+  it('returns null when aiModelSettings doc does not exist', async () => {
+    getDoc.mockResolvedValueOnce({
+      exists: () => false
+    })
+
+    const result = await firebaseStorage.getAIModelSettings()
+
+    expect(doc).toHaveBeenCalledWith(expect.anything(), 'systemSettings', 'aiModelSettings')
+    expect(result).toBeNull()
+  })
+
+  it('returns aiModelSettings data when doc exists', async () => {
+    getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        imageAnalysisModel: 'gpt-4.1-mini',
+        otherAnalysisModel: 'gpt-4.1',
+        spellGrammarModel: 'gpt-4o-mini'
+      })
+    })
+
+    const result = await firebaseStorage.getAIModelSettings()
+
+    expect(result).toEqual({
+      imageAnalysisModel: 'gpt-4.1-mini',
+      otherAnalysisModel: 'gpt-4.1',
+      spellGrammarModel: 'gpt-4o-mini'
+    })
+  })
+
+  it('saves aiModelSettings with merge and updatedAt', async () => {
+    await firebaseStorage.saveAIModelSettings({
+      imageAnalysisModel: 'gpt-4.1-mini',
+      otherAnalysisModel: 'gpt-4.1',
+      spellGrammarModel: 'gpt-4o-mini',
+      updatedBy: 'admin@test.com'
+    })
+
+    expect(doc).toHaveBeenCalledWith(expect.anything(), 'systemSettings', 'aiModelSettings')
+    expect(setDoc).toHaveBeenCalledTimes(1)
+
+    const [_, payload, options] = setDoc.mock.calls[0]
+    expect(payload).toEqual(expect.objectContaining({
+      imageAnalysisModel: 'gpt-4.1-mini',
+      otherAnalysisModel: 'gpt-4.1',
+      spellGrammarModel: 'gpt-4o-mini',
+      updatedBy: 'admin@test.com',
+      updatedAt: expect.any(String)
+    }))
+    expect(options).toEqual({ merge: true })
+  })
 })

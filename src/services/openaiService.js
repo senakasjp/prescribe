@@ -2,6 +2,7 @@
 // This service provides AI-generated recommendations based on patient symptoms
 
 import aiTokenTracker from './aiTokenTracker.js'
+import firebaseStorage from './firebaseStorage.js'
 import { 
   collection, 
   addDoc, 
@@ -20,6 +21,9 @@ class OpenAIService {
     this.maxCacheEntries = 200
     this.imageAnalysisCache = new Map()
     this.imageAnalysisTtlMs = 24 * 60 * 60 * 1000
+    this.aiModelSettingsCache = null
+    this.aiModelSettingsFetchedAt = 0
+    this.aiModelSettingsTtlMs = 60 * 1000
   }
 
   // Initialize OpenAI client
@@ -39,6 +43,55 @@ class OpenAIService {
     const region = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
     if (!projectId) return null
     return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`
+  }
+
+  getDefaultAIModelSettings() {
+    return {
+      imageAnalysisModel: 'gpt-4o-mini',
+      otherAnalysisModel: 'gpt-4o-mini',
+      spellGrammarModel: 'gpt-4o-mini'
+    }
+  }
+
+  normalizeAIModelSettings(rawSettings = {}) {
+    const defaults = this.getDefaultAIModelSettings()
+    return {
+      imageAnalysisModel: String(rawSettings?.imageAnalysisModel || '').trim() || defaults.imageAnalysisModel,
+      otherAnalysisModel: String(rawSettings?.otherAnalysisModel || '').trim() || defaults.otherAnalysisModel,
+      spellGrammarModel: String(rawSettings?.spellGrammarModel || '').trim() || defaults.spellGrammarModel
+    }
+  }
+
+  async getAIModelSettings(forceRefresh = false) {
+    const now = Date.now()
+    if (
+      !forceRefresh &&
+      this.aiModelSettingsCache &&
+      (now - this.aiModelSettingsFetchedAt) < this.aiModelSettingsTtlMs
+    ) {
+      return this.aiModelSettingsCache
+    }
+
+    try {
+      const rawSettings = await firebaseStorage.getAIModelSettings()
+      const normalized = this.normalizeAIModelSettings(rawSettings || {})
+      this.aiModelSettingsCache = normalized
+      this.aiModelSettingsFetchedAt = now
+      return normalized
+    } catch (error) {
+      console.warn('⚠️ Failed to load AI model settings, using defaults.', error)
+      const defaults = this.getDefaultAIModelSettings()
+      this.aiModelSettingsCache = defaults
+      this.aiModelSettingsFetchedAt = now
+      return defaults
+    }
+  }
+
+  async getModelForCategory(category = 'other') {
+    const settings = await this.getAIModelSettings()
+    if (category === 'image') return settings.imageAnalysisModel
+    if (category === 'spell') return settings.spellGrammarModel
+    return settings.otherAnalysisModel
   }
 
   sanitizeForLogging(value) {
@@ -724,8 +777,9 @@ class OpenAIService {
         continue
       }
 
+      const selectedModel = await this.getModelForCategory('image')
       const requestBody = {
-        model: 'gpt-4o-mini',
+        model: selectedModel,
         messages: [
           {
             role: 'system',
@@ -850,8 +904,9 @@ class OpenAIService {
 
         IMPORTANT: Check drug availability and regulatory approval in the patient's country. Suggest alternatives if medications are not available or approved in the patient's region. Consider local healthcare practices and drug naming conventions.`
 
+        const selectedModel = await this.getModelForCategory('other')
         const requestBody = {
-          model: 'gpt-4o-mini',
+          model: selectedModel,
           messages: [
             {
               role: 'system',
@@ -970,7 +1025,7 @@ class OpenAIService {
           'generateComprehensivePrescriptionAnalysis',
           data.usage.prompt_tokens,
           data.usage.completion_tokens,
-          'gpt-4o-mini',
+          selectedModel,
           doctorId
         )
       }
@@ -1049,8 +1104,9 @@ IMPORTANT: MEDICATION SUGGESTIONS:
 - Consider endemic diseases and local health patterns in the patient's country
 - Account for gender-specific medication effects and contraindications`
 
+      const selectedModel = await this.getModelForCategory('other')
       const requestBody = {
-        model: 'gpt-4o-mini',
+        model: selectedModel,
         messages: [
           {
             role: 'system',
@@ -1114,7 +1170,7 @@ IMPORTANT: MEDICATION SUGGESTIONS:
           'generateAIDrugSuggestions',
           data.usage.prompt_tokens,
           data.usage.completion_tokens,
-          'gpt-4o-mini',
+          selectedModel,
           doctorId
         )
       }
@@ -1178,8 +1234,9 @@ Brief analysis:
 
 Concise medical info only.`
 
+      const selectedModel = await this.getModelForCategory('other')
       const requestBody = {
-        model: 'gpt-4o-mini',
+        model: selectedModel,
         messages: [
           {
             role: 'system',
@@ -1276,7 +1333,7 @@ Concise medical info only.`
           'generateCombinedAnalysis',
           data.usage.prompt_tokens,
           data.usage.completion_tokens,
-          'gpt-4o-mini',
+          selectedModel,
           doctorId
         )
       }
@@ -1454,8 +1511,9 @@ IMPORTANT FORMATTING RULES:
       const userMessage = `Generate a patient management summary for:\n\n${patientContext}`
 
       // Prepare request body
+      const selectedModel = await this.getModelForCategory('other')
       const requestBody = {
-        model: 'gpt-4o-mini',
+        model: selectedModel,
         messages: [
           { role: 'system', content: systemMessage },
           { role: 'user', content: userMessage }
@@ -1501,7 +1559,7 @@ IMPORTANT FORMATTING RULES:
       if (doctorId && !data.__fromCache) {
         const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
         const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
-        await aiTokenTracker.trackUsage('patientSummary', promptTokens, completionTokens, 'gpt-4o-mini', userId)
+        await aiTokenTracker.trackUsage('patientSummary', promptTokens, completionTokens, selectedModel, userId)
       }
 
       return {
@@ -1650,8 +1708,9 @@ IMPORTANT FORMATTING RULES:
       try {
         const optimizedImageUrl = await this.optimizeImageSourceForOcr(imageUrl, profile)
 
+        const selectedModel = await this.getModelForCategory('image')
         const requestBody = {
-          model: 'gpt-4o-mini',
+          model: selectedModel,
           messages: [
             {
               role: 'system',
@@ -1689,7 +1748,7 @@ IMPORTANT FORMATTING RULES:
         if (doctorId && !data.__fromCache) {
           const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
           const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
-          await aiTokenTracker.trackUsage('reportImageOcr', promptTokens, completionTokens, 'gpt-4o-mini', doctorId)
+          await aiTokenTracker.trackUsage('reportImageOcr', promptTokens, completionTokens, selectedModel, doctorId)
         }
 
         return {
@@ -1746,8 +1805,9 @@ Output: "Take 5 mg after meals."`
       const userMessage = `Context: ${context}\nImprove this text using the rules above:\n\n${text}`
 
       // Prepare request body
+      const selectedModel = await this.getModelForCategory('spell')
       const requestBody = {
-        model: 'gpt-4o-mini',
+        model: selectedModel,
         messages: [
           { role: 'system', content: systemMessage },
           { role: 'user', content: userMessage }
@@ -1772,7 +1832,7 @@ Output: "Take 5 mg after meals."`
       if (doctorId && !data.__fromCache) {
         const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
         const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
-        await aiTokenTracker.trackUsage('improveText', promptTokens, completionTokens, 'gpt-4o-mini', doctorId)
+        await aiTokenTracker.trackUsage('improveText', promptTokens, completionTokens, selectedModel, doctorId)
       }
 
       return {

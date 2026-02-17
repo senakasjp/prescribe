@@ -360,6 +360,65 @@ describe('stripe functions: confirmStripeCheckoutSuccess idempotency', () => {
     expect(doctorPaymentRecords).toHaveLength(1)
   })
 
+  it('credits exactly one referral free month to referrer when referred doctor completes eligible paid month', async () => {
+    doctorsStore = new Map([
+      ['referrer-1', {
+        email: 'referrer@example.com',
+        doctorIdShort: 'DR99999',
+        walletMonths: 0,
+        accessExpiresAt: '2026-01-10T00:00:00.000Z'
+      }],
+      ['doctor-1', {
+        email: 'doctor@example.com',
+        walletMonths: 0,
+        referredByDoctorId: 'DR99999',
+        referralEligibleAt: '2025-01-01T00:00:00.000Z',
+        referralBonusApplied: false
+      }]
+    ])
+
+    const req = {
+      method: 'POST',
+      headers: { authorization: 'Bearer valid-token' },
+      body: {
+        sessionId: 'cs_test_dup',
+        doctorId: 'doctor-1'
+      }
+    }
+    const firstRes = createResponse()
+    const secondRes = createResponse()
+
+    await freshFunctionsModule.confirmStripeCheckoutSuccess(req, firstRes)
+    await freshFunctionsModule.confirmStripeCheckoutSuccess(req, secondRes)
+
+    expect(firstRes.statusCode).toBe(200)
+    expect(secondRes.statusCode).toBe(200)
+
+    const referredDoctor = doctorsStore.get('doctor-1')
+    const referrerDoctor = doctorsStore.get('referrer-1')
+    expect(referredDoctor?.referralBonusApplied).toBe(true)
+    expect(typeof referredDoctor?.referralBonusAppliedAt).toBe('string')
+    expect(referredDoctor?.referredByDoctorId).toBe('referrer-1')
+
+    expect(referrerDoctor?.walletMonths).toBe(1)
+    expect(new Date(referrerDoctor?.accessExpiresAt || '').getTime()).toBeGreaterThan(
+      new Date('2026-01-10T00:00:00.000Z').getTime()
+    )
+
+    const referralRewardRecords = doctorPaymentRecords.filter(
+      (record) => record.type === 'referral_reward' && record.doctorId === 'referrer-1'
+    )
+    expect(referralRewardRecords).toHaveLength(1)
+    expect(referralRewardRecords[0]).toEqual(
+      expect.objectContaining({
+        source: 'referral',
+        status: 'credited',
+        monthsDelta: 1,
+        referenceId: 'doctor-1'
+      })
+    )
+  })
+
   it('rejects confirm when Stripe session belongs to a different email', async () => {
     stripeRetrieveMock.mockResolvedValueOnce({
       id: 'cs_test_other_email',

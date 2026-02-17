@@ -59,6 +59,12 @@
     return Number.isFinite(parsed) ? parsed : 0
   }
 
+  const getProfileLookupKey = (sourceUser) => {
+    const doctorId = String(sourceUser?.id || "").trim()
+    if (doctorId) return doctorId
+    return String(sourceUser?.email || "").trim().toLowerCase()
+  }
+
   // Always prefer freshest server profile when available to avoid stale local session fields.
   $: effectiveDoctor = serverDoctorProfile
     ? { ...(user || {}), ...(serverDoctorProfile || {}) }
@@ -75,6 +81,19 @@
       parseDiscountPercent(checkoutAdminDiscountPercent)
     ))
   )
+  $: doctorReferralToken = String(
+    effectiveDoctor?.doctorIdShort || effectiveDoctor?.referralCode || ""
+  ).trim()
+  $: referralRegisterUrl = (() => {
+    if (!doctorReferralToken) return ""
+    if (typeof window === "undefined") return `/?register=1&ref=${encodeURIComponent(doctorReferralToken)}#signin`
+    return `${window.location.origin}/?register=1&ref=${encodeURIComponent(doctorReferralToken)}#signin`
+  })()
+  $: whatsappShareUrl = (() => {
+    if (!referralRegisterUrl) return ""
+    const shareText = `Join M-Prescribe using my referral link: ${referralRegisterUrl}`
+    return `https://wa.me/?text=${encodeURIComponent(shareText)}`
+  })()
 
   $: plans = doctorCurrency === "LKR"
     ? [
@@ -249,24 +268,30 @@
 
   const loadServerDoctorProfile = async (force = false) => {
     const doctorId = String(user?.id || "").trim()
-    const doctorEmail = String(user?.email || "").trim()
-    if (!doctorId) {
+    const doctorEmail = String(user?.email || "").trim().toLowerCase()
+    const profileLookupKey = getProfileLookupKey(user)
+    if (!profileLookupKey) {
       serverDoctorProfile = null
       loadedDoctorProfileId = ""
       return
     }
-    if (!force && loadedDoctorProfileId === doctorId && serverDoctorProfile) {
+    if (!force && loadedDoctorProfileId === profileLookupKey && serverDoctorProfile) {
       return
     }
     try {
-      let latestDoctor = await firebaseStorage.getDoctorById(doctorId)
+      let latestDoctor = null
+      if (doctorId) {
+        latestDoctor = await firebaseStorage.getDoctorById(doctorId)
+      }
       if (!latestDoctor?.id && doctorEmail) {
         latestDoctor = await firebaseStorage.getDoctorByEmail(doctorEmail)
       }
       if (latestDoctor?.id) {
         serverDoctorProfile = latestDoctor
+      } else {
+        serverDoctorProfile = null
       }
-      loadedDoctorProfileId = doctorId
+      loadedDoctorProfileId = profileLookupKey
     } catch (error) {
       // Keep using existing user prop when profile refresh fails.
     }
@@ -432,7 +457,7 @@
     await loadBillingHistory(true)
   })
 
-  $: if (user?.id && loadedDoctorProfileId !== user.id) {
+  $: if (getProfileLookupKey(user) && loadedDoctorProfileId !== getProfileLookupKey(user)) {
     loadServerDoctorProfile(true)
   }
 
@@ -484,6 +509,17 @@
           >
             <i class="fas fa-receipt mr-2"></i>
             Billing History
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "referral"}
+            aria-controls="referral-tab-panel"
+            class="inline-flex items-center rounded-t-lg border px-4 py-2 text-sm font-semibold transition-colors {activeTab === 'referral' ? 'border-cyan-300 bg-cyan-50 text-cyan-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}"
+            on:click={() => { activeTab = "referral" }}
+          >
+            <i class="fas fa-link mr-2"></i>
+            Referral
           </button>
         </div>
       </div>
@@ -663,6 +699,46 @@
               {/if}
             {/if}
           </div>
+        </div>
+      {/if}
+
+      {#if activeTab === "referral"}
+        <div id="referral-tab-panel" role="tabpanel">
+          {#if referralRegisterUrl}
+            <div class="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+              <p class="text-sm font-semibold text-slate-100">Referral Link</p>
+              <p class="mt-1 text-xs text-slate-300">
+                Every registrant via referral who continues using for a month will add a free month for you.
+              </p>
+              <a
+                href={referralRegisterUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="mt-2 inline-flex items-center gap-2 break-all text-xs font-semibold text-cyan-300 underline hover:text-cyan-200"
+              >
+                <i class="fas fa-up-right-from-square text-[10px]"></i>
+                {referralRegisterUrl}
+              </a>
+              {#if whatsappShareUrl}
+                <div class="mt-2">
+                  <a
+                    href={whatsappShareUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-300"
+                    aria-label="Share referral link on WhatsApp"
+                  >
+                    <i class="fab fa-whatsapp"></i>
+                    Share on WhatsApp
+                  </a>
+                </div>
+              {/if}
+            </div>
+          {:else}
+            <div class="rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-slate-300">
+              Referral link is not available yet.
+            </div>
+          {/if}
         </div>
       {/if}
     </div>

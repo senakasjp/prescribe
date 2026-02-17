@@ -2673,6 +2673,34 @@ class FirebaseStorageService {
     }
   }
 
+  async getAIModelSettings() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'aiModelSettings')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting AI model settings:', error)
+      throw error
+    }
+  }
+
+  async saveAIModelSettings(settings) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'aiModelSettings')
+      await setDoc(docRef, {
+        ...settings,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving AI model settings:', error)
+      throw error
+    }
+  }
+
   async getEmailLogs(limitCount = 200) {
     try {
       const q = query(
@@ -3087,7 +3115,7 @@ class FirebaseStorageService {
     }
   }
 
-  async getAllDoctorAIUsageSummary(limitCount = 500) {
+  async getAllDoctorAIUsageSummary(limitCount = 500, logLimitCount = 2000) {
     try {
       const snapshot = await getDocs(
         query(
@@ -3100,10 +3128,28 @@ class FirebaseStorageService {
         .sort((a, b) => String(b?.updatedAt || '').localeCompare(String(a?.updatedAt || '')))
 
       const todayKey = new Date().toISOString().slice(0, 10)
+      const currentMonthKey = new Date().toISOString().slice(0, 7)
+      const weeklyUsageMap = new Map()
+      const monthlyUsageMap = new Map()
+      for (let i = 6; i >= 0; i -= 1) {
+        const date = new Date()
+        date.setDate(date.getDate() - i)
+        const key = date.toISOString().slice(0, 10)
+        weeklyUsageMap.set(key, { date: key, tokens: 0, cost: 0, requests: 0 })
+      }
+      for (let i = 5; i >= 0; i -= 1) {
+        const date = new Date()
+        date.setMonth(date.getMonth() - i)
+        const key = date.toISOString().slice(0, 7)
+        monthlyUsageMap.set(key, { month: key, tokens: 0, cost: 0, requests: 0 })
+      }
       const summary = {
         total: { tokens: 0, cost: 0, requests: 0 },
         today: { tokens: 0, cost: 0, requests: 0 },
         thisMonth: { tokens: 0, cost: 0, requests: 0 },
+        weeklyUsage: Array.from(weeklyUsageMap.values()),
+        monthlyUsage: Array.from(monthlyUsageMap.values()),
+        recentRequests: [],
         lastUpdated: null
       }
 
@@ -3122,7 +3168,66 @@ class FirebaseStorageService {
         }
       })
 
-      // Monthly aggregate is not precomputed server-side yet; keep deterministic zero.
+      // Enrich summary with server log analytics for month/week/recent request tables.
+      try {
+        const logsSnapshot = await getDocs(
+          query(
+            collection(db, 'doctorAiUsageLogs'),
+            limit(logLimitCount)
+          )
+        )
+        const logs = Array.isArray(logsSnapshot?.docs)
+          ? logsSnapshot.docs.map((docSnap) => docSnap.data() || {})
+          : []
+        logs.sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')))
+
+        const recentRequests = logs.slice(0, 10).map((row, index) => ({
+          id: row?.id || row?.requestId || `recent-${index}`,
+          timestamp: String(row?.createdAt || ''),
+          type: String(row?.requestType || ''),
+          model: String(row?.model || ''),
+          promptTokens: Number(row?.promptTokens || 0),
+          completionTokens: Number(row?.completionTokens || 0),
+          totalTokens: Number(row?.totalTokens || 0),
+          cost: Number(row?.cost || 0),
+          doctorId: String(row?.doctorId || '')
+        }))
+        summary.recentRequests = recentRequests
+
+        logs.forEach((row) => {
+          const createdAt = String(row?.createdAt || '')
+          const dayKey = createdAt.slice(0, 10)
+          const monthKey = createdAt.slice(0, 7)
+          const totalTokens = Number(row?.totalTokens || 0)
+          const cost = Number(row?.cost || 0)
+
+          if (monthKey === currentMonthKey) {
+            summary.thisMonth.tokens += totalTokens
+            summary.thisMonth.cost += cost
+            summary.thisMonth.requests += 1
+          }
+
+          if (weeklyUsageMap.has(dayKey)) {
+            const bucket = weeklyUsageMap.get(dayKey)
+            bucket.tokens += totalTokens
+            bucket.cost += cost
+            bucket.requests += 1
+          }
+
+          if (monthlyUsageMap.has(monthKey)) {
+            const bucket = monthlyUsageMap.get(monthKey)
+            bucket.tokens += totalTokens
+            bucket.cost += cost
+            bucket.requests += 1
+          }
+        })
+
+        summary.weeklyUsage = Array.from(weeklyUsageMap.values())
+        summary.monthlyUsage = Array.from(monthlyUsageMap.values())
+      } catch (error) {
+        console.warn('⚠️ Could not load AI usage logs for trend analytics:', error)
+      }
+
       return summary
     } catch (error) {
       console.error('❌ Error getting all doctor AI usage summary:', error)

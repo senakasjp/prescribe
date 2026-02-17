@@ -694,19 +694,19 @@
                 <label for="editConsultationCharge" class="block text-sm font-medium text-gray-700 mb-1">
                   Consultation Charge
                 </label>
-                <div class="relative">
-                  <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span class="text-gray-500 text-sm">{currency}</span>
-                  </div>
-                    <input 
-                      type="text" 
-                      class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                      id="editConsultationCharge" 
-                      bind:value={consultationCharge}
-                      placeholder="0.00"
-                      pattern="[0-9]*\.?[0-9]*"
-                      disabled={loading}
-                    />
+                <div class="flex items-stretch">
+                  <span class="inline-flex items-center px-3 border border-r-0 border-gray-300 rounded-l-lg bg-gray-50 text-gray-600 text-sm">
+                    {currency}
+                  </span>
+                  <input 
+                    type="text" 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                    id="editConsultationCharge" 
+                    bind:value={consultationCharge}
+                    placeholder="0.00"
+                    pattern="[0-9]*\.?[0-9]*"
+                    disabled={loading}
+                  />
                 </div>
                 <div class="text-xs text-gray-500 mt-1">
                   <i class="fas fa-info-circle mr-1"></i>
@@ -717,19 +717,19 @@
                 <label for="editHospitalCharge" class="block text-sm font-medium text-gray-700 mb-1">
                   Hospital Charge
                 </label>
-                <div class="relative">
-                  <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <span class="text-gray-500 text-sm">{currency}</span>
-                  </div>
-                    <input 
-                      type="text" 
-                      class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
-                      id="editHospitalCharge" 
-                      bind:value={hospitalCharge}
-                      placeholder="0.00"
-                      pattern="[0-9]*\.?[0-9]*"
-                      disabled={loading}
-                    />
+                <div class="flex items-stretch">
+                  <span class="inline-flex items-center px-3 border border-r-0 border-gray-300 rounded-l-lg bg-gray-50 text-gray-600 text-sm">
+                    {currency}
+                  </span>
+                  <input 
+                    type="text" 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                    id="editHospitalCharge" 
+                    bind:value={hospitalCharge}
+                    placeholder="0.00"
+                    pattern="[0-9]*\.?[0-9]*"
+                    disabled={loading}
+                  />
                 </div>
                 <div class="text-xs text-gray-500 mt-1">
                   <i class="fas fa-info-circle mr-1"></i>
