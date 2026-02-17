@@ -41,21 +41,14 @@ A comprehensive medical prescription management system built with Svelte, Fireba
 
 ## 📚 Documentation
 
-### User Guides
-- **[BEGINNER_GUIDE.md](./BEGINNER_GUIDE.md)** - Complete step-by-step guide for new users
-- **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)** - Quick reference card for common tasks
-- **[USER_GUIDE.md](./USER_GUIDE.md)** - Detailed user manual for all features
+Canonical docs for maintenance:
+- **[DOCS.md](./DOCS.md)** - Documentation map and maintenance rules
+- **[PRODUCT_MANUAL.md](./PRODUCT_MANUAL.md)** - Product workflows (doctor/pharmacist/admin)
+- **[ENGINEERING_MANUAL.md](./ENGINEERING_MANUAL.md)** - Technical architecture/setup/deployment
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Automated + manual testing guidance
+- **[CHANGELOG.md](./CHANGELOG.md)** - Release history
 
-### Developer Documentation
-- **[TECHNICAL_IMPLEMENTATION.md](./TECHNICAL_IMPLEMENTATION.md)** - Technical documentation
-- **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)** - API reference guide
-- **[ADD_PATIENT_BUTTON_FIX.md](./ADD_PATIENT_BUTTON_FIX.md)** - Critical bug fix documentation
-- **[COMPONENT_RENDERING_TROUBLESHOOTING.md](./COMPONENT_RENDERING_TROUBLESHOOTING.md)** - Troubleshooting guide
-
-### Testing Documentation
-- **[TESTING_QUICK_START.md](./TESTING_QUICK_START.md)** - Get started with testing in 2 minutes
-- **[TESTING_BEST_PRACTICES.md](./TESTING_BEST_PRACTICES.md)** - Comprehensive testing guide
-- **[TEST_IMPLEMENTATION_SUMMARY.md](./TEST_IMPLEMENTATION_SUMMARY.md)** - Testing implementation summary
+Legacy docs remain available as historical references.
 
 ## 📋 Prerequisites
 
@@ -116,18 +109,23 @@ firebase deploy
 
 ## 🔄 Recent Updates
 
+### Version 2.3.14 - Admin Payment Pricing Controls + Scope Rules (February 17, 2026)
+- Admin Payments now supports configurable plan pricing:
+  - USD monthly / annual
+  - LKR monthly / annual
+- Scope control for pricing rules:
+  - `new_customers`
+  - `all_customers`
+- Stripe checkout now enforces pricing rules server-side from `systemSettings/paymentPricing`.
+- Added test coverage:
+  - `src/tests/components/AdminDashboard.test.js`
+  - `src/tests/unit/firebaseStorage.paymentPricingSettings.test.js`
+  - `src/tests/unit/stripePricingConfig.test.js`
+
 ### Version 2.3.6 - Security Hardening + Security Test Expansion (February 13, 2026)
 - Firestore rules hardened for tenant ownership enforcement.
 - Added explicit secure rules for `pharmacistInventory` and `drugStock`.
 - Added update-time ownership lock to block non-admin reassignment of `doctorId`/`pharmacistId`.
-- Expanded security-focused automated tests:
-- `src/tests/integration/firestoreRules.security.test.js`
-- `src/tests/unit/openaiProxy.security.test.js`
-- `src/tests/unit/optimizedOpenaiService.security.test.js`
-- `src/tests/integration/backupRestore.test.js` (signed-out deny checks)
-- `src/tests/unit/doctorNotificationSmsTriggers.test.js` (guard behavior)
-- `src/tests/unit/securityInputSanitization.test.js`
-- Current full-suite baseline: `431` passing tests (`npm run test:run`).
 
 ### Version 2.3.1 - Add New Patient Button Fix (December 28, 2024)
 - **Critical Bug Fix**: Resolved "+ Add New Patient" button functionality
@@ -217,9 +215,8 @@ npm run test:e2e
 - `src/tests/unit/securityTenantIsolation.test.js`
 
 ### Testing Documentation
-- **[TESTING_QUICK_START.md](./TESTING_QUICK_START.md)** - Quick start guide
-- **[TESTING_BEST_PRACTICES.md](./TESTING_BEST_PRACTICES.md)** - Best practices
-- **[TEST_IMPLEMENTATION_SUMMARY.md](./TEST_IMPLEMENTATION_SUMMARY.md)** - Implementation details
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Canonical testing documentation
+- Legacy testing docs remain in `docs/legacy/`
 
 ## 📁 Project Structure
 
@@ -364,12 +361,12 @@ AI features require the OpenAI API key in Firebase Functions secrets for:
 
 ## 📚 Documentation
 
-- [Implementation Overview](IMPLEMENTATION_OVERVIEW.md)
-- [Technical Implementation](TECHNICAL_IMPLEMENTATION.md)
-- [Component Guide](COMPONENT_GUIDE.md)
-- [API Documentation](API_DOCUMENTATION.md)
-- [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- [Docs Hub](DOCS.md)
+- [Product Manual](PRODUCT_MANUAL.md)
+- [Engineering Manual](ENGINEERING_MANUAL.md)
+- [Testing Guide](TESTING_GUIDE.md)
 - [Changelog](CHANGELOG.md)
+- Legacy docs: `docs/legacy/`
 
 ## 🤝 Contributing
 
@@ -393,12 +390,10 @@ For support and questions:
 
 ## 🔄 Version History
 
-### Version 2.0.0 (Current)
-- Major UI/UX overhaul with Flowbite
-- AI token management system
-- Enhanced patient data management
-- Improved prescription workflow
-- Notification system overhaul
+### Version 2.3.14 (Current)
+- Admin payment pricing controls + checkout scope enforcement
+- Ongoing doctor/pharmacist/admin workflow enhancements
+- Expanded component, integration, and unit test coverage
 
 ### Version 1.0.0
 - Initial release

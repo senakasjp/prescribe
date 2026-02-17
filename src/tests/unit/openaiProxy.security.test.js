@@ -141,7 +141,7 @@ describe('security: openaiProxy', () => {
         endpoint: 'chat/completions',
         requestBody: {
           model: 'gpt-3.5-turbo',
-          messages: [{ role: 'user', content: 'A'.repeat(120_000) }]
+          messages: [{ role: 'user', content: 'A'.repeat(2_500_000) }]
         }
       }
     }

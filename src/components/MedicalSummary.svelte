@@ -333,14 +333,14 @@
 </script>
 
 {#if selectedPatient}
-  <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-3 sm:text-sm">
-    <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+  <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-3 sm:text-sm dark:bg-slate-900 dark:border-blue-400">
+    <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 dark:bg-slate-950 dark:border-slate-700">
       <div class="flex justify-between items-center">
-        <h6 class="text-lg font-semibold text-gray-900 mb-0">
+        <h6 class="text-lg font-semibold text-gray-900 mb-0 dark:text-slate-100">
           <i class="fas fa-chart-pie mr-2 text-blue-600"></i>Medical Summary
         </h6>
         <button 
-          class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg transition-colors duration-200" 
+          class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg transition-colors duration-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600 dark:hover:bg-slate-700" 
           on:click={() => generateMedicalSummary(lastSummarySignature || buildSummarySignature())}
           title="Refresh summary"
           disabled={isLoadingSummary}
@@ -353,9 +353,9 @@
         </button>
       </div>
     </div>
-    <div class="p-4">
+    <div class="p-4 dark:bg-slate-900">
       {#if isLoadingSummary}
-        <div class="text-sm text-gray-500">
+        <div class="text-sm text-gray-500 dark:text-slate-300">
           <i class="fas fa-spinner fa-spin mr-2"></i>Generating AI summary...
         </div>
       {:else if summaryError}
@@ -363,13 +363,13 @@
           <i class="fas fa-exclamation-circle mr-2"></i>{summaryError}
         </div>
       {:else if aiSummary}
-        <div class="rounded-lg border border-blue-200 bg-blue-50/80 p-4">
-          <div class="prose max-w-none text-sm text-slate-800 prose-headings:text-slate-900 prose-strong:text-slate-900 prose-li:marker:text-blue-500">
+        <div class="rounded-lg border border-blue-200 bg-blue-50/80 p-4 dark:bg-slate-800 dark:border-blue-400">
+          <div class="prose max-w-none text-sm text-slate-800 prose-headings:text-slate-900 prose-strong:text-slate-900 prose-li:marker:text-blue-500 dark:prose-invert dark:text-slate-100 dark:prose-headings:text-slate-50 dark:prose-strong:text-slate-100 dark:prose-li:marker:text-blue-300">
             {@html aiSummary}
           </div>
         </div>
       {:else}
-        <div class="text-sm text-gray-500">
+        <div class="text-sm text-gray-500 dark:text-slate-300">
           <i class="fas fa-info-circle mr-2"></i>No summary available.
         </div>
       {/if}

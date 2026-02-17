@@ -1,5 +1,6 @@
 // AI Token Usage Tracking Service
 // Tracks OpenAI API token usage for cost monitoring and analytics
+import firebaseStorage from './firebaseStorage.js'
 
 class AITokenTracker {
   constructor() {
@@ -160,9 +161,32 @@ class AITokenTracker {
     }
 
     this.saveUsageData()
+    // Fire-and-forget server persistence so admin analytics are centralized.
+    this.persistUsageToServer(request)
     console.log(`📊 AI Token Usage Tracked: ${totalTokens} tokens, $${cost.toFixed(4)}`)
     
     return request
+  }
+
+  async persistUsageToServer(request) {
+    try {
+      const normalizedDoctorId = String(request?.doctorId || '').trim()
+      if (!normalizedDoctorId || normalizedDoctorId === 'unknown-doctor') {
+        return
+      }
+      await firebaseStorage.addDoctorAIUsageRecord({
+        doctorId: normalizedDoctorId,
+        requestType: request?.type || '',
+        promptTokens: this.sanitizeNumber(request?.promptTokens),
+        completionTokens: this.sanitizeNumber(request?.completionTokens),
+        totalTokens: this.sanitizeNumber(request?.totalTokens),
+        cost: this.sanitizeNumber(request?.cost),
+        model: request?.model || 'gpt-3.5-turbo',
+        createdAt: request?.timestamp || new Date().toISOString()
+      })
+    } catch (error) {
+      console.error('❌ Error persisting AI usage to server:', error)
+    }
   }
 
   // Calculate request cost based on OpenAI pricing (updated for accuracy)

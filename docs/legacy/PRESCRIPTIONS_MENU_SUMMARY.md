@@ -151,7 +151,7 @@ const loadPrescriptions = async () => {
 
 ### ✅ Deployment Testing
 - `firebase deploy` - Successful
-- Application accessible at https://prescribe-7e1e8.web.app
+- Application accessible at https://mprescribe.net (legacy: https://prescribe-7e1e8.web.app)
 - All features working correctly
 
 ### ✅ Functional Testing

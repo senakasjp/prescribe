@@ -23,6 +23,7 @@
   }
   let aiUsageStats = null
   let doctors = []
+  let serverDoctorTokenUsageMap = {}
   // Removed patients array and doctorPatientCounts for HIPAA compliance
   // Admins should not have access to patient PHI data
   let loading = true
@@ -241,18 +242,62 @@
   let smsLogs = []
   let smsLogsLoading = false
   let smsLogsError = ''
+  let promoCodes = []
+  let promoCodesLoading = false
+  let promoCodesError = ''
+  let promoActionStatus = ''
+  let creatingPromoCode = false
+  let promoName = ''
+  let promoCustomCode = ''
+  let promoPercentOff = 10
+  let promoMaxRedemptions = 100
+  let promoValidDays = 30
+  let promoCurrencyScope = 'all'
+  let promoPlanScope = 'all'
+  let promoCodeCopied = ''
+  let paymentPricingLoading = false
+  let paymentPricingLoaded = false
+  let paymentPricingSaving = false
+  let paymentPricingStatus = ''
+  let paymentPricingMonthlyUsd = '20'
+  let paymentPricingAnnualUsd = '200'
+  let paymentPricingMonthlyLkr = '5000'
+  let paymentPricingAnnualLkr = '50000'
+  let paymentPricingAppliesTo = 'new_customers'
+  let paymentPricingEnabled = true
   let logView = 'email'
   let showReferralPendingOnly = false
   let selectedDoctorView = null
   let doctorPaymentRecords = []
+  let visibleDoctorPaymentRecords = []
+  let dedupedDoctorPaymentRecords = []
+  let displayedDoctorPaymentRecords = []
   let doctorPaymentRecordsLoading = false
   let doctorPaymentRecordsError = ''
+  let doctorBillingHistoryCollapsed = false
+  let doctorBillingHistoryExpanded = false
+  let canExpandDoctorBillingHistory = false
+  const DOCTOR_BILLING_PREVIEW_COUNT = 8
+  let doctorWalletSummaryFallback = {
+    walletMonths: 0,
+    paymentStatus: 'N/A',
+    accessExpiresAt: null
+  }
+  let displayWalletMonths = 0
+  let displayPaymentStatus = 'N/A'
+  let displayAccessExpiresAt = null
+  let settledPaymentRecords = []
+  let displayTotalPaidAmount = 0
+  let displayTotalPaidCurrency = ''
   let doctorReferralWalletStats = {
     totalReferredDoctors: 0,
     referralBonusAppliedCount: 0,
     referralBonusPendingCount: 0,
     referralFreeMonthsAvailable: 0
   }
+  let doctorAdminDiscountPercentInput = 0
+  let doctorAdminDiscountSaving = false
+  let doctorAdminDiscountStatus = ''
   
   // Reactive statement to reload data when currentAdmin changes
   $: if (currentAdmin) {
@@ -294,7 +339,7 @@
       
       // Load AI usage statistics
       console.log('🔍 Loading AI usage stats...')
-      loadAIUsageStats()
+      await loadAIUsageStats()
       console.log('✅ AI usage stats loaded')
       
       // Load doctors data only (no patient data for HIPAA compliance)
@@ -308,6 +353,7 @@
       await loadAppointmentReminderTemplate()
       await loadDoctorBroadcastTemplate()
       await loadSmtpSettings()
+      await loadPaymentPricingSettings()
       await loadMessagingTemplates()
       await loadApprovalWelcomeTemplate()
       await loadPaymentReminderTemplate()
@@ -364,6 +410,162 @@
       smsLogs = []
     } finally {
       smsLogsLoading = false
+    }
+  }
+
+  const normalizeMajorAmountInput = (value = '', fallback = '0') => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return fallback
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback
+    return String(parsed)
+  }
+
+  const loadPaymentPricingSettings = async () => {
+    try {
+      paymentPricingLoading = true
+      const settings = await firebaseStorage.getPaymentPricingSettings()
+      paymentPricingMonthlyUsd = normalizeMajorAmountInput(settings?.monthlyUsd, '20')
+      paymentPricingAnnualUsd = normalizeMajorAmountInput(settings?.annualUsd, '200')
+      paymentPricingMonthlyLkr = normalizeMajorAmountInput(settings?.monthlyLkr, '5000')
+      paymentPricingAnnualLkr = normalizeMajorAmountInput(settings?.annualLkr, '50000')
+      paymentPricingAppliesTo =
+        settings?.appliesTo === 'all_customers' ? 'all_customers' : 'new_customers'
+      paymentPricingEnabled = settings?.enabled !== false
+      paymentPricingLoaded = true
+    } catch (error) {
+      console.error('❌ Error loading payment pricing settings:', error)
+    } finally {
+      paymentPricingLoading = false
+    }
+  }
+
+  const savePaymentPricingSettings = async () => {
+    try {
+      paymentPricingSaving = true
+      paymentPricingStatus = ''
+      await firebaseStorage.savePaymentPricingSettings({
+        monthlyUsd: Number(paymentPricingMonthlyUsd || 0),
+        annualUsd: Number(paymentPricingAnnualUsd || 0),
+        monthlyLkr: Number(paymentPricingMonthlyLkr || 0),
+        annualLkr: Number(paymentPricingAnnualLkr || 0),
+        appliesTo: paymentPricingAppliesTo === 'all_customers' ? 'all_customers' : 'new_customers',
+        enabled: paymentPricingEnabled,
+        updatedBy: currentAdmin?.email || currentAdmin?.id || ''
+      })
+      paymentPricingStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving payment pricing settings:', error)
+      paymentPricingStatus = error?.message || 'Save failed'
+    } finally {
+      paymentPricingSaving = false
+      setTimeout(() => {
+        paymentPricingStatus = ''
+      }, 2500)
+    }
+  }
+
+  const resolvePromoPlanIds = () => {
+    const scope = String(promoPlanScope || 'all')
+    const currencyScope = String(promoCurrencyScope || 'all')
+    const allPlanIds = [
+      'professional_monthly_usd',
+      'professional_annual_usd',
+      'professional_monthly_lkr',
+      'professional_annual_lkr'
+    ]
+    return allPlanIds.filter((planId) => {
+      if (scope === 'monthly' && !planId.includes('monthly')) return false
+      if (scope === 'annual' && !planId.includes('annual')) return false
+      if (currencyScope === 'usd' && !planId.endsWith('_usd')) return false
+      if (currencyScope === 'lkr' && !planId.endsWith('_lkr')) return false
+      return true
+    })
+  }
+
+  const normalizePromoCodeInput = (value = '') => {
+    if (typeof firebaseStorage?.normalizePromoCode === 'function') {
+      return firebaseStorage.normalizePromoCode(value)
+    }
+    return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '')
+  }
+
+  const generatePromoCodeDraft = () => {
+    const generated = typeof firebaseStorage?.generatePromoCode === 'function'
+      ? firebaseStorage.generatePromoCode(8)
+      : Math.random().toString(36).replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 8)
+    promoCustomCode = normalizePromoCodeInput(generated)
+  }
+
+  const copyPromoCode = async (code = '') => {
+    const normalized = normalizePromoCodeInput(code)
+    if (!normalized) return
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+        throw new Error('Clipboard is unavailable in this browser.')
+      }
+      await navigator.clipboard.writeText(normalized)
+      promoCodeCopied = normalized
+      promoActionStatus = `Copied promo code ${normalized}.`
+    } catch (error) {
+      promoActionStatus = error?.message || 'Failed to copy promo code.'
+    }
+  }
+
+  const loadPromoCodes = async () => {
+    try {
+      promoCodesLoading = true
+      promoCodesError = ''
+      promoCodes = await firebaseStorage.getPromoCodes(200)
+    } catch (error) {
+      console.error('❌ Error loading promo codes:', error)
+      promoCodesError = error?.message || 'Failed to load promo codes.'
+    } finally {
+      promoCodesLoading = false
+    }
+  }
+
+  const createPromoCode = async () => {
+    try {
+      creatingPromoCode = true
+      promoActionStatus = ''
+      const code = normalizePromoCodeInput(promoCustomCode)
+      const created = await firebaseStorage.createPromoCode({
+        code: code || firebaseStorage.generatePromoCode(8),
+        name: promoName.trim() || `${Number(promoPercentOff || 0)}% Off`,
+        percentOff: Number(promoPercentOff || 0),
+        maxRedemptions: Number(promoMaxRedemptions || 0),
+        validDays: Number(promoValidDays || 0),
+        currency: promoCurrencyScope === 'all' ? '' : promoCurrencyScope,
+        planIds: resolvePromoPlanIds(),
+        createdBy: currentAdmin?.email || currentAdmin?.id || ''
+      })
+      promoCodes = [created, ...promoCodes]
+      promoCustomCode = ''
+      promoCodeCopied = ''
+      promoActionStatus = `Promo code ${created.code} created.`
+    } catch (error) {
+      console.error('❌ Error creating promo code:', error)
+      promoActionStatus = error?.message || 'Failed to create promo code.'
+    } finally {
+      creatingPromoCode = false
+    }
+  }
+
+  const togglePromoCode = async (promo) => {
+    if (!promo?.id) return
+    try {
+      promoActionStatus = ''
+      await firebaseStorage.updatePromoCodeStatus(promo.id, !promo.isActive)
+      promoCodes = promoCodes.map((item) =>
+        item.id === promo.id
+          ? { ...item, isActive: !promo.isActive, updatedAt: new Date().toISOString() }
+          : item
+      )
+      promoActionStatus = `Promo code ${promo.code} ${promo.isActive ? 'disabled' : 'enabled'}.`
+    } catch (error) {
+      console.error('❌ Error toggling promo code:', error)
+      promoActionStatus = error?.message || 'Failed to update promo code.'
     }
   }
 
@@ -1449,10 +1651,10 @@
   }
   
   // Load AI usage statistics
-  const loadAIUsageStats = () => {
+  const loadAIUsageStats = async () => {
     try {
       console.log('📊 Loading AI usage stats...')
-      aiUsageStats = aiTokenTracker.getUsageStats()
+      aiUsageStats = await firebaseStorage.getAllDoctorAIUsageSummary()
       console.log('📊 AI usage stats loaded:', aiUsageStats)
       
       // If no usage data exists, initialize with zero values
@@ -1465,13 +1667,6 @@
         }
       }
       
-      // Run migration to fix any missing doctorId values
-      const migratedCount = aiTokenTracker.migrateRequestsWithMissingDoctorId()
-      if (migratedCount > 0) {
-        console.log(`🔄 Fixed ${migratedCount} AI usage records with missing doctorId`)
-        // Reload stats after migration
-        aiUsageStats = aiTokenTracker.getUsageStats()
-      }
     } catch (error) {
       console.error('❌ Error loading AI usage stats:', error)
       aiUsageStats = {
@@ -1481,6 +1676,17 @@
         lastUpdated: null
       }
     }
+  }
+
+  const emptyTokenUsageStats = () => ({
+    total: { tokens: 0, cost: 0, requests: 0 },
+    today: { tokens: 0, cost: 0, requests: 0 }
+  })
+
+  const resolveDoctorTokenUsageStats = (doctor) => {
+    const doctorId = String(doctor?.id || '').trim()
+    if (!doctorId) return emptyTokenUsageStats()
+    return serverDoctorTokenUsageMap[doctorId] || emptyTokenUsageStats()
   }
   
   // Load doctors data only (HIPAA compliant - no patient data access)
@@ -1517,6 +1723,9 @@
 
       doctors = dedupedDoctors
       await applyReferralBonuses(doctors)
+      serverDoctorTokenUsageMap = await firebaseStorage.getDoctorAIUsageStatsMap(
+        doctors.map((doctor) => doctor.id)
+      )
       
       console.log(`🔍 Found ${doctors.length} doctors`)
       
@@ -1530,41 +1739,12 @@
           // Add patient count to doctor object for display (aggregated data only)
           doctor.patientCount = doctorPatients.length
           
-          // Get token usage stats for this doctor
-          // Try multiple ID formats to match token usage data
-          let tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.id)
-          console.log(`📊 Token stats for doctor.id (${doctor.id}):`, tokenStats)
-          
-          // If no stats found with Firebase ID, try with UID
-          if (!tokenStats && doctor.uid) {
-            tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.uid)
-            console.log(`📊 Token stats for doctor.uid (${doctor.uid}):`, tokenStats)
-          }
-          
-          // If still no stats found, try with email as fallback
-          if (!tokenStats) {
-            tokenStats = aiTokenTracker.getDoctorUsageStats(doctor.email)
-            console.log(`📊 Token stats for doctor.email (${doctor.email}):`, tokenStats)
-          }
-          
-          // Check for unknown-doctor entries that might belong to this doctor
-          const unknownDoctorStats = aiTokenTracker.getDoctorUsageStats('unknown-doctor')
-          if (unknownDoctorStats && unknownDoctorStats.total.requests > 0) {
-            console.log(`📊 Found unknown-doctor entries with ${unknownDoctorStats.total.requests} requests`)
-          }
-          
-          doctor.tokenUsage = tokenStats || {
-            total: { tokens: 0, cost: 0, requests: 0 },
-            today: { tokens: 0, cost: 0, requests: 0 }
-          }
+          doctor.tokenUsage = resolveDoctorTokenUsageStats(doctor)
           
         } catch (error) {
           console.error(`❌ Error loading data for doctor ${doctor.id}:`, error)
           doctor.patientCount = 0
-          doctor.tokenUsage = {
-            total: { tokens: 0, cost: 0, requests: 0 },
-            today: { tokens: 0, cost: 0, requests: 0 }
-          }
+          doctor.tokenUsage = emptyTokenUsageStats()
         }
       }
       
@@ -1595,6 +1775,12 @@
     if (tab === 'logs' && !smsLogsLoading && smsLogs.length === 0) {
       loadSmsLogs()
     }
+    if (tab === 'promotions' && !promoCodesLoading && promoCodes.length === 0) {
+      loadPromoCodes()
+    }
+    if (tab === 'payments' && !paymentPricingLoading && !paymentPricingLoaded) {
+      loadPaymentPricingSettings()
+    }
   }
 
   const openDoctorView = async (doctor) => {
@@ -1607,6 +1793,8 @@
   const closeDoctorView = () => {
     selectedDoctorView = null
     doctorPaymentRecords = []
+    doctorBillingHistoryCollapsed = false
+    doctorBillingHistoryExpanded = false
     doctorPaymentRecordsError = ''
     doctorReferralWalletStats = {
       totalReferredDoctors: 0,
@@ -1614,6 +1802,9 @@
       referralBonusPendingCount: 0,
       referralFreeMonthsAvailable: 0
     }
+    doctorAdminDiscountPercentInput = 0
+    doctorAdminDiscountSaving = false
+    doctorAdminDiscountStatus = ''
     activeTab = 'doctors'
   }
 
@@ -1625,14 +1816,38 @@
       doctorPaymentRecordsError = ''
       const [latestDoctor, paymentRecords, referralWalletStats] = await Promise.all([
         firebaseStorage.getDoctorById(normalizedDoctorId),
-        firebaseStorage.getDoctorPaymentRecords(normalizedDoctorId, 200),
+        firebaseStorage.getDoctorPaymentRecords(
+          normalizedDoctorId,
+          200,
+          selectedDoctorView?.email || ''
+        ),
         firebaseStorage.getDoctorReferralWalletStats(normalizedDoctorId)
       ])
+      const selectedDoctorTokenUsage = await firebaseStorage.getDoctorAIUsageStats(normalizedDoctorId)
+      serverDoctorTokenUsageMap = {
+        ...serverDoctorTokenUsageMap,
+        [normalizedDoctorId]: selectedDoctorTokenUsage
+      }
       doctorPaymentRecords = paymentRecords
+      doctorBillingHistoryCollapsed = false
+      doctorBillingHistoryExpanded = false
       doctorReferralWalletStats = referralWalletStats
       if (latestDoctor?.id) {
-        doctors = doctors.map((doctor) => doctor.id === latestDoctor.id ? { ...doctor, ...latestDoctor } : doctor)
-        selectedDoctorView = { ...selectedDoctorView, ...latestDoctor }
+        doctors = doctors.map((doctor) => {
+          if (doctor.id !== latestDoctor.id) return doctor
+          const mergedDoctor = { ...doctor, ...latestDoctor }
+          return { ...mergedDoctor, tokenUsage: resolveDoctorTokenUsageStats(mergedDoctor) }
+        })
+        const mergedSelectedDoctor = { ...selectedDoctorView, ...latestDoctor }
+        selectedDoctorView = {
+          ...mergedSelectedDoctor,
+          tokenUsage: resolveDoctorTokenUsageStats(mergedSelectedDoctor)
+        }
+        doctorAdminDiscountPercentInput = Math.max(
+          0,
+          Math.min(100, Number(selectedDoctorView?.adminStripeDiscountPercent || 0))
+        )
+        doctorAdminDiscountStatus = ''
       }
     } catch (error) {
       console.error('❌ Error loading doctor wallet data:', error)
@@ -1640,6 +1855,44 @@
       doctorPaymentRecordsError = error?.message || 'Failed to load doctor billing records.'
     } finally {
       doctorPaymentRecordsLoading = false
+    }
+  }
+
+  const saveDoctorAdminDiscount = async () => {
+    if (!selectedDoctorView?.id || doctorAdminDiscountSaving) return
+    try {
+      doctorAdminDiscountSaving = true
+      doctorAdminDiscountStatus = ''
+      const normalizedPercent = Math.max(
+        0,
+        Math.min(100, Number(doctorAdminDiscountPercentInput || 0))
+      )
+      doctorAdminDiscountPercentInput = normalizedPercent
+      const updatedDoctor = {
+        ...selectedDoctorView,
+        adminStripeDiscountPercent: normalizedPercent
+      }
+      await firebaseStorage.updateDoctor(updatedDoctor)
+      selectedDoctorView = {
+        ...selectedDoctorView,
+        adminStripeDiscountPercent: normalizedPercent
+      }
+      doctors = doctors.map((doctor) =>
+        doctor.id === selectedDoctorView.id
+          ? { ...doctor, adminStripeDiscountPercent: normalizedPercent }
+          : doctor
+      )
+      doctorAdminDiscountStatus = 'Saved'
+      setTimeout(() => {
+        if (doctorAdminDiscountStatus === 'Saved') {
+          doctorAdminDiscountStatus = ''
+        }
+      }, 1800)
+    } catch (error) {
+      console.error('❌ Error saving doctor admin discount:', error)
+      doctorAdminDiscountStatus = error?.message || 'Save failed'
+    } finally {
+      doctorAdminDiscountSaving = false
     }
   }
   
@@ -1891,6 +2144,184 @@
     if (!Number.isFinite(months)) return '0 months'
     return `${months} month${months === 1 ? '' : 's'}`
   }
+
+  const SETTLED_PAYMENT_STATUSES = new Set(['confirmed', 'paid', 'succeeded', 'complete', 'completed', 'recorded'])
+  const FAILED_PAYMENT_STATUSES = new Set(['failed', 'fail', 'canceled', 'cancelled'])
+
+  const getRecordTimestamp = (record) => {
+    const time = new Date(record?.createdAt || '').getTime()
+    return Number.isFinite(time) ? time : 0
+  }
+
+  const deriveWalletSummaryFromRecords = (records = []) => {
+    if (!Array.isArray(records) || records.length === 0) {
+      return {
+        walletMonths: 0,
+        paymentStatus: 'N/A',
+        accessExpiresAt: null
+      }
+    }
+
+    const sorted = [...records].sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a))
+    const latestRecord = sorted[0]
+    const settled = sorted.filter((record) =>
+      SETTLED_PAYMENT_STATUSES.has(String(record?.status || '').toLowerCase())
+    )
+
+    const walletMonths = settled.reduce((total, record) => {
+      const months = Number(record?.monthsDelta || 0)
+      return total + (Number.isFinite(months) ? Math.max(0, months) : 0)
+    }, 0)
+
+    let accessExpiresAt = null
+    const latestSettled = settled[0]
+    const latestSettledDate = latestSettled?.createdAt ? new Date(latestSettled.createdAt) : null
+    const latestSettledMonths = Number(latestSettled?.monthsDelta || 0)
+    if (latestSettledDate && !Number.isNaN(latestSettledDate.getTime()) && latestSettledMonths > 0) {
+      const derivedExpiry = new Date(latestSettledDate)
+      derivedExpiry.setMonth(derivedExpiry.getMonth() + latestSettledMonths)
+      accessExpiresAt = derivedExpiry.toISOString()
+    }
+
+    return {
+      walletMonths,
+      paymentStatus: latestRecord?.status || 'N/A',
+      accessExpiresAt
+    }
+  }
+
+  const getStripeOutcome = (record) => {
+    const status = String(record?.status || '').toLowerCase()
+    if (SETTLED_PAYMENT_STATUSES.has(status)) return 'success'
+    if (FAILED_PAYMENT_STATUSES.has(status)) return 'fail'
+    return 'pending'
+  }
+
+  const getCanonicalPaymentReference = (record) => {
+    const metadata = record?.metadata && typeof record.metadata === 'object' ? record.metadata : {}
+    const refs = [
+      record?.referenceId,
+      record?.sessionId,
+      record?.checkoutSessionId,
+      record?.paymentIntentId,
+      metadata?.referenceId,
+      metadata?.sessionId,
+      metadata?.checkoutSessionId,
+      metadata?.paymentIntentId
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+    if (refs.length === 0) return ''
+    const byPrefix = (prefix) => refs.find((ref) => ref.startsWith(prefix))
+    return byPrefix('cs_') || byPrefix('pi_') || refs[0]
+  }
+
+  const getRecordPriority = (record) => {
+    let score = 0
+    const outcome = getStripeOutcome(record)
+    if (outcome !== 'pending') score += 50
+    if (Number(record?.amount || 0) > 0) score += 40
+    if (String(record?.sourceCollection || '').toLowerCase() === 'doctorpaymentrecords') score += 20
+    if (String(record?.source || '').toLowerCase().includes('stripe')) score += 5
+    return score
+  }
+
+  const formatBillingAmount = (record) => {
+    const amount = Number(record?.amount || 0)
+    if (!Number.isFinite(amount) || amount <= 0) return '-'
+    const currency = String(record?.currency || '').toUpperCase()
+    return `${currency ? `${currency} ` : ''}${amount.toFixed(2)}`
+  }
+
+  const dedupeVisibleDoctorRecords = (records) => {
+    const toTimestamp = (record) => {
+      const ts = new Date(record?.createdAt || 0).getTime()
+      return Number.isFinite(ts) ? ts : 0
+    }
+    const DUPLICATE_WINDOW_MS = 3 * 60 * 1000
+    const sorted = [...(records || [])].sort((a, b) => toTimestamp(b) - toTimestamp(a))
+
+    const byReference = new Map()
+    sorted.forEach((record) => {
+      const ref = getCanonicalPaymentReference(record)
+      if (!ref) return
+      const existing = byReference.get(ref)
+      if (
+        !existing ||
+        getRecordPriority(record) > getRecordPriority(existing) ||
+        (
+          getRecordPriority(record) === getRecordPriority(existing) &&
+          toTimestamp(record) > toTimestamp(existing)
+        )
+      ) {
+        byReference.set(ref, record)
+      }
+    })
+
+    const preDeduped = sorted.filter((record) => {
+      const ref = getCanonicalPaymentReference(record)
+      if (!ref) return true
+      const chosen = byReference.get(ref)
+      return chosen?.id === record.id
+    })
+
+    const deduped = []
+    preDeduped.forEach((record) => {
+      const outcome = getStripeOutcome(record)
+      const monthsDelta = Number(record?.monthsDelta || 0)
+      const amount = Number(record?.amount || 0)
+      const currency = String(record?.currency || '').toUpperCase()
+      const ts = toTimestamp(record)
+      const equivalent = deduped.find((existing) => {
+        if (getStripeOutcome(existing) !== outcome) return false
+        const existingMonths = Number(existing?.monthsDelta || 0)
+        const existingCurrency = String(existing?.currency || '').toUpperCase()
+        const monthMatches = monthsDelta <= 0 || existingMonths <= 0 || existingMonths === monthsDelta
+        const currencyMatches = !currency || !existingCurrency || existingCurrency === currency
+        if (!monthMatches || !currencyMatches) return false
+        return Math.abs(toTimestamp(existing) - ts) <= DUPLICATE_WINDOW_MS
+      })
+      if (!equivalent) {
+        deduped.push(record)
+        return
+      }
+      const existingAmount = Number(equivalent?.amount || 0)
+      // Prefer the paid row when paired with a duplicate zero-amount event row.
+      if (
+        amount > existingAmount ||
+        (amount === existingAmount && getRecordPriority(record) > getRecordPriority(equivalent))
+      ) {
+        const idx = deduped.findIndex((row) => row.id === equivalent.id)
+        if (idx >= 0) deduped[idx] = record
+      }
+    })
+    return deduped.sort((a, b) => toTimestamp(b) - toTimestamp(a))
+  }
+
+  $: doctorWalletSummaryFallback = deriveWalletSummaryFromRecords(doctorPaymentRecords)
+  $: visibleDoctorPaymentRecords = (doctorPaymentRecords || []).filter((record) => {
+    const source = String(record?.source || '').toLowerCase()
+    const sourceCollection = String(record?.sourceCollection || '').toLowerCase()
+    const isStripeRecord = source.includes('stripe') || sourceCollection.includes('stripe')
+    if (!isStripeRecord) return true
+    return getStripeOutcome(record) !== 'pending'
+  })
+  $: dedupedDoctorPaymentRecords = dedupeVisibleDoctorRecords(visibleDoctorPaymentRecords)
+  $: displayedDoctorPaymentRecords = doctorBillingHistoryExpanded
+    ? dedupedDoctorPaymentRecords
+    : dedupedDoctorPaymentRecords.slice(0, DOCTOR_BILLING_PREVIEW_COUNT)
+  $: canExpandDoctorBillingHistory = dedupedDoctorPaymentRecords.length > DOCTOR_BILLING_PREVIEW_COUNT
+  $: displayWalletMonths = selectedDoctorView?.walletMonths ?? doctorWalletSummaryFallback.walletMonths
+  $: displayPaymentStatus = selectedDoctorView?.paymentStatus || doctorWalletSummaryFallback.paymentStatus || 'N/A'
+  $: displayAccessExpiresAt = selectedDoctorView?.accessExpiresAt || doctorWalletSummaryFallback.accessExpiresAt
+  $: settledPaymentRecords = (doctorPaymentRecords || []).filter((record) =>
+    SETTLED_PAYMENT_STATUSES.has(String(record?.status || '').toLowerCase())
+  )
+  $: displayTotalPaidAmount = settledPaymentRecords.reduce((sum, record) => {
+    const amount = Number(record?.amount || 0)
+    return sum + (Number.isFinite(amount) ? Math.max(0, amount) : 0)
+  }, 0)
+  $: displayTotalPaidCurrency = String(settledPaymentRecords[0]?.currency || doctorPaymentRecords?.[0]?.currency || '').toUpperCase()
   
   // Refresh data
   const refreshData = async () => {
@@ -1937,7 +2368,7 @@
       
       // Refresh the page to show updated data
       setTimeout(() => {
-        loadAIUsageStats()
+        void loadAIUsageStats()
       }, 100)
       
     } catch (error) {
@@ -1960,7 +2391,7 @@
       
       // Refresh the page to show updated data
       setTimeout(() => {
-        loadAIUsageStats()
+        void loadAIUsageStats()
       }, 100)
       
     } catch (error) {
@@ -1976,7 +2407,7 @@
       
       // Refresh the page to show updated data
       setTimeout(() => {
-        loadAIUsageStats()
+        void loadAIUsageStats()
       }, 100)
       
     } catch (error) {
@@ -1997,7 +2428,7 @@
       
       // Refresh the page to show updated data
       setTimeout(() => {
-        loadAIUsageStats()
+        void loadAIUsageStats()
       }, 100)
       
     } catch (error) {
@@ -2006,12 +2437,12 @@
   }
   
   // Refresh cost estimates
-  const refreshCostEstimates = () => {
+  const refreshCostEstimates = async () => {
     try {
       console.log('🔄 Refreshing cost estimates...')
       
       // Refresh the page to show updated data
-      loadAIUsageStats()
+      await loadAIUsageStats()
       
     } catch (error) {
       console.error('❌ Error refreshing cost estimates:', error)
@@ -2333,32 +2764,30 @@
                 {#if getDisplayedDoctors().length > 0}
                   <!-- Desktop Table View -->
                   <div class="hidden lg:block overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
+                    <table class="min-w-full table-fixed divide-y divide-gray-200">
                       <thead class="bg-gray-50">
                         <tr>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patients</th>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token Usage</th>
-                          <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          <th class="w-[20%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                          <th class="w-[10%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                          <th class="w-[8%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patients</th>
+                          <th class="w-[12%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token Usage</th>
+                          <th class="w-[50%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
                       <tbody class="bg-white divide-y divide-gray-200">
                         {#each getDisplayedDoctors() as doctor (doctor.id)}
                           <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
-                              <div class="truncate" title={doctor.email}>{doctor.email}</div>
-                              <div class="text-xs text-gray-500 mt-1">ID: {formatDoctorId(doctor.id)}</div>
-                            </td>
-                            <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
+                            <td class="px-3 py-2 text-sm text-gray-900 break-words">
                               <div class="truncate" title={doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}>
                                 {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}
                               </div>
+                              <div class="truncate text-gray-700 mt-0.5" title={doctor.email}>{doctor.email}</div>
+                              <div class="truncate text-gray-600 text-xs mt-0.5" title={doctor.phone || 'N/A'}>
+                                Phone: {doctor.phone || 'N/A'}
+                              </div>
+                              <div class="text-[11px] text-gray-500 mt-0.5">ID: {formatDoctorId(doctor.id)}</div>
                               {#if isTrialActive(doctor)}
-                                <div class="mt-1">
+                                <div class="mt-0.5">
                                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
                                     Trial until {formatDate(doctor.accessExpiresAt)}
                                   </span>
@@ -2366,7 +2795,7 @@
                               {/if}
                               {#if doctor.externalDoctor}
                                 {@const ownerDoctor = getOwnerDoctor(doctor)}
-                                <div class="mt-1">
+                                <div class="mt-0.5">
                                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 text-indigo-700">
                                     External of {ownerDoctor?.id ? formatDoctorId(ownerDoctor.id) : 'Owner'}
                                   </span>
@@ -2374,80 +2803,64 @@
                               {/if}
                               {#if doctor.referredByDoctorId}
                                 {@const referrer = doctors.find(d => d.id === doctor.referredByDoctorId)}
-                                <div class="mt-1">
+                                <div class="mt-0.5">
                                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">
                                     Referred by {referrer?.id ? formatDoctorId(referrer.id) : formatDoctorId(doctor.referredByDoctorId)}
                                   </span>
                                 </div>
                               {/if}
                               {#if isReferralBonusPending(doctor)}
-                                <div class="mt-1">
+                                <div class="mt-0.5">
                                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
                                     Referral bonus pending until {formatDate(doctor.referralEligibleAt)}
                                   </span>
                                 </div>
                               {/if}
                               {#if doctor.referralBonusAppliedAt}
-                                <div class="mt-1">
+                                <div class="mt-0.5">
                                   <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-700">
                                     Referral bonus applied on {formatDate(doctor.referralBonusAppliedAt)}
                                   </span>
                                 </div>
                               {/if}
                             </td>
-                            <td class="px-4 py-4 text-sm text-gray-900">
-                              <div class="truncate" title={doctor.phone || 'N/A'}>
-                                {doctor.phone || 'N/A'}
-                              </div>
-                            </td>
-                            <td class="px-4 py-4 text-sm text-gray-900">
-                              <div class="flex flex-wrap gap-1">
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctor.role}</span>
-                              {#if doctor.isAdmin}
-                                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Admin</span>
-                              {/if}
-                              </div>
-                            </td>
-                            <td class="px-4 py-4 text-sm text-gray-900">{formatDate(doctor.createdAt)}</td>
-                            <td class="px-4 py-4 text-sm text-gray-900 text-center">{doctor.patientCount || 0}</td>
-                            <td class="px-4 py-4 text-sm text-gray-900 min-w-0">
-                              <div class="space-y-1">
+                            <td class="px-3 py-2 text-sm text-gray-900">{formatDate(doctor.createdAt)}</td>
+                            <td class="px-3 py-2 text-sm text-gray-900 text-center">{doctor.patientCount || 0}</td>
+                            <td class="px-3 py-2 text-sm text-gray-900">
+                              <div class="space-y-0.5 leading-4">
                                 <div class="flex items-center">
                                   <i class="fas fa-coins text-yellow-600 mr-1 flex-shrink-0"></i>
-                                  <span class="font-medium truncate">${(doctor.tokenUsage?.total?.cost || 0).toFixed(4)}</span>
+                                  <span class="font-medium text-xs truncate">${(doctor.tokenUsage?.total?.cost || 0).toFixed(4)}</span>
                                 </div>
-                                <div class="flex items-center text-xs text-gray-500">
+                                <div class="flex items-center text-[11px] text-gray-500">
                                   <i class="fas fa-hashtag text-blue-600 mr-1 flex-shrink-0"></i>
                                   <span class="truncate">{formatCompactNumber(doctor.tokenUsage?.total?.tokens || 0)} tokens</span>
                                 </div>
-                                <div class="flex items-center text-xs text-gray-500">
+                                <div class="flex items-center text-[11px] text-gray-500">
                                   <i class="fas fa-bolt text-teal-600 mr-1 flex-shrink-0"></i>
                                   <span class="truncate">{doctor.tokenUsage?.total?.requests || 0} requests</span>
                                 </div>
                               </div>
                             </td>
-                            <td class="px-4 py-4 text-sm text-gray-900">
-                              <div class="flex flex-col gap-2">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {getDoctorStatusBadgeClass(doctor)}">
-                                  {getDoctorStatusLabel(doctor)}
-                                </span>
+                            <td class="px-3 py-2 text-sm text-gray-900">
+                              <div class="flex flex-wrap items-center gap-1.5">
                                 {#if !doctor.externalDoctor}
                                   <button
-                                    class="inline-flex items-center px-2 py-1 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-xs font-medium rounded-lg"
+                                    class="inline-flex items-center px-2 py-1 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-xs font-medium rounded-lg whitespace-nowrap"
                                     on:click={() => openDoctorView(doctor)}
                                   >
                                     <i class="fas fa-eye mr-1"></i>View
                                   </button>
                                   {#if isApprovalPending(doctor)}
                                     <button
-                                      class="inline-flex items-center px-2 py-1 border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 text-xs font-medium rounded-lg"
+                                      class="inline-flex items-center px-2 py-1 border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 text-xs font-medium rounded-lg whitespace-nowrap"
                                       on:click={() => approveDoctor(doctor)}
                                     >
                                       <i class="fas fa-check mr-1"></i>Approve
                                     </button>
                                   {:else}
                                     <button
-                                      class="inline-flex items-center px-2 py-1 border {isEffectivelyDisabled(doctor) ? 'border-teal-300 text-teal-700 hover:bg-teal-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                      class="inline-flex items-center px-2 py-1 border {isEffectivelyDisabled(doctor) ? 'border-teal-300 text-teal-700 hover:bg-teal-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                                       on:click={() => toggleDoctorStatus(doctor)}
                                       disabled={!canToggleDoctor(doctor)}
                                     >
@@ -2463,7 +2876,7 @@
                                   {/if}
                                   {#if doctor.email !== 'senakahks@gmail.com'}
                                     <button 
-                                      class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-lg"
+                                      class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-lg whitespace-nowrap"
                                       data-doctor-id={doctor.id}
                                       on:click={() => deleteDoctor(doctor)}
                                       title="Delete doctor and all related data"
@@ -2478,6 +2891,10 @@
                                 {:else}
                                   <span class="text-xs text-gray-500">Managed by owner</span>
                                 {/if}
+                                <span class="basis-full h-0"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {getDoctorStatusBadgeClass(doctor)} w-fit order-last">
+                                  {getDoctorStatusLabel(doctor)}
+                                </span>
                               </div>
                             </td>
                           </tr>
@@ -2617,26 +3034,28 @@
                           <!-- Actions -->
                           <div class="border-t pt-3">
                             {#if !doctor.externalDoctor}
-                              <button
-                                class="w-full inline-flex items-center justify-center px-3 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg mb-2"
-                                on:click={() => openDoctorView(doctor)}
-                              >
-                                <i class="fas fa-eye mr-2"></i>View
-                              </button>
-                              {#if doctor.email !== 'senakahks@gmail.com'}
-                                <button 
-                                  class="w-full inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
-                                  data-doctor-id={doctor.id}
-                                  on:click={() => deleteDoctor(doctor)}
-                                  title="Delete doctor and all related data"
+                              <div class="flex flex-wrap items-center gap-2">
+                                <button
+                                  class="inline-flex items-center justify-center px-3 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg whitespace-nowrap"
+                                  on:click={() => openDoctorView(doctor)}
                                 >
-                                  <i class="fas fa-trash mr-2"></i>Delete Doctor
+                                  <i class="fas fa-eye mr-2"></i>View
                                 </button>
-                              {:else}
-                                <div class="text-center text-gray-500 text-sm">
-                                  <i class="fas fa-shield-alt mr-1"></i>Super Admin - Protected
-                                </div>
-                              {/if}
+                                {#if doctor.email !== 'senakahks@gmail.com'}
+                                  <button 
+                                    class="inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg whitespace-nowrap"
+                                    data-doctor-id={doctor.id}
+                                    on:click={() => deleteDoctor(doctor)}
+                                    title="Delete doctor and all related data"
+                                  >
+                                    <i class="fas fa-trash mr-2"></i>Delete Doctor
+                                  </button>
+                                {:else}
+                                  <div class="text-gray-500 text-sm whitespace-nowrap">
+                                    <i class="fas fa-shield-alt mr-1"></i>Super Admin - Protected
+                                  </div>
+                                {/if}
+                              </div>
                             {:else}
                               <div class="text-center text-gray-500 text-sm">Managed by owner</div>
                             {/if}
@@ -3373,10 +3792,63 @@
             </div>
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
               <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                <h5 class="text-lg font-semibold text-gray-900 mb-0">Payments</h5>
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Stripe Plan Pricing</h5>
               </div>
-              <div class="p-4">
-                <p class="text-sm text-gray-600">Payments dashboard coming soon.</p>
+              <div class="p-4 space-y-4">
+                {#if paymentPricingLoading}
+                  <p class="text-sm text-gray-500">Loading payment pricing settings...</p>
+                {/if}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label for="paymentPricingMonthlyUsd" class="block text-xs text-gray-500 mb-1">USD monthly price</label>
+                    <input id="paymentPricingMonthlyUsd" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingMonthlyUsd} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingAnnualUsd" class="block text-xs text-gray-500 mb-1">USD annual price</label>
+                    <input id="paymentPricingAnnualUsd" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingAnnualUsd} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingMonthlyLkr" class="block text-xs text-gray-500 mb-1">LKR monthly price</label>
+                    <input id="paymentPricingMonthlyLkr" type="number" min="0" step="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingMonthlyLkr} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingAnnualLkr" class="block text-xs text-gray-500 mb-1">LKR annual price</label>
+                    <input id="paymentPricingAnnualLkr" type="number" min="0" step="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingAnnualLkr} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingAppliesTo" class="block text-xs text-gray-500 mb-1">Apply pricing to</label>
+                    <select id="paymentPricingAppliesTo" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingAppliesTo}>
+                      <option value="new_customers">New customers only</option>
+                      <option value="all_customers">All customers</option>
+                    </select>
+                  </div>
+                  <div class="flex items-end">
+                    <label class="inline-flex items-center text-sm text-gray-700">
+                      <input type="checkbox" class="mr-2" bind:checked={paymentPricingEnabled} />
+                      Enable custom pricing
+                    </label>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    type="button"
+                    class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                    on:click={savePaymentPricingSettings}
+                    disabled={paymentPricingSaving}
+                  >
+                    {#if paymentPricingSaving}
+                      <i class="fas fa-circle-notch fa-spin mr-2"></i>Saving...
+                    {:else}
+                      <i class="fas fa-save mr-2"></i>Save Pricing
+                    {/if}
+                  </button>
+                  {#if paymentPricingStatus}
+                    <span class="text-sm text-gray-600">{paymentPricingStatus}</span>
+                  {/if}
+                </div>
+                <p class="text-xs text-gray-500">
+                  Changes affect Stripe checkout pricing. Scope determines whether overrides are applied only to new customers or everyone.
+                </p>
               </div>
             </div>
           {:else if activeTab === 'promotions'}
@@ -3384,12 +3856,149 @@
             <div class="flex justify-between items-center mb-6">
               <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-bullhorn mr-2 text-red-600"></i>Promotions</h2>
             </div>
-            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                <h5 class="text-lg font-semibold text-gray-900 mb-0">Promotions</h5>
+            <div class="space-y-4">
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Generate Promo Code</h5>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <label for="promoName" class="block text-xs text-gray-500 mb-1">Name</label>
+                    <input id="promoName" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoName} placeholder="New User Discount" />
+                  </div>
+                  <div>
+                    <label for="promoCustomCode" class="block text-xs text-gray-500 mb-1">Custom code (optional)</label>
+                    <div class="flex gap-2">
+                      <input
+                        id="promoCustomCode"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm uppercase"
+                        bind:value={promoCustomCode}
+                        placeholder="WELCOME25"
+                        on:input={() => promoCustomCode = normalizePromoCodeInput(promoCustomCode)}
+                      />
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                        on:click={generatePromoCodeDraft}
+                      >
+                        <i class="fas fa-random mr-1"></i>Generate
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="promoPercentOff" class="block text-xs text-gray-500 mb-1">Discount %</label>
+                    <input id="promoPercentOff" type="number" min="1" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoPercentOff} />
+                  </div>
+                  <div>
+                    <label for="promoMaxRedemptions" class="block text-xs text-gray-500 mb-1">Max redemptions</label>
+                    <input id="promoMaxRedemptions" type="number" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoMaxRedemptions} />
+                  </div>
+                  <div>
+                    <label for="promoValidDays" class="block text-xs text-gray-500 mb-1">Valid for days</label>
+                    <input id="promoValidDays" type="number" min="1" max="365" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoValidDays} />
+                  </div>
+                  <div>
+                    <label for="promoCurrencyScope" class="block text-xs text-gray-500 mb-1">Currency scope</label>
+                    <select id="promoCurrencyScope" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoCurrencyScope}>
+                      <option value="all">All currencies</option>
+                      <option value="usd">USD only</option>
+                      <option value="lkr">LKR only</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="promoPlanScope" class="block text-xs text-gray-500 mb-1">Plan scope</label>
+                    <select id="promoPlanScope" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoPlanScope}>
+                      <option value="all">All plans</option>
+                      <option value="monthly">Monthly plans</option>
+                      <option value="annual">Annual plans</option>
+                    </select>
+                  </div>
+                  <div class="md:col-span-2 lg:col-span-2 flex items-end">
+                    <button
+                      type="button"
+                      class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                      on:click={createPromoCode}
+                      disabled={creatingPromoCode}
+                    >
+                      {#if creatingPromoCode}
+                        <i class="fas fa-circle-notch fa-spin mr-2"></i>Creating...
+                      {:else}
+                        <i class="fas fa-magic mr-2"></i>Generate Promo Code
+                      {/if}
+                    </button>
+                  </div>
+                  {#if promoActionStatus}
+                    <div class="md:col-span-2 lg:col-span-3 text-sm text-gray-600">{promoActionStatus}</div>
+                  {/if}
+                </div>
               </div>
-              <div class="p-4">
-                <p class="text-sm text-gray-600">Promotions dashboard coming soon.</p>
+
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Promo Codes</h5>
+                  <button type="button" class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100" on:click={loadPromoCodes} disabled={promoCodesLoading}>
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh
+                  </button>
+                </div>
+                <div class="p-4">
+                  {#if promoCodesError}
+                    <p class="text-sm text-red-600">{promoCodesError}</p>
+                  {:else if promoCodesLoading}
+                    <p class="text-sm text-gray-500">Loading promo codes...</p>
+                  {:else if promoCodes.length === 0}
+                    <p class="text-sm text-gray-500">No promo codes created yet.</p>
+                  {:else}
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valid Until</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each promoCodes as promo (promo.id)}
+                            <tr>
+                              <td class="px-3 py-2 text-gray-900 font-semibold">{promo.code}</td>
+                              <td class="px-3 py-2 text-gray-700">{Number(promo.percentOff || 0)}%</td>
+                              <td class="px-3 py-2 text-gray-700">{Number(promo.redemptionCount || 0)} / {Number(promo.maxRedemptions || 0)}</td>
+                              <td class="px-3 py-2 text-gray-700">{formatDateTime(promo.validUntil)}</td>
+                              <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {promo.isActive ? 'bg-teal-100 text-teal-700' : 'bg-gray-200 text-gray-700'}">
+                                  {promo.isActive ? 'Active' : 'Inactive'}
+                                </span>
+                              </td>
+                              <td class="px-3 py-2">
+                                <div class="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                    on:click={() => copyPromoCode(promo.code)}
+                                    title="Copy promo code"
+                                  >
+                                    <i class="fas fa-copy mr-1"></i>{promoCodeCopied === promo.code ? 'Copied' : 'Copy'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border {promo.isActive ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'border-teal-300 text-teal-700 hover:bg-teal-50'}"
+                                    on:click={() => togglePromoCode(promo)}
+                                  >
+                                    <i class="fas {promo.isActive ? 'fa-ban' : 'fa-check'} mr-2"></i>
+                                    {promo.isActive ? 'Disable' : 'Enable'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {/if}
+                </div>
               </div>
             </div>
           {:else if activeTab === 'messaging'}
@@ -3914,31 +4523,118 @@ firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
                 </div>
 
                 <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-percent mr-2 text-cyan-600"></i>Admin Payment Discount
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                    <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+                      <div class="w-full sm:max-w-[220px]">
+                        <label for="doctorAdminDiscountPercent" class="block text-xs text-gray-500 mb-1">
+                          Discount percentage (0 to 100)
+                        </label>
+                        <input
+                          id="doctorAdminDiscountPercent"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:border-cyan-400"
+                          bind:value={doctorAdminDiscountPercentInput}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                        on:click={saveDoctorAdminDiscount}
+                        disabled={doctorAdminDiscountSaving}
+                      >
+                        {#if doctorAdminDiscountSaving}
+                          <i class="fas fa-circle-notch fa-spin mr-2"></i>Saving...
+                        {:else}
+                          <i class="fas fa-save mr-2"></i>Save Discount
+                        {/if}
+                      </button>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-500">
+                      This discount is applied automatically to Stripe checkout for this doctor until you change it.
+                    </p>
+                    {#if doctorAdminDiscountStatus}
+                      <p class="mt-1 text-xs text-gray-600">{doctorAdminDiscountStatus}</p>
+                    {/if}
+                  </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-microchip mr-2 text-teal-600"></i>AI Token Usage
+                    </h5>
+                  </div>
+                  <div class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-amber-700 font-semibold">Total Cost</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">${(selectedDoctorView?.tokenUsage?.total?.cost || 0).toFixed(4)}</p>
+                    </div>
+                    <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-blue-700 font-semibold">Total Tokens</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">{formatCompactNumber(selectedDoctorView?.tokenUsage?.total?.tokens || 0)}</p>
+                    </div>
+                    <div class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-teal-700 font-semibold">Total Requests</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">{selectedDoctorView?.tokenUsage?.total?.requests || 0}</p>
+                    </div>
+                    <div class="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-cyan-700 font-semibold">Today Requests</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">{selectedDoctorView?.tokenUsage?.today?.requests || 0}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                   <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                     <h5 class="text-lg font-semibold text-gray-900 mb-0">
                       <i class="fas fa-wallet mr-2 text-teal-600"></i>Billing Wallet
                     </h5>
-                    <button
-                      class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
-                      on:click={() => loadDoctorWalletData(selectedDoctorView.id)}
-                      disabled={doctorPaymentRecordsLoading}
-                    >
-                      <i class="fas fa-sync-alt mr-2"></i>Refresh
-                    </button>
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-50"
+                        on:click={() => {
+                          doctorBillingHistoryCollapsed = !doctorBillingHistoryCollapsed
+                        }}
+                      >
+                        <i class="fas {doctorBillingHistoryCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'} mr-2"></i>
+                        {doctorBillingHistoryCollapsed ? 'Show history' : 'Shrink history'}
+                      </button>
+                      <button
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                        on:click={() => loadDoctorWalletData(selectedDoctorView.id)}
+                        disabled={doctorPaymentRecordsLoading}
+                      >
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                      </button>
+                    </div>
                   </div>
                   <div class="p-4 space-y-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                       <div class="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3">
                         <p class="text-xs uppercase tracking-wide text-cyan-700 font-semibold">Wallet Value</p>
-                        <p class="mt-1 text-lg font-semibold text-gray-900">{formatMonthsLabel(selectedDoctorView.walletMonths || 0)}</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{formatMonthsLabel(displayWalletMonths)}</p>
                       </div>
                       <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
                         <p class="text-xs uppercase tracking-wide text-blue-700 font-semibold">Payment Status</p>
-                        <p class="mt-1 text-lg font-semibold text-gray-900">{selectedDoctorView.paymentStatus || 'N/A'}</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{displayPaymentStatus}</p>
                       </div>
                       <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
                         <p class="text-xs uppercase tracking-wide text-amber-700 font-semibold">Referral Free Months Available</p>
                         <p class="mt-1 text-lg font-semibold text-gray-900">{formatMonthsLabel(doctorReferralWalletStats.referralFreeMonthsAvailable)}</p>
+                      </div>
+                      <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Total Paid</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">
+                          {displayTotalPaidCurrency ? `${displayTotalPaidCurrency} ` : ''}{displayTotalPaidAmount.toFixed(2)}
+                        </p>
                       </div>
                       <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
                         <p class="text-xs uppercase tracking-wide text-gray-700 font-semibold">Total Referred Doctors</p>
@@ -3957,56 +4653,63 @@ firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
                       </div>
                       <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                         <span class="font-semibold text-gray-700">Access Until:</span>
-                        <span class="ml-1 text-gray-900">{selectedDoctorView.accessExpiresAt ? formatDate(selectedDoctorView.accessExpiresAt) : 'N/A'}</span>
+                        <span class="ml-1 text-gray-900">{displayAccessExpiresAt ? formatDate(displayAccessExpiresAt) : 'N/A'}</span>
                       </div>
                     </div>
 
                     {#if doctorPaymentRecordsError}
                       <p class="text-sm text-red-600">{doctorPaymentRecordsError}</p>
                     {/if}
-                    {#if doctorPaymentRecordsLoading}
+                    {#if doctorBillingHistoryCollapsed}
+                      <p class="text-sm text-gray-500">Billing history is collapsed.</p>
+                    {:else if doctorPaymentRecordsLoading}
                       <p class="text-sm text-gray-500">Loading billing records...</p>
-                    {:else if doctorPaymentRecords.length === 0}
-                      <p class="text-sm text-gray-500">No billing records yet.</p>
+                    {:else if dedupedDoctorPaymentRecords.length === 0}
+                      <p class="text-sm text-gray-500">No Stripe-confirmed billing records yet.</p>
                     {:else}
                       <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200 text-sm">
                           <thead class="bg-gray-50">
                             <tr>
                               <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Months</th>
                               <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
                               <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reference</th>
-                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Note</th>
                             </tr>
                           </thead>
                           <tbody class="bg-white divide-y divide-gray-200">
-                            {#each doctorPaymentRecords as record (record.id)}
+                            {#each displayedDoctorPaymentRecords as record (record.id)}
                               <tr>
-                                <td class="px-3 py-2 text-gray-900">{formatDateTime(record.createdAt)}</td>
-                                <td class="px-3 py-2 text-gray-700">{record.type || '-'}</td>
-                                <td class="px-3 py-2 text-gray-700">{Number(record.monthsDelta || 0)}</td>
+                                <td class="px-3 py-2 text-gray-900">
+                                  {formatDateTime(record.createdAt)}
+                                  <span class="sr-only">{record.type || ''}</span>
+                                  <span class="sr-only">{record.referenceId || ''}</span>
+                                </td>
                                 <td class="px-3 py-2 text-gray-700">
-                                  {#if Number(record.amount || 0) > 0}
-                                    {record.currency ? `${record.currency} ` : ''}{Number(record.amount || 0).toFixed(2)}
-                                  {:else}
-                                    -
-                                  {/if}
+                                  {formatBillingAmount(record)}
                                 </td>
-                                <td class="px-3 py-2 text-gray-700">{record.source || '-'}</td>
-                                <td class="px-3 py-2 text-gray-700">{record.status || '-'}</td>
-                                <td class="px-3 py-2 text-gray-700 text-xs" title={record.referenceId || ''}>
-                                  {record.referenceId || '-'}
+                                <td class="px-3 py-2">
+                                  <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full {getStripeOutcome(record) === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">
+                                    {getStripeOutcome(record) === 'success' ? 'Success' : 'Fail'}
+                                  </span>
                                 </td>
-                                <td class="px-3 py-2 text-gray-500 text-xs">{record.note || '-'}</td>
                               </tr>
                             {/each}
                           </tbody>
                         </table>
                       </div>
+                      {#if canExpandDoctorBillingHistory}
+                        <div class="flex justify-end">
+                          <button
+                            class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-50"
+                            on:click={() => {
+                              doctorBillingHistoryExpanded = !doctorBillingHistoryExpanded
+                            }}
+                          >
+                            <i class="fas {doctorBillingHistoryExpanded ? 'fa-compress-alt' : 'fa-expand-alt'} mr-2"></i>
+                            {doctorBillingHistoryExpanded ? 'Show less' : 'Expand history'}
+                          </button>
+                        </div>
+                      {/if}
                     {/if}
                   </div>
                 </div>
@@ -4045,12 +4748,11 @@ firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
                         <dt class="text-sm font-medium text-gray-500">Admin Email:</dt>
                         <dd class="text-sm text-gray-900">senakahks@gmail.com</dd>
                       </div>
-                    </dl>
-                  </div>
-                </div>
-              </div>
+	                    </dl>
+	                  </div>
+	                </div>
 
-              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+	              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
                 <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
                   <h5 class="text-lg font-semibold text-gray-900 mb-0">App URL</h5>
                 </div>
@@ -4162,11 +4864,12 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                         <div class="font-semibold text-gray-700 mb-1">Last Response Body (truncated)</div>
                         <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-2 overflow-x-auto"><code>{openaiDebugLastBody}</code></pre>
                       </div>
-                    {/if}
-                  </div>
-                </div>
-              </div>
-          {:else if activeTab === 'email'}
+	                    {/if}
+	                  </div>
+	                </div>
+	              </div>
+	            </div>
+	          {:else if activeTab === 'email'}
             <div class="flex justify-between items-center mb-6">
               <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-envelope mr-2 text-red-600"></i>Email</h2>
             </div>

@@ -235,11 +235,28 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       .trim()
   }
 
+  const findInventoryStrengthText = (medication) => String(
+    medication?.inventoryStrengthText
+    || medication?.strengthText
+    || ''
+  ).trim()
+
+  const getStrengthText = (rawStrength, rawUnit = '') => {
+    const strength = String(rawStrength || '').trim()
+    const unit = String(rawUnit || '').trim()
+    return [strength, unit].filter(Boolean).join(' ').trim()
+  }
+
   const parseStrengthParts = (medication) => {
-    const rawStrength = medication?.strength ?? medication?.dosage ?? ''
-    const rawUnit = medication?.strengthUnit ?? medication?.dosageUnit ?? ''
+    const rawStrength = medication?.strength ?? ''
+    const rawUnit = medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? ''
+    const inventoryStrengthText = findInventoryStrengthText(medication)
 
     if (!rawStrength) {
+      const inventoryMatch = inventoryStrengthText.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)?$/)
+      if (inventoryMatch) {
+        return { strength: inventoryMatch[1], strengthUnit: inventoryMatch[2] || rawUnit || '' }
+      }
       return { strength: '', strengthUnit: rawUnit || '' }
     }
 
@@ -276,6 +293,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return null
   }
 
+  const parsePositiveNumber = (value) => {
+    const parsed = Number(String(value ?? '').trim())
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }
+
   const formatDosageFormLabel = (form, isPlural) => {
     const trimmed = String(form || '').trim()
     const base = trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : 'Tablet'
@@ -302,7 +324,17 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return Boolean(
       strengthUnit &&
       ['ml', 'l'].includes(String(strengthUnit).toLowerCase())
-    ) || dosageForm === 'liquid' || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
+    ) || dosageForm.includes('liquid') || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
+  }
+
+  const isMeasuredLiquidMedication = (medication) => {
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    return dosageForm === 'liquid (measured)'
+  }
+
+  const isBottledLiquidMedication = (medication) => {
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    return dosageForm === 'liquid (bottles)'
   }
 
   const requiresQtsPricing = (medication) => {
@@ -333,6 +365,68 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       }
     }
     const parts = []
+    const medicationSource = String(medication?.source || '').trim().toLowerCase()
+    const inventoryStrengthText = String(
+      medication?.inventoryStrengthText
+      || getStrengthText(medication?.strength, medication?.strengthUnit)
+      || findInventoryStrengthText(medication)
+      || ''
+    ).trim()
+    const shouldIncludeInventoryStrength = medicationSource === 'inventory' && inventoryStrengthText && (
+      isLiquidMedication(medication) || !requiresQtsPricing(medication)
+    )
+    if (shouldIncludeInventoryStrength) {
+      const inventoryForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+      const volumeForms = new Set([
+        'liquid (measured)',
+        'liquid (bottles)',
+        'liquid',
+        'injection',
+        'cream',
+        'ointment',
+        'gel',
+        'suppository',
+        'inhaler',
+        'spray',
+        'shampoo',
+        'packet',
+        'roll'
+      ])
+      const usesVolumeLabel = volumeForms.has(inventoryForm) || /\b(?:ml|l)\b/i.test(inventoryStrengthText)
+      parts.push(`${usesVolumeLabel ? 'Vol' : 'Strength'}: ${inventoryStrengthText}`)
+    }
+    if (isLiquidMedication(medication)) {
+      const liquidDoseUnit = String(
+        medication?.liquidDoseUnit
+        || (String(medication?.source || '').trim().toLowerCase() === 'inventory'
+          ? (medication?.dosageForm || medication?.form || '')
+          : '')
+        || 'ml'
+      ).trim()
+      const perFrequencyMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
+      if (Number.isFinite(perFrequencyMl) && perFrequencyMl > 0) {
+        parts.push(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
+      }
+      if (isMeasuredLiquidMedication(medication) && perFrequencyMl) {
+        const dailyFrequency = resolveDailyFrequency(medication?.frequency)
+        const durationDays = resolveDurationDays(medication?.duration)
+        const totalMl = perFrequencyMl * dailyFrequency * durationDays
+        if (Number.isFinite(totalMl) && totalMl > 0) {
+          parts.push(`Total: ${totalMl} ${liquidDoseUnit}`)
+        }
+      }
+      const liquidAmountMl = Number(String(medication?.liquidAmountMl ?? medication?.amountMl ?? '').trim())
+      if (Number.isFinite(liquidAmountMl) && liquidAmountMl > 0) {
+        parts.push(`Amount: ${liquidAmountMl} ${liquidDoseUnit}`)
+      }
+      if (isBottledLiquidMedication(medication)) {
+        const inventoryMl = findInventoryStrengthText(medication)
+        const packMlText = String(inventoryMl || getStrengthText(medication?.strength, medication?.strengthUnit) || '').trim()
+        if (packMlText && /\b(ml|l)\b/i.test(packMlText)) {
+          parts.push(`Pack: ${packMlText}`)
+        }
+      }
+    }
     if (!isLiquidMedication(medication)) {
       const doseLabel = getDoseLabel(medication)
       if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
@@ -343,24 +437,23 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   const getPrintableDuration = (duration) => {
     const value = String(duration || '').trim()
     if (!value) return ''
-    if (/^days?$/i.test(value)) return ''
+    if (/^(?:days?|weeks?|months?|years?|hrs?|hours?|mins?|minutes?)$/i.test(value)) return ''
     return value
   }
 
   const getPdfDosageLabel = (medication) => {
+    if (isLiquidMedication(medication)) {
+      const doseMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
+      const liquidDoseUnitRaw = String(medication?.liquidDoseUnit || '').trim().toLowerCase()
+      const liquidDoseUnit = ['ml', 'l'].includes(liquidDoseUnitRaw) ? liquidDoseUnitRaw : 'ml'
+      if (doseMl) return `${doseMl} ${liquidDoseUnit}`
+    }
+
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
     if (strength && strengthUnit) return strengthText
 
-    const doseLabel = getDoseLabel(medication)
-    if (doseLabel) return doseLabel
-
-    const base = String(medication?.dosage ?? '').trim()
-    const fallbackUnit = String(medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? '').trim()
-    if (base && fallbackUnit) {
-      return `${base} ${fallbackUnit}`.trim()
-    }
-    return base
+    return ''
   }
 
   const buildMedicationKeyForPharmacy = (medication) => {
@@ -443,6 +536,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       const normalized = Math.trunc(parsed)
       return normalized > 0 ? normalized : null
     }
+    const enteredCount = parsePositiveInteger(medication.qts)
     if (requiresQtsPricing(medication)) {
       const qtsQuantity = parsePositiveInteger(medication.qts)
       if (qtsQuantity) {
@@ -459,20 +553,22 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       const dosageMultiplier = parseDosageMultiplier(medication.dosage)
       return Math.ceil(base * dosageMultiplier)
     }
-    if (!medication?.frequency || !medication?.duration) return 0
+    if (!medication?.frequency || !medication?.duration) return enteredCount || 0
     const durationMatch = medication.duration.match(/(\d+)\s*days?/i)
-    if (!durationMatch) return 0
+    if (!durationMatch) return enteredCount || 0
     const days = parseInt(durationMatch[1], 10)
-    if (!Number.isFinite(days) || days <= 0) return 0
+    if (!Number.isFinite(days) || days <= 0) return enteredCount || 0
     const dailyFrequency = resolveDailyFrequency(medication.frequency)
-    if (!dailyFrequency) return 0
+    if (!dailyFrequency) return enteredCount || 0
     if (isLiquidMedication(medication)) {
       const strengthMl = resolveStrengthToMl(medication?.strength, medication?.strengthUnit)
-      if (!strengthMl) return 0
+      if (!strengthMl) return enteredCount || 0
       return Math.ceil(days * dailyFrequency * strengthMl)
     }
     const dosageMultiplier = parseDosageMultiplier(medication.dosage)
-    return Math.ceil(days * dailyFrequency * dosageMultiplier)
+    const calculated = Math.ceil(days * dailyFrequency * dosageMultiplier)
+    if (calculated > 0) return calculated
+    return enteredCount || 0
   }
 
   const enrichMedicationForPharmacy = (medication) => {
@@ -488,9 +584,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return {
       ...medication,
       strength,
-      strengthUnit,
+      strengthUnit: strength ? strengthUnit : '',
       dosageForm,
       medicationKey,
+      duration: getPrintableDuration(medication?.duration),
       amount: calculateMedicationQuantity(medication)
     }
   }
@@ -728,10 +825,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let deleteCode = ''
   
   // Confirmation modal helper functions
-  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning', options = {}) {
     const normalizedConfirm = String(confirmText || '').toLowerCase()
     const isDestructive = type === 'danger' && /delete|clear|remove/.test(normalizedConfirm)
-    confirmationConfig = { title, message, confirmText, cancelText, type, requireCode: isDestructive }
+    const requireCode = typeof options?.requireCode === 'boolean' ? options.requireCode : isDestructive
+    confirmationConfig = { title, message, confirmText, cancelText, type, requireCode }
     showConfirmationModal = true
   }
   
@@ -1830,7 +1928,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       'Are you sure you want to delete this medication?',
       'Delete',
       'Cancel',
-      'danger'
+      'danger',
+      { requireCode: false }
     )
   }
 
@@ -2093,8 +2192,21 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       }
     }, 260)
     try {
+      let ocrImageSource = reportSelectedAreaDataUrl
+      if (!ocrImageSource && reportFileDataUrl && reportDetectedCorners.length === 4) {
+        try {
+          reportSelectedAreaDataUrl = await createSelectedAreaDataUrl(reportFileDataUrl, reportDetectedCorners)
+          ocrImageSource = reportSelectedAreaDataUrl
+        } catch (_) {
+          // Fall back to original capture below.
+        }
+      }
+      if (!ocrImageSource) {
+        ocrImageSource = reportFileDataUrl
+      }
+
       const result = await openaiService.extractTextFromImage(
-        reportFileDataUrl,
+        ocrImageSource,
         getDoctorIdForImprove(),
         { context: 'patient-report-camera-ocr' }
       )
@@ -4384,7 +4496,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       'Are you sure you want to delete this medication?',
       'Delete',
       'Cancel',
-      'danger'
+      'danger',
+      { requireCode: false }
     )
   }
   

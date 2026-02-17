@@ -87,3 +87,24 @@ test('pharmacy owner can view prescriptions and inventory tabs', async ({ page }
   await expect(page.getByRole('tab', { name: /prescriptions|rx/i })).toBeVisible()
   await expect(page.getByRole('tab', { name: /inventory|stock/i })).toBeVisible()
 })
+
+test('doctor payments page hides payment buttons at 100% admin discount', async ({ page }) => {
+  await setDoctorSession(page, {
+    id: 'doc-1',
+    email: 'doctor@example.com',
+    role: 'doctor',
+    firstName: 'Test',
+    lastName: 'Doctor',
+    country: 'United States',
+    adminStripeDiscountPercent: 100
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: /welcome, dr\. test doctor/i })).toBeVisible()
+
+  const menuBarNav = page.locator('main nav').nth(1)
+  await menuBarNav.getByRole('button', { name: /payments/i }).click()
+
+  await expect(page.getByText(/Full discount applied\. Payment buttons are hidden\./i)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Pay with Stripe/i })).toHaveCount(0)
+})

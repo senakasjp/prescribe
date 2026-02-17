@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const STORAGE_KEY = 'prescribe-ai-token-usage'
+const { addDoctorAIUsageRecordMock } = vi.hoisted(() => ({
+  addDoctorAIUsageRecordMock: vi.fn(() => Promise.resolve(true))
+}))
+
+vi.mock('../../services/firebaseStorage.js', () => ({
+  default: {
+    addDoctorAIUsageRecord: addDoctorAIUsageRecordMock
+  }
+}))
 
 const loadTracker = async () => {
   const module = await import('../../services/aiTokenTracker.js')
@@ -10,6 +19,7 @@ const loadTracker = async () => {
 describe('aiTokenTracker', () => {
   beforeEach(() => {
     localStorage.clear()
+    addDoctorAIUsageRecordMock.mockClear()
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-02-13T10:00:00.000Z'))
   })
@@ -39,6 +49,24 @@ describe('aiTokenTracker', () => {
     expect(Array.isArray(persisted.requests)).toBe(true)
     expect(persisted.requests).toHaveLength(1)
     expect(persisted.requests[0].doctorId).toBe('unknown-doctor')
+    expect(addDoctorAIUsageRecordMock).not.toHaveBeenCalled()
+  })
+
+  it('persists usage to server when doctor id is known', async () => {
+    const tracker = await loadTracker()
+    tracker.trackUsage('chatbotResponse', 12, 8, 'gpt-4o-mini', 'doc-server-1')
+
+    expect(addDoctorAIUsageRecordMock).toHaveBeenCalledTimes(1)
+    expect(addDoctorAIUsageRecordMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        doctorId: 'doc-server-1',
+        requestType: 'chatbotResponse',
+        promptTokens: 12,
+        completionTokens: 8,
+        totalTokens: 20,
+        model: 'gpt-4o-mini'
+      })
+    )
   })
 
   it('aggregates token usage by doctor and separates today usage correctly', async () => {

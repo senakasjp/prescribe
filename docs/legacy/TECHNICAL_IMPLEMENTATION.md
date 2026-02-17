@@ -1,5 +1,7 @@
 # Technical Implementation Guide
 
+> Legacy deep-dive reference. Canonical technical source is `ENGINEERING_MANUAL.md`.
+
 ## Architecture Overview
 
 ### Recent Critical Fix - Add New Patient Button (December 28, 2024)
@@ -856,5 +858,4 @@ if (dispensedMedications.size === 0) {
 - Remove unused reactive statements
 - Properly dispose of subscriptions
 - Use onDestroy lifecycle
-
 

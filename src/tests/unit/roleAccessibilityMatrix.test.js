@@ -49,7 +49,8 @@ describe('Role Accessibility Matrix', () => {
     expect(appSource).toContain('{#if !isExternalDoctor}')
     expect(appSource).toContain("on:click={() => handleMenuNavigation('reports')}")
     expect(appSource).toContain('on:click={handleSettingsClick}')
-    expect(appSource).toContain("on:click={() => handleMenuNavigation('notifications')}")
+    expect(appSource).toContain('on:click={handleNotificationsBellClick}')
+    expect(appSource).toContain("showDoctorAlertsModal = true")
   })
 
   it('Admin panel gate is restricted to admin role/flag/email contract', () => {

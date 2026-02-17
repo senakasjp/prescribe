@@ -1,9 +1,19 @@
 # 🏥 Prescribe - Quick Reference Card
 
+> Legacy quick sheet. Canonical product operations now live in `PRODUCT_MANUAL.md`.
+
 ## 🔐 Login Options
 - **Google Login**: Click "Login with Google" (Recommended)
 - **Email/Password**: Click "Register" → Fill details → Sign in
 - **Pharmacist**: Click "Pharmacist" tab → Register with 6-digit number
+
+## 💳 Admin Payment Pricing
+| Action | Steps |
+|--------|-------|
+| **Open pricing controls** | Admin → `Payments` tab |
+| **Set plan prices** | Enter USD/LKR monthly + annual values |
+| **Choose scope** | Select `new_customers` or `all_customers` |
+| **Apply settings** | Keep `Enable custom pricing` checked → Click `Save Pricing` |
 
 ## 👥 Patient Management
 | Action | Steps |
@@ -22,13 +32,19 @@
 | 4 | Click "Save Medication" (repeat for more drugs) |
 | 5 | Choose: Save / Print PDF / Send to Pharmacy |
 
-### Qts Rule (Important)
-- For non-`Tablet`/`Capsule`/`Syrup` dosage forms, enter **Qts** (integer) next to **Strength**.
-- **Qts is required** when it is shown.
-- In Qts mode, **Amount (PRN)** and **When to take** are hidden.
-- In Qts mode, **Frequency** and **Duration** are optional.
-- Price formula for these forms: `Drug Price = Qts × unit selling price`.
-- Syrup/liquid stays ml-based; tablet/capsule stays amount/dosage-based.
+### Dispense Form Categories (Important)
+- **QTY (sell as units)**:
+  - `Injection`, `Cream`, `Ointment`, `Gel`, `Suppository`, `Inhaler`, `Spray`, `Shampoo`, `Packet`, `Roll`
+- **Non-QTY**:
+  - `Tablet`, `Capsule`, `Liquid (measured)`
+- **Special QTY**:
+  - `Liquid (bottles)`
+
+### Quantity + PDF Rules
+- If a count-based medication cannot derive quantity from schedule/strength, the entered count (`qts`) is used.
+- PDF second-line inventory label:
+  - `Vol:` for volume values/forms
+  - `Strength:` for non-volume values
 
 ## 📋 Medical Records
 | Tab | Purpose | Action |
@@ -84,5 +100,5 @@
 - **Clear Cache**: Clear browser cache if needed
 
 ---
-**System URL**: `https://prescribe-7e1e8.web.app`  
+**System URL**: `https://mprescribe.net` (legacy: `https://prescribe-7e1e8.web.app`)  
 **Support**: Check BEGINNER_GUIDE.md for detailed help

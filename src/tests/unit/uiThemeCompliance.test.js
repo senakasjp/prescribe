@@ -40,6 +40,22 @@ describe('UI Theme Compliance - Small Theme + Tailwind/Flowbite', () => {
     expect(indexHtml).not.toMatch(/cdnjs\.cloudflare\.com\/ajax\/libs\/flowbite/i)
   })
 
+  it('enforces dark mode infrastructure with light default and persisted selection', () => {
+    const tailwindConfig = readFile('tailwind.config.js')
+    const mainJs = readFile('src/main.js')
+    const appSvelte = readFile('src/App.svelte')
+
+    expect(tailwindConfig).toMatch(/darkMode:\s*['"]class['"]/)
+    expect(mainJs).toMatch(/prescribe-theme-mode'\)\s*\|\|\s*'light'/)
+    expect(mainJs).toMatch(/mode === 'dark'/)
+
+    expect(appSvelte).toMatch(/THEME_MODE_STORAGE_KEY\s*=\s*'prescribe-theme-mode'/)
+    expect(appSvelte).toMatch(/let themeMode = 'light'/)
+    expect(appSvelte).toMatch(/localStorage\.getItem\(THEME_MODE_STORAGE_KEY\)\s*\|\|\s*'light'/)
+    expect(appSvelte).toMatch(/localStorage\.setItem\(THEME_MODE_STORAGE_KEY,\s*mode\)/)
+    expect(appSvelte).toMatch(/classList\.toggle\('dark',\s*isDarkTheme\)/)
+  })
+
   it('keeps the global small-theme CSS contract for form controls and buttons', () => {
     const appCss = readFile('src/app.css')
 
@@ -48,6 +64,66 @@ describe('UI Theme Compliance - Small Theme + Tailwind/Flowbite', () => {
     expect(appCss).toMatch(/select,\s*textarea/s)
     expect(appCss).toMatch(/focus:ring-cyan-500/)
     expect(appCss).toMatch(/button\s*\{[^}]*text-sm[^}]*\}/s)
+  })
+
+  it('keeps global dark override tokens for light-first components', () => {
+    const appCss = readFile('src/app.css')
+    const requiredOverrides = [
+      'html.dark .bg-white',
+      'html.dark .bg-gray-50',
+      'html.dark .bg-gray-100',
+      'html.dark .text-gray-900',
+      'html.dark .text-gray-800',
+      'html.dark .text-gray-700',
+      'html.dark .text-gray-600',
+      'html.dark .text-gray-500',
+      'html.dark .border-gray-200',
+      'html.dark .border-gray-300'
+    ]
+
+    requiredOverrides.forEach((selector) => {
+      expect(appCss).toContain(selector)
+    })
+  })
+
+  it('requires light-first utility tokens to have dark support (component dark:* or global override)', () => {
+    const appCss = readFile('src/app.css')
+    const globallySupported = new Set([
+      'bg-white',
+      'bg-gray-50',
+      'bg-gray-100',
+      'text-gray-900',
+      'text-gray-800',
+      'text-gray-700',
+      'text-gray-600',
+      'text-gray-500',
+      'border-gray-200',
+      'border-gray-300'
+    ])
+    const files = walkFiles('src').filter((file) => file.endsWith('.svelte'))
+    const tokenRegex = /\b(bg-white|bg-gray-50|bg-gray-100|text-gray-900|text-gray-800|text-gray-700|text-gray-600|text-gray-500|border-gray-200|border-gray-300)\b/g
+    const offenders = []
+
+    for (const file of files) {
+      const content = readFile(file)
+      const hasDarkUtility = /\bdark:/.test(content)
+      const tokens = new Set(content.match(tokenRegex) || [])
+      if (tokens.size === 0) continue
+      if (hasDarkUtility) continue
+
+      const unsupported = [...tokens].filter((token) => !globallySupported.has(token))
+      if (unsupported.length > 0) {
+        offenders.push(`${file} -> ${unsupported.join(',')}`)
+      }
+    }
+
+    // Safety assertion so future edits don't silently remove the global contract.
+    globallySupported.forEach((token) => {
+      const tokenSelector = token.replace(/([[\]])/g, '\\$1')
+      expect(appCss).toMatch(new RegExp(`html\\.dark \\.${tokenSelector}`))
+    })
+
+    expect(offenders).toEqual([])
   })
 
   it('requires responsive sm: usage across every Svelte component', () => {

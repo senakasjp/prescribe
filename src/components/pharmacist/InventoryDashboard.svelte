@@ -71,6 +71,8 @@
     category: 'prescription',
     strength: '',
     strengthUnit: normalizeStrengthUnitValue('mg'),
+    containerSize: '',
+    containerUnit: 'ml',
     dosageForm: normalizeDosageFormValue('tablet'),
     packSize: '',
     packUnit: 'tablets',
@@ -85,6 +87,32 @@
     storageConditions: 'room temperature',
     description: '',
     notes: ''
+  }
+
+  const CONTAINER_SIZE_DISPENSE_FORMS = new Set([
+    'Injection',
+    'Cream',
+    'Ointment',
+    'Gel',
+    'Suppository',
+    'Inhaler',
+    'Spray',
+    'Shampoo',
+    'Packet',
+    'Roll'
+  ])
+
+  const CONTAINER_SIZE_UNIT_OPTIONS = {
+    Injection: ['ml', 'mg', 'IU', 'vial', 'ampoule'],
+    Cream: ['g', 'mg', 'ml', 'tube'],
+    Ointment: ['g', 'mg', 'ml', 'tube'],
+    Gel: ['g', 'mg', 'ml', 'tube'],
+    Suppository: ['mg', 'g', 'pcs'],
+    Inhaler: ['puffs', 'doses', 'actuations'],
+    Spray: ['ml', 'sprays'],
+    Shampoo: ['ml', 'g'],
+    Packet: ['g', 'mg', 'ml', 'packets'],
+    Roll: ['roll', 'g', 'ml']
   }
   
   // Load data on mount
@@ -308,6 +336,45 @@
     { key: 'expiryDate', id: 'newItemExpiryDate', label: 'Expiry Date' },
     { key: 'storageConditions', id: 'newItemStorageConditions', label: 'Storage Conditions' }
   ]
+  const isMeasuredLiquidDispenseForm = (value) => {
+    return normalizeDosageFormValue(value) === 'Liquid (measured)'
+  }
+
+  const isContainerSizeDispenseForm = (value) => {
+    return CONTAINER_SIZE_DISPENSE_FORMS.has(normalizeDosageFormValue(value))
+  }
+
+  const isStrengthRequiredDispenseForm = (value) => {
+    const normalized = normalizeDosageFormValue(value).toLowerCase()
+    return normalized === 'tablet' || normalized === 'capsule'
+  }
+
+  const shouldShowStrengthFields = (value) => {
+    return !isMeasuredLiquidDispenseForm(value) && !isContainerSizeDispenseForm(value)
+  }
+
+  const shouldUseVolumeLabels = (value) => {
+    const normalized = normalizeDosageFormValue(value)
+    if (!normalized) return false
+    return !isStrengthRequiredDispenseForm(normalized)
+  }
+
+  const getContainerUnitsForDispenseForm = (value) => {
+    const normalized = normalizeDosageFormValue(value)
+    return CONTAINER_SIZE_UNIT_OPTIONS[normalized] || ['ml', 'g', 'pcs']
+  }
+
+  const syncContainerUnitForDispenseForm = (value) => {
+    if (!isContainerSizeDispenseForm(value)) return
+    const options = getContainerUnitsForDispenseForm(value)
+    if (!options.includes(newItemForm.containerUnit)) {
+      newItemForm.containerUnit = options[0]
+    }
+  }
+
+  $: if (newItemForm?.dosageForm) {
+    syncContainerUnitForDispenseForm(newItemForm.dosageForm)
+  }
   
   // Add new inventory item
   const addInventoryItem = async () => {
@@ -326,7 +393,21 @@
         }
       }
       
-      const missingField = requiredNewItemFields.find(field => !isFilled(newItemForm[field.key]))
+      const addPayload = {
+        ...newItemForm,
+        dosageForm: normalizeDosageFormValue(newItemForm.dosageForm) || normalizeDosageFormValue('tablet')
+      }
+
+      if (!isContainerSizeDispenseForm(addPayload.dosageForm)) {
+        addPayload.containerSize = ''
+        addPayload.containerUnit = ''
+      }
+
+      const requiredFieldsForPayload = isStrengthRequiredDispenseForm(addPayload.dosageForm)
+        ? requiredNewItemFields
+        : requiredNewItemFields.filter((field) => field.key !== 'strength' && field.key !== 'strengthUnit')
+
+      const missingField = requiredFieldsForPayload.find(field => !isFilled(addPayload[field.key]))
       if (missingField) {
         notifyError(`Please fill in ${missingField.label}`)
         await focusFieldById(missingField.id)
@@ -337,10 +418,11 @@
         { key: 'initialStock', id: 'newItemInitialStock', label: 'Initial Stock', required: true },
         { key: 'minimumStock', id: 'newItemMinimumStock', label: 'Minimum Stock', required: true },
         { key: 'maximumStock', id: 'newItemMaximumStock', label: 'Maximum Stock', required: false },
-        { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false }
+        { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false },
+        { key: 'containerSize', id: 'newItemContainerSize', label: 'Container Size', required: false }
       ]
       for (const rule of integerValidationRules) {
-        const raw = String(newItemForm[rule.key] ?? '').trim()
+        const raw = String(addPayload[rule.key] ?? '').trim()
         if (!rule.required && raw === '') continue
         if (!isIntegerString(raw)) {
           notifyError(`${rule.label} must be an integer`)
@@ -349,7 +431,7 @@
         }
       }
       
-      await inventoryService.createInventoryItem(pharmacyId, newItemForm)
+      await inventoryService.createInventoryItem(pharmacyId, addPayload)
       
       notifySuccess('Inventory item added successfully!')
       
@@ -361,6 +443,8 @@
         category: 'prescription',
         strength: '',
         strengthUnit: normalizeStrengthUnitValue('mg'),
+        containerSize: '',
+        containerUnit: 'ml',
         dosageForm: normalizeDosageFormValue('tablet'),
         packSize: '',
         packUnit: 'tablets',
@@ -392,8 +476,14 @@
         return
       }
       
-      if (!editItemForm.brandName || !editItemForm.genericName || !editItemForm.strength || !editItemForm.strengthUnit || !editItemForm.currentStock || !editItemForm.minimumStock || !editItemForm.sellingPrice || !editItemForm.expiryDate || !editItemForm.storageConditions) {
-        notifyError('Please fill in all required fields including brand name, strength, strength unit, and expiry date')
+      const requiresStrengthForEdit = isStrengthRequiredDispenseForm(editItemForm?.dosageForm)
+      const missingStrengthForEdit = requiresStrengthForEdit && (!editItemForm.strength || !editItemForm.strengthUnit)
+      if (!editItemForm.brandName || !editItemForm.genericName || missingStrengthForEdit || !editItemForm.currentStock || !editItemForm.minimumStock || !editItemForm.sellingPrice || !editItemForm.expiryDate || !editItemForm.storageConditions) {
+        notifyError(
+          requiresStrengthForEdit
+            ? 'Please fill in all required fields including brand name, strength, strength unit, and expiry date'
+            : 'Please fill in all required fields including brand name and expiry date'
+        )
         return
       }
       
@@ -476,6 +566,13 @@
   // Format date
   const formatDate = (dateString) =>
     dateString ? formatDateByLocale(dateString, { country: pharmacist?.country }) : 'N/A'
+
+  const getStockUnitLabel = (item) => {
+    const dosageForm = normalizeDosageFormValue(item?.dosageForm)
+    if (dosageForm === 'Liquid (measured)') return 'ml'
+    if (dosageForm === 'Liquid (bottles)') return 'Liquid (bottles)'
+    return item?.packUnit || 'units'
+  }
 
   const escapeHtml = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -596,7 +693,7 @@
         return
       }
 
-      if (!selectedItem.strength || !selectedItem.strengthUnit) {
+      if (isStrengthRequiredDispenseForm(selectedItem?.dosageForm) && (!selectedItem.strength || !selectedItem.strengthUnit)) {
         notifyError('Strength and strength unit are required')
         return
       }
@@ -1008,7 +1105,7 @@
                     </td>
                     <td class="px-6 py-4">
                       <div class="min-w-0 flex-1">
-                        <div class="font-semibold text-gray-900 break-words">{item.currentStock} {item.packUnit}</div>
+                        <div class="font-semibold text-gray-900 break-words">{item.currentStock} {getStockUnitLabel(item)}</div>
                         <div class="text-sm text-gray-500">Min: {item.minimumStock}</div>
                       </div>
                     </td>
@@ -1090,7 +1187,7 @@
                 <div class="space-y-2 mb-3">
                   <div class="flex items-center text-xs">
                     <i class="fas fa-boxes text-blue-600 mr-2 w-3"></i>
-                    <span class="text-gray-600 font-medium">{item.currentStock} {item.packUnit}</span>
+                    <span class="text-gray-600 font-medium">{item.currentStock} {getStockUnitLabel(item)}</span>
                     <span class="text-gray-500 ml-2">Min: {item.minimumStock}</span>
                   </div>
                   <div class="flex items-center text-xs">
@@ -1351,7 +1448,7 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label for="newItemDosageForm" class="block text-sm font-medium text-gray-700 mb-2">
-                  Dispense Form <span class="text-red-600">(Important)</span>
+                  Dispense Form <span class="text-red-600">(Important)</span> <span class="text-red-500">*</span>
                 </label>
                 <select 
                   id="newItemDosageForm"
@@ -1365,26 +1462,42 @@
                 </select>
               </div>
 
+              {#if shouldShowStrengthFields(newItemForm.dosageForm)}
               <div>
-                <label for="newItemStrength" class="block text-sm font-medium text-gray-700 mb-2">Strength <span class="text-red-500">*</span></label>
+                <label for="newItemStrength" class="block text-sm font-medium text-gray-700 mb-2">
+                  {#if shouldUseVolumeLabels(newItemForm.dosageForm)}
+                    Total volume
+                  {:else}
+                    Strength
+                  {/if}
+                  {#if isStrengthRequiredDispenseForm(newItemForm.dosageForm)}<span class="text-red-500">*</span>{/if}
+                </label>
                 <input 
                   id="newItemStrength"
                   type="number"
                   bind:value={newItemForm.strength}
-                  required
+                  required={isStrengthRequiredDispenseForm(newItemForm.dosageForm)}
                   min="0"
                   step="0.01"
                   inputmode="decimal"
-                  placeholder="e.g., 500"
+                  placeholder={shouldUseVolumeLabels(newItemForm.dosageForm) ? 'e.g., 100' : 'e.g., 500'}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               
               <div>
-                <label for="newItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-2">Strength Unit</label>
+                <label for="newItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-2">
+                  {#if shouldUseVolumeLabels(newItemForm.dosageForm)}
+                    Volume unit
+                  {:else}
+                    Strength Unit
+                  {/if}
+                  {#if isStrengthRequiredDispenseForm(newItemForm.dosageForm)}<span class="text-red-500">*</span>{/if}
+                </label>
                 <select 
                   id="newItemStrengthUnit"
                   bind:value={newItemForm.strengthUnit}
+                  required={isStrengthRequiredDispenseForm(newItemForm.dosageForm)}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {#each STRENGTH_UNITS as unit}
@@ -1392,12 +1505,46 @@
                   {/each}
                 </select>
               </div>
+              {:else if isContainerSizeDispenseForm(newItemForm.dosageForm)}
+              <div>
+                <label for="newItemContainerSize" class="block text-sm font-medium text-gray-700 mb-2">Container Size</label>
+                <input 
+                  id="newItemContainerSize"
+                  type="number"
+                  bind:value={newItemForm.containerSize}
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  placeholder="e.g., 100"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label for="newItemContainerUnit" class="block text-sm font-medium text-gray-700 mb-2">Container Unit</label>
+                <select 
+                  id="newItemContainerUnit"
+                  bind:value={newItemForm.containerUnit}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {#each getContainerUnitsForDispenseForm(newItemForm.dosageForm) as unit}
+                    <option value={unit}>{unit}</option>
+                  {/each}
+                </select>
+              </div>
+              {/if}
             </div>
             
             <!-- Stock Information -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div>
-                <label for="newItemInitialStock" class="block text-sm font-medium text-gray-700 mb-2">Initial Stock <span class="text-red-500">*</span></label>
+                <label for="newItemInitialStock" class="block text-sm font-medium text-gray-700 mb-2">
+                  {#if isMeasuredLiquidDispenseForm(newItemForm.dosageForm)}
+                    Initial Stock in ml <span class="text-red-500">*</span>
+                  {:else}
+                    Initial Stock <span class="text-red-500">*</span>
+                  {/if}
+                </label>
                 <input 
                   id="newItemInitialStock"
                   type="number" 
@@ -1411,7 +1558,13 @@
               </div>
               
               <div>
-                <label for="newItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock <span class="text-red-500">*</span></label>
+                <label for="newItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-2">
+                  {#if isMeasuredLiquidDispenseForm(newItemForm.dosageForm)}
+                    Minimum Stock ml <span class="text-red-500">*</span>
+                  {:else}
+                    Minimum Stock <span class="text-red-500">*</span>
+                  {/if}
+                </label>
                 <input 
                   id="newItemMinimumStock"
                   type="number" 
@@ -1425,7 +1578,13 @@
               </div>
               
               <div>
-                <label for="newItemCostPrice" class="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
+                <label for="newItemCostPrice" class="block text-sm font-medium text-gray-700 mb-2">
+                  {#if isMeasuredLiquidDispenseForm(newItemForm.dosageForm)}
+                    Cost Price per ml
+                  {:else}
+                    Cost Price
+                  {/if}
+                </label>
                 <input 
                   id="newItemCostPrice"
                   type="number" 
@@ -1439,7 +1598,11 @@
               
               <div>
                 <label for="newItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-2">
-                  Selling Price for <span class="text-red-600">{newItemForm.dosageForm || 'Dispense Form'}</span> <span class="text-red-500">*</span>
+                  {#if isMeasuredLiquidDispenseForm(newItemForm.dosageForm)}
+                    Selling Price per ml <span class="text-red-500">*</span>
+                  {:else}
+                    Selling Price for <span class="text-red-600">{newItemForm.dosageForm || 'Tablet'}</span> <span class="text-red-500">*</span>
+                  {/if}
                 </label>
                 <input 
                   id="newItemSellingPrice"
@@ -1633,40 +1796,62 @@
               </select>
             </div>
 
-            <div>
-              <label for="editItemStrength" class="block text-sm font-medium text-gray-700 mb-2">Strength <span class="text-red-500">*</span></label>
-              <input
-                id="editItemStrength"
-                type="number"
-                bind:value={selectedItem.strength}
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                disabled
-                title="Strength cannot be changed"
-                min="0"
-                step="0.01"
-                inputmode="decimal"
-              />
-            </div>
+            {#if !isMeasuredLiquidDispenseForm(selectedItem?.dosageForm)}
+              <div>
+                <label for="editItemStrength" class="block text-sm font-medium text-gray-700 mb-2">
+                  {#if shouldUseVolumeLabels(selectedItem?.dosageForm)}
+                    Total volume
+                  {:else}
+                    Strength
+                  {/if}
+                  {#if isStrengthRequiredDispenseForm(selectedItem?.dosageForm)}<span class="text-red-500">*</span>{/if}
+                </label>
+                <input
+                  id="editItemStrength"
+                  type="number"
+                  bind:value={selectedItem.strength}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                  disabled
+                  title={shouldUseVolumeLabels(selectedItem?.dosageForm) ? 'Total volume cannot be changed' : 'Strength cannot be changed'}
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
+                />
+              </div>
 
-            <div>
-              <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-2">Strength Unit <span class="text-red-500">*</span></label>
-              <select
-                id="editItemStrengthUnit"
-                bind:value={selectedItem.strengthUnit}
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
-                disabled
-                title="Strength Unit cannot be changed"
-              >
-                {#each STRENGTH_UNITS as unit}
-                  <option value={unit}>{unit}</option>
-                {/each}
-              </select>
-            </div>
+              <div>
+                <label for="editItemStrengthUnit" class="block text-sm font-medium text-gray-700 mb-2">
+                  {#if shouldUseVolumeLabels(selectedItem?.dosageForm)}
+                    Volume unit
+                  {:else}
+                    Strength Unit
+                  {/if}
+                  {#if isStrengthRequiredDispenseForm(selectedItem?.dosageForm)}<span class="text-red-500">*</span>{/if}
+                </label>
+                <select
+                  id="editItemStrengthUnit"
+                  bind:value={selectedItem.strengthUnit}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
+                  disabled
+                  title={shouldUseVolumeLabels(selectedItem?.dosageForm) ? 'Volume unit cannot be changed' : 'Strength Unit cannot be changed'}
+                >
+                  {#each STRENGTH_UNITS as unit}
+                    <option value={unit}>{unit}</option>
+                  {/each}
+                </select>
+              </div>
+            {/if}
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div>
-              <label for="editItemInitialStock" class="block text-sm font-medium text-gray-700 mb-2">Initial Stock <span class="text-red-500">*</span></label>
+              <label for="editItemInitialStock" class="block text-sm font-medium text-gray-700 mb-2">
+                {#if isMeasuredLiquidDispenseForm(selectedItem?.dosageForm)}
+                  Initial Stock in ml <span class="text-red-500">*</span>
+                {:else}
+                  Initial Stock <span class="text-red-500">*</span>
+                {/if}
+              </label>
               <input
                 id="editItemInitialStock"
                 type="number"
@@ -1680,7 +1865,13 @@
             </div>
 
             <div>
-              <label for="editItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-2">Minimum Stock <span class="text-red-500">*</span></label>
+              <label for="editItemMinimumStock" class="block text-sm font-medium text-gray-700 mb-2">
+                {#if isMeasuredLiquidDispenseForm(selectedItem?.dosageForm)}
+                  Minimum Stock ml <span class="text-red-500">*</span>
+                {:else}
+                  Minimum Stock <span class="text-red-500">*</span>
+                {/if}
+              </label>
               <input
                 id="editItemMinimumStock"
                 type="number"
@@ -1694,7 +1885,13 @@
             </div>
 
             <div>
-              <label for="editItemCostPrice" class="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
+              <label for="editItemCostPrice" class="block text-sm font-medium text-gray-700 mb-2">
+                {#if isMeasuredLiquidDispenseForm(selectedItem?.dosageForm)}
+                  Cost Price per ml
+                {:else}
+                  Cost Price
+                {/if}
+              </label>
               <input
                 id="editItemCostPrice"
                 type="number"
@@ -1708,7 +1905,11 @@
 
             <div>
               <label for="editItemSellingPrice" class="block text-sm font-medium text-gray-700 mb-2">
-                Selling Price for <span class="text-red-600">{selectedItem?.dosageForm || 'Dispense Form'}</span> <span class="text-red-500">*</span>
+                {#if isMeasuredLiquidDispenseForm(selectedItem?.dosageForm)}
+                  Selling Price per ml <span class="text-red-500">*</span>
+                {:else}
+                  Selling Price for <span class="text-red-600">{selectedItem?.dosageForm || 'Dispense Form'}</span> <span class="text-red-500">*</span>
+                {/if}
               </label>
               <input
                 id="editItemSellingPrice"

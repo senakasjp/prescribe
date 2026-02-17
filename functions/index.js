@@ -36,7 +36,8 @@ const STRIPE_SECRET_KEY = defineSecret("STRIPE_SECRET_KEY");
 const STRIPE_WEBHOOK_SECRET = defineSecret("STRIPE_WEBHOOK_SECRET");
 const DEFAULT_APP_URL = "https://prescribe-7e1e8.web.app";
 const OPENAI_PROXY_ALLOWED_ENDPOINTS = new Set(["chat/completions"]);
-const OPENAI_PROXY_MAX_BODY_BYTES = 100 * 1024; // 100 KB hard cap
+// Needs to handle vision/OCR requests that include data URLs.
+const OPENAI_PROXY_MAX_BODY_BYTES = 2 * 1024 * 1024; // 2 MB hard cap
 const OPENAI_PROXY_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const OPENAI_PROXY_RATE_LIMIT_MAX_REQUESTS = 30;
 const openaiProxyRateLimits = new Map();
@@ -76,6 +77,242 @@ const STRIPE_PLAN_CATALOG = {
   },
 };
 
+const convertMajorToMinor = (amount, currency = "") => {
+  const parsed = Number(amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  const normalizedCurrency = String(currency || "").trim().toLowerCase();
+  if (normalizedCurrency === "usd") {
+    return Math.round(parsed * 100);
+  }
+  return Math.round(parsed * 100);
+};
+
+const hasDoctorPriorPaymentHistory = (doctorData = {}) => {
+  if (!doctorData || typeof doctorData !== "object") return false;
+  const paymentDone = doctorData.paymentDone === true;
+  const paymentStatus = String(doctorData.paymentStatus || "")
+      .trim()
+      .toLowerCase();
+  const hasPaidStatus = ["paid", "active", "succeeded", "confirmed"]
+      .includes(paymentStatus);
+  const walletMonths = Number(doctorData.walletMonths || 0);
+  const hasCustomer = Boolean(String(doctorData.stripeCustomerId || "").trim());
+  const hasSubscription = Boolean(
+      String(doctorData.stripeSubscriptionId || "").trim(),
+  );
+  const hasLastPayment = Boolean(
+      String(doctorData.stripeLastPaymentAt || doctorData.paymentDoneAt || "")
+          .trim(),
+  );
+  return (
+    paymentDone ||
+    hasPaidStatus ||
+    walletMonths > 0 ||
+    hasCustomer ||
+    hasSubscription ||
+    hasLastPayment
+  );
+};
+
+const resolveStripePricingConfig = async () => {
+  try {
+    const settingsSnap = await admin
+        .firestore()
+        .collection("systemSettings")
+        .doc("paymentPricing")
+        .get();
+    if (!settingsSnap.exists) return null;
+    return settingsSnap.data() || null;
+  } catch (error) {
+    logger.error("Failed to load payment pricing settings:", error);
+    return null;
+  }
+};
+
+const resolvePlanCatalogForCheckout = ({
+  pricingConfig = null,
+  isNewCustomer = true,
+}) => {
+  const catalog = {...STRIPE_PLAN_CATALOG};
+  const enabled = pricingConfig && pricingConfig.enabled !== false;
+  if (!enabled) return catalog;
+
+  const appliesTo =
+    String(pricingConfig.appliesTo || "new_customers").trim().toLowerCase();
+  const appliesForDoctor =
+    appliesTo === "all_customers" ||
+    (appliesTo === "new_customers" && isNewCustomer);
+  if (!appliesForDoctor) return catalog;
+
+  const monthlyUsdMinor = convertMajorToMinor(pricingConfig.monthlyUsd, "usd");
+  const annualUsdMinor = convertMajorToMinor(pricingConfig.annualUsd, "usd");
+  const monthlyLkrMinor = convertMajorToMinor(pricingConfig.monthlyLkr, "lkr");
+  const annualLkrMinor = convertMajorToMinor(pricingConfig.annualLkr, "lkr");
+
+  if (Number.isFinite(monthlyUsdMinor) && monthlyUsdMinor >= 50) {
+    catalog.professional_monthly_usd = {
+      ...catalog.professional_monthly_usd,
+      unitAmount: monthlyUsdMinor,
+    };
+  }
+  if (Number.isFinite(annualUsdMinor) && annualUsdMinor >= 50) {
+    catalog.professional_annual_usd = {
+      ...catalog.professional_annual_usd,
+      unitAmount: annualUsdMinor,
+    };
+  }
+  if (Number.isFinite(monthlyLkrMinor) && monthlyLkrMinor >= 50) {
+    catalog.professional_monthly_lkr = {
+      ...catalog.professional_monthly_lkr,
+      unitAmount: monthlyLkrMinor,
+    };
+  }
+  if (Number.isFinite(annualLkrMinor) && annualLkrMinor >= 50) {
+    catalog.professional_annual_lkr = {
+      ...catalog.professional_annual_lkr,
+      unitAmount: annualLkrMinor,
+    };
+  }
+  return catalog;
+};
+
+const normalizePromoCode = (value) =>
+  String(value || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+
+const resolvePromoForCheckout = async ({
+  promoCode = "",
+  selectedPlan = null,
+  baseUnitAmount = null,
+}) => {
+  const normalizedCode = normalizePromoCode(promoCode);
+  if (!normalizedCode || !selectedPlan) {
+    return {
+      promo: null,
+      discountAmount: 0,
+      finalUnitAmount: Number(
+          Number.isFinite(Number(baseUnitAmount)) ?
+            Number(baseUnitAmount) :
+            Number((selectedPlan && selectedPlan.unitAmount) || 0),
+      ),
+    };
+  }
+
+  const promoQuery = await admin
+      .firestore()
+      .collection("promoCodes")
+      .where("code", "==", normalizedCode)
+      .limit(1)
+      .get();
+
+  if (promoQuery.empty) {
+    throw new Error("Invalid promo code.");
+  }
+
+  const promoDoc = promoQuery.docs[0];
+  const promo = promoDoc.data() || {};
+  const now = Date.now();
+  const validFromMs = promo.validFrom ? new Date(promo.validFrom).getTime() : 0;
+  const validUntilMs = promo.validUntil ?
+    new Date(promo.validUntil).getTime() :
+    0;
+  const isActive = promo.isActive !== false;
+
+  if (!isActive) {
+    throw new Error("Promo code is inactive.");
+  }
+  if (validFromMs && validFromMs > now) {
+    throw new Error("Promo code is not active yet.");
+  }
+  if (validUntilMs && validUntilMs < now) {
+    throw new Error("Promo code has expired.");
+  }
+
+  const maxRedemptions = Number(promo.maxRedemptions || 0);
+  const redemptionCount = Number(promo.redemptionCount || 0);
+  if (maxRedemptions > 0 && redemptionCount >= maxRedemptions) {
+    throw new Error("Promo code redemption limit reached.");
+  }
+
+  const planIds = Array.isArray(promo.planIds) ?
+    promo.planIds.map((id) => String(id || "")) :
+    [];
+  const planId = String(selectedPlan.planId || "");
+  if (planIds.length && !planIds.includes(planId)) {
+    throw new Error("Promo code is not valid for this plan.");
+  }
+
+  const promoCurrency = String(promo.currency || "").trim().toLowerCase();
+  const planCurrency = String(selectedPlan.currency || "").trim().toLowerCase();
+  if (promoCurrency && promoCurrency !== planCurrency) {
+    throw new Error("Promo code is not valid for this currency.");
+  }
+
+  const effectiveBaseUnitAmount = Number.isFinite(Number(baseUnitAmount)) ?
+    Number(baseUnitAmount) :
+    Number(selectedPlan.unitAmount || 0);
+  const discountType = String(promo.discountType || "percent").toLowerCase();
+  let discountAmount = 0;
+  if (discountType === "fixed") {
+    discountAmount = Math.max(0, Number(promo.fixedAmountMinor || 0));
+  } else {
+    const percent = Math.min(100, Math.max(0, Number(promo.percentOff || 0)));
+    discountAmount = Math.round(effectiveBaseUnitAmount * (percent / 100));
+  }
+
+  const finalUnitAmount = Math.max(
+      50,
+      effectiveBaseUnitAmount - discountAmount,
+  );
+  if (finalUnitAmount >= effectiveBaseUnitAmount) {
+    throw new Error("Promo code does not reduce this plan price.");
+  }
+
+  return {
+    promo: {
+      id: promoDoc.id,
+      code: normalizedCode,
+      discountType,
+      percentOff: Number(promo.percentOff || 0),
+      fixedAmountMinor: Number(promo.fixedAmountMinor || 0),
+    },
+    discountAmount,
+    finalUnitAmount,
+  };
+};
+
+const recordPromoRedemption = async ({promoId = "", sessionId = ""}) => {
+  const normalizedPromoId = String(promoId || "").trim();
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedPromoId || !normalizedSessionId) return;
+
+  const lockRef = admin
+      .firestore()
+      .collection("promoRedemptionLocks")
+      .doc(
+          `${normalizedPromoId}_${normalizedSessionId}`
+              .replace(/[^a-zA-Z0-9_-]/g, "_"),
+      );
+  try {
+    await lockRef.create({
+      promoId: normalizedPromoId,
+      sessionId: normalizedSessionId,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error && error.code === 6) return;
+    throw error;
+  }
+
+  const promoRef = admin
+      .firestore()
+      .collection("promoCodes")
+      .doc(normalizedPromoId);
+  await promoRef.set({
+    redemptionCount: admin.firestore.FieldValue.increment(1),
+    updatedAt: new Date().toISOString(),
+  }, {merge: true});
+};
+
 const cleanupExpiredInMemoryGuards = (now = Date.now()) => {
   for (const [key, entry] of openaiProxyRateLimits.entries()) {
     if (
@@ -97,6 +334,8 @@ exports.__resetInMemoryGuardsForTests = () => {
   openaiProxyRateLimits.clear();
   smsDedupeCache.clear();
 };
+exports.__resolvePlanCatalogForCheckoutForTests = resolvePlanCatalogForCheckout;
+exports.__hasDoctorPriorPaymentHistoryForTests = hasDoctorPriorPaymentHistory;
 
 const setCors = (req, res) => {
   const origin = req.headers.origin || "*";
@@ -1077,7 +1316,14 @@ const addIntervalToIsoDate = (isoDate, interval) => {
 };
 
 const resolveDoctorIdForStripe = async (
-    {doctorId = "", metadataDoctorId = "", userEmail = "", customerId = ""},
+    {
+      doctorId = "",
+      metadataDoctorId = "",
+      userEmail = "",
+      customerId = "",
+      userUid = "",
+      metadataUserUid = "",
+    },
 ) => {
   const doctorsRef = admin.firestore().collection("doctors");
   const directDoctorId = String(doctorId || "").trim();
@@ -1099,6 +1345,23 @@ const resolveDoctorIdForStripe = async (
         .limit(1)
         .get();
     if (!byCustomer.empty) return byCustomer.docs[0].id;
+  }
+
+  const uidCandidates = [
+    String(userUid || "").trim(),
+    String(metadataUserUid || "").trim(),
+  ].filter(Boolean);
+  if (uidCandidates.length) {
+    const uidFields = ["uid", "firebaseUid", "userUid", "authUid"];
+    for (const candidate of uidCandidates) {
+      for (const field of uidFields) {
+        const byUid = await doctorsRef
+            .where(field, "==", candidate)
+            .limit(1)
+            .get();
+        if (!byUid.empty) return byUid.docs[0].id;
+      }
+    }
   }
 
   const normalizedEmail = String(userEmail || "").trim().toLowerCase();
@@ -1128,6 +1391,8 @@ const applyDoctorPaymentSuccess = async ({
   subscriptionId = "",
   paidAt = "",
   paymentReferenceId = "",
+  paidAmountMinor = null,
+  paidCurrency = "",
 }) => {
   const normalizedReferenceId = String(
       paymentReferenceId || sessionId || "",
@@ -1194,8 +1459,12 @@ const applyDoctorPaymentSuccess = async ({
     source: "stripe",
     status: "paid",
     monthsDelta,
-    amount: selectedPlan ? Number(selectedPlan.unitAmount || 0) / 100 : 0,
-    currency: selectedPlan ? selectedPlan.currency : "",
+    amount: Number.isFinite(Number(paidAmountMinor)) ?
+      Number(paidAmountMinor) / 100 :
+      (selectedPlan ? Number(selectedPlan.unitAmount || 0) / 100 : 0),
+    currency: String(
+        paidCurrency || (selectedPlan ? selectedPlan.currency : ""),
+    ).toUpperCase(),
     referenceId: String(
         normalizedReferenceId || subscriptionId || sessionId || "",
     ),
@@ -1206,6 +1475,10 @@ const applyDoctorPaymentSuccess = async ({
       sessionId: String(sessionId || ""),
       subscriptionId: String(subscriptionId || ""),
       customerId: String(customerId || ""),
+      paidAmountMinor: Number.isFinite(Number(paidAmountMinor)) ?
+        Number(paidAmountMinor) :
+        null,
+      paidCurrency: String(paidCurrency || "").toUpperCase(),
     },
   });
   const updatedDoctorSnap = await doctorRef.get();
@@ -2776,10 +3049,18 @@ exports.createStripeCheckoutSession = onRequest(
         return;
       }
 
-      const {planId, doctorId, email, successUrl, cancelUrl} = req.body || {};
-      const selectedPlan = STRIPE_PLAN_CATALOG[String(planId || "")];
+      const {
+        planId,
+        doctorId,
+        email,
+        successUrl,
+        cancelUrl,
+        promoCode,
+      } = req.body || {};
+      const normalizedPlanId = String(planId || "");
+      const baseSelectedPlan = STRIPE_PLAN_CATALOG[normalizedPlanId];
 
-      if (!selectedPlan) {
+      if (!baseSelectedPlan) {
         res.status(400).json({
           success: false,
           error: "Invalid plan selected.",
@@ -2797,6 +3078,65 @@ exports.createStripeCheckoutSession = onRequest(
         "checkout=cancel";
 
       try {
+        const resolvedDoctorId = await resolveDoctorIdForStripe({
+          doctorId: String(doctorId || ""),
+          metadataDoctorId: String(doctorId || ""),
+          userEmail: String(currentUser.email || email || ""),
+          customerId: "",
+          userUid: String(currentUser.uid || ""),
+          metadataUserUid: String(currentUser.uid || ""),
+        });
+        let adminDiscountPercent = 0;
+        let doctorData = {};
+        if (resolvedDoctorId) {
+          const doctorSnap = await admin.firestore()
+              .collection("doctors")
+              .doc(resolvedDoctorId)
+              .get();
+          doctorData = doctorSnap.exists ? doctorSnap.data() : {};
+          const adminDiscountRaw = doctorData ?
+            doctorData.adminStripeDiscountPercent :
+            0;
+          adminDiscountPercent = Math.max(
+              0,
+              Math.min(
+                  100,
+                  Number(adminDiscountRaw || 0),
+              ),
+          );
+        }
+
+        const pricingConfig = await resolveStripePricingConfig();
+        const selectedPlanCatalog = resolvePlanCatalogForCheckout({
+          pricingConfig,
+          isNewCustomer: !hasDoctorPriorPaymentHistory(doctorData),
+        });
+        const selectedPlan = selectedPlanCatalog[normalizedPlanId] ||
+          baseSelectedPlan;
+
+        const originalUnitAmount = Number(selectedPlan.unitAmount || 0);
+        const adminDiscountAmount = Math.round(
+            originalUnitAmount * (adminDiscountPercent / 100),
+        );
+        const amountAfterAdminDiscount = Math.max(
+            50,
+            originalUnitAmount - adminDiscountAmount,
+        );
+        const promoResolution = await resolvePromoForCheckout({
+          promoCode,
+          selectedPlan: {
+            ...selectedPlan,
+            planId: String(planId || ""),
+          },
+          baseUnitAmount: amountAfterAdminDiscount,
+        });
+        const finalUnitAmount = Number(
+            promoResolution.finalUnitAmount || amountAfterAdminDiscount,
+        );
+        const totalDiscountAmount = Math.max(
+            0,
+            originalUnitAmount - finalUnitAmount,
+        );
         const stripe = new Stripe(secretKey, {
           apiVersion: "2025-01-27.acacia",
         });
@@ -2812,7 +3152,7 @@ exports.createStripeCheckoutSession = onRequest(
               quantity: 1,
               price_data: {
                 currency: selectedPlan.currency,
-                unit_amount: selectedPlan.unitAmount,
+                unit_amount: finalUnitAmount,
                 recurring: {
                   interval: selectedPlan.interval,
                 },
@@ -2826,9 +3166,17 @@ exports.createStripeCheckoutSession = onRequest(
           ],
           metadata: {
             planId: String(planId || ""),
-            doctorId: String(doctorId || ""),
+            doctorId: String(resolvedDoctorId || doctorId || ""),
             userUid: String(currentUser.uid || ""),
             userEmail: String(currentUser.email || email || ""),
+            promoCode: String(
+                (promoResolution.promo && promoResolution.promo.code) || "",
+            ),
+            promoCodeId: String(
+                (promoResolution.promo && promoResolution.promo.id) || "",
+            ),
+            adminDiscountPercent: String(adminDiscountPercent),
+            adminDiscountAmountMinor: String(adminDiscountAmount),
           },
           allow_promotion_codes: true,
         });
@@ -2838,11 +3186,24 @@ exports.createStripeCheckoutSession = onRequest(
           checkoutUrl: session.url || "",
           userUid: currentUser.uid || null,
           userEmail: currentUser.email || email || null,
-          doctorId: doctorId || null,
+          doctorId: resolvedDoctorId || doctorId || null,
           planId: String(planId || ""),
-          amount: selectedPlan.unitAmount,
+          amount: finalUnitAmount,
+          originalAmount: originalUnitAmount,
+          discountAmount: totalDiscountAmount,
+          adminDiscountPercent: Number(adminDiscountPercent || 0),
+          adminDiscountAmount: Number(adminDiscountAmount || 0),
+          promoDiscountAmount: Number(
+              Math.max(0, amountAfterAdminDiscount - finalUnitAmount),
+          ),
           currency: selectedPlan.currency,
           interval: selectedPlan.interval,
+          promoCode: String(
+              (promoResolution.promo && promoResolution.promo.code) || "",
+          ),
+          promoCodeId: String(
+              (promoResolution.promo && promoResolution.promo.id) || "",
+          ),
           status: "created",
           createdAt: new Date().toISOString(),
         });
@@ -2851,6 +3212,15 @@ exports.createStripeCheckoutSession = onRequest(
           success: true,
           sessionId: session.id,
           url: session.url,
+          promoApplied: Boolean(promoResolution.promo),
+          promoCode: String(
+              (promoResolution.promo && promoResolution.promo.code) || "",
+          ),
+          originalAmount: originalUnitAmount,
+          discountedAmount: finalUnitAmount,
+          discountAmount: totalDiscountAmount,
+          adminDiscountPercent: Number(adminDiscountPercent || 0),
+          adminDiscountAmount: Number(adminDiscountAmount || 0),
         });
       } catch (error) {
         logger.error("Failed to create Stripe checkout session:", error);
@@ -2940,6 +3310,10 @@ exports.confirmStripeCheckoutSuccess = onRequest(
           ),
           userEmail,
           customerId: String(session.customer || ""),
+          userUid: String(currentUser.uid || ""),
+          metadataUserUid: String(
+              (session.metadata && session.metadata.userUid) || "",
+          ),
         });
 
         if (!resolvedDoctorId) {
@@ -2964,6 +3338,14 @@ exports.confirmStripeCheckoutSuccess = onRequest(
           customerId: String(session.customer || ""),
           subscriptionId,
           paidAt: nowIso,
+          paidAmountMinor: Number(session.amount_total || 0),
+          paidCurrency: String(session.currency || ""),
+        });
+        await recordPromoRedemption({
+          promoId: String(
+              (session.metadata && session.metadata.promoCodeId) || "",
+          ),
+          sessionId: String(session.id || parsedSessionId),
         });
 
         const logSnapshot = await admin.firestore()
@@ -3055,6 +3437,9 @@ exports.stripeWebhook = onRequest(
             ),
             userEmail: String(session.customer_email || ""),
             customerId: String(session.customer || ""),
+            metadataUserUid: String(
+                (session.metadata && session.metadata.userUid) || "",
+            ),
           });
           if (resolvedDoctorId) {
             await applyDoctorPaymentSuccess({
@@ -3066,6 +3451,14 @@ exports.stripeWebhook = onRequest(
               customerId: String(session.customer || ""),
               subscriptionId: String(session.subscription || ""),
               paidAt: new Date().toISOString(),
+              paidAmountMinor: Number(session.amount_total || 0),
+              paidCurrency: String(session.currency || ""),
+            });
+            await recordPromoRedemption({
+              promoId: String(
+                  (session.metadata && session.metadata.promoCodeId) || "",
+              ),
+              sessionId: String(session.id || ""),
             });
           }
         } else if (event.type === "invoice.paid") {
@@ -3084,6 +3477,9 @@ exports.stripeWebhook = onRequest(
             metadataDoctorId: "",
             userEmail: String(invoice.customer_email || ""),
             customerId: String(invoice.customer || ""),
+            metadataUserUid: String(
+                (invoice.metadata && invoice.metadata.userUid) || "",
+            ),
           });
           if (resolvedDoctorId) {
             await applyDoctorPaymentSuccess({
@@ -3095,6 +3491,8 @@ exports.stripeWebhook = onRequest(
               customerId: String(invoice.customer || ""),
               subscriptionId: String(invoice.subscription || ""),
               paidAt: new Date().toISOString(),
+              paidAmountMinor: Number(invoice.amount_paid || 0),
+              paidCurrency: String(invoice.currency || ""),
             });
           }
         } else if (
@@ -3107,6 +3505,9 @@ exports.stripeWebhook = onRequest(
             metadataDoctorId: "",
             userEmail: String(obj.customer_email || ""),
             customerId: String(obj.customer || ""),
+            metadataUserUid: String(
+                (obj.metadata && obj.metadata.userUid) || "",
+            ),
           });
           if (resolvedDoctorId) {
             await admin.firestore()

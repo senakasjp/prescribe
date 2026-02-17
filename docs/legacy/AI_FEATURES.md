@@ -1,8 +1,10 @@
 # AI-Powered Medical Recommendations
 
+> Legacy AI feature note. Canonical docs: `PRODUCT_MANUAL.md`, `ENGINEERING_MANUAL.md`, and `CHANGELOG.md`.
+
 This document describes the AI features integrated into the M-Prescribe Patient Management System.
 
-## 🆕 Recent Updates (January 16, 2025)
+## 🆕 Recent Updates (February 17, 2026)
 
 ### **🟠 AI-Enhanced Stock Management**
 - **Smart Drug Suggestions**: AI-powered medication recommendations with country-specific drug availability

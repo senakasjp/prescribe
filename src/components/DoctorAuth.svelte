@@ -160,12 +160,12 @@
   <div class="space-y-3">
     <button
       type="button"
-      class="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center"
+      class="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed flex items-center justify-center dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-100 dark:border-slate-600 dark:disabled:bg-slate-700"
       on:click={handleGoogleLogin}
       disabled={loading || googleLoading}
     >
       {#if googleLoading}
-        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500 dark:text-slate-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
@@ -177,19 +177,19 @@
     </button>
 
     <div class="flex items-center gap-3 py-4">
-      <div class="h-px flex-1 bg-gray-200"></div>
-      <span class="text-xs font-bold text-gray-600">OR</span>
-      <div class="h-px flex-1 bg-gray-200"></div>
+      <div class="h-px flex-1 bg-gray-200 dark:bg-slate-600"></div>
+      <span class="text-xs font-bold text-gray-600 dark:text-slate-300">OR</span>
+      <div class="h-px flex-1 bg-gray-200 dark:bg-slate-600"></div>
     </div>
   </div>
 
   {#if isRegistering}
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div>
-        <label for="firstName" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+        <label for="firstName" class="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-200">First Name</label>
         <input 
           type="text" 
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
           id="firstName" 
           bind:value={firstName}
           placeholder="Enter first name"
@@ -198,10 +198,10 @@
         >
       </div>
       <div>
-        <label for="lastName" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+        <label for="lastName" class="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-200">Last Name</label>
         <input 
           type="text" 
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
           id="lastName" 
           bind:value={lastName}
           placeholder="Enter last name"
@@ -213,7 +213,7 @@
   {/if}
   
   <div>
-    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+    <label for="email" class="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-200">
       {#if isRegistering}
         Email Address
       {:else}
@@ -223,7 +223,7 @@
     {#if isRegistering}
       <input 
         type="email"
-        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
         id="email" 
         bind:value={email}
         placeholder="Enter email address"
@@ -233,7 +233,7 @@
     {:else}
       <input 
         type="text"
-        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
         id="email" 
         bind:value={email}
         placeholder="Enter email or username"
@@ -245,11 +245,11 @@
   
   {#if isRegistering}
     <div>
-      <label for="country" class="block text-sm font-medium text-gray-700 mb-1">
+      <label for="country" class="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-200">
         Country <span class="text-red-500">*</span>
       </label>
       <select 
-        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:disabled:bg-slate-700" 
         id="country" 
         bind:value={country}
         required
@@ -264,12 +264,12 @@
   {/if}
   
   <div>
-    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+    <label for="password" class="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-200">Password</label>
     <div class="relative">
       {#if showPassword}
         <input 
           type="text" 
-          class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
           id="password" 
           bind:value={password}
           placeholder="Enter password"
@@ -280,7 +280,7 @@
       {:else}
         <input 
           type="password" 
-          class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
           id="password" 
           bind:value={password}
           placeholder="Enter password"
@@ -291,7 +291,7 @@
       {/if}
       <button
         type="button"
-        class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700"
+        class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200"
         on:click={() => (showPassword = !showPassword)}
         aria-label={showPassword ? 'Hide password' : 'Show password'}
         aria-pressed={showPassword}
@@ -301,7 +301,7 @@
       </button>
     </div>
     {#if isRegistering}
-      <div class="mt-1 text-xs text-gray-600">
+      <div class="mt-1 text-xs text-gray-600 dark:text-slate-300">
         <i class="fas fa-shield-alt mr-1"></i>
         Password must be at least 8 characters with uppercase, lowercase, number, and special character
       </div>
@@ -310,12 +310,12 @@
   
   {#if isRegistering}
     <div>
-      <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+      <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-200">Confirm Password</label>
       <div class="relative">
         {#if showConfirmPassword}
           <input 
             type="text" 
-            class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
             id="confirmPassword" 
             bind:value={confirmPassword}
             placeholder="Confirm password"
@@ -325,7 +325,7 @@
         {:else}
           <input 
             type="password" 
-            class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full pr-10 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:bg-slate-900 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-700" 
             id="confirmPassword" 
             bind:value={confirmPassword}
             placeholder="Confirm password"
@@ -335,7 +335,7 @@
         {/if}
         <button
           type="button"
-          class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700"
+          class="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200"
           on:click={() => (showConfirmPassword = !showConfirmPassword)}
           aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
           aria-pressed={showConfirmPassword}
@@ -348,9 +348,9 @@
   {/if}
   
   {#if error}
-    <div class="bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
+    <div class="bg-red-50 border border-red-200 rounded-lg p-3 dark:bg-red-900/30 dark:border-red-800" role="alert">
       <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
-      <span class="text-sm text-red-700">{error}</span>
+      <span class="text-sm text-red-700 dark:text-red-300">{error}</span>
     </div>
   {/if}
   
@@ -374,14 +374,14 @@
     {#if allowRegister && !registerOnly}
       <button 
         type="button" 
-        class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400" 
+        class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 disabled:text-gray-400 dark:text-blue-400 dark:hover:text-blue-300 dark:disabled:text-slate-500" 
         on:click={toggleMode}
         disabled={loading}
       >
         {isRegistering ? 'Already have an account? Login' : 'Need an account? Register'}
       </button>
     {:else}
-      <a class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200" href="/?register=1#signin">
+      <a class="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors duration-200 dark:text-blue-400 dark:hover:text-blue-300" href="/?register=1#signin">
         {isRegistering ? 'Already have an account? Login' : 'Need an account? Register'}
       </a>
     {/if}

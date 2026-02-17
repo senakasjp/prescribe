@@ -567,12 +567,30 @@
       getMedicationDosageDisplay(medication),
       medication?.frequency,
       medication?.timing,
-      medication?.duration,
+      getPrintableDuration(medication?.duration),
       medication?.dosageForm
     ]
       .map(value => String(value || '').trim())
       .filter(Boolean)
       .join(' • ')
+  }
+
+  const getPrintableDuration = (duration) => {
+    const value = String(duration || '').trim()
+    if (!value) return ''
+    if (/^(?:days?|weeks?|months?|years?|hrs?|hours?|mins?|minutes?)$/i.test(value)) return ''
+    return value
+  }
+
+  const sanitizeMedicationForPharmacy = (medication) => {
+    const strength = String(medication?.strength ?? '').trim()
+    const strengthUnit = strength ? String(medication?.strengthUnit ?? '').trim() : ''
+    return {
+      ...medication,
+      strength,
+      strengthUnit,
+      duration: getPrintableDuration(medication?.duration)
+    }
   }
 
   const calculateMedicationQuantity = (medication) => {
@@ -600,6 +618,7 @@
     }
 
     const isLiquid = isLiquidMedication(medication)
+    const enteredCount = parsePositiveInteger(medication.qts)
 
     if (requiresQtsPricing(medication)) {
       const qtsQuantity = parsePositiveInteger(medication.qts)
@@ -621,27 +640,29 @@
     }
 
     if (!medication?.frequency || !medication?.duration) {
-      return 0
+      return enteredCount || 0
     }
 
     const durationMatch = medication.duration.match(/(\d+)\s*days?/i)
     if (!durationMatch) {
-      return 0
+      return enteredCount || 0
     }
     const days = parseInt(durationMatch[1], 10)
-    if (!Number.isFinite(days) || days <= 0) return 0
+    if (!Number.isFinite(days) || days <= 0) return enteredCount || 0
 
     const dailyFrequency = resolveDailyFrequency(medication.frequency)
-    if (!dailyFrequency) return 0
+    if (!dailyFrequency) return enteredCount || 0
     if (isLiquid) {
       const strengthMl = resolveStrengthToMl(medication?.strength, medication?.strengthUnit)
-      if (!strengthMl) return 0
+      if (!strengthMl) return enteredCount || 0
       const totalAmount = days * dailyFrequency * strengthMl
       return Math.ceil(totalAmount)
     }
     const dosageMultiplier = parseDosageMultiplier(medication.dosage)
     const totalAmount = days * dailyFrequency * dosageMultiplier
-    return Math.ceil(totalAmount)
+    const calculated = Math.ceil(totalAmount)
+    if (calculated > 0) return calculated
+    return enteredCount || 0
   }
 
   const buildExpectedPrescriptionForCharge = (medicationsOverride = null) => {
@@ -815,7 +836,7 @@
       return
     }
 
-    onShowPharmacyModal && onShowPharmacyModal(internalMedications)
+    onShowPharmacyModal && onShowPharmacyModal(internalMedications.map(sanitizeMedicationForPharmacy))
   }
   
   // Determine doctor identifier reactively and load stock

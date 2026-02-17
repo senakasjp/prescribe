@@ -1,6 +1,8 @@
 # Development Guide
 
-## 📋 Recent Updates (January 16, 2025)
+> Legacy development log. Canonical technical setup/deployment guidance is in `ENGINEERING_MANUAL.md`.
+
+## 📋 Recent Updates (February 17, 2026)
 
 ### **🏥 Dispensed Status Integration System (Latest)**
 - **Service Layer Architecture**: Implemented `prescriptionStatusService.js` for secure cross-portal communication

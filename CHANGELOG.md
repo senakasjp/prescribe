@@ -1,5 +1,66 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.14 - Admin Payment Pricing Controls + Scope Rules (February 17, 2026)
+
+### 💳 Admin Payment Pricing Module
+- Implemented a real Payments configuration module in Admin:
+  - Editable plan prices for:
+    - USD monthly
+    - USD annual
+    - LKR monthly
+    - LKR annual
+  - Scope selection:
+    - `new_customers`
+    - `all_customers`
+  - Enable/disable toggle for custom pricing.
+- Implemented in:
+  - `src/components/AdminDashboard.svelte`
+  - `src/services/firebaseStorage.js`
+
+### ☁️ Stripe Checkout Pricing Enforcement
+- Checkout now reads admin-configured pricing from Firestore (`systemSettings/paymentPricing`).
+- Scope is enforced server-side:
+  - Apply only to new customers when `appliesTo = new_customers`
+  - Apply to everyone when `appliesTo = all_customers`
+- Keeps default catalog pricing when settings are missing/disabled/invalid.
+- Implemented in:
+  - `functions/index.js`
+
+### 🧪 Tests
+- Added Admin UI coverage:
+  - `src/tests/components/AdminDashboard.test.js`
+  - Verifies loading and saving payment pricing values + scope.
+- Added Firestore service coverage:
+  - `src/tests/unit/firebaseStorage.paymentPricingSettings.test.js`
+  - Verifies get/save behavior for `paymentPricing` settings.
+- Added backend pricing-rule coverage:
+  - `src/tests/unit/stripePricingConfig.test.js`
+  - Verifies default fallback, `new_customers` scope, `all_customers` scope, and invalid-value handling.
+
+## Version 2.3.13 - Quantity Fallback + PDF Volume Labeling (February 16, 2026)
+
+### 💊 Count-Based Quantity Fallback (Pricing + Pharmacy Payload)
+- Fixed quantity mapping for count-based medications when derived quantity cannot be computed from frequency/duration/strength.
+- The system now falls back to the entered prescription count (`qts`) so these medications are still priced and sent with a usable amount.
+- Applied in:
+  - `src/services/pharmacist/chargeCalculationService.js`
+  - `src/components/PrescriptionsTab.svelte`
+  - `src/components/PatientDetails.svelte`
+
+### 🧾 PDF Second-Line Labeling
+- Standardized second-line inventory labeling:
+  - Use `Vol:` when inventory value represents volume (volume dispense forms and `ml/l` values).
+  - Use `Strength:` for non-volume inventory strength values.
+- Applied in:
+  - `src/components/PrescriptionPDF.svelte`
+  - `src/components/PatientDetails.svelte`
+
+### 🧪 Tests
+- Added/updated targeted regression tests:
+  - `src/tests/unit/chargeCalculationService.test.js` (entered-count fallback coverage)
+  - `src/tests/integration/inventoryToPdfAndPharmacyFlow.test.js` (inventory-to-PDF volume label flow)
+  - `src/tests/components/PrescriptionPDF.test.js` (second-line label behavior)
+
 ## Version 2.3.12 - Doctor Payments + Stripe Checkout (February 15, 2026)
 
 ### 💳 New In-App Payments Page
@@ -58,6 +119,7 @@
 - Added idempotency notification test:
 - `src/tests/unit/stripePaymentNotifications.test.js`
 - Verifies duplicate payment callbacks (same Stripe payment reference) do not send duplicate payment-success email/SMS and do not duplicate payment ledger records.
+- Fixed doctor resolution for Stripe updates by adding UID-based fallback matching (`uid` / `firebaseUid` / `userUid` / `authUid`) in payment confirmation and webhook handling so doctor billing wallet/status updates reliably apply.
 - Added admin doctor-wallet detail coverage:
 - `src/tests/components/AdminDashboard.test.js`
 - Verifies doctor detail page shows billing wallet records and referral free-month availability.
@@ -222,6 +284,15 @@
 
 ### ✅ Validation Status
 - Full suite green after changes: `431/431` tests passing.
+
+## Version 2.3.6 (Docs Addendum) - Dispense Form Categories (February 15, 2026)
+
+### 💊 Medication Category Documentation Update
+- Added documentation for three medication categories:
+- **QTY (sell as units)**: `Injection`, `Cream`, `Ointment`, `Gel`, `Suppository`, `Inhaler`, `Spray`, `Shampoo`, `Packet`, `Roll`
+- **Non-QTY**: `Tablet`, `Capsule`, `Liquid (measured)`
+- **Special QTY**: `Liquid (bottles)`
+- Updated wording in docs from **Dosage Form** context to **Dispense Form** category context.
 
 ## Version 2.3.5 - Qts-Based Non-Tablet Pricing (February 13, 2026)
 
@@ -521,7 +592,7 @@
 - **Component Cleanup**: Removed unnecessary preview button from SettingsPage.svelte
 - **Version Synchronization**: Updated version indicators across all components
 - **Interface Optimization**: Streamlined header editor interface for better usability
-- **Deployment**: Successfully deployed to https://prescribe-7e1e8.web.app
+- **Deployment**: Successfully deployed to https://mprescribe.net (legacy host: https://prescribe-7e1e8.web.app)
 
 ### 📋 Files Modified
 - `src/components/SettingsPage.svelte` - Removed redundant preview button

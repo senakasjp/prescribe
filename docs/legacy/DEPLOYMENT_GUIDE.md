@@ -1,5 +1,7 @@
 # Deployment Guide
 
+> Legacy deployment guide. Canonical deployment and environment guidance is in `ENGINEERING_MANUAL.md`.
+
 ## Overview
 This guide covers the complete deployment process for the Prescribe medical system, including environment setup, build configuration, and deployment to Firebase.
 

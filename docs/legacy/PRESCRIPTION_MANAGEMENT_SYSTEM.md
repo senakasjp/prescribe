@@ -301,11 +301,11 @@ const generatePrescriptionPreview = () => {
 
 ## PDF Generation
 
-### PrescriptionPDF.svelte (v2.2.21)
+### PrescriptionPDF.svelte (v2.3)
 
 #### PDF Formatting Specifications
 
-**Current Version**: v2.2.21 (January 2025)
+**Current Version**: v2.3 (February 2026)
 
 #### Page Layout
 - **Page Size**: A5 (148mm x 210mm)
@@ -363,7 +363,7 @@ Footer Disclaimer:     7pt (normal) - Validity statement
 
 **5. Footer** (on every page)
 - **Left**: Validity statement (7pt) - "This prescription is valid for 30 days from the date of issue."
-- **Right**: Version number (8pt) - "M-Prescribe v2.2.21"
+- **Right**: Version number (8pt) - "M-Prescribe v2.3"
 
 #### Multi-Page Support (v2.2.19+)
 - **Header Replication**: Captured header image appears on every page
@@ -455,7 +455,7 @@ const generatePDF = async () => {
   doc.setFontSize(7)
   doc.text('This prescription is valid for 30 days from the date of issue.', margin, pageHeight - 5)
   doc.setFontSize(8)
-  doc.text('M-Prescribe v2.2.21', pageWidth - margin, pageHeight - 5, { align: 'right' })
+  doc.text('M-Prescribe v2.3', pageWidth - margin, pageHeight - 5, { align: 'right' })
   
   // Open in new window instead of download
   const pdfBlob = doc.output('blob')

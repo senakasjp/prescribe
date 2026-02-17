@@ -1,8 +1,10 @@
 # Firebase Setup Guide
 
+> Legacy setup guide. Canonical technical source is `ENGINEERING_MANUAL.md`.
+
 This guide will help you set up Firebase for the M-Prescribe application.
 
-## 🆕 Recent Updates (January 16, 2025)
+## 🆕 Recent Updates (February 17, 2026)
 
 ### **🟠 Stock Management Collections**
 - **Pharmacist Stock Collection**: New `pharmacistStock` collection for drug inventory management

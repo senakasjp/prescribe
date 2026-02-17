@@ -32,6 +32,12 @@ class ChargeCalculationService {
 
   resolveRequestedQuantity(medication) {
     if (!medication) return 0
+    const enteredCount = this.toPositiveInteger(medication.qts)
+
+    if (this.isMeasuredLiquidMedication(medication)) {
+      const measuredLiquidAmount = this.calculateMeasuredLiquidAmount(medication)
+      if (measuredLiquidAmount > 0) return measuredLiquidAmount
+    }
 
     if (this.isQtsMedication(medication)) {
       const qtsQuantity = this.toPositiveInteger(medication.qts)
@@ -46,6 +52,7 @@ class ChargeCalculationService {
 
     if (liquidAmount > 0) return liquidAmount
     if (parsedQuantity !== null && parsedQuantity > 0) return parsedQuantity
+    if (enteredCount) return enteredCount
     return 0
   }
 
@@ -57,10 +64,16 @@ class ChargeCalculationService {
     return (
       unit === 'ml' ||
       unit === 'l' ||
-      dosageForm === 'liquid' ||
+      dosageForm.includes('liquid') ||
       strengthText.includes('ml') ||
       strengthText.includes(' l')
     )
+  }
+
+  isMeasuredLiquidMedication(medication) {
+    if (!medication) return false
+    const dosageForm = String(medication.dosageForm || medication.form || '').trim().toLowerCase()
+    return dosageForm === 'liquid (measured)'
   }
 
   resolveStrengthToMl(value, unitHint = '') {
@@ -106,6 +119,19 @@ class ChargeCalculationService {
   }
 
   calculateLiquidAmount(medication) {
+    const strengthMl = this.resolveStrengthToMl(
+      medication?.strength,
+      medication?.strengthUnit,
+    )
+    if (!strengthMl) return 0
+    const days = this.resolveDurationDays(medication?.duration)
+    if (!days) return 0
+    const dailyFrequency = this.resolveDailyFrequency(medication?.frequency)
+    if (!dailyFrequency) return 0
+    return strengthMl * dailyFrequency * days
+  }
+
+  calculateMeasuredLiquidAmount(medication) {
     const strengthMl = this.resolveStrengthToMl(
       medication?.strength,
       medication?.strengthUnit,
@@ -574,6 +600,7 @@ class ChargeCalculationService {
 
   buildInventoryPricingSources(medication, inventoryItems, inventoryContext) {
     const isLiquid = this.isLiquidMedication(medication)
+    const isMeasuredLiquid = this.isMeasuredLiquidMedication(medication)
     const sources = []
     const inventoryById = new Map()
     inventoryItems.forEach(item => inventoryById.set(item.id, item))
@@ -608,8 +635,11 @@ class ChargeCalculationService {
           entry.strengthUnit ?? entry.unit ?? entry.packUnit
         )
         if (packMl && packMl > 0) {
-          available = available * packMl
-          unitCost = unitCost / packMl
+          available *= packMl
+          unitCost /= packMl
+        } else if (isMeasuredLiquid) {
+          // Measured liquid pricing must use unit ml price from inventory.
+          return
         }
       }
 

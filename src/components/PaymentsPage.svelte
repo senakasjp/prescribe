@@ -2,6 +2,7 @@
   import { createEventDispatcher, onDestroy, onMount } from "svelte"
   import { onAuthStateChanged } from "firebase/auth"
   import { auth } from "../firebase-config.js"
+  import firebaseStorage from "../services/firebaseStorage.js"
   import { resolveCurrencyFromCountry } from "../utils/currencyByCountry.js"
 
   export let user = null
@@ -13,6 +14,23 @@
   let statusMessage = ""
   let statusTone = "info"
   let redirectHomeTimer = null
+  let billingHistory = []
+  let visibleBillingHistory = []
+  let displayedBillingHistory = []
+  let billingHistoryLoading = false
+  let billingHistoryError = ""
+  let loadedHistoryForDoctorId = ""
+  let billingHistoryExpanded = false
+  let billingHistoryCollapsed = false
+  let canExpandBillingHistory = false
+  let promoCode = ""
+  let activeTab = "payments"
+  let checkoutAdminDiscountPercent = 0
+  let serverDoctorProfile = null
+  let loadedDoctorProfileId = ""
+  const BILLING_HISTORY_PREVIEW_COUNT = 8
+  const SUCCESS_STATUSES = new Set(["confirmed", "paid", "succeeded", "complete", "completed", "recorded"])
+  const FAIL_STATUSES = new Set(["failed", "fail", "canceled", "cancelled"])
 
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
   const region = import.meta.env.VITE_FUNCTIONS_REGION || "us-central1"
@@ -29,8 +47,33 @@
     return code === "LKR" ? "LKR" : "USD"
   }
 
+  const parseDiscountPercent = (value) => {
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0
+    const raw = String(value ?? "").trim()
+    if (!raw) return 0
+    const direct = Number(raw)
+    if (Number.isFinite(direct)) return direct
+    const match = raw.match(/-?\d+(?:\.\d+)?/)
+    if (!match) return 0
+    const parsed = Number(match[0])
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  // Always prefer freshest server profile when available to avoid stale local session fields.
+  $: effectiveDoctor = serverDoctorProfile
+    ? { ...(user || {}), ...(serverDoctorProfile || {}) }
+    : user
+
   $: doctorCurrency = normalizedCurrency(
-    user?.currency || resolveCurrencyFromCountry(user?.country) || "USD"
+    effectiveDoctor?.currency || resolveCurrencyFromCountry(effectiveDoctor?.country) || "USD"
+  )
+  $: doctorAdminDiscountPercent = Math.max(
+    0,
+    Math.min(100, Math.max(
+      parseDiscountPercent(effectiveDoctor?.adminStripeDiscountPercent),
+      parseDiscountPercent(effectiveDoctor?.adminDiscountPercent),
+      parseDiscountPercent(checkoutAdminDiscountPercent)
+    ))
   )
 
   $: plans = doctorCurrency === "LKR"
@@ -39,6 +82,7 @@
           id: "professional_monthly_lkr",
           name: "Professional Monthly",
           price: "LKR 5,000",
+          amountMinor: 500000,
           cadence: "/month",
           note: "Unlimited core workflow tools for one clinic"
         },
@@ -46,6 +90,7 @@
           id: "professional_annual_lkr",
           name: "Professional Annual",
           price: "LKR 50,000",
+          amountMinor: 5000000,
           cadence: "/year",
           note: "Save two months compared with monthly billing"
         }
@@ -55,6 +100,7 @@
           id: "professional_monthly_usd",
           name: "Professional Monthly",
           price: "USD 20",
+          amountMinor: 2000,
           cadence: "/month",
           note: "Unlimited core workflow tools for one clinic"
         },
@@ -62,10 +108,19 @@
           id: "professional_annual_usd",
           name: "Professional Annual",
           price: "USD 200",
+          amountMinor: 20000,
           cadence: "/year",
           note: "Save two months compared with monthly billing"
         }
       ]
+
+  const formatAmountMinor = (minorAmount = 0, currencyCode = "USD") => {
+    const amount = Number(minorAmount || 0) / 100
+    return `${currencyCode} ${amount.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`
+  }
 
   const waitForAuthRestore = async (timeoutMs = 5000) => {
     try {
@@ -128,8 +183,114 @@
     }, 1600)
   }
 
+  const formatDateTime = (value) => {
+    if (!value) return "N/A"
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return "N/A"
+    return date.toLocaleString("en-GB", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    })
+  }
+
+  const formatBillingAmount = (record) => {
+    const currency = String(record?.currency || "").toUpperCase()
+    const amount = Number(record?.amount || 0)
+    if (!Number.isFinite(amount) || amount <= 0) return "-"
+    return `${currency ? `${currency} ` : ""}${amount.toFixed(2)}`
+  }
+
+  const getStripeOutcome = (record) => {
+    const status = String(record?.status || "").toLowerCase()
+    if (SUCCESS_STATUSES.has(status)) return "success"
+    if (FAIL_STATUSES.has(status)) return "fail"
+    return "pending"
+  }
+
+  const formatStripeOutcome = (record) => {
+    const outcome = getStripeOutcome(record)
+    if (outcome === "success") return "Success"
+    if (outcome === "fail") return "Fail"
+    return "Pending"
+  }
+
+  const loadBillingHistory = async (force = false) => {
+    const doctorId = String(user?.id || "").trim()
+    if (!doctorId) {
+      billingHistory = []
+      billingHistoryError = ""
+      return
+    }
+    if (!force && loadedHistoryForDoctorId === doctorId && billingHistory.length > 0) {
+      return
+    }
+    billingHistoryLoading = true
+    billingHistoryError = ""
+    try {
+      billingHistory = await firebaseStorage.getDoctorPaymentRecords(
+        doctorId,
+        200,
+        String(user?.email || "").trim().toLowerCase()
+      )
+      billingHistoryExpanded = false
+      billingHistoryCollapsed = false
+      loadedHistoryForDoctorId = doctorId
+    } catch (error) {
+      billingHistory = []
+      billingHistoryError = error?.message || "Unable to load billing history."
+    } finally {
+      billingHistoryLoading = false
+    }
+  }
+
+  const loadServerDoctorProfile = async (force = false) => {
+    const doctorId = String(user?.id || "").trim()
+    const doctorEmail = String(user?.email || "").trim()
+    if (!doctorId) {
+      serverDoctorProfile = null
+      loadedDoctorProfileId = ""
+      return
+    }
+    if (!force && loadedDoctorProfileId === doctorId && serverDoctorProfile) {
+      return
+    }
+    try {
+      let latestDoctor = await firebaseStorage.getDoctorById(doctorId)
+      if (!latestDoctor?.id && doctorEmail) {
+        latestDoctor = await firebaseStorage.getDoctorByEmail(doctorEmail)
+      }
+      if (latestDoctor?.id) {
+        serverDoctorProfile = latestDoctor
+      }
+      loadedDoctorProfileId = doctorId
+    } catch (error) {
+      // Keep using existing user prop when profile refresh fails.
+    }
+  }
+
+  $: visibleBillingHistory = (billingHistory || []).filter((record) => {
+    const source = String(record?.source || "").toLowerCase()
+    const sourceCollection = String(record?.sourceCollection || "").toLowerCase()
+    const isStripeRecord = source.includes("stripe") || sourceCollection.includes("stripe")
+    if (!isStripeRecord) return true
+    return getStripeOutcome(record) !== "pending"
+  })
+  $: displayedBillingHistory = billingHistoryExpanded
+    ? visibleBillingHistory
+    : visibleBillingHistory.slice(0, BILLING_HISTORY_PREVIEW_COUNT)
+  $: canExpandBillingHistory = visibleBillingHistory.length > BILLING_HISTORY_PREVIEW_COUNT
+
   const startCheckout = async (planId) => {
     if (loadingPlanId) return
+    if (doctorAdminDiscountPercent >= 100) {
+      statusTone = "info"
+      statusMessage = "This account has 100% admin discount. Payment is not required."
+      return
+    }
 
     loadingPlanId = planId
     statusMessage = ""
@@ -160,6 +321,7 @@
           currency: doctorCurrency,
           doctorId: user?.id || "",
           email: user?.email || "",
+          promoCode: promoCode.trim().toUpperCase(),
           successUrl,
           cancelUrl
         })
@@ -168,6 +330,23 @@
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload?.url) {
         throw new Error(payload?.error || "Unable to create checkout session.")
+      }
+
+      const original = Number(payload?.originalAmount || 0) / 100
+      const discounted = Number(payload?.discountedAmount || 0) / 100
+      const adminDiscountPercent = Number(payload?.adminDiscountPercent || 0)
+      checkoutAdminDiscountPercent = Math.max(0, Math.min(100, adminDiscountPercent))
+      if (checkoutAdminDiscountPercent >= 100) {
+        statusTone = "info"
+        statusMessage = "This account has 100% admin discount. Payment is not required."
+        return
+      }
+      if (payload?.promoApplied) {
+        statusTone = "info"
+        statusMessage = `${adminDiscountPercent > 0 ? `Admin discount ${adminDiscountPercent}% + ` : ""}promo ${payload?.promoCode || promoCode.trim().toUpperCase()} applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
+      } else if (adminDiscountPercent > 0) {
+        statusTone = "info"
+        statusMessage = `Admin discount ${adminDiscountPercent}% applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
       }
 
       try {
@@ -221,6 +400,7 @@
       if (payload?.doctor) {
         dispatch("profile-updated", payload.doctor)
       }
+      await loadBillingHistory(true)
       scheduleHomeRedirect()
     } catch (error) {
       statusTone = "error"
@@ -248,7 +428,17 @@
     if (checkoutStatus || sessionId) {
       clearPaymentReturnParams()
     }
+    await loadServerDoctorProfile(true)
+    await loadBillingHistory(true)
   })
+
+  $: if (user?.id && loadedDoctorProfileId !== user.id) {
+    loadServerDoctorProfile(true)
+  }
+
+  $: if (user?.id && loadedHistoryForDoctorId !== user.id) {
+    loadBillingHistory(true)
+  }
 
   onDestroy(() => {
     if (redirectHomeTimer) {
@@ -271,53 +461,210 @@
     </div>
 
     <div class="px-4 py-5 sm:px-6">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {#each plans as plan}
-          <article class="rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
-            <h3 class="text-base sm:text-lg font-semibold text-gray-900">{plan.name}</h3>
-            <p class="mt-2 text-2xl font-bold text-teal-700">
-              {plan.price}
-              <span class="text-sm font-medium text-gray-500">{plan.cadence}</span>
-            </p>
-            <p class="mt-2 text-sm text-gray-600">{plan.note}</p>
-            <button
-              type="button"
-              class="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={Boolean(loadingPlanId) || confirmingPayment}
-              on:click={() => startCheckout(plan.id)}
-            >
-              {#if loadingPlanId === plan.id}
-                <i class="fas fa-circle-notch fa-spin mr-2"></i>
-                Redirecting...
-              {:else}
-                <i class="fas fa-lock mr-2"></i>
-                Pay with Stripe
+      <div class="mb-5 border-b border-gray-200" role="tablist" aria-label="Payments sections">
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "payments"}
+            aria-controls="payments-tab-panel"
+            class="inline-flex items-center rounded-t-lg border px-4 py-2 text-sm font-semibold transition-colors {activeTab === 'payments' ? 'border-cyan-300 bg-cyan-50 text-cyan-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}"
+            on:click={() => { activeTab = "payments" }}
+          >
+            <i class="fas fa-credit-card mr-2"></i>
+            Payments
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "billing"}
+            aria-controls="billing-tab-panel"
+            class="inline-flex items-center rounded-t-lg border px-4 py-2 text-sm font-semibold transition-colors {activeTab === 'billing' ? 'border-cyan-300 bg-cyan-50 text-cyan-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}"
+            on:click={() => { activeTab = "billing" }}
+          >
+            <i class="fas fa-receipt mr-2"></i>
+            Billing History
+          </button>
+        </div>
+      </div>
+
+      {#if activeTab === "payments"}
+        <div id="payments-tab-panel" role="tabpanel">
+          {#if doctorAdminDiscountPercent > 0}
+            <div class="mb-4 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-800" role="status">
+              <i class="fas fa-percent mr-2"></i>
+              Admin discount active: <span class="font-semibold">{doctorAdminDiscountPercent}%</span>
+              {#if doctorAdminDiscountPercent >= 100}
+                . Full discount applied. Payment buttons are hidden.
               {/if}
-            </button>
-          </article>
-        {/each}
-      </div>
+            </div>
+          {/if}
 
-      {#if loadingPlanId || confirmingPayment}
-        <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">
-          <i class="fas fa-triangle-exclamation mr-2"></i>
-          Payment is in progress. Do not refresh, close this tab, or switch pages until payment is complete.
+          <div class="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <label for="promoCode" class="block text-sm font-semibold text-gray-900">Promo code (optional)</label>
+            <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                id="promoCode"
+                type="text"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm uppercase tracking-wide text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:border-cyan-400"
+                placeholder="e.g. NEWDOC25"
+                bind:value={promoCode}
+                maxlength="24"
+              />
+              <button
+                type="button"
+                class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                on:click={() => {
+                  promoCode = promoCode.trim().toUpperCase()
+                }}
+              >
+                Apply Format
+              </button>
+            </div>
+            <p class="mt-2 text-xs text-gray-500">Promo is validated securely on server during checkout creation.</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {#each plans as plan}
+              <article class="rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
+                <h3 class="text-base sm:text-lg font-semibold text-gray-900">{plan.name}</h3>
+                {#if doctorAdminDiscountPercent > 0}
+                  {@const discountedMinor = Math.max(0, Math.round(Number(plan.amountMinor || 0) * (1 - doctorAdminDiscountPercent / 100)))}
+                  <p class="mt-2 text-sm text-gray-500 line-through">
+                    {plan.price}
+                    <span class="text-xs font-medium text-gray-400">{plan.cadence}</span>
+                  </p>
+                  <p class="text-2xl font-bold text-teal-700">
+                    {doctorAdminDiscountPercent >= 100 ? "FREE" : formatAmountMinor(discountedMinor, doctorCurrency)}
+                    <span class="text-sm font-medium text-gray-500">{plan.cadence}</span>
+                  </p>
+                {:else}
+                  <p class="mt-2 text-2xl font-bold text-teal-700">
+                    {plan.price}
+                    <span class="text-sm font-medium text-gray-500">{plan.cadence}</span>
+                  </p>
+                {/if}
+                <p class="mt-2 text-sm text-gray-600">{plan.note}</p>
+                {#if doctorAdminDiscountPercent < 100}
+                  <button
+                    type="button"
+                    class="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={Boolean(loadingPlanId) || confirmingPayment}
+                    on:click={() => startCheckout(plan.id)}
+                  >
+                    {#if loadingPlanId === plan.id}
+                      <i class="fas fa-circle-notch fa-spin mr-2"></i>
+                      Redirecting...
+                    {:else}
+                      <i class="fas fa-lock mr-2"></i>
+                      Pay with Stripe
+                    {/if}
+                  </button>
+                {/if}
+              </article>
+            {/each}
+          </div>
+
+          {#if loadingPlanId || confirmingPayment}
+            <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">
+              <i class="fas fa-triangle-exclamation mr-2"></i>
+              Payment is in progress. Do not refresh, close this tab, or switch pages until payment is complete.
+            </div>
+          {/if}
+
+          {#if statusMessage}
+            <div
+              class="mt-4 rounded-lg border px-4 py-3 text-sm {statusTone === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-cyan-200 bg-cyan-50 text-cyan-700'}"
+              role="alert"
+            >
+              {statusMessage}
+            </div>
+          {/if}
+
+          <div class="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs sm:text-sm text-blue-700">
+            <i class="fas fa-shield-alt mr-2"></i>
+            Payments are processed by Stripe. Card data is never stored in M-Prescribe.
+          </div>
         </div>
       {/if}
 
-      {#if statusMessage}
-        <div
-          class="mt-4 rounded-lg border px-4 py-3 text-sm {statusTone === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-cyan-200 bg-cyan-50 text-cyan-700'}"
-          role="alert"
-        >
-          {statusMessage}
+      {#if activeTab === "billing"}
+        <div id="billing-tab-panel" role="tabpanel" class="rounded-xl border border-gray-200 bg-white">
+          <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+            <h3 class="text-base font-semibold text-gray-900">
+              <i class="fas fa-receipt mr-2 text-teal-600"></i>
+              Billing History
+            </h3>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                on:click={() => {
+                  billingHistoryCollapsed = !billingHistoryCollapsed
+                }}
+              >
+                <i class="fas {billingHistoryCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'} mr-2"></i>
+                {billingHistoryCollapsed ? "Show history" : "Shrink history"}
+              </button>
+              <button
+                type="button"
+                class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                on:click={() => loadBillingHistory(true)}
+                disabled={billingHistoryLoading}
+              >
+                <i class="fas fa-sync-alt mr-2"></i>
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div class="p-4">
+            {#if billingHistoryCollapsed}
+              <p class="text-sm text-gray-500">Billing history is collapsed.</p>
+            {:else if billingHistoryError}
+              <p class="text-sm text-red-600">{billingHistoryError}</p>
+            {:else if billingHistoryLoading}
+              <p class="text-sm text-gray-500">Loading billing history...</p>
+            {:else if visibleBillingHistory.length === 0}
+              <p class="text-sm text-gray-500">No Stripe-confirmed billing records yet.</p>
+            {:else}
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Time</th>
+                      <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Amount</th>
+                      <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 bg-white">
+                    {#each displayedBillingHistory as record (record.id)}
+                      <tr>
+                        <td class="px-3 py-2 text-gray-900">{formatDateTime(record.createdAt)}</td>
+                        <td class="px-3 py-2 text-gray-700">{formatBillingAmount(record)}</td>
+                        <td class="px-3 py-2 text-gray-700">{formatStripeOutcome(record)}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+              {#if canExpandBillingHistory}
+                <div class="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    class="inline-flex items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    on:click={() => {
+                      billingHistoryExpanded = !billingHistoryExpanded
+                    }}
+                  >
+                    <i class="fas {billingHistoryExpanded ? 'fa-compress-alt' : 'fa-expand-alt'} mr-2"></i>
+                    {billingHistoryExpanded ? "Show less" : "Expand history"}
+                  </button>
+                </div>
+              {/if}
+            {/if}
+          </div>
         </div>
       {/if}
-
-      <div class="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs sm:text-sm text-blue-700">
-        <i class="fas fa-shield-alt mr-2"></i>
-        Payments are processed by Stripe. Card data is never stored in M-Prescribe.
-      </div>
     </div>
   </div>
 </section>

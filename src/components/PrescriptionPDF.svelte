@@ -47,10 +47,19 @@
   }
 
   const parseStrengthParts = (medication) => {
-    const rawStrength = medication?.strength ?? medication?.dosage ?? ''
+    const rawStrength = medication?.strength ?? ''
     const rawUnit = medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? ''
+    const inventoryStrengthText = String(
+      medication?.inventoryStrengthText
+      || findInventoryStrengthText(medication)
+      || ''
+    ).trim()
 
     if (!rawStrength) {
+      const inventoryMatch = inventoryStrengthText.match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)?$/)
+      if (inventoryMatch) {
+        return { strength: inventoryMatch[1], strengthUnit: inventoryMatch[2] || rawUnit || '' }
+      }
       return { strength: '', strengthUnit: rawUnit || '' }
     }
 
@@ -96,6 +105,11 @@
     return total
   }
 
+  const parsePositiveNumber = (value) => {
+    const parsed = Number(String(value ?? '').trim())
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }
+
   const formatDosageFormLabel = (form, isPlural) => {
     const trimmed = String(form || '').trim()
     const base = trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : 'Tablet'
@@ -122,7 +136,37 @@
     return Boolean(
       strengthUnit &&
       ['ml', 'l'].includes(String(strengthUnit).toLowerCase())
-    ) || dosageForm === 'liquid' || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
+    ) || dosageForm.includes('liquid') || strengthTextLower.includes('ml') || strengthTextLower.includes(' l')
+  }
+
+  const isMeasuredLiquidMedication = (medication) => {
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    return dosageForm === 'liquid (measured)'
+  }
+
+  const isBottledLiquidMedication = (medication) => {
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    return dosageForm === 'liquid (bottles)'
+  }
+
+  const resolveDailyFrequency = (frequency = '') => {
+    const value = String(frequency).toLowerCase()
+    if (value.includes('once daily') || value.includes('(od)') || value.includes('mane') || value.includes('nocte') || value.includes('noon') || value.includes('vesper')) return 1
+    if (value.includes('twice daily') || value.includes('(bd)')) return 2
+    if (value.includes('three times daily') || value.includes('(tds)')) return 3
+    if (value.includes('four times daily') || value.includes('(qds)')) return 4
+    if (value.includes('every 4 hours') || value.includes('(q4h)')) return 6
+    if (value.includes('every 6 hours') || value.includes('(q6h)')) return 4
+    if (value.includes('every 8 hours') || value.includes('(q8h)')) return 3
+    if (value.includes('every 12 hours') || value.includes('(q12h)')) return 2
+    return 0
+  }
+
+  const resolveDurationDays = (duration = '') => {
+    const match = String(duration || '').match(/(\d+)\s*days?/i)
+    if (!match) return 0
+    const days = parseInt(match[1], 10)
+    return Number.isFinite(days) ? days : 0
   }
 
   const requiresQtsPricing = (medication) => {
@@ -156,6 +200,68 @@
     const qtsMetaLine = getQtsMetaLine(medication)
     if (qtsMetaLine) return qtsMetaLine
     const parts = []
+    const medicationSource = String(medication?.source || '').trim().toLowerCase()
+    const inventoryStrengthText = String(
+      medication?.inventoryStrengthText
+      || getStrengthText(medication?.strength, medication?.strengthUnit)
+      || findInventoryStrengthText(medication)
+      || ''
+    ).trim()
+    const shouldIncludeInventoryStrength = medicationSource === 'inventory' && inventoryStrengthText && (
+      isLiquidMedication(medication) || !requiresQtsPricing(medication)
+    )
+    if (shouldIncludeInventoryStrength) {
+      const inventoryForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+      const volumeForms = new Set([
+        'liquid (measured)',
+        'liquid (bottles)',
+        'liquid',
+        'injection',
+        'cream',
+        'ointment',
+        'gel',
+        'suppository',
+        'inhaler',
+        'spray',
+        'shampoo',
+        'packet',
+        'roll'
+      ])
+      const usesVolumeLabel = volumeForms.has(inventoryForm) || /\b(?:ml|l)\b/i.test(inventoryStrengthText)
+      parts.push(`${usesVolumeLabel ? 'Vol' : 'Strength'}: ${inventoryStrengthText}`)
+    }
+    if (isLiquidMedication(medication)) {
+      const liquidDoseUnit = String(
+        medication?.liquidDoseUnit
+        || (String(medication?.source || '').trim().toLowerCase() === 'inventory'
+          ? (medication?.dosageForm || medication?.form || '')
+          : '')
+        || 'ml'
+      ).trim()
+      const perFrequencyMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
+      if (Number.isFinite(perFrequencyMl) && perFrequencyMl > 0) {
+        parts.push(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
+      }
+      if (isMeasuredLiquidMedication(medication) && perFrequencyMl) {
+        const dailyFrequency = resolveDailyFrequency(medication?.frequency)
+        const durationDays = resolveDurationDays(medication?.duration)
+        const totalMl = perFrequencyMl * dailyFrequency * durationDays
+        if (Number.isFinite(totalMl) && totalMl > 0) {
+          parts.push(`Total: ${totalMl} ${liquidDoseUnit}`)
+        }
+      }
+      const liquidAmountMl = Number(String(medication?.liquidAmountMl ?? medication?.amountMl ?? '').trim())
+      if (Number.isFinite(liquidAmountMl) && liquidAmountMl > 0) {
+        parts.push(`Amount: ${liquidAmountMl} ${liquidDoseUnit}`)
+      }
+      if (isBottledLiquidMedication(medication)) {
+        const inventoryMl = findInventoryStrengthText(medication)
+        const packMlText = String(inventoryMl || getStrengthText(medication?.strength, medication?.strengthUnit) || '').trim()
+        if (packMlText && /\b(ml|l)\b/i.test(packMlText)) {
+          parts.push(`Pack: ${packMlText}`)
+        }
+      }
+    }
     if (!isLiquidMedication(medication)) {
       const doseLabel = getDoseLabel(medication)
       if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
@@ -166,11 +272,18 @@
   const getPrintableDuration = (duration) => {
     const value = String(duration || '').trim()
     if (!value) return ''
-    if (/^days?$/i.test(value)) return ''
+    if (/^(?:days?|weeks?|months?|years?|hrs?|hours?|mins?|minutes?)$/i.test(value)) return ''
     return value
   }
 
   const getPdfDosageLabel = (medication) => {
+    if (isLiquidMedication(medication)) {
+      const doseMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
+      const liquidDoseUnitRaw = String(medication?.liquidDoseUnit || '').trim().toLowerCase()
+      const liquidDoseUnit = ['ml', 'l'].includes(liquidDoseUnitRaw) ? liquidDoseUnitRaw : 'ml'
+      if (doseMl) return `${doseMl} ${liquidDoseUnit}`
+    }
+
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
     const hasStrength = Boolean(strength && strengthUnit)
@@ -179,15 +292,7 @@
     const fromInventory = findInventoryStrengthText(medication)
     if (fromInventory) return fromInventory
 
-    const doseLabel = getDoseLabel(medication)
-    if (doseLabel) return doseLabel
-
-    const base = String(medication?.dosage ?? '').trim()
-    const fallbackUnit = String(medication?.strengthUnit ?? medication?.dosageUnit ?? medication?.unit ?? medication?.packUnit ?? '').trim()
-    if (base && fallbackUnit) {
-      return `${base} ${fallbackUnit}`.trim()
-    }
-    return base
+    return ''
   }
 
   const sanitizeTemplateHtml = (html) => {

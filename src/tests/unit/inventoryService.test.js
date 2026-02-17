@@ -35,6 +35,53 @@ describe('inventoryService', () => {
         minimumStock: '2.5'
       })).toThrow('Minimum stock must be an integer')
     })
+
+    it('allows Liquid (measured) without strength and strengthUnit', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Liquid (measured)',
+        strength: '',
+        strengthUnit: ''
+      })).not.toThrow()
+    })
+
+    it('allows Liquid (bottles) without strength and strengthUnit', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Liquid (bottles)',
+        strength: '',
+        strengthUnit: ''
+      })).not.toThrow()
+    })
+
+    it('allows container-size dispense forms without strength and strengthUnit', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Injection',
+        strength: '',
+        strengthUnit: '',
+        containerSize: '100',
+        containerUnit: 'ml'
+      })).not.toThrow()
+    })
+
+    it('requires strength and strengthUnit for Tablet', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Tablet',
+        strength: '',
+        strengthUnit: ''
+      })).toThrow('Missing required fields: strength, strengthUnit')
+    })
+
+    it('requires strength and strengthUnit for Capsule', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Capsule',
+        strength: '',
+        strengthUnit: ''
+      })).toThrow('Missing required fields: strength, strengthUnit')
+    })
   })
 
   describe('calculateStockTurnover', () => {

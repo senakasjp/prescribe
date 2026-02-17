@@ -78,6 +78,8 @@ const renderDashboard = async () => {
 const fillRequiredAddFields = async () => {
   await fireEvent.input(document.getElementById('newItemBrandName'), { target: { value: 'Amoxil' } })
   await fireEvent.input(document.getElementById('newItemGenericName'), { target: { value: 'Amoxicillin' } })
+  const dosageSelect = document.getElementById('newItemDosageForm')
+  await fireEvent.change(dosageSelect, { target: { value: 'Tablet' } })
   await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '250' } })
   await fireEvent.input(document.getElementById('newItemInitialStock'), { target: { value: '100' } })
   await fireEvent.input(document.getElementById('newItemSellingPrice'), { target: { value: '75' } })
@@ -239,6 +241,8 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     const { container } = await renderDashboard()
 
     await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    const dosageSelect = document.getElementById('newItemDosageForm')
+    await fireEvent.change(dosageSelect, { target: { value: 'Tablet' } })
     const addForm = container.querySelector('form')
     expect(addForm).toBeTruthy()
     const addLabels = Array.from(addForm.querySelectorAll('label'))
@@ -263,7 +267,7 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     await userEvent.click(screen.getAllByRole('button', { name: /^Edit$/i })[0])
 
     expect(screen.getByLabelText(/Brand Name/i)).toBeDisabled()
-    expect(screen.getByLabelText(/Strength Unit/i)).toBeDisabled()
+    expect(screen.getByLabelText(/(Volume unit|Strength Unit)/i)).toBeDisabled()
     expect(screen.getByLabelText(/Selling Price/i)).toBeDisabled()
     expect(screen.getByLabelText(/Expiry Date/i)).toBeDisabled()
   })
@@ -289,11 +293,127 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     expect(document.getElementById('editItemMinimumStock')).not.toBeDisabled()
   })
 
+  it('hides strength fields and shows per ml labels in edit when dispense form is Liquid (measured)', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        dosageForm: 'Liquid (measured)',
+        strength: '',
+        strengthUnit: ''
+      }
+    ])
+    await renderDashboard()
+    const getLabelTextByFor = (forId) => {
+      const label = document.querySelector(`label[for="${forId}"]`)
+      return (label?.textContent || '').replace(/\s+/g, ' ').trim()
+    }
+    await userEvent.click(screen.getByText('Inventory Items'))
+    await userEvent.click(screen.getAllByRole('button', { name: /^Edit$/i })[0])
+    await waitFor(() => {
+      expect(document.getElementById('editItemStrength')).toBeNull()
+      expect(document.getElementById('editItemStrengthUnit')).toBeNull()
+      expect(getLabelTextByFor('editItemInitialStock')).toMatch(/Initial Stock in ml/i)
+      expect(getLabelTextByFor('editItemMinimumStock')).toMatch(/Minimum Stock ml/i)
+      expect(getLabelTextByFor('editItemCostPrice')).toMatch(/Cost Price per ml/i)
+      expect(getLabelTextByFor('editItemSellingPrice')).toMatch(/Selling Price per ml/i)
+    })
+  })
+
+  it('shows Total volume and Volume unit labels for Liquid (bottles) in edit', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        dosageForm: 'Liquid (bottles)',
+        strength: '100',
+        strengthUnit: 'ml'
+      }
+    ])
+    await renderDashboard()
+
+    const getLabelTextByFor = (forId) => {
+      const label = document.querySelector(`label[for="${forId}"]`)
+      return (label?.textContent || '').replace(/\s+/g, ' ').trim()
+    }
+
+    await userEvent.click(screen.getByText('Inventory Items'))
+    await userEvent.click(screen.getAllByRole('button', { name: /^Edit$/i })[0])
+
+    expect(getLabelTextByFor('editItemStrength')).toMatch(/Total volume/i)
+    expect(getLabelTextByFor('editItemStrengthUnit')).toMatch(/Volume unit/i)
+  })
+
+  it('shows Total volume and Volume unit labels for QTY item Ointment in edit', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        dosageForm: 'Ointment',
+        strength: '100',
+        strengthUnit: 'mg'
+      }
+    ])
+    await renderDashboard()
+
+    const getLabelTextByFor = (forId) => {
+      const label = document.querySelector(`label[for="${forId}"]`)
+      return (label?.textContent || '').replace(/\s+/g, ' ').trim()
+    }
+
+    await userEvent.click(screen.getByText('Inventory Items'))
+    await userEvent.click(screen.getAllByRole('button', { name: /^Edit$/i })[0])
+
+    expect(getLabelTextByFor('editItemStrength')).toMatch(/Total volume/i)
+    expect(getLabelTextByFor('editItemStrengthUnit')).toMatch(/Volume unit/i)
+  })
+
   it('renders a single currency label format without Rs + currency duplication', async () => {
     const { container } = await renderDashboard()
     expect(container.textContent || '').toMatch(/\b(?:USD|LKR|GBP|EUR)\b/)
     expect(screen.queryByText(/Rs\s+LKR/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Rs$/i)).not.toBeInTheDocument()
+  })
+
+  it('shows liquid-specific stock units instead of default tablets', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        currentStock: 5,
+        packUnit: 'tablets',
+        dosageForm: 'Liquid (bottles)'
+      },
+      {
+        ...baseInventoryItem,
+        id: 'item-2',
+        brandName: 'LiquidMeasured',
+        dosageForm: 'Liquid (measured)',
+        currentStock: 120,
+        packUnit: 'tablets'
+      }
+    ])
+
+    await renderDashboard()
+    await userEvent.click(screen.getByText('Inventory Items'))
+
+    expect(screen.getAllByText(/5 Liquid \(bottles\)/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/120 ml/i).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/5 tablets/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps packUnit stock display for non-liquid items', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        id: 'item-pack',
+        brandName: 'SprayItem',
+        dosageForm: 'Spray',
+        currentStock: 8,
+        packUnit: 'packs'
+      }
+    ])
+
+    await renderDashboard()
+    await userEvent.click(screen.getByText('Inventory Items'))
+
+    expect(screen.getAllByText(/8 packs/i).length).toBeGreaterThan(0)
   })
 
   it('updates an inventory item and maps current stock to initialStock', async () => {

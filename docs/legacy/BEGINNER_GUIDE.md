@@ -1,5 +1,7 @@
 # 🏥 Prescribe - Beginner's Guide
 
+> Legacy onboarding guide. Canonical product docs: `PRODUCT_MANUAL.md` and `DOCS.md`.
+
 Welcome to Prescribe, your comprehensive patient management and prescription system! This guide will walk you through everything you need to know to get started, from creating your account to managing your first patient.
 
 ## 📋 Table of Contents
@@ -47,7 +49,7 @@ Prescribe is a modern, web-based patient management system designed specifically
 
 ### Access the System
 1. Open your web browser
-2. Go to: `https://prescribe-7e1e8.web.app`
+2. Go to: `https://mprescribe.net` (legacy: `https://prescribe-7e1e8.web.app`)
 3. You'll see the login screen with three options:
    - **Doctor** (for healthcare providers)
    - **Pharmacist** (for pharmacy staff)

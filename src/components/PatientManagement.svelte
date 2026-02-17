@@ -124,6 +124,7 @@
   let chartInstance = null
   let incomeChartInstance = null
   let incomeChartRenderToken = 0
+  let homeChartRenderTimer = null
   let loading = true
   let chartLoading = false
   let incomeChartLoading = false
@@ -566,12 +567,21 @@
     prescriptions = prescriptions || []
   }
 
-  // Update chart when patients data changes
-  $: if (patients.length > 0) {
-    setTimeout(() => {
+  const scheduleHomeChartsRender = (delayMs = 120) => {
+    if (homeChartRenderTimer) {
+      clearTimeout(homeChartRenderTimer)
+      homeChartRenderTimer = null
+    }
+    homeChartRenderTimer = setTimeout(() => {
+      if (currentView !== 'home') return
       createPrescriptionsChart()
       createIncomeComparisonChart()
-    }, 100)
+    }, delayMs)
+  }
+
+  // Ensure charts are re-rendered whenever the Home tab becomes active.
+  $: if (currentView === 'home' && patients.length >= 0) {
+    scheduleHomeChartsRender(120)
   }
   
   // Reactive tab counts
@@ -2018,19 +2028,13 @@
     loadTemplateSettings() // Load saved template settings
     loadDeleteCode()
     // Create chart after a short delay to ensure DOM is ready
-    setTimeout(() => {
-      createPrescriptionsChart()
-      createIncomeComparisonChart()
-    }, 500)
+    scheduleHomeChartsRender(500)
     
     // Listen for prescription save events to invalidate cache
     const handlePrescriptionSaved = (event) => {
       invalidateChartCache()
       // Recreate chart with fresh data
-      setTimeout(() => {
-        createPrescriptionsChart()
-        createIncomeComparisonChart()
-      }, 100)
+      scheduleHomeChartsRender(100)
     }
     
     window.addEventListener('prescriptionSaved', handlePrescriptionSaved)
@@ -2063,6 +2067,10 @@
   
   // Cleanup chart instance when component is destroyed
   onDestroy(() => {
+    if (homeChartRenderTimer) {
+      clearTimeout(homeChartRenderTimer)
+      homeChartRenderTimer = null
+    }
     if (chartInstance) {
       chartInstance.destroy()
       chartInstance = null
@@ -2146,11 +2154,7 @@
       </div>
     </div>
     <div
-      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
-      role="button"
-      tabindex="0"
-      on:click={navigateToPrescriptions}
-      on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm transition-all duration-200"
     >
       <div class="flex items-center justify-between">
         <div>
@@ -2189,11 +2193,7 @@
       </div>
     </div>
     <div
-      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
-      role="button"
-      tabindex="0"
-      on:click={navigateToPrescriptions}
-      on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm transition-all duration-200"
     >
       <div class="flex items-center justify-between">
         <div>
@@ -2839,11 +2839,7 @@
         
         <!-- Prescriptions Card - Sunset Orange Outline -->
         <div
-          class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-orange-50 cursor-pointer"
-          role="button"
-          tabindex="0"
-          on:click={navigateToPrescriptions}
-          on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+          class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg transition-all duration-300 h-full"
         >
           <div class="p-4">
             <div class="flex items-center">
@@ -2863,11 +2859,7 @@
         
         <!-- Drugs Card - Forest Green Outline -->
         <div
-          class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-green-50 cursor-pointer"
-          role="button"
-          tabindex="0"
-          on:click={navigateToPrescriptions}
-          on:keydown={(e) => handleCardKeydown(e, navigateToPrescriptions)}
+          class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg transition-all duration-300 h-full"
         >
           <div class="p-4">
             <div class="flex items-center">

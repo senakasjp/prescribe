@@ -1555,6 +1555,78 @@ IMPORTANT FORMATTING RULES:
     return result
   }
 
+  getUtf8ByteLength(value = '') {
+    const text = String(value || '')
+    if (typeof TextEncoder !== 'undefined') {
+      return new TextEncoder().encode(text).length
+    }
+    return text.length
+  }
+
+  async optimizeImageSourceForOcr(imageSource, options = {}) {
+    const source = String(imageSource || '').trim()
+    if (!source || !/^data:image\//i.test(source)) {
+      return source
+    }
+
+    const targetMaxBytes = Number(options?.targetMaxBytes || (1.1 * 1024 * 1024))
+    const sourceBytes = this.getUtf8ByteLength(source)
+    if (!Number.isFinite(targetMaxBytes) || sourceBytes <= targetMaxBytes) {
+      return source
+    }
+
+    if (typeof Image === 'undefined' || typeof document === 'undefined') {
+      return source
+    }
+
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => resolve(img)
+        img.onerror = reject
+        img.src = source
+      })
+
+      const maxDimensions = Array.isArray(options?.maxDimensions) && options.maxDimensions.length > 0
+        ? options.maxDimensions
+        : [1800, 1500, 1200, 1000, 800]
+      const qualities = Array.isArray(options?.qualities) && options.qualities.length > 0
+        ? options.qualities
+        : [0.82, 0.74, 0.66, 0.58, 0.5]
+      let bestCandidate = source
+      let bestBytes = sourceBytes
+
+      for (const maxDim of maxDimensions) {
+        const scale = Math.min(1, maxDim / Math.max(image.width || 1, image.height || 1))
+        const width = Math.max(1, Math.round((image.width || 1) * scale))
+        const height = Math.max(1, Math.round((image.height || 1) * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) continue
+        ctx.drawImage(image, 0, 0, width, height)
+
+        for (const quality of qualities) {
+          const candidate = canvas.toDataURL('image/jpeg', quality)
+          const candidateBytes = this.getUtf8ByteLength(candidate)
+          if (candidateBytes < bestBytes) {
+            bestCandidate = candidate
+            bestBytes = candidateBytes
+          }
+          if (candidateBytes <= targetMaxBytes) {
+            return candidate
+          }
+        }
+      }
+
+      return bestCandidate
+    } catch (error) {
+      console.warn('⚠️ Failed to optimize OCR image payload, using original source.', error)
+      return source
+    }
+  }
+
   async extractTextFromImage(imageSource, doctorId = null, options = {}) {
     if (!this.isConfigured()) {
       throw new Error('OpenAI is not configured.')
@@ -1565,57 +1637,79 @@ IMPORTANT FORMATTING RULES:
       throw new Error('Image source is required for OCR.')
     }
 
-    try {
-      const requestBody = {
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an OCR assistant for medical reports. Extract all visible text faithfully. Preserve line breaks. Do not summarize. If text is unreadable, say "Unreadable". Return only extracted text.'
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Extract the text from this medical report image.'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: imageUrl,
-                  detail: 'high'
+    const compressionProfiles = [
+      { targetMaxBytes: Number(options?.targetMaxBytes || (1.1 * 1024 * 1024)), detail: 'high', maxDimensions: [1800, 1500, 1200, 1000, 800], qualities: [0.82, 0.74, 0.66, 0.58, 0.5] },
+      { targetMaxBytes: 320 * 1024, detail: 'low', maxDimensions: [1200, 1000, 800, 700, 600], qualities: [0.74, 0.64, 0.56, 0.48, 0.4] },
+      { targetMaxBytes: 140 * 1024, detail: 'low', maxDimensions: [900, 800, 700, 600, 520, 460], qualities: [0.62, 0.52, 0.44, 0.36, 0.3] },
+      { targetMaxBytes: 90 * 1024, detail: 'low', maxDimensions: [760, 680, 620, 540, 460, 400, 360], qualities: [0.5, 0.42, 0.34, 0.28, 0.24] }
+    ]
+
+    let lastError = null
+    for (let i = 0; i < compressionProfiles.length; i += 1) {
+      const profile = compressionProfiles[i]
+      try {
+        const optimizedImageUrl = await this.optimizeImageSourceForOcr(imageUrl, profile)
+
+        const requestBody = {
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an OCR assistant for medical reports. Extract all visible text faithfully. Preserve line breaks. Do not summarize. If text is unreadable, say "Unreadable". Return only extracted text.'
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Extract the text from this medical report image.'
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: optimizedImageUrl,
+                    detail: profile.detail
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        temperature: 0,
-        max_tokens: 1500
+              ]
+            }
+          ],
+          temperature: 0,
+          max_tokens: 1500
+        }
+
+        const data = await this.makeOpenAIRequest('chat/completions', requestBody, 'reportImageOcr', {
+          doctorId,
+          context: options?.context || 'report-camera-ocr'
+        })
+
+        const extractedText = String(data?.choices?.[0]?.message?.content || '').trim()
+        const tokensUsed = data.__fromCache ? 0 : (data?.usage?.total_tokens || 0)
+
+        if (doctorId && !data.__fromCache) {
+          const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
+          const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
+          await aiTokenTracker.trackUsage('reportImageOcr', promptTokens, completionTokens, 'gpt-4o-mini', doctorId)
+        }
+
+        return {
+          extractedText,
+          tokensUsed
+        }
+      } catch (error) {
+        lastError = error
+        const message = String(error?.message || '')
+        const isPayloadError = /payload too large|413/i.test(message)
+        const hasMoreProfiles = i < (compressionProfiles.length - 1)
+        if (isPayloadError && hasMoreProfiles) {
+          continue
+        }
+        break
       }
-
-      const data = await this.makeOpenAIRequest('chat/completions', requestBody, 'reportImageOcr', {
-        doctorId,
-        context: options?.context || 'report-camera-ocr'
-      })
-
-      const extractedText = String(data?.choices?.[0]?.message?.content || '').trim()
-      const tokensUsed = data.__fromCache ? 0 : (data?.usage?.total_tokens || 0)
-
-      if (doctorId && !data.__fromCache) {
-        const promptTokens = Number(data?.usage?.prompt_tokens ?? tokensUsed ?? 0)
-        const completionTokens = Number(data?.usage?.completion_tokens ?? 0)
-        await aiTokenTracker.trackUsage('reportImageOcr', promptTokens, completionTokens, 'gpt-4o-mini', doctorId)
-      }
-
-      return {
-        extractedText,
-        tokensUsed
-      }
-    } catch (error) {
-      console.error('❌ Error extracting OCR text from image:', error)
-      throw error
     }
+
+    console.error('❌ Error extracting OCR text from image:', lastError)
+    throw lastError || new Error('Failed to extract text from image.')
   }
 
   // Improve text with spelling/grammar + medical context normalization

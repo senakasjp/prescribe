@@ -33,6 +33,8 @@
   let frequency = ''
   let prnAmount = '' // Amount for PRN medications
   let qts = ''
+  let liquidDosePerFrequencyMl = ''
+  let inventoryStrengthText = ''
   let timing = ''
   const TIMING_OPTIONS = [
     'Before meals (AC)',
@@ -115,11 +117,34 @@
       form.includes('tab') ||
       form.includes('capsule') ||
       form.includes('cap') ||
-      form.includes('syrup') ||
-      form.includes('liquid')
+      form.includes('syrup')
     )
   }
-  $: requiresQts = Boolean(String(dosageForm || '').trim()) && !isLiquidStrengthUnit && !isQtsExcludedDosageForm(dosageForm)
+  const isLiquidDispenseForm = (value) => {
+    const form = String(value || '').trim().toLowerCase()
+    return form === 'liquid (bottles)' || form === 'liquid (measured)'
+  }
+  const isLiquidBottleDispenseForm = (value) => String(value || '').trim().toLowerCase() === 'liquid (bottles)'
+  const isMeasuredLiquidDispenseForm = (value) => String(value || '').trim().toLowerCase() === 'liquid (measured)'
+  $: requiresQts = Boolean(String(dosageForm || '').trim()) && (
+    isLiquidBottleDispenseForm(dosageForm) ||
+    (!isMeasuredLiquidDispenseForm(dosageForm) && !isLiquidStrengthUnit && !isQtsExcludedDosageForm(dosageForm))
+  )
+  $: qtsDisplayUnit = isInventoryDrug && requiresQts
+    ? (String(dosageForm || '').trim() || 'ml')
+    : 'ml'
+  const getCountExampleUnit = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return 'units'
+    const lower = raw.toLowerCase()
+    if (lower === 'liquid (measured)') return 'ml'
+    const match = raw.match(/\(([^)]+)\)/)
+    if (match?.[1]) return match[1].trim().toLowerCase()
+    return lower
+  }
+  $: countPlaceholder = requiresQts
+    ? `e.g., 2 ${getCountExampleUnit(dosageForm)}`
+    : (isLiquidDispenseForm(dosageForm) ? 'Amount' : 'Qunatity')
   const parsePositiveInteger = (value) => {
     const raw = String(value ?? '').trim()
     if (!/^\d+$/.test(raw)) return null
@@ -135,6 +160,7 @@
   }
   $: if (!requiresQts && qts) {
     qts = ''
+    liquidDosePerFrequencyMl = ''
   }
   
   // Reset loading state when form is hidden
@@ -182,6 +208,8 @@
     frequency = ''
     prnAmount = ''
     qts = ''
+    liquidDosePerFrequencyMl = ''
+    inventoryStrengthText = ''
     timing = ''
     duration = ''
     startDate = ''
@@ -230,6 +258,11 @@
     frequency = editingMedication.frequency || ''
     prnAmount = editingMedication.prnAmount || ''
     qts = editingMedication.qts || ''
+    if (isLiquidDispenseForm(dosageForm) && !qts) {
+      qts = editingMedication.liquidAmountMl || editingMedication.amountMl || ''
+    }
+    liquidDosePerFrequencyMl = editingMedication.liquidDosePerFrequencyMl || editingMedication.perFrequencyMl || ''
+    inventoryStrengthText = editingMedication.inventoryStrengthText || [editingMedication.strength || '', editingMedication.strengthUnit || ''].filter(Boolean).join(' ')
     // Remove 'days' suffix if present for editing
     duration = editingMedication.duration ? editingMedication.duration.replace(/\s*days?$/i, '') : ''
     startDate = editingMedication.startDate || ''
@@ -261,6 +294,8 @@
       genericName: d.genericName || '',
       strength: d.strength || '',
       strengthUnit: d.strengthUnit || d.unit || '',
+      containerSize: d.containerSize ?? '',
+      containerUnit: d.containerUnit || '',
       source: 'inventory',
       currentStock: d.currentStock || 0,
       packUnit: d.packUnit || '',
@@ -289,6 +324,7 @@
 
   const handleNameInput = () => {
     isInventoryDrug = false
+    inventoryStrengthText = ''
     clearTimeout(nameSearchTimeout)
     nameSearchTimeout = setTimeout(searchNameSuggestions, 250)
   }
@@ -335,6 +371,9 @@
     strength = s.strength || ''
     strengthUnit = s.strengthUnit || ''
     isInventoryDrug = s.source === 'inventory'
+    inventoryStrengthText = isInventoryDrug
+      ? [String(s.strength || '').trim(), String(s.strengthUnit || '').trim()].filter(Boolean).join(' ')
+      : ''
 
     if ((!strength || !strengthUnit) && s.strength) {
       const strengthMatch = String(s.strength).trim().match(/^(\d+(?:\.\d+)?)([a-zA-Z%]+)?$/)
@@ -381,7 +420,16 @@
       const parsedQts = requiresQts ? parsePositiveInteger(qts) : null
       if (requiresQts && !parsedQts) {
         focusField('medicationQts')
-        throw new Error('Please enter Qts as a positive integer')
+        throw new Error(isLiquidDispenseForm(dosageForm)
+          ? 'Please enter Amount in ml as a positive integer'
+          : 'Please enter Qts as a positive integer')
+      }
+      const parsedLiquidDosePerFrequencyMl = isLiquidDispenseForm(dosageForm) && String(liquidDosePerFrequencyMl || '').trim()
+        ? parsePositiveInteger(liquidDosePerFrequencyMl)
+        : null
+      if (isLiquidDispenseForm(dosageForm) && String(liquidDosePerFrequencyMl || '').trim() && !parsedLiquidDosePerFrequencyMl) {
+        focusField('liquidDosePerFrequencyMl')
+        throw new Error('Please enter ml value as a positive integer')
       }
       const parsedDurationDays = !requiresQts ? parsePositiveInteger(duration) : null
       if (!requiresQts && !parsedDurationDays) {
@@ -460,19 +508,38 @@
       }
       
       const medicationData = {
+        source: isInventoryDrug ? 'inventory' : 'manual',
         name: String(name ?? '').trim(),
         genericName: String(genericName ?? '').trim(),
         dosage: String(dosage ?? '').trim(),
         dosageUnit: '',
         dosageForm: String(dosageForm ?? '').trim(),
-        strength: String(strength ?? '').trim(),
-        strengthUnit: String(strengthUnit ?? '').trim(),
+        strength: (() => {
+          const normalizedStrength = String(strength ?? '').trim()
+          if (normalizedStrength) return normalizedStrength
+          if (!isInventoryDrug || !inventoryStrengthText) return normalizedStrength
+          const match = inventoryStrengthText.match(/^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)?\s*$/)
+          return match?.[1] || normalizedStrength
+        })(),
+        strengthUnit: (() => {
+          const normalizedUnit = String(strengthUnit ?? '').trim()
+          if (normalizedUnit) return normalizedUnit
+          if (!isInventoryDrug || !inventoryStrengthText) return normalizedUnit
+          const match = inventoryStrengthText.match(/^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)?\s*$/)
+          return match?.[2] || normalizedUnit
+        })(),
+        inventoryStrengthText: isInventoryDrug ? String(inventoryStrengthText || '').trim() : '',
         route: String(route ?? '').trim(),
         instructions: String(instructions ?? '').trim(),
         frequency,
         timing,
         prnAmount: !requiresQts && frequency.includes('PRN') ? String(prnAmount ?? '').trim() : '', // Include PRN amount if frequency is PRN
         qts: requiresQts ? String(parsedQts) : '',
+        liquidAmountMl: isLiquidDispenseForm(dosageForm) && parsedQts ? String(parsedQts) : '',
+        liquidDosePerFrequencyMl: isLiquidDispenseForm(dosageForm) && parsedLiquidDosePerFrequencyMl
+          ? String(parsedLiquidDosePerFrequencyMl)
+          : '',
+        liquidDoseUnit: isLiquidDispenseForm(dosageForm) ? qtsDisplayUnit : '',
         duration: !requiresQts ? `${parsedDurationDays} days` : String(duration ?? '').trim() + ' days',
         startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
         endDate: endDate || null,
@@ -502,6 +569,7 @@
       frequency = ''
       prnAmount = ''
       qts = ''
+      liquidDosePerFrequencyMl = ''
       duration = ''
       startDate = ''
       endDate = ''
@@ -645,8 +713,8 @@
   })
 </script>
 
-<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm mx-2 sm:mx-0">
-  <div class="bg-teal-600 text-white px-3 sm:px-4 py-3 rounded-t-lg">
+<div class="bg-white border-2 border-cyan-200 rounded-lg shadow-sm mx-2 sm:mx-0">
+  <div class="bg-cyan-700 text-white px-3 sm:px-4 py-3 rounded-t-lg">
     <h6 class="text-base sm:text-lg font-semibold mb-0">
       <i class="fas fa-pills mr-2"></i>{editingMedication ? 'Edit Medication' : 'Add New Medication'}
     </h6>
@@ -666,7 +734,7 @@
         <div class="relative">
           <input
             type="text"
-            class="w-full px-2 sm:px-3 py-2 pr-28 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:cursor-not-allowed transition-all duration-300 {brandNameImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingBrandName ? 'bg-gray-100' : ''}"
+            class="w-full px-2 sm:px-3 py-2 pr-28 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:cursor-not-allowed transition-all duration-300 {brandNameImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'border-gray-300 focus:ring-cyan-500 focus:border-cyan-500'} {loading || improvingBrandName ? 'bg-gray-100' : ''}"
             id="brandName"
             bind:value={name}
             required
@@ -678,7 +746,7 @@
           />
           <button
             type="button"
-            class="absolute top-1.5 right-1.5 inline-flex items-center px-2 py-1 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            class="absolute top-1.5 right-1.5 inline-flex items-center px-2 py-1 text-xs font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
             on:click={improveBrandName}
             disabled={loading || improvingBrandName || !name}
             title="Correct spelling with AI"
@@ -701,12 +769,17 @@
               {#each nameSuggestions as s, idx}
                 <button
                   type="button"
-                  class="w-full px-3 py-2 text-left text-xs sm:text-sm hover:bg-teal-50 focus:bg-teal-50 border-b last:border-b-0 {nameSelectedIndex === idx ? 'bg-teal-50' : ''}"
+                  class="w-full px-3 py-2 text-left text-xs sm:text-sm hover:bg-cyan-50 focus:bg-cyan-50 border-b last:border-b-0 {nameSelectedIndex === idx ? 'bg-cyan-50' : ''}"
                   on:click={() => selectNameSuggestion(s)}
                   on:mouseenter={() => nameSelectedIndex = idx}
                 >
                   <div class="flex items-center justify-between">
-                    <div class="text-gray-900 font-medium truncate">{s.displayName}</div>
+                    <div class="text-gray-900 font-medium truncate">
+                      {s.displayName}
+                      {#if String(s.containerSize ?? '').trim() !== ''}
+                        <span class="text-gray-600"> {s.containerSize}{#if s.containerUnit} {s.containerUnit}{/if}</span>
+                      {/if}
+                    </div>
                     <span class="ml-3 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-800">
                       <i class="fas fa-store mr-1"></i>Inventory
                     </span>
@@ -729,93 +802,121 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         <div>
           <label for={requiresQts ? 'medicationStrength' : 'medicationDosage'} class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-            {requiresQts ? 'Strength' : 'Dosage Fraction'}
+            Dosage Strength
             {#if !requiresQts}
               <span class="text-red-500">*</span>
             {/if}
           </label>
-          <div class="flex flex-col sm:flex-row gap-2">
-            {#if !requiresQts}
-              {#if isLiquidStrengthUnit}
-                <div
-                  class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center justify-between"
-                  id="medicationDosage"
-                >
-                  <span>1</span>
-                  <span class="text-[10px] uppercase tracking-wide text-gray-500">fixed</span>
-                </div>
-              {:else}
+          <div class="space-y-2">
+            <div class="flex flex-col sm:flex-row gap-2">
+              {#if !requiresQts}
+                {#if isLiquidStrengthUnit}
+                  <div
+                    class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center justify-between"
+                    id="medicationDosage"
+                  >
+                    <span>1</span>
+                    <span class="text-[10px] uppercase tracking-wide text-gray-500">fixed</span>
+                  </div>
+                {:else}
+                  <select
+                    class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    id="medicationDosage"
+                    bind:value={dosage}
+                    required
+                    disabled={loading}
+                  >
+                    <option value="">Select dosage</option>
+                    {#each DOSAGE_OPTIONS as option}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                {/if}
+              {/if}
+
+              {#if !isInventoryDrug || (isInventoryDrug && isLiquidStrengthUnit)}
+                <input
+                  id="medicationStrength"
+                  type="number"
+                  class="w-full sm:flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  bind:value={strength}
+                  placeholder="Strength"
+                  disabled={loading}
+                  required={!isInventoryDrug}
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
+                />
                 <select
-                  class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  id="medicationDosage"
-                  bind:value={dosage}
-                  required
+                  id="medicationStrengthUnit"
+                  class="w-full sm:w-24 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  bind:value={strengthUnit}
                   disabled={loading}
                 >
-                  <option value="">Select dosage</option>
-                  {#each DOSAGE_OPTIONS as option}
-                    <option value={option}>{option}</option>
+                  <option value="">Unit</option>
+                  {#each STRENGTH_UNITS as unit}
+                    <option value={unit}>{unit}</option>
                   {/each}
                 </select>
+              {:else if strength}
+                <div class="flex items-center text-xs sm:text-sm text-gray-700 px-2">
+                  <span class="font-medium">Strength:</span>
+                  <span class="ml-1">{strength}{#if strengthUnit} {strengthUnit}{/if}</span>
+                </div>
               {/if}
-            {/if}
-
-            {#if !isInventoryDrug || (isInventoryDrug && isLiquidStrengthUnit)}
-              <input
-                id="medicationStrength"
-                type="number"
-                class="w-full sm:flex-1 h-12 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                bind:value={strength}
-                placeholder="Strength"
-                disabled={loading}
-                required={!isInventoryDrug}
-                min="0"
-                step="0.01"
-                inputmode="decimal"
-              />
-              <select
-                id="medicationStrengthUnit"
-                class="w-full sm:w-24 h-12 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                bind:value={strengthUnit}
-                disabled={loading}
-              >
-                <option value="">Unit</option>
-                {#each STRENGTH_UNITS as unit}
-                  <option value={unit}>{unit}</option>
-                {/each}
-              </select>
-            {:else if strength}
-              <div class="flex items-center text-xs sm:text-sm text-gray-700 px-2">
-                <span class="font-medium">Strength:</span>
-                <span class="ml-1">{strength}{#if strengthUnit} {strengthUnit}{/if}</span>
-              </div>
-            {/if}
+            </div>
 
             {#if requiresQts}
-              <div class="w-full sm:w-24 flex items-end">
-                <input
-                  type="number"
-                  class="w-full h-12 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  id="medicationQts"
-                  bind:value={qts}
-                  required={requiresQts}
-                  aria-required={requiresQts}
-                  min="1"
-                  step="1"
-                  inputmode="numeric"
-                  disabled={loading}
-                  placeholder="Qunatity"
-                  aria-label="Qunatity"
-                >
+              <p class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Count</p>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <div class="w-full sm:w-24">
+                  <input
+                    type="text"
+                    class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    id="medicationQts"
+                    bind:value={qts}
+                    required={requiresQts}
+                    aria-required={requiresQts}
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    disabled={loading}
+                    placeholder={countPlaceholder}
+                    aria-label={isLiquidDispenseForm(dosageForm) ? 'Amount (ml)' : 'Qunatity'}
+                  >
+                </div>
+                {#if isLiquidDispenseForm(dosageForm)}
+                  {#if isInventoryDrug}
+                    <div class="w-full sm:w-36 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center">
+                      {qtsDisplayUnit}
+                    </div>
+                  {:else}
+                    <div class="w-full sm:w-36">
+                      <input
+                        type="text"
+                        id="liquidDosePerFrequencyMl"
+                        class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        bind:value={liquidDosePerFrequencyMl}
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        disabled={loading}
+                        placeholder={qtsDisplayUnit}
+                        aria-label={`${qtsDisplayUnit} (PDF only)`}
+                      >
+                    </div>
+                  {/if}
+                {/if}
               </div>
             {/if}
           </div>
+          {#if requiresQts && isLiquidDispenseForm(dosageForm)}
+            <p class="mt-1 text-xs text-gray-500">For PDF only: this {qtsDisplayUnit} value prints near the drug name and does not affect calculations.</p>
+          {/if}
         </div>
         <div>
           <label for="medicationRoute" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Route of Administration</label>
           <div class="flex w-full min-w-0">
             <select 
-              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="medicationRoute" 
               on:change={(e) => {
                 if (e.target.value) {
@@ -840,7 +941,7 @@
             </select>
             <input 
               type="text" 
-              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               placeholder="Or enter custom route"
               bind:value={routeDisplay}
               disabled={loading}
@@ -848,18 +949,21 @@
           </div>
         </div>
         <div>
-          <label for="medicationDosageForm" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dosage Form</label>
+          <label for="medicationDosageForm" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dispense Form</label>
           <select
-            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
             id="medicationDosageForm"
             bind:value={dosageForm}
-            disabled={loading}
+            disabled={loading || isInventoryDrug}
           >
-            <option value="">Select dosage form</option>
+            <option value="">Select dispense form</option>
             {#each DOSAGE_FORM_OPTIONS as option}
               <option value={option}>{option}</option>
             {/each}
           </select>
+          {#if isInventoryDrug}
+            <p class="mt-1 text-xs text-gray-500">Dispense Form is locked from inventory record.</p>
+          {/if}
         </div>
         <div>
         <label for="medicationFrequency" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
@@ -870,7 +974,7 @@
         </label>
         <div class="flex gap-2">
             <select 
-              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="medicationFrequency" 
               bind:value={frequency}
               required={!requiresQts}
@@ -889,7 +993,7 @@
                 <input 
                   id="prnAmount"
                   type="number" 
-                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                   placeholder="Amount"
                   bind:value={prnAmount}
                   required
@@ -913,7 +1017,7 @@
           <select
             id="medicationTiming"
             bind:value={timing}
-            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
             required
             disabled={loading}
           >
@@ -938,7 +1042,7 @@
           </label>
           <button
             type="button"
-            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
             on:click={improveInstructions}
             disabled={loading || improvingInstructions || instructionsImproved || !instructions}
             title="Fix spelling and grammar with AI"
@@ -956,7 +1060,7 @@
           </button>
         </div>
         <textarea 
-          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {instructionsImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingInstructions ? 'bg-gray-100' : ''}"
+          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {instructionsImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-cyan-500 focus:border-cyan-500'} {loading || improvingInstructions ? 'bg-gray-100' : ''}"
           id="medicationInstructions" 
           rows="2" 
           bind:value={instructions}
@@ -975,7 +1079,7 @@
           </label>
           <input 
             type="number" 
-            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationDuration" 
             bind:value={duration}
             min="1"
@@ -987,7 +1091,7 @@
         <div>
           <label for="medicationStartDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Start Date <span class="text-gray-500 text-xs">(Optional)</span></label>
           <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
-            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationStartDate" 
             bind:value={startDate}
             disabled={loading} />
@@ -995,7 +1099,7 @@
         <div>
           <label for="medicationEndDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">End Date</label>
           <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
-            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
             id="medicationEndDate" 
             bind:value={endDate}
             disabled={loading} />
@@ -1015,7 +1119,7 @@
           </label>
           <button
             type="button"
-            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
             on:click={improveNotes}
             disabled={loading || improvingNotes || notesImproved || !notes}
             title="Fix spelling and grammar with AI"
@@ -1033,7 +1137,7 @@
           </button>
         </div>
         <textarea 
-          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {notesImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingNotes ? 'bg-gray-100' : ''}"
+          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {notesImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-cyan-500 focus:border-cyan-500'} {loading || improvingNotes ? 'bg-gray-100' : ''}"
           id="medicationNotes" 
           rows="2" 
           bind:value={notes}
@@ -1052,7 +1156,7 @@
       <div class="action-buttons">
         <button 
           type="submit" 
-          class="action-button action-button-primary dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed" 
+          class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed" 
           disabled={loading || savingMedication}
         >
           {#if loading || savingMedication}
@@ -1067,7 +1171,7 @@
         </button>
         <button 
           type="button" 
-          class="action-button action-button-secondary dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed" 
+          class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={handleCancel}
           disabled={loading}
         >

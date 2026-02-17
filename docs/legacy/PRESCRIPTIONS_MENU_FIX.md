@@ -166,7 +166,7 @@ npm run build
 firebase deploy
 ```
 - ✅ Deployment successful
-- ✅ Application accessible at https://prescribe-7e1e8.web.app
+- ✅ Application accessible at https://mprescribe.net (legacy: https://prescribe-7e1e8.web.app)
 
 ## Usage
 

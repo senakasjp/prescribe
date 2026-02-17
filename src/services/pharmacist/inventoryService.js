@@ -1056,6 +1056,8 @@ class InventoryService {
       strength: itemData.strength,
       strengthUnit: itemData.strengthUnit,
       dosageForm: itemData.dosageForm || 'tablet',
+      containerSize: this.toInteger(itemData.containerSize),
+      containerUnit: itemData.containerUnit || '',
       route: itemData.route || 'oral',
       packSize: this.toInteger(itemData.packSize),
       packUnit: itemData.packUnit || 'tablets',
@@ -1131,7 +1133,19 @@ class InventoryService {
       throw new Error('Invalid inventory item data: itemData is required and must be an object')
     }
 
-    const required = ['brandName', 'genericName', 'strength', 'strengthUnit', 'initialStock', 'minimumStock', 'sellingPrice', 'expiryDate', 'storageConditions']
+    const dosageForm = String(itemData.dosageForm || '').trim().toLowerCase()
+    const strengthRequiredForms = new Set(['tablet', 'capsule'])
+    const requiresStrength = strengthRequiredForms.has(dosageForm)
+    const required = [
+      'brandName',
+      'genericName',
+      ...(requiresStrength ? ['strength', 'strengthUnit'] : []),
+      'initialStock',
+      'minimumStock',
+      'sellingPrice',
+      'expiryDate',
+      'storageConditions'
+    ]
     const missing = required.filter(field => {
       const value = itemData[field]
       // Check if field is truly missing (undefined, null, empty string) but allow 0 as valid

@@ -191,7 +191,7 @@ npm run build && firebase deploy --only hosting
 ### Deployment Status
 - **Build**: ✅ Successful
 - **Deployment**: ✅ Successful  
-- **URL**: https://prescribe-7e1e8.web.app
+- **URL**: https://mprescribe.net (legacy: https://prescribe-7e1e8.web.app)
 - **Status**: ✅ Live and functional
 
 ## 📊 Impact Assessment

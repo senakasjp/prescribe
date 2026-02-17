@@ -371,6 +371,85 @@ describe('PrescriptionPDF', () => {
     expect(payloads.some((value) => /Duration:\s*days/i.test(value))).toBe(false)
   })
 
+  it('omits unit-only duration text (weeks/months/etc) when no numeric value is present', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const prescriptions = [
+      {
+        id: 'med-duration-edge-1',
+        name: 'Edge Duration Drug',
+        dosage: '1',
+        strength: '',
+        strengthUnit: 'mg',
+        frequency: 'Once daily (OD)',
+        duration: 'weeks'
+      }
+    ]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions,
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    const fullText = payloads.join(' ')
+    expect(/Duration:\s*weeks/i.test(fullText)).toBe(false)
+    expect(/\|\s*weeks\s*(\||$)/i.test(fullText)).toBe(false)
+  })
+
+  it('includes liquid amount in prescription details for liquid dispense forms', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+
+    const selectedPatient = {
+      firstName: 'Test',
+      lastName: 'Patient',
+      idNumber: 'ID123',
+      dateOfBirth: '1990-01-01'
+    }
+
+    const prescriptions = [
+      {
+        id: 'med-liquid-1',
+        name: 'Cough Relief',
+        dosageForm: 'Liquid (bottles)',
+        liquidAmountMl: '60',
+        strength: '5',
+        strengthUnit: 'ml',
+        frequency: 'Twice daily (BD)',
+        duration: '5 days'
+      }
+    ]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: {
+        selectedPatient,
+        illnesses: [],
+        prescriptions,
+        symptoms: []
+      }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const textStrings = collectPdfTextStrings()
+    const mergedText = normalizeText(textStrings.join(' '))
+    expect(/Amount:\s*60\s*ml/i.test(mergedText)).toBe(true)
+  })
+
   it('includes current version label in PDF footer', async () => {
     const selectedPatient = {
       firstName: 'Test',
@@ -519,6 +598,227 @@ describe('PrescriptionPDF', () => {
     expect(payloads.some((value) => /Duration:\s*14 days/i.test(value))).toBe(true)
     expect(payloads.some((value) => /After meals/i.test(value))).toBe(true)
     expect(payloads.some((value) => /Instructions:\s*Take with warm water/i.test(value))).toBe(true)
+  })
+
+  it('renders liquid measured dose ml on header and total ml on second line in generated PDF', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'Liquid',
+      lastName: 'Case',
+      idNumber: 'ID657',
+      dateOfBirth: '1995-05-21'
+    }
+    const prescriptions = [{
+      id: 'med-liquid-1',
+      name: 'Cough Mixture',
+      dosage: '1',
+      dosageForm: 'Liquid (measured)',
+      liquidAmountMl: '90',
+      liquidDosePerFrequencyMl: '10',
+      frequency: 'Three times daily (TDS)',
+      duration: '2 days'
+    }]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const textStrings = collectPdfTextStrings()
+    const mergedHeader = normalizeText(textStrings.join(' '))
+    expect(/Cough Mixture/i.test(mergedHeader)).toBe(true)
+    expect(/10\s*ml/i.test(mergedHeader)).toBe(true)
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Dose:\s*10\s*ml\/frequency/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Total:\s*60\s*ml/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Amount:\s*90\s*ml/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Three times daily\s*\(TDS\)/i.test(value))).toBe(true)
+  })
+
+  it('renders liquid bottles pack ml on second line when available from inventory', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([
+      {
+        drugName: 'Corex',
+        brandName: 'Corex',
+        genericName: 'Corex',
+        strength: '100',
+        strengthUnit: 'ml'
+      }
+    ])
+
+    const selectedPatient = {
+      firstName: 'Bottle',
+      lastName: 'Case',
+      idNumber: 'ID658',
+      dateOfBirth: '1992-05-21'
+    }
+    const prescriptions = [{
+      id: 'med-liquid-2',
+      name: 'Corex',
+      dosageForm: 'Liquid (bottles)',
+      liquidAmountMl: '120',
+      liquidDosePerFrequencyMl: '5',
+      frequency: '',
+      duration: ''
+    }]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Pack:\s*100\s*ml/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Amount:\s*120\s*ml/i.test(value))).toBe(true)
+  })
+
+  it('renders inventory strength on second line for non-QTY medication', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'Inventory',
+      lastName: 'Strength',
+      idNumber: 'ID900',
+      dateOfBirth: '1992-05-21'
+    }
+    const prescriptions = [{
+      id: 'med-nonqty-1',
+      source: 'inventory',
+      name: 'Paracetamol',
+      dosageForm: 'Tablet',
+      strength: '',
+      strengthUnit: '',
+      inventoryStrengthText: '500 mg',
+      dosage: '1',
+      frequency: 'Twice daily (BD)',
+      duration: '5 days'
+    }]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Strength:\s*500\s*mg/i.test(value))).toBe(true)
+  })
+
+  it('renders inventory volume as Vol on second line for inventory medication', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'Inventory',
+      lastName: 'Volume',
+      idNumber: 'ID901',
+      dateOfBirth: '1992-05-21'
+    }
+    const prescriptions = [{
+      id: 'med-inv-vol-1',
+      source: 'inventory',
+      name: 'Corex',
+      dosageForm: 'Liquid (bottles)',
+      strength: '',
+      strengthUnit: '',
+      inventoryStrengthText: '100 ml',
+      dosage: '1',
+      frequency: 'Twice daily (BD)',
+      duration: '5 days'
+    }]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Vol:\s*100\s*ml/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Strength:\s*100\s*ml/i.test(value))).toBe(false)
+  })
+
+  it('renders inventory volume as Vol on second line for liter units', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'Inventory',
+      lastName: 'Liter',
+      idNumber: 'ID902',
+      dateOfBirth: '1992-05-21'
+    }
+    const prescriptions = [{
+      id: 'med-inv-vol-l-1',
+      source: 'inventory',
+      name: 'Saline',
+      dosageForm: 'Liquid (bottles)',
+      strength: '',
+      strengthUnit: '',
+      inventoryStrengthText: '1 l',
+      dosage: '1',
+      frequency: 'Once daily (OD)',
+      duration: '3 days'
+    }]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Vol:\s*1\s*l/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Strength:\s*1\s*l/i.test(value))).toBe(false)
+  })
+
+  it('does not print count + dispense-form in right header label', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'Header',
+      lastName: 'Label',
+      idNumber: 'ID903',
+      dateOfBirth: '1992-05-21'
+    }
+    const prescriptions = [
+      {
+        id: 'med-header-1',
+        source: 'manual',
+        name: 'Corexb',
+        dosageForm: 'Liquid (bottles)',
+        dosage: '1',
+        qts: '3',
+        frequency: 'Four times daily (QDS)',
+        duration: '15 days',
+        strength: '',
+        strengthUnit: ''
+      },
+      {
+        id: 'med-header-2',
+        source: 'manual',
+        name: 'Dermox',
+        dosageForm: 'Cream',
+        dosage: '1',
+        qts: '5',
+        frequency: 'Twice daily (BD)',
+        duration: '7 days',
+        strength: '',
+        strengthUnit: ''
+      }
+    ]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+    const textStrings = collectPdfTextStrings().map((v) => normalizeText(v))
+
+    expect(textStrings).not.toContain('1 Liquid (bottles)')
+    expect(textStrings).not.toContain('1 Cream')
   })
 
   it.each([

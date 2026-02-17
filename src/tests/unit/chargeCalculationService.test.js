@@ -171,6 +171,19 @@ describe('chargeCalculationService', () => {
 
       expect(requested).toBe(2)
     })
+
+    it('falls back to entered qts when liquid quantity cannot be derived', () => {
+      const requested = chargeCalculationService.resolveRequestedQuantity({
+        dosageForm: 'Liquid (bottles)',
+        qts: '3',
+        strength: '',
+        strengthUnit: '',
+        frequency: '',
+        duration: ''
+      })
+
+      expect(requested).toBe(3)
+    })
   })
 
   describe('formatCurrency', () => {
@@ -228,6 +241,90 @@ describe('chargeCalculationService', () => {
 
       expect(result.totalCost).toBeCloseTo(60, 4)
       expect(result.medicationBreakdown[0].quantity).toBeCloseTo(300, 4)
+    })
+
+    it('prices Liquid (measured) as unit ml price × strength(ml) × daily frequency × duration(days)', async () => {
+      inventoryService.getInventoryItems.mockResolvedValue([
+        {
+          id: 'inv-measured-1',
+          brandName: 'Corex',
+          strength: '100',
+          strengthUnit: 'ml',
+          dosageForm: 'Liquid (measured)',
+          currentStock: 10,
+          sellingPrice: 20
+        }
+      ])
+
+      const prescription = {
+        id: 'rx-measured-1',
+        prescriptions: [
+          {
+            id: 'rx-measured-1',
+            medications: [
+              {
+                name: 'Corex',
+                dosageForm: 'Liquid (measured)',
+                strength: '50',
+                strengthUnit: 'ml',
+                frequency: 'three times daily',
+                duration: '2 days',
+                isDispensed: true
+              }
+            ]
+          }
+        ]
+      }
+
+      const pharmacist = { id: 'ph-1' }
+      const result = await chargeCalculationService.calculateDrugCharges(prescription, pharmacist)
+
+      // Inventory unit ml price = 20 / 100 = 0.2
+      // Required ml = 50 * 3 * 2 = 300
+      // Total = 300 * 0.2 = 60
+      expect(result.totalCost).toBeCloseTo(60, 4)
+      expect(result.medicationBreakdown[0].quantity).toBeCloseTo(300, 4)
+      expect(result.medicationBreakdown[0].unitCost).toBeCloseTo(0.2, 4)
+    })
+
+    it('does not price Liquid (measured) when inventory does not provide ml/l pack size', async () => {
+      inventoryService.getInventoryItems.mockResolvedValue([
+        {
+          id: 'inv-measured-2',
+          brandName: 'Corex',
+          strength: '1',
+          strengthUnit: 'bottle',
+          dosageForm: 'Liquid (measured)',
+          currentStock: 10,
+          sellingPrice: 20
+        }
+      ])
+
+      const prescription = {
+        id: 'rx-measured-2',
+        prescriptions: [
+          {
+            id: 'rx-measured-2',
+            medications: [
+              {
+                name: 'Corex',
+                dosageForm: 'Liquid (measured)',
+                strength: '5',
+                strengthUnit: 'ml',
+                frequency: 'twice daily',
+                duration: '2 days',
+                isDispensed: true
+              }
+            ]
+          }
+        ]
+      }
+
+      const pharmacist = { id: 'ph-1' }
+      const result = await chargeCalculationService.calculateDrugCharges(prescription, pharmacist)
+
+      expect(result.totalCost).toBe(0)
+      expect(result.medicationBreakdown[0].found).toBe(false)
     })
   })
 

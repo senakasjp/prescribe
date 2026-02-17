@@ -30,6 +30,9 @@
   import MobileCameraCapturePage from './components/MobileCameraCapturePage.svelte'
   import { notifyError, notifySuccess } from './stores/notifications.js'
   import { resolveCurrencyFromCountry } from './utils/currencyByCountry.js'
+  import { buildDoctorNotificationItems } from './utils/doctorNotificationItems.js'
+  import { pharmacyMedicationService } from './services/pharmacyMedicationService.js'
+  import { pharmacyInventoryIntegration } from './services/pharmacyInventoryIntegration.js'
   
   let user = null
   let loading = true
@@ -61,6 +64,21 @@
   let lastDummyDataUserKey = ''
   let onboardingDummyStatusRequestId = 0
   let doctorNotificationAlertCount = 0
+  let doctorNotificationLowStockCount = 0
+  let doctorNotificationExpiringCount = 0
+  let doctorNotificationExpiredCount = 0
+  let doctorNotificationItems = []
+  let doctorNotificationMessageCount = 0
+  let showDoctorNotificationsBalloon = false
+  let showDoctorAlertsModal = false
+  let doctorNotificationPopover = null
+  let doctorNotificationRefreshInterval = null
+  let doctorNotificationLoadRequestId = 0
+  let themeMode = 'light' // light | dark | system
+  let isDarkTheme = false
+  const THEME_MODE_STORAGE_KEY = 'prescribe-theme-mode'
+  let themeMediaQuery = null
+  let themeMediaChangeHandler = null
 
   $: effectiveCurrency = settingsDoctor?.currency
     || user?.currency
@@ -128,6 +146,51 @@
     notifySuccess('Back online.', 3000)
   }
 
+  const getSystemPrefersDark = () => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  }
+
+  const resolveShouldUseDark = (mode) => {
+    if (mode === 'dark') return true
+    if (mode === 'light') return false
+    return getSystemPrefersDark()
+  }
+
+  const applyThemeMode = (mode) => {
+    if (typeof document === 'undefined') return
+    const nextMode = ['light', 'dark', 'system'].includes(mode) ? mode : 'system'
+    themeMode = nextMode
+    isDarkTheme = resolveShouldUseDark(nextMode)
+    document.documentElement.classList.toggle('dark', isDarkTheme)
+  }
+
+  const saveThemeMode = (mode) => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(THEME_MODE_STORAGE_KEY, mode)
+  }
+
+  const initializeThemeMode = () => {
+    if (typeof window === 'undefined') return
+    const storedMode = localStorage.getItem(THEME_MODE_STORAGE_KEY) || 'light'
+    applyThemeMode(storedMode)
+    themeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    themeMediaChangeHandler = () => {
+      if (themeMode === 'system') {
+        applyThemeMode('system')
+      }
+    }
+    themeMediaQuery.addEventListener('change', themeMediaChangeHandler)
+  }
+
+  const toggleThemeMode = () => {
+    const nextMode = isDarkTheme ? 'light' : 'dark'
+    applyThemeMode(nextMode)
+    saveThemeMode(nextMode)
+  }
+
   const showChatWidget = () => {
     if (typeof window !== 'undefined' && window.Tawk_API && typeof window.Tawk_API.showWidget === 'function') {
       window.Tawk_API.showWidget()
@@ -143,7 +206,9 @@
   $: isExternalDoctor = user?.role === 'doctor' && user?.externalDoctor && user?.invitedByDoctorId
   $: effectiveUser = isExternalDoctor && settingsDoctor
     ? { ...user, country: settingsDoctor?.country, city: settingsDoctor?.city }
-    : user
+    : (user?.role === 'doctor' && settingsDoctor
+      ? { ...user, ...settingsDoctor }
+      : user)
 
   const loadSettingsDoctor = async () => {
     try {
@@ -155,6 +220,14 @@
       if (isExternalDoctor) {
         settingsDoctor = await firebaseStorage.getDoctorById(user.invitedByDoctorId)
         return
+      }
+
+      if (user?.id) {
+        const doctorById = await firebaseStorage.getDoctorById(user.id)
+        if (doctorById?.id) {
+          settingsDoctor = doctorById
+          return
+        }
       }
 
       if (user?.email) {
@@ -175,6 +248,12 @@
 
   $: if (!user || user?.role !== 'doctor') {
     doctorNotificationAlertCount = 0
+    doctorNotificationLowStockCount = 0
+    doctorNotificationExpiringCount = 0
+    doctorNotificationExpiredCount = 0
+    doctorNotificationItems = []
+    doctorNotificationMessageCount = 0
+    showDoctorNotificationsBalloon = false
   }
 
   const canAccessAdminPanel = (currentUser) => {
@@ -194,7 +273,20 @@
   // Handle menu navigation
   const handleMenuNavigation = async (view) => {
     console.log('🔍 App.svelte: handleMenuNavigation called with view:', view)
+    if (view === 'notifications') {
+      if (!isExternalDoctor) {
+        showDoctorAlertsModal = true
+      }
+      showDoctorNotificationsBalloon = false
+      return
+    }
     currentView = view
+    showDoctorAlertsModal = false
+    showDoctorNotificationsBalloon = false
+  }
+
+  const handleCloseDoctorAlertsModal = () => {
+    showDoctorAlertsModal = false
   }
   
   // Handle settings click from menubar
@@ -293,11 +385,126 @@
 
   const handleDoctorAlertsUpdated = (event) => {
     const total = Number(event?.detail?.total || 0)
+    const lowStock = Number(event?.detail?.lowStock || 0)
+    const expiringSoon = Number(event?.detail?.expiringSoon || 0)
+    const expired = Number(event?.detail?.expired || 0)
     doctorNotificationAlertCount = Number.isFinite(total) ? Math.max(0, total) : 0
+    doctorNotificationLowStockCount = Number.isFinite(lowStock) ? Math.max(0, lowStock) : 0
+    doctorNotificationExpiringCount = Number.isFinite(expiringSoon) ? Math.max(0, expiringSoon) : 0
+    doctorNotificationExpiredCount = Number.isFinite(expired) ? Math.max(0, expired) : 0
+  }
+
+  const calculateDaysToExpiryForAlerts = (expiryDate) => {
+    if (!expiryDate) return Number.POSITIVE_INFINITY
+    const date = new Date(expiryDate)
+    if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    date.setHours(0, 0, 0, 0)
+    return Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
+  const resolveDoctorIdForNotificationAlerts = async () => {
+    if (!user || user?.role !== 'doctor' || isExternalDoctor) {
+      return ''
+    }
+    if (user?.id) {
+      return user.id
+    }
+    if (user?.email) {
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      return doctor?.id || ''
+    }
+    return user?.uid || ''
+  }
+
+  const refreshDoctorNotificationAlertCount = async () => {
+    const requestId = ++doctorNotificationLoadRequestId
+    try {
+      const doctorId = await resolveDoctorIdForNotificationAlerts()
+      if (!doctorId) {
+        if (requestId === doctorNotificationLoadRequestId) {
+          doctorNotificationAlertCount = 0
+          doctorNotificationLowStockCount = 0
+          doctorNotificationExpiringCount = 0
+          doctorNotificationExpiredCount = 0
+        }
+        return
+      }
+
+      const connectedPharmacyIds = await pharmacyMedicationService.getConnectedPharmacies(doctorId)
+      const ownPharmacies = await pharmacyInventoryIntegration.getOwnPharmacies(doctorId, connectedPharmacyIds)
+      if (!ownPharmacies.length) {
+        if (requestId === doctorNotificationLoadRequestId) {
+          doctorNotificationAlertCount = 0
+          doctorNotificationLowStockCount = 0
+          doctorNotificationExpiringCount = 0
+          doctorNotificationExpiredCount = 0
+        }
+        return
+      }
+
+      const ownPharmacyIds = new Set(ownPharmacies.map((pharmacy) => pharmacy.id))
+      const stock = await pharmacyMedicationService.getPharmacyStock(doctorId)
+      const ownStock = (stock || []).filter((item) => ownPharmacyIds.has(item.pharmacyId))
+
+      const summary = ownStock.reduce((acc, item) => {
+        const currentStock = Number(item.currentStock ?? item.quantity ?? 0) || 0
+        const minimumStock = Math.max(0, Number(item.minimumStock ?? 0) || 0)
+        const daysToExpiry = calculateDaysToExpiryForAlerts(item.expiryDate)
+        if (currentStock <= minimumStock) {
+          acc.lowStock += 1
+        }
+        if (daysToExpiry < 0) {
+          acc.expired += 1
+        } else if (daysToExpiry <= 30) {
+          acc.expiringSoon += 1
+        }
+        return acc
+      }, { lowStock: 0, expiringSoon: 0, expired: 0 })
+
+      const total = summary.lowStock + summary.expiringSoon + summary.expired
+
+      if (requestId === doctorNotificationLoadRequestId) {
+        doctorNotificationAlertCount = Math.max(0, total)
+        doctorNotificationLowStockCount = Math.max(0, summary.lowStock)
+        doctorNotificationExpiringCount = Math.max(0, summary.expiringSoon)
+        doctorNotificationExpiredCount = Math.max(0, summary.expired)
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to refresh doctor notification alert count:', error)
+      if (requestId === doctorNotificationLoadRequestId) {
+        doctorNotificationAlertCount = 0
+        doctorNotificationLowStockCount = 0
+        doctorNotificationExpiringCount = 0
+        doctorNotificationExpiredCount = 0
+      }
+    }
+  }
+
+  const handleNotificationsBellClick = async (event) => {
+    event?.stopPropagation?.()
+    await refreshDoctorNotificationAlertCount()
+    showDoctorNotificationsBalloon = !showDoctorNotificationsBalloon
+  }
+
+  const handleNotificationItemClick = (targetView) => {
+    showDoctorNotificationsBalloon = false
+    if (targetView) {
+      handleMenuNavigation(targetView)
+    }
+  }
+
+  const handleDocumentClick = (event) => {
+    if (!showDoctorNotificationsBalloon) return
+    if (doctorNotificationPopover && !doctorNotificationPopover.contains(event.target)) {
+      showDoctorNotificationsBalloon = false
+    }
   }
 
   const handlePaymentNavigateHome = () => {
     currentView = 'home'
+    showDoctorAlertsModal = false
   }
 
   $: if (currentView === 'settings' && isExternalDoctor) {
@@ -346,6 +553,39 @@
       loadOnboardingDummyDataStatus()
     }
   }
+
+  $: {
+    if (doctorNotificationRefreshInterval) {
+      clearInterval(doctorNotificationRefreshInterval)
+      doctorNotificationRefreshInterval = null
+    }
+
+    if (user?.role === 'doctor' && !isExternalDoctor) {
+      refreshDoctorNotificationAlertCount()
+      doctorNotificationRefreshInterval = setInterval(() => {
+        refreshDoctorNotificationAlertCount()
+      }, 60000)
+    } else {
+      doctorNotificationAlertCount = 0
+      doctorNotificationLowStockCount = 0
+      doctorNotificationExpiringCount = 0
+      doctorNotificationExpiredCount = 0
+      doctorNotificationItems = []
+      doctorNotificationMessageCount = 0
+      showDoctorNotificationsBalloon = false
+    }
+  }
+
+  $: doctorNotificationItems = buildDoctorNotificationItems({
+    isDoctor: user?.role === 'doctor',
+    isExternalDoctor,
+    lowStockCount: doctorNotificationLowStockCount,
+    expiringSoonCount: doctorNotificationExpiringCount,
+    expiredCount: doctorNotificationExpiredCount,
+    adminStripeDiscountPercent: effectiveUser?.adminStripeDiscountPercent,
+    accessExpiresAt: effectiveUser?.accessExpiresAt
+  })
+  $: doctorNotificationMessageCount = doctorNotificationItems.length
   
   
   // Force cache refresh for v2.3 with timestamp
@@ -369,8 +609,10 @@
       }
       window.addEventListener('offline', handleOffline)
       window.addEventListener('online', handleOnline)
+      window.addEventListener('click', handleDocumentClick)
     }
     try {
+      initializeThemeMode()
       // Initialize Flowbite components
       if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initDropdowns === 'function') {
         window.Flowbite.initDropdowns()
@@ -619,6 +861,7 @@
     if (typeof window !== 'undefined') {
       window.removeEventListener('offline', handleOffline)
       window.removeEventListener('online', handleOnline)
+      window.removeEventListener('click', handleDocumentClick)
     }
     if (window.firebaseUnsubscribe) {
       window.firebaseUnsubscribe()
@@ -884,7 +1127,14 @@
     if (refreshInterval) {
       clearInterval(refreshInterval)
     }
+    if (doctorNotificationRefreshInterval) {
+      clearInterval(doctorNotificationRefreshInterval)
+      doctorNotificationRefreshInterval = null
+    }
     if (typeof window !== 'undefined') {
+      if (themeMediaQuery && themeMediaChangeHandler) {
+        themeMediaQuery.removeEventListener('change', themeMediaChangeHandler)
+      }
       if (window.__setAppView === setAppView) {
         delete window.__setAppView
       }
@@ -907,7 +1157,18 @@
   }
 </script>
 
-<main class="min-h-screen bg-gray-50" on:ai-usage-updated={handleAIUsageUpdate}>
+<main class="min-h-screen bg-gray-50 dark:bg-slate-950" on:ai-usage-updated={handleAIUsageUpdate}>
+  <button
+    type="button"
+    class="fixed bottom-4 right-4 z-[80] inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-md transition-colors duration-200 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+    on:click={toggleThemeMode}
+    aria-label={isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'}
+    title={isDarkTheme ? 'Switch to light mode' : 'Switch to dark mode'}
+  >
+    <i class={isDarkTheme ? 'fas fa-sun' : 'fas fa-moon'}></i>
+    {isDarkTheme ? 'Light mode' : 'Dark mode'}
+  </button>
+
   {#if wasOffline}
     <div class="bg-red-600 text-white text-sm px-4 py-2 text-center">
       You are offline. Some features may not work.
@@ -1169,20 +1430,51 @@
                 </button>
               {/if}
             {/if}
-            <button
-              type="button"
-              class="relative p-2 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 {currentView === 'notifications' ? 'text-teal-600 bg-teal-50' : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'}"
-              aria-label="Notifications"
-              title="Notifications"
-              on:click={() => handleMenuNavigation('notifications')}
-            >
-              <i class="fas fa-bell"></i>
-              {#if doctorNotificationAlertCount > 0}
-                <span class="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] leading-4 text-center font-semibold">
-                  {doctorNotificationAlertCount > 99 ? '99+' : doctorNotificationAlertCount}
-                </span>
+            <div class="relative" bind:this={doctorNotificationPopover}>
+              <button
+                type="button"
+                class="relative p-2 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 {showDoctorNotificationsBalloon || showDoctorAlertsModal ? 'text-teal-600 bg-teal-50' : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'}"
+                aria-label="Notifications"
+                title="Notifications"
+                on:click={handleNotificationsBellClick}
+              >
+                <i class="fas fa-bell"></i>
+                {#if doctorNotificationMessageCount > 0}
+                  <span class="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 rounded-full bg-red-600 text-white text-[10px] leading-4 text-center font-semibold">
+                    {doctorNotificationMessageCount > 99 ? '99+' : doctorNotificationMessageCount}
+                  </span>
+                {/if}
+              </button>
+
+              {#if showDoctorNotificationsBalloon}
+                <div class="absolute right-0 mt-2 z-50 w-80 max-w-[85vw] rounded-xl border border-gray-200 bg-white shadow-xl">
+                  <div class="px-3 py-2 border-b border-gray-100">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Notifications</p>
+                  </div>
+                  <div class="max-h-72 overflow-y-auto">
+                    {#if doctorNotificationItems.length === 0}
+                      <div class="px-3 py-3 text-sm text-gray-500">No new notifications.</div>
+                    {:else}
+                      {#each doctorNotificationItems as notification, index (notification.id)}
+                        <div class="px-3 py-3">
+                          <p class="text-sm text-gray-900 leading-5">{notification.title}</p>
+                          <button
+                            type="button"
+                            class="mt-1 text-sm font-medium text-cyan-700 hover:text-cyan-800 underline"
+                            on:click={() => handleNotificationItemClick(notification.targetView)}
+                          >
+                            {notification.actionText}
+                          </button>
+                        </div>
+                        {#if index < doctorNotificationItems.length - 1}
+                          <div class="border-t border-gray-100"></div>
+                        {/if}
+                      {/each}
+                    {/if}
+                  </div>
+                </div>
               {/if}
-            </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1199,10 +1491,6 @@
       {:else if currentView === 'reports'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <ReportsDashboard user={effectiveUser} />
-        </div>
-      {:else if currentView === 'notifications'}
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <DoctorInventoryAlertsPage user={effectiveUser} on:alerts-updated={handleDoctorAlertsUpdated} />
         </div>
       {:else if currentView === 'payments'}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -1226,10 +1514,32 @@
           />
       {/if}
     </div>
+    {#if showDoctorAlertsModal}
+      <div
+        class="fixed inset-0 z-[70] bg-gray-900/50 p-2 sm:p-4"
+        on:click={handleCloseDoctorAlertsModal}
+      >
+        <div
+          class="relative mx-auto max-h-[95vh] max-w-7xl overflow-y-auto rounded-xl border border-gray-200 bg-white p-3 shadow-2xl sm:p-4"
+          on:click|stopPropagation
+        >
+          <button
+            type="button"
+            class="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+            on:click={handleCloseDoctorAlertsModal}
+            aria-label="Close alerts popup"
+            title="Close"
+          >
+            <i class="fas fa-times"></i>
+          </button>
+          <DoctorInventoryAlertsPage user={effectiveUser} on:alerts-updated={handleDoctorAlertsUpdated} />
+        </div>
+      </div>
+    {/if}
     {/if}
   {:else}
     <!-- Landing page + login -->
-    <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#e2f7f2_0%,_#f9fafb_45%,_#f3f4f6_100%)] px-4 py-4">
+    <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#e2f7f2_0%,_#f9fafb_45%,_#f3f4f6_100%)] dark:bg-[radial-gradient(circle_at_top,_#0f172a_0%,_#0b1220_45%,_#020617_100%)] px-4 py-4">
       <PublicHeader />
       <div class="mx-auto max-w-6xl pt-4">
         {#if authOnly}
@@ -1237,24 +1547,24 @@
         {:else}
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           <div class="lg:col-span-7">
-            <div class="rounded-3xl border border-teal-100 bg-white/80 backdrop-blur px-6 py-10 shadow-sm relative overflow-hidden h-full flex flex-col">
+            <div class="rounded-3xl border border-teal-100 bg-white/80 backdrop-blur px-6 py-10 shadow-sm relative overflow-hidden h-full flex flex-col dark:border-teal-900/50 dark:bg-slate-900/80">
               <div class="absolute -top-24 -right-16 h-48 w-48 rounded-full bg-teal-200/40"></div>
               <div class="absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-amber-200/40"></div>
               <div class="relative flex flex-col h-full justify-between">
                 <div>
-                  <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+                  <div class="inline-flex items-center gap-2 rounded-full bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
                     <i class="fas fa-shield-alt"></i>
                     HIPAA-ready workflows
                   </div>
-                  <h1 class="mt-4 text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900 font-hero">
+                  <h1 class="mt-4 text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900 dark:text-slate-100 font-hero">
                     <BrandName className="text-teal-600" />
                     <span class="block mt-2">Patient and Pharmacy Management System</span>
                   </h1>
-                  <p class="mt-3 text-base text-gray-600 max-w-xl">
+                  <p class="mt-3 text-base text-gray-600 dark:text-slate-300 max-w-xl">
                     Patient history management, AI treatment suggestions, drug interaction checks, barcode IDs, prescriptions, inventory tracking, low-stock notifications, appointment reminders, auto billing, and daily/monthly income reports.
                   </p>
                   <div class="mt-5 flex flex-wrap items-center gap-3 text-sm text-gray-600">
-                    <span class="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-amber-700 font-semibold">
+                    <span class="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-amber-700 font-semibold dark:bg-amber-900/30 dark:text-amber-300">
                       One month free access for new registrations
                     </span>
                     <a
@@ -1266,25 +1576,25 @@
                     </a>
                   </div>
                   <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                    <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
                       <div class="flex items-center gap-3">
                         <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-teal-100 text-teal-700">
                           <i class="fas fa-notes-medical"></i>
                         </span>
                         <div>
-                          <p class="text-sm font-semibold text-gray-900">Doctor Portal</p>
-                          <p class="text-xs text-gray-500">Patients, prescriptions, AI insights</p>
+                          <p class="text-sm font-semibold text-gray-900 dark:text-slate-100">Doctor Portal</p>
+                          <p class="text-xs text-gray-500 dark:text-slate-400">Patients, prescriptions, AI insights</p>
                         </div>
                       </div>
                     </div>
-                    <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                    <div class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
                       <div class="flex items-center gap-3">
                         <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
                           <i class="fas fa-pills"></i>
                         </span>
                         <div>
-                          <p class="text-sm font-semibold text-gray-900">Pharmacy Portal</p>
-                          <p class="text-xs text-gray-500">Inventory, billing, team access</p>
+                          <p class="text-sm font-semibold text-gray-900 dark:text-slate-100">Pharmacy Portal</p>
+                          <p class="text-xs text-gray-500 dark:text-slate-400">Inventory, billing, team access</p>
                         </div>
                       </div>
                     </div>
@@ -1294,10 +1604,10 @@
                   <img
                     src="/hero.png"
                     alt="M-Prescribe overview"
-                    class="w-full h-auto rounded-2xl border border-gray-200 bg-white shadow-sm"
+                    class="w-full h-auto rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800"
                     loading="lazy"
                   />
-                  <div class="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                  <div class="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-slate-400">
                     <span class="inline-flex items-center gap-1"><i class="fas fa-lock"></i> Secure access</span>
                     <span class="inline-flex items-center gap-1"><i class="fas fa-bolt"></i> Fast workflows</span>
                     <span class="inline-flex items-center gap-1"><i class="fas fa-chart-line"></i> Usage analytics</span>
@@ -1307,12 +1617,12 @@
             </div>
           </div>
           <div class="lg:col-span-5">
-            <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden h-full flex flex-col">
-              <div class="px-6 py-6 border-b border-gray-200">
+            <div id="signin" class="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden h-full flex flex-col dark:bg-slate-900 dark:border-slate-700">
+              <div class="px-6 py-6 border-b border-gray-200 dark:border-slate-700">
                 <div class="flex items-center justify-between">
                   <div>
-                    <h2 class="text-xl font-semibold text-gray-900 font-landing">Sign in</h2>
-                    <p class="text-xs text-gray-500">Doctor or pharmacy access</p>
+                    <h2 class="text-xl font-semibold text-gray-900 dark:text-slate-100 font-landing">Sign in</h2>
+                    <p class="text-xs text-gray-500 dark:text-slate-400">Doctor or pharmacy access</p>
                   </div>
                   <div class="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-teal-100 text-teal-700">
                     <i class="fas fa-stethoscope"></i>
@@ -1321,10 +1631,10 @@
               </div>
               <div class="px-6 py-6">
                 <div class="mb-5">
-                  <div class="flex rounded-xl border border-gray-200 bg-gray-100 p-1 w-full" role="group" aria-label="Authentication mode">
+                  <div class="flex rounded-xl border border-gray-200 bg-gray-100 p-1 w-full dark:border-slate-700 dark:bg-slate-800" role="group" aria-label="Authentication mode">
                     <button 
                       type="button" 
-                      class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+                      class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'doctor' ? 'bg-white text-teal-600 shadow-sm dark:bg-slate-700 dark:text-teal-300' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700'}"
                       on:click={handleSwitchToDoctor}
                     >
                       <i class="fas fa-user-md mr-2"></i>
@@ -1332,7 +1642,7 @@
                     </button>
                     <button 
                       type="button" 
-                      class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}"
+                      class="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 {authMode === 'pharmacist' ? 'bg-white text-teal-600 shadow-sm dark:bg-slate-700 dark:text-teal-300' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-700'}"
                       on:click={handleSwitchToPharmacist}
                     >
                       <i class="fas fa-pills mr-2"></i>
@@ -1340,10 +1650,10 @@
                     </button>
                   </div>
                 </div>
-                <div class="rounded-2xl bg-gray-50 p-4">
+                <div class="rounded-2xl bg-gray-50 p-4 dark:bg-slate-800">
                   {#if authMode === 'doctor'}
                     <div class="text-center mb-4">
-                      <h4 class="text-base font-semibold text-gray-900 mb-0">
+                      <h4 class="text-base font-semibold text-gray-900 dark:text-slate-100 mb-0">
                         <i class="fas fa-user-md text-teal-600 mr-2"></i>
                         Doctor Portal
                       </h4>
@@ -1351,7 +1661,7 @@
                     <DoctorAuth allowRegister={false} on:user-authenticated={handleUserAuthenticated} />
                   {:else}
                     <div class="text-center mb-4">
-                      <h4 class="text-base font-semibold text-gray-900 mb-0">
+                      <h4 class="text-base font-semibold text-gray-900 dark:text-slate-100 mb-0">
                         <i class="fas fa-pills text-teal-600 mr-2"></i>
                         Pharmacy Portal
                       </h4>
@@ -1364,7 +1674,7 @@
                   {/if}
                 </div>
               </div>
-              <div class="bg-gray-50 px-6 py-4 text-center text-xs text-gray-500 space-y-2 mt-auto">
+              <div class="bg-gray-50 px-6 py-4 text-center text-xs text-gray-500 dark:bg-slate-800 dark:text-slate-400 space-y-2 mt-auto">
                 <div class="flex flex-wrap justify-center gap-2">
                   <span class="inline-flex items-center gap-1"><i class="fas fa-shield-alt"></i> Secure</span>
                   <span class="inline-flex items-center gap-1"><i class="fas fa-brain"></i> AI-Enhanced</span>
@@ -1376,119 +1686,119 @@
         </div>
         <div class="mt-10">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 font-landing">Facilities for doctors and pharmacists</h3>
-            <span class="text-xs text-gray-500">All included in your portal access</span>
+            <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-slate-100 font-landing">Facilities for doctors and pharmacists</h3>
+            <span class="text-xs text-gray-500 dark:text-slate-400">All included in your portal access</span>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-100 text-teal-700 text-3xl">
                   <i class="fas fa-notes-medical"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">Patient history</p>
-                  <p class="text-sm text-gray-500">Search visits, diagnoses, labs, and meds in seconds with unified charts</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">Patient history</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Search visits, diagnoses, labs, and meds in seconds with unified charts</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-100 text-rose-700 text-3xl">
                   <i class="fas fa-bell"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">SMS + email notifications</p>
-                  <p class="text-sm text-gray-500">Automatic registration confirmations and next-visit reminders via SMS and email</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">SMS + email notifications</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Automatic registration confirmations and next-visit reminders via SMS and email</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 text-3xl">
                   <i class="fas fa-folder-open"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">Fast account retrieval</p>
-                  <p class="text-sm text-gray-500">Locate patient accounts and past prescriptions with smart filters, quick search, and optional barcode retrieval</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">Fast account retrieval</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Locate patient accounts and past prescriptions with smart filters, quick search, and optional barcode retrieval</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 text-3xl">
                   <i class="fas fa-brain"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">Optional AI based diagnosis</p>
-                  <p class="text-sm text-gray-500">On-demand clinical suggestions to support decisions without replacing judgment</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">Optional AI based diagnosis</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">On-demand clinical suggestions to support decisions without replacing judgment</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 text-3xl">
                   <i class="fas fa-spell-check"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">AI spelling and grammar corrections</p>
-                  <p class="text-sm text-gray-500">Clean medicine names and patient notes with automatic English fixes</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">AI spelling and grammar corrections</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Clean medicine names and patient notes with automatic English fixes</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 text-3xl">
                   <i class="fas fa-file-prescription"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">Printing prescription</p>
-                  <p class="text-sm text-gray-500">Generate clean, branded prescriptions with dosage, notes, and refill details</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">Printing prescription</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Generate clean, branded prescriptions with dosage, notes, and refill details</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 text-3xl">
                   <i class="fas fa-capsules"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">Maintain drug inventory</p>
-                  <p class="text-sm text-gray-500">Track stock levels, dispensing history, expiries, and low-stock alerts</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">Maintain drug inventory</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Track stock levels, dispensing history, expiries, and low-stock alerts</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 text-3xl">
                   <i class="fas fa-calculator"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">Charge calculations</p>
-                  <p class="text-sm text-gray-500">Accurate totals with taxes, discounts, and itemized billing in one step</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">Charge calculations</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Accurate totals with taxes, discounts, and itemized billing in one step</p>
                 </div>
               </div>
             </div>
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div class="flex flex-col items-center text-center gap-3">
                 <span class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 text-3xl">
                   <i class="fas fa-chart-line"></i>
                 </span>
                 <div>
-                  <p class="text-base font-semibold text-gray-900">Daily monthly income reports</p>
-                  <p class="text-sm text-gray-500">Daily and monthly revenue snapshots with exports for accounting</p>
+                  <p class="text-base font-semibold text-gray-900 dark:text-slate-100">Daily monthly income reports</p>
+                  <p class="text-sm text-gray-500 dark:text-slate-400">Daily and monthly revenue snapshots with exports for accounting</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <footer class="mt-10 border-t border-gray-200 pt-6 text-sm text-gray-500 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <footer class="mt-10 border-t border-gray-200 dark:border-slate-700 pt-6 text-sm text-gray-500 dark:text-slate-400 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <span>© Tronicgate Hardware and Software Services</span>
           <div class="flex items-center gap-4">
-            <a href="/?privacy=1" class="text-blue-600 hover:text-blue-800 underline">Privacy Policy</a>
-            <a href="/?pricing=1" class="text-blue-600 hover:text-blue-800 underline">Pricing</a>
-            <a href="/?faq=1" class="text-blue-600 hover:text-blue-800 underline">FAQ</a>
-            <a href="/?help=1" class="text-blue-600 hover:text-blue-800 underline">Help</a>
-            <a href="/?contact=1" class="text-blue-600 hover:text-blue-800 underline">Contact us</a>
+            <a href="/?privacy=1" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline">Privacy Policy</a>
+            <a href="/?pricing=1" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline">Pricing</a>
+            <a href="/?faq=1" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline">FAQ</a>
+            <a href="/?help=1" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline">Help</a>
+            <a href="/?contact=1" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline">Contact us</a>
           </div>
         </footer>
       {/if}

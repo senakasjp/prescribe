@@ -319,7 +319,7 @@ The enhanced inventory system is integrated into the existing `PharmacistDashboa
 ## Deployment
 
 The enhanced inventory system has been successfully deployed and is available at:
-- **Production URL**: https://prescribe-7e1e8.web.app
+- **Production URL**: https://mprescribe.net (legacy: https://prescribe-7e1e8.web.app)
 - **Firebase Console**: https://console.firebase.google.com/project/prescribe-7e1e8/overview
 
 ## Testing

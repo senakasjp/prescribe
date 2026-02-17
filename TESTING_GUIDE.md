@@ -94,7 +94,7 @@ If it fails:
 - **Component failures**: run `npm test` to reproduce in watch mode.
 
 ## See Also
-- `MANUAL_TESTING_CHECKLIST.md`
-- `TESTING_QUICK_START.md`
-- `TESTING_BEST_PRACTICES.md`
-- `HIPAA_COMPLIANCE_CHECKLIST.md`
+- `docs/legacy/MANUAL_TESTING_CHECKLIST.md`
+- `docs/legacy/TESTING_QUICK_START.md`
+- `docs/legacy/TESTING_BEST_PRACTICES.md`
+- `docs/legacy/HIPAA_COMPLIANCE_CHECKLIST.md`

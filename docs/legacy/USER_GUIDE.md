@@ -1,23 +1,38 @@
 # User Guide
 
-## 🆕 Recent Updates (January 16, 2025)
+> Legacy detailed guide. Canonical docs: `PRODUCT_MANUAL.md`, `ENGINEERING_MANUAL.md`, `TESTING_GUIDE.md`, `CHANGELOG.md`, `DOCS.md`.
 
-### **💊 Qts-Based Non-Tablet Pricing (February 13, 2026)**
-- **When Qts is used**:
-  - ✅ For dosage forms other than `Tablet`, `Capsule`, and `Syrup` (for example: ointment, suppository, drops, spray)
-- **Where to enter it**:
-  - ✅ In `Add New Medication`, enter `Qts` in the box next to **Strength**
-- **Input rule**:
-  - ✅ `Qts` must be a positive integer
-  - ✅ `Qts` is required when this mode is active
-  - ✅ `Dosage Fraction` is hidden for these Qts-based forms
-  - ✅ `Amount (PRN)` is hidden for these Qts-based forms
-  - ✅ `When to take` is hidden for these Qts-based forms
-  - ✅ `Frequency` and `Duration` are optional for these Qts-based forms
-- **How price is calculated**:
-  - ✅ `Drug Price = Qts × unit selling price`
-  - ✅ Liquids/syrups continue ml-based pricing
-  - ✅ Tablets/capsules continue amount/dosage pricing
+## 🆕 Recent Updates (February 17, 2026)
+
+### **💳 Admin Payment Pricing Controls (February 17, 2026)**
+- **Configurable pricing in Admin**:
+  - ✅ Monthly and annual price controls for USD and LKR plans.
+  - ✅ Scope selector to apply pricing to:
+    - `new_customers` only
+    - `all_customers`
+  - ✅ Custom pricing enable/disable toggle.
+- **Stripe checkout behavior**:
+  - ✅ Pricing settings are enforced by backend at checkout time.
+  - ✅ Defaults are used automatically if settings are not valid.
+- **Regression tests included**:
+  - ✅ `src/tests/components/AdminDashboard.test.js`
+  - ✅ `src/tests/unit/firebaseStorage.paymentPricingSettings.test.js`
+  - ✅ `src/tests/unit/stripePricingConfig.test.js`
+
+### **💊 Dispense Form Categories (February 15, 2026)**
+- **QTY (sell as units)**:
+  - ✅ `Injection`, `Cream`, `Ointment`, `Gel`, `Suppository`, `Inhaler`, `Spray`, `Shampoo`, `Packet`, `Roll`
+- **Non-QTY**:
+  - ✅ `Tablet`, `Capsule`, `Liquid (measured)`
+- **Special QTY**:
+  - ✅ `Liquid (bottles)`
+
+### **🧮 Quantity + PDF Labeling Rules (February 16, 2026)**
+- **Count fallback**:
+  - ✅ If a count-based medication cannot compute quantity from schedule/strength, the entered count (`qts`) is used for pricing and pharmacy payload.
+- **PDF second line (inventory-sourced values)**:
+  - ✅ Uses `Vol:` for volume values/forms.
+  - ✅ Uses `Strength:` for non-volume values.
 
 ### **🔧 Brand Name Autofill Enhancement (January 16, 2025) - v2.2.24**
 - **Pharmacy Inventory Integration**: 

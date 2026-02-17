@@ -68,6 +68,7 @@
 
   // Prescription template variables
   let templateType = '' // Will be set from user.templateSettings
+  let uploadedHeaderFileName = ''
   let uploadedHeader = null
   let templatePreview = null
   let headerSize = 300 // Default header size in pixels
@@ -1191,6 +1192,7 @@
   const selectTemplateType = (type) => {
     templateType = type
     uploadedHeader = null
+    uploadedHeaderFileName = ''
     
     // Clear conflicting data based on template type
     if (type === 'system') {
@@ -1228,11 +1230,14 @@
   const handleHeaderUpload = (event) => {
     const file = event.target.files[0]
     if (file) {
+      uploadedHeaderFileName = file.name || ''
       const reader = new FileReader()
       reader.onload = (e) => {
         uploadedHeader = e.target.result
       }
       reader.readAsDataURL(file)
+    } else {
+      uploadedHeaderFileName = ''
     }
   }
 
@@ -1299,6 +1304,25 @@
 
   const handleHeaderFontSizeChange = (size) => {
     headerFontSize = parseHeaderFontSize(size, 16)
+  }
+
+  const stripUndefinedDeep = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => stripUndefinedDeep(item))
+        .filter((item) => item !== undefined)
+    }
+    if (value && typeof value === 'object') {
+      const next = {}
+      Object.entries(value).forEach(([key, entryValue]) => {
+        const sanitized = stripUndefinedDeep(entryValue)
+        if (sanitized !== undefined) {
+          next[key] = sanitized
+        }
+      })
+      return next
+    }
+    return value === undefined ? undefined : value
   }
 
   // Generate prescription preview
@@ -1368,23 +1392,23 @@
           ...templatePreview,
           formattedHeader: templateType === 'system'
             ? (headerText || templatePreview?.formattedHeader || '')
-            : templatePreview?.formattedHeader
+            : (templatePreview?.formattedHeader || '')
         }
         : templatePreview
 
       // Prepare template settings object
-      const templateSettings = {
+      const templateSettings = stripUndefinedDeep({
         doctorId: doctor.id,
         templateType: templateType,
         headerSize: headerSize,
         headerText: headerText || '',
         headerFontSize: headerFontSize || 16,
         templatePreview: templatePreviewSnapshot,
-        uploadedHeader: uploadedHeader,
+        uploadedHeader: uploadedHeader || null,
         excludePharmacyDrugs: excludePharmacyDrugs,
         procedurePricing: normalizeProcedurePricingForSave(procedurePricing),
         updatedAt: new Date().toISOString()
-      }
+      })
       
       // Persist via dedicated API that handles serialization
       await firebaseStorage.saveDoctorTemplateSettings(doctor.id, templateSettings)
@@ -1835,17 +1859,58 @@
                 
                 {#if templateType === 'upload'}
                 <div class="mt-3">
+                  <label for="headerTemplateUploadInput" class="sr-only">Upload header image</label>
                   <input 
+                    id="headerTemplateUploadInput"
                     type="file" 
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+                    class="hidden"
                     accept="image/*"
                     on:change={handleHeaderUpload}
                   />
+                  <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <button
+                      type="button"
+                      class="inline-flex items-center px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200"
+                      on:click={() => document.getElementById('headerTemplateUploadInput')?.click()}
+                    >
+                      <i class="fas fa-upload mr-2"></i>
+                      Upload Header Image
+                    </button>
+                    <span class="text-sm text-gray-600 truncate">
+                      {uploadedHeaderFileName || 'No file chosen'}
+                    </span>
+                  </div>
                   <div class="text-sm text-gray-500 mb-3">
                     <i class="fas fa-info-circle mr-1"></i>
                     Supported formats: JPG, PNG, GIF. Recommended size: 800x200 pixels.
                   </div>
-                  
+                  {#if uploadedHeader}
+                    <div class="mt-2 border border-gray-200 rounded-lg bg-gray-50 p-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <p class="text-sm font-medium text-gray-700">Header Preview</p>
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-2.5 py-1.5 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+                          on:click={() => {
+                            uploadedHeader = null
+                            uploadedHeaderFileName = ''
+                            const input = document.getElementById('headerTemplateUploadInput')
+                            if (input) input.value = ''
+                          }}
+                        >
+                          <i class="fas fa-trash-alt mr-1"></i>
+                          Remove
+                        </button>
+                      </div>
+                      <div class="overflow-hidden rounded-md border border-gray-200 bg-white">
+                        <img
+                          src={uploadedHeader}
+                          alt="Uploaded header preview"
+                          class="w-full h-auto max-h-40 object-contain"
+                        />
+                      </div>
+                    </div>
+                  {/if}
                 </div>
                 {/if}
               </div>

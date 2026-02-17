@@ -1,5 +1,7 @@
 # Recent Fixes Summary - Prescribe Medical System
 
+> Legacy summary. Canonical release tracking is maintained in `CHANGELOG.md`.
+
 ## 🎯 Latest Updates (February 14, 2026)
 
 ### 📱 Mobile Camera Capture UX Refresh
@@ -371,7 +373,7 @@ if (dispensedMedications.size === 0) {
 
 ## 🚀 Deployment Status
 
-### **Current Version**: 2.1.0
+### **Current Version**: 2.3.14
 - **Individual Drug Dispatch**: ✅ Live
 - **Enhanced Warning System**: ✅ Live
 - **Mobile Optimization**: ✅ Live
@@ -384,7 +386,7 @@ if (dispensedMedications.size === 0) {
 - **Responsive Design**: All breakpoints working
 - **Accessibility**: WCAG compliance improved
 
-### **Deployment URL**: https://prescribe-7e1e8.web.app
+### **Deployment URL**: https://mprescribe.net (legacy: https://prescribe-7e1e8.web.app)
 
 ## 🎯 Impact & Results
 
@@ -448,6 +450,6 @@ if (dispensedMedications.size === 0) {
 
 ---
 
-**Last Updated**: January 16, 2025  
-**Version**: 2.1.0  
+**Last Updated**: February 17, 2026  
+**Version**: 2.3.14  
 **Status**: ✅ All features implemented and deployed successfully

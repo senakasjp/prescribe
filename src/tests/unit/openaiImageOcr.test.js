@@ -63,4 +63,24 @@ describe('openaiService extractTextFromImage', () => {
     vi.spyOn(openaiService, 'isConfigured').mockReturnValue(true)
     await expect(openaiService.extractTextFromImage('')).rejects.toThrow('Image source is required for OCR.')
   })
+
+  it('retries with stronger compression when proxy returns payload too large', async () => {
+    vi.spyOn(openaiService, 'isConfigured').mockReturnValue(true)
+    const makeRequestSpy = vi.spyOn(openaiService, 'makeOpenAIRequest')
+      .mockRejectedValueOnce(new Error('Payload too large'))
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: 'HB 12.5' } }],
+        usage: { total_tokens: 18 },
+        __fromCache: false
+      })
+
+    const optimizeSpy = vi.spyOn(openaiService, 'optimizeImageSourceForOcr')
+      .mockResolvedValue('data:image/jpeg;base64,AAA')
+
+    const result = await openaiService.extractTextFromImage('data:image/png;base64,BBBB', 'doc-123')
+
+    expect(makeRequestSpy).toHaveBeenCalledTimes(2)
+    expect(optimizeSpy).toHaveBeenCalledTimes(2)
+    expect(result.extractedText).toBe('HB 12.5')
+  })
 })

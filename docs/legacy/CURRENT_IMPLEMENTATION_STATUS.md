@@ -1,10 +1,12 @@
 # Current Implementation Status
 
+> Legacy status snapshot. Canonical sources: `PRODUCT_MANUAL.md`, `ENGINEERING_MANUAL.md`, and `CHANGELOG.md`.
+
 ## Overview
 This document provides a comprehensive overview of the current state of the M-Prescribe application, including all implemented features, architecture, and technical details.
 
 ## Application URL
-**Live Application**: https://prescribe-7e1e8.web.app
+**Live Application**: https://mprescribe.net (legacy: https://prescribe-7e1e8.web.app)
 
 ## Current Features Status
 
@@ -251,7 +253,7 @@ src/
 
 ### Firebase Hosting
 - **Project**: prescribe-7e1e8
-- **URL**: https://prescribe-7e1e8.web.app
+- **URL**: https://mprescribe.net (legacy: https://prescribe-7e1e8.web.app)
 - **Build Command**: `npm run build`
 - **Deploy Command**: `firebase deploy`
 
@@ -332,26 +334,24 @@ src/
 - **User Guide**: USER_GUIDE.md
 - **Testing Guide**: TESTING_GUIDE.md
 
-## Recent Updates (January 16, 2025)
+## Recent Updates (February 17, 2026)
 
-### ✅ Header Editor System Enhancement (January 16, 2025)
-- **Version**: v2.2.5
-- **Interface Streamlining**: Removed redundant "Preview System Header" button from third option
-- **Cleaner UI**: System header option now shows only the "Professional Header Editor" section
-- **Enhanced UX**: Simplified workflow for prescription header customization
-- **Version Synchronization**: Updated all components to v2.2.5
-- **Status**: ✅ **FULLY DEPLOYED AND FUNCTIONAL**
-
-### ✅ Template Persistence Fix (January 16, 2025)
-- **Issue Resolution**: Fixed template selection not retaining after refresh
-- **State Synchronization**: Implemented proper user object synchronization between components
-- **Event Handling**: Added user-updated event dispatching for real-time state updates
-- **Debug Cleanup**: Removed all debug logging and auto-save functionality
-- **Status**: ✅ **FULLY RESOLVED AND DEPLOYED**
+### ✅ Admin Payment Pricing Controls (v2.3.14)
+- Admin Payments tab now supports editable Stripe plan pricing:
+  - USD monthly/annual
+  - LKR monthly/annual
+- Added scope selection for pricing rollout:
+  - `new_customers`
+  - `all_customers`
+- Added backend enforcement in Stripe checkout using `systemSettings/paymentPricing`.
+- Added regression coverage:
+  - `src/tests/components/AdminDashboard.test.js`
+  - `src/tests/unit/firebaseStorage.paymentPricingSettings.test.js`
+  - `src/tests/unit/stripePricingConfig.test.js`
 
 ---
 
-**Last Updated**: January 16, 2025
-**Version**: 2.2.5 (Header Editor System Enhancement)
+**Last Updated**: February 17, 2026
+**Version**: 2.3.14
 **Status**: Fully Functional and Deployed
-**Latest Enhancement**: Header editor interface streamlining and template persistence fixes
+**Latest Enhancement**: Admin payment pricing controls with scope-based Stripe checkout enforcement

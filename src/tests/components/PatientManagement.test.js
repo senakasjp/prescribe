@@ -272,4 +272,34 @@ describe('PatientManagement home charts', () => {
       expect(mountedIncomeCharts.length).toBe(1)
     })
   })
+
+  it('re-renders home charts after returning from another tab', async () => {
+    const view = render(PatientManagement, {
+      props: {
+        currentView: 'patients',
+        user: doctor,
+        authUser: null
+      }
+    })
+
+    await settleCharts()
+    expect(document.getElementById('incomeComparisonChart')).toBeNull()
+
+    await view.rerender({
+      currentView: 'home',
+      user: doctor,
+      authUser: null
+    })
+
+    await settleCharts()
+
+    await waitFor(() => {
+      const prescriptionHost = document.getElementById('prescriptionsChart')
+      const incomeHost = document.getElementById('incomeComparisonChart')
+      expect(prescriptionHost).toBeTruthy()
+      expect(incomeHost).toBeTruthy()
+      expect(prescriptionHost.querySelector('[data-series-first="Total Prescriptions"]')).toBeTruthy()
+      expect(incomeHost.querySelector('[data-series-first="This Month"]')).toBeTruthy()
+    })
+  })
 })

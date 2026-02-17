@@ -25,6 +25,28 @@ const IMAGE_FILE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 const IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'])
 const PDF_MIME_TYPES = new Set(['application/pdf'])
 
+const stripUndefinedDeep = (value) => {
+  if (Array.isArray(value)) {
+    const sanitized = value
+      .map((item) => stripUndefinedDeep(item))
+      .filter((item) => item !== undefined)
+    return sanitized
+  }
+
+  if (value && typeof value === 'object') {
+    const next = {}
+    Object.entries(value).forEach(([key, nested]) => {
+      const sanitized = stripUndefinedDeep(nested)
+      if (sanitized !== undefined) {
+        next[key] = sanitized
+      }
+    })
+    return next
+  }
+
+  return value === undefined ? undefined : value
+}
+
 class FirebaseStorageService {
   constructor() {
     this.collections = {
@@ -40,7 +62,8 @@ class FirebaseStorageService {
       doctorReports: 'doctorReports',
       reports: 'reports',
       systemSettings: 'systemSettings',
-      mobileCaptureSessions: 'mobileCaptureSessions'
+      mobileCaptureSessions: 'mobileCaptureSessions',
+      promoCodes: 'promoCodes'
     }
   }
 
@@ -71,8 +94,118 @@ class FirebaseStorageService {
     return raw.slice(0, 8).toUpperCase()
   }
 
+  generatePromoCode(length = 8) {
+    const safeLength = Math.max(4, Math.min(16, Number(length) || 8))
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let code = ''
+    for (let i = 0; i < safeLength; i += 1) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)]
+    }
+    return code
+  }
+
   normalizeEmail(email) {
     return String(email || '').trim().toLowerCase()
+  }
+
+  normalizePromoCode(code) {
+    return String(code || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '')
+  }
+
+  async getPromoCodeByCode(code) {
+    try {
+      const normalizedCode = this.normalizePromoCode(code)
+      if (!normalizedCode) return null
+      const promoQuery = query(
+        collection(db, this.collections.promoCodes),
+        where('code', '==', normalizedCode),
+        limit(1)
+      )
+      const snapshot = await getDocs(promoQuery)
+      if (snapshot.empty) return null
+      const promoDoc = snapshot.docs[0]
+      return { id: promoDoc.id, ...promoDoc.data() }
+    } catch (error) {
+      console.error('❌ Error getting promo code:', error)
+      throw error
+    }
+  }
+
+  async createPromoCode(promoData = {}) {
+    try {
+      const code = this.normalizePromoCode(promoData.code || this.generatePromoCode(8))
+      if (!code) {
+        throw new Error('Promo code is required')
+      }
+
+      const existing = await this.getPromoCodeByCode(code)
+      if (existing) {
+        throw new Error('Promo code already exists')
+      }
+
+      const percentOff = Math.max(1, Math.min(100, Number(promoData.percentOff || 0)))
+      const validDays = Math.max(1, Math.min(365, Number(promoData.validDays || 30)))
+      const maxRedemptions = Math.max(1, Number(promoData.maxRedemptions || 1))
+      const validFrom = promoData.validFrom ? new Date(promoData.validFrom) : new Date()
+      const validUntilDate = promoData.validUntil
+        ? new Date(promoData.validUntil)
+        : new Date(validFrom.getTime() + validDays * 24 * 60 * 60 * 1000)
+      const nowIso = new Date().toISOString()
+
+      const payload = {
+        code,
+        name: String(promoData.name || `${percentOff}% Off`).trim(),
+        discountType: 'percent',
+        percentOff,
+        currency: String(promoData.currency || '').trim().toLowerCase(),
+        planIds: Array.isArray(promoData.planIds) ? promoData.planIds.map((id) => String(id || '').trim()).filter(Boolean) : [],
+        maxRedemptions,
+        redemptionCount: 0,
+        isActive: promoData.isActive !== false,
+        validFrom: validFrom.toISOString(),
+        validUntil: validUntilDate.toISOString(),
+        createdBy: String(promoData.createdBy || '').trim(),
+        createdAt: nowIso,
+        updatedAt: nowIso
+      }
+
+      const docRef = await addDoc(collection(db, this.collections.promoCodes), payload)
+      return { id: docRef.id, ...payload }
+    } catch (error) {
+      console.error('❌ Error creating promo code:', error)
+      throw error
+    }
+  }
+
+  async getPromoCodes(maxRows = 100) {
+    try {
+      const rowLimit = Math.max(1, Math.min(500, Number(maxRows) || 100))
+      const promoQuery = query(
+        collection(db, this.collections.promoCodes),
+        orderBy('createdAt', 'desc'),
+        limit(rowLimit)
+      )
+      const snapshot = await getDocs(promoQuery)
+      return snapshot.docs.map((promoDoc) => ({ id: promoDoc.id, ...promoDoc.data() }))
+    } catch (error) {
+      console.error('❌ Error loading promo codes:', error)
+      throw error
+    }
+  }
+
+  async updatePromoCodeStatus(promoId, isActive) {
+    try {
+      const id = String(promoId || '').trim()
+      if (!id) throw new Error('Promo ID is required')
+      const promoRef = doc(db, this.collections.promoCodes, id)
+      await updateDoc(promoRef, {
+        isActive: Boolean(isActive),
+        updatedAt: new Date().toISOString()
+      })
+    } catch (error) {
+      console.error('❌ Error updating promo status:', error)
+      throw error
+    }
   }
 
   // Doctor operations
@@ -129,6 +262,7 @@ class FirebaseStorageService {
         referralBonusApplied: doctorData.referralBonusApplied,
         referralBonusAppliedAt: doctorData.referralBonusAppliedAt,
         referralCode: referralCode,
+        adminStripeDiscountPercent: Number(doctorData.adminStripeDiscountPercent || 0),
         authProvider: doctorData.authProvider,
         connectedPharmacists: doctorData.connectedPharmacists || [],
         allowedDeviceId: doctorData.allowedDeviceId,
@@ -351,6 +485,7 @@ class FirebaseStorageService {
         referralBonusApplied: updatedDoctor.referralBonusApplied,
         referralBonusAppliedAt: updatedDoctor.referralBonusAppliedAt,
         referralCode: updatedDoctor.referralCode,
+        adminStripeDiscountPercent: Number(updatedDoctor.adminStripeDiscountPercent || 0),
         doctorIdShort: updatedDoctor.doctorIdShort,
         uid: updatedDoctor.uid,
         displayName: updatedDoctor.displayName,
@@ -2273,10 +2408,11 @@ class FirebaseStorageService {
       console.log('🔥 Firebase: Saving template settings for doctor:', doctorId)
       
       const doctorRef = doc(db, this.collections.doctors, doctorId)
+      const sanitizedTemplateData = stripUndefinedDeep(templateData || {})
       
       // Update the doctor document with template settings
       await updateDoc(doctorRef, {
-        templateSettings: templateData,
+        templateSettings: sanitizedTemplateData,
         templateUpdatedAt: new Date().toISOString()
       })
       
@@ -2509,6 +2645,34 @@ class FirebaseStorageService {
     }
   }
 
+  async getPaymentPricingSettings() {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'paymentPricing')
+      const docSnap = await getDoc(docRef)
+      if (!docSnap.exists()) {
+        return null
+      }
+      return docSnap.data()
+    } catch (error) {
+      console.error('❌ Error getting payment pricing settings:', error)
+      throw error
+    }
+  }
+
+  async savePaymentPricingSettings(settings) {
+    try {
+      const docRef = doc(db, this.collections.systemSettings, 'paymentPricing')
+      await setDoc(docRef, {
+        ...settings,
+        updatedAt: new Date().toISOString()
+      }, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error saving payment pricing settings:', error)
+      throw error
+    }
+  }
+
   async getEmailLogs(limitCount = 200) {
     try {
       const q = query(
@@ -2545,9 +2709,13 @@ class FirebaseStorageService {
     }
   }
 
-  async getDoctorPaymentRecords(doctorId, limitCount = 200) {
+  async getDoctorPaymentRecords(doctorId, limitCount = 200, doctorEmail = '') {
     try {
+      const SUCCESS_STATUSES = new Set(['confirmed', 'paid', 'succeeded', 'complete', 'completed', 'recorded', 'success'])
+      const FAIL_STATUSES = new Set(['failed', 'fail', 'canceled', 'cancelled'])
+      const DUPLICATE_WINDOW_MS = 3 * 60 * 1000
       const normalizedDoctorId = String(doctorId || '').trim()
+      const normalizedDoctorEmail = String(doctorEmail || '').trim().toLowerCase()
       if (!normalizedDoctorId) {
         return []
       }
@@ -2578,6 +2746,7 @@ class FirebaseStorageService {
         const data = doc.data()
         const interval = String(data?.interval || '').toLowerCase()
         const monthsDelta = interval === 'year' ? 12 : interval === 'month' ? 1 : 0
+        const normalizedAmount = Number(data?.amount || 0) / 100
         return {
           id: `stripe-${doc.id}`,
           doctorId: normalizedDoctorId,
@@ -2585,7 +2754,7 @@ class FirebaseStorageService {
           source: 'stripeCheckoutLogs',
           status: data?.status || 'created',
           monthsDelta,
-          amount: Number(data?.amount || 0),
+          amount: Number.isFinite(normalizedAmount) ? normalizedAmount : 0,
           currency: String(data?.currency || '').toUpperCase(),
           referenceId: data?.sessionId || doc.id,
           note: data?.planId || '',
@@ -2594,8 +2763,178 @@ class FirebaseStorageService {
         }
       })
 
-      return [...walletRecords, ...stripeRecords]
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      const stripeByEmailRecords = normalizedDoctorEmail
+        ? (await getDocs(
+            query(
+              collection(db, 'stripeCheckoutLogs'),
+              where('userEmail', '==', normalizedDoctorEmail),
+              limit(limitCount)
+            )
+          )).docs.map(doc => {
+            const data = doc.data()
+            const interval = String(data?.interval || '').toLowerCase()
+            const monthsDelta = interval === 'year' ? 12 : interval === 'month' ? 1 : 0
+            const normalizedAmount = Number(data?.amount || 0) / 100
+            return {
+              id: `stripe-email-${doc.id}`,
+              doctorId: normalizedDoctorId,
+              type: 'stripe_checkout',
+              source: 'stripeCheckoutLogs',
+              status: data?.status || 'created',
+              monthsDelta,
+              amount: Number.isFinite(normalizedAmount) ? normalizedAmount : 0,
+              currency: String(data?.currency || '').toUpperCase(),
+              referenceId: data?.sessionId || doc.id,
+              note: data?.planId || '',
+              createdAt: data?.createdAt || '',
+              sourceCollection: 'stripeCheckoutLogs'
+            }
+          })
+        : []
+
+      const toTimestamp = (record) => {
+        const ts = new Date(record?.createdAt || 0).getTime()
+        return Number.isFinite(ts) ? ts : 0
+      }
+
+      const normalizeOutcome = (record) => {
+        const status = String(record?.status || '').toLowerCase()
+        if (SUCCESS_STATUSES.has(status)) return 'success'
+        if (FAIL_STATUSES.has(status)) return 'fail'
+        return 'pending'
+      }
+
+      const isStripeRecord = (record) => {
+        const source = String(record?.source || '').toLowerCase()
+        const sourceCollection = String(record?.sourceCollection || '').toLowerCase()
+        return source.includes('stripe') || sourceCollection.includes('stripe')
+      }
+
+      const getReferenceCandidates = (record) => {
+        const metadata = record?.metadata && typeof record.metadata === 'object' ? record.metadata : {}
+        const values = [
+          record?.referenceId,
+          record?.sessionId,
+          record?.checkoutSessionId,
+          record?.paymentIntentId,
+          record?.invoiceId,
+          metadata?.referenceId,
+          metadata?.sessionId,
+          metadata?.checkoutSessionId,
+          metadata?.paymentIntentId,
+          metadata?.invoiceId
+        ]
+        return values
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+      }
+
+      const getCanonicalReference = (record) => {
+        const refs = getReferenceCandidates(record)
+        if (refs.length === 0) return ''
+        const byPrefix = (prefix) => refs.find((ref) => ref.startsWith(prefix))
+        return byPrefix('cs_') || byPrefix('pi_') || byPrefix('in_') || byPrefix('ch_') || refs[0]
+      }
+
+      const getRecordScore = (record) => {
+        let score = 0
+        const outcome = normalizeOutcome(record)
+        if (String(record?.sourceCollection || '').toLowerCase() === 'doctorpaymentrecords') score += 100
+        if (outcome !== 'pending') score += 40
+        if (Number(record?.amount || 0) > 0) score += 20
+        if (String(record?.type || '').toLowerCase() === 'stripe_payment') score += 10
+        if (getCanonicalReference(record).startsWith('cs_')) score += 5
+        return score
+      }
+
+      const mergedByRef = new Map()
+      ;[...walletRecords, ...stripeRecords, ...stripeByEmailRecords].forEach((record) => {
+        const canonicalReference = getCanonicalReference(record)
+        const key = canonicalReference ? `ref:${canonicalReference}` : `id:${record.id}`
+        const existing = mergedByRef.get(key)
+        if (
+          !existing ||
+          getRecordScore(record) > getRecordScore(existing) ||
+          (
+            getRecordScore(record) === getRecordScore(existing) &&
+            toTimestamp(record) > toTimestamp(existing)
+          )
+        ) {
+          mergedByRef.set(key, record)
+        }
+      })
+
+      const sortedRecords = Array.from(mergedByRef.values())
+        .sort((a, b) => getRecordScore(b) - getRecordScore(a))
+
+      const collapsedRecords = []
+      sortedRecords.forEach((record) => {
+        if (!isStripeRecord(record)) {
+          collapsedRecords.push(record)
+          return
+        }
+
+        const amount = Number(record?.amount || 0)
+        const ref = String(record?.referenceId || '').trim().toLowerCase()
+        const outcome = normalizeOutcome(record)
+        const weakStripeReference = ref.startsWith('in_') || ref.startsWith('pi_') || ref.startsWith('ch_')
+        const shouldTryCollapse =
+          (weakStripeReference && amount <= 0) ||
+          (amount <= 0 && outcome === 'success')
+        if (!shouldTryCollapse) {
+          collapsedRecords.push(record)
+          return
+        }
+
+        const ts = toTimestamp(record)
+        const monthsDelta = Number(record?.monthsDelta || 0)
+        const currency = String(record?.currency || '').toUpperCase()
+        const hasBetterMatch = collapsedRecords.some((existing) => {
+          if (!isStripeRecord(existing)) return false
+          if (normalizeOutcome(existing) !== outcome) return false
+          const existingMonths = Number(existing?.monthsDelta || 0)
+          const existingCurrency = String(existing?.currency || '').toUpperCase()
+          const monthMatches = monthsDelta <= 0 || existingMonths <= 0 || existingMonths === monthsDelta
+          const currencyMatches = !currency || !existingCurrency || existingCurrency === currency
+          if (!monthMatches) return false
+          if (!currencyMatches) return false
+          if (Number(existing?.amount || 0) <= 0) return false
+          return Math.abs(toTimestamp(existing) - ts) <= DUPLICATE_WINDOW_MS
+        })
+
+        if (!hasBetterMatch) {
+          collapsedRecords.push(record)
+        }
+      })
+
+      const finalCollapsedRecords = []
+      collapsedRecords.forEach((record) => {
+        if (!isStripeRecord(record)) {
+          finalCollapsedRecords.push(record)
+          return
+        }
+
+        const ts = toTimestamp(record)
+        const outcome = normalizeOutcome(record)
+        const monthsDelta = Number(record?.monthsDelta || 0)
+        const amount = Number(record?.amount || 0)
+        const currency = String(record?.currency || '').toUpperCase()
+        const hasNearEquivalent = finalCollapsedRecords.some((existing) => {
+          if (!isStripeRecord(existing)) return false
+          if (normalizeOutcome(existing) !== outcome) return false
+          if (Number(existing?.monthsDelta || 0) !== monthsDelta) return false
+          if (String(existing?.currency || '').toUpperCase() !== currency) return false
+          if (Number(existing?.amount || 0) !== amount) return false
+          return Math.abs(toTimestamp(existing) - ts) <= DUPLICATE_WINDOW_MS
+        })
+
+        if (!hasNearEquivalent) {
+          finalCollapsedRecords.push(record)
+        }
+      })
+
+      return finalCollapsedRecords
+        .sort((a, b) => toTimestamp(b) - toTimestamp(a))
         .slice(0, limitCount)
     } catch (error) {
       console.error('❌ Error getting doctor payment records:', error)
@@ -2626,6 +2965,167 @@ class FirebaseStorageService {
       return { id: docRef.id, ...payload }
     } catch (error) {
       console.error('❌ Error adding doctor payment record:', error)
+      throw error
+    }
+  }
+
+  async addDoctorAIUsageRecord(record) {
+    try {
+      const doctorId = String(record?.doctorId || '').trim()
+      if (!doctorId) {
+        throw new Error('doctorId is required')
+      }
+
+      const createdAt = String(record?.createdAt || new Date().toISOString())
+      const promptTokens = Number(record?.promptTokens || 0)
+      const completionTokens = Number(record?.completionTokens || 0)
+      const totalTokens = Number(record?.totalTokens || (promptTokens + completionTokens))
+      const cost = Number(record?.cost || 0)
+      const dayKey = createdAt.slice(0, 10)
+
+      const payload = {
+        doctorId,
+        requestType: String(record?.requestType || ''),
+        model: String(record?.model || ''),
+        promptTokens: Number.isFinite(promptTokens) ? promptTokens : 0,
+        completionTokens: Number.isFinite(completionTokens) ? completionTokens : 0,
+        totalTokens: Number.isFinite(totalTokens) ? totalTokens : 0,
+        cost: Number.isFinite(cost) ? cost : 0,
+        createdAt
+      }
+
+      await addDoc(collection(db, 'doctorAiUsageLogs'), payload)
+
+      const statsRef = doc(db, 'doctorAiUsageStats', doctorId)
+      const statsSnap = await getDoc(statsRef)
+      const existing = statsSnap.exists() ? statsSnap.data() : {}
+      const existingDay = String(existing?.todayDate || '')
+      const dayChanged = existingDay !== dayKey
+
+      const nextStats = {
+        doctorId,
+        totalTokens: Number(existing?.totalTokens || 0) + payload.totalTokens,
+        totalCost: Number(existing?.totalCost || 0) + payload.cost,
+        totalRequests: Number(existing?.totalRequests || 0) + 1,
+        todayDate: dayKey,
+        todayTokens: (dayChanged ? 0 : Number(existing?.todayTokens || 0)) + payload.totalTokens,
+        todayCost: (dayChanged ? 0 : Number(existing?.todayCost || 0)) + payload.cost,
+        todayRequests: (dayChanged ? 0 : Number(existing?.todayRequests || 0)) + 1,
+        lastRequestAt: createdAt,
+        updatedAt: new Date().toISOString()
+      }
+
+      if (!statsSnap.exists()) {
+        nextStats.createdAt = new Date().toISOString()
+      }
+
+      await setDoc(statsRef, nextStats, { merge: true })
+      return true
+    } catch (error) {
+      console.error('❌ Error adding doctor AI usage record:', error)
+      throw error
+    }
+  }
+
+  async getDoctorAIUsageStats(doctorId) {
+    try {
+      const normalizedDoctorId = String(doctorId || '').trim()
+      if (!normalizedDoctorId) {
+        return {
+          total: { tokens: 0, cost: 0, requests: 0 },
+          today: { tokens: 0, cost: 0, requests: 0 }
+        }
+      }
+
+      const statsRef = doc(db, 'doctorAiUsageStats', normalizedDoctorId)
+      const statsSnap = await getDoc(statsRef)
+      if (!statsSnap.exists()) {
+        return {
+          total: { tokens: 0, cost: 0, requests: 0 },
+          today: { tokens: 0, cost: 0, requests: 0 }
+        }
+      }
+
+      const data = statsSnap.data() || {}
+      const todayKey = new Date().toISOString().slice(0, 10)
+      const sameDay = String(data?.todayDate || '') === todayKey
+
+      return {
+        total: {
+          tokens: Number(data?.totalTokens || 0),
+          cost: Number(data?.totalCost || 0),
+          requests: Number(data?.totalRequests || 0)
+        },
+        today: {
+          tokens: sameDay ? Number(data?.todayTokens || 0) : 0,
+          cost: sameDay ? Number(data?.todayCost || 0) : 0,
+          requests: sameDay ? Number(data?.todayRequests || 0) : 0
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error getting doctor AI usage stats:', error)
+      throw error
+    }
+  }
+
+  async getDoctorAIUsageStatsMap(doctorIds = []) {
+    try {
+      const map = {}
+      const normalizedIds = [...new Set((doctorIds || []).map((id) => String(id || '').trim()).filter(Boolean))]
+      if (normalizedIds.length === 0) return map
+
+      const stats = await Promise.all(
+        normalizedIds.map(async (doctorId) => [doctorId, await this.getDoctorAIUsageStats(doctorId)])
+      )
+      stats.forEach(([doctorId, usage]) => {
+        map[doctorId] = usage
+      })
+      return map
+    } catch (error) {
+      console.error('❌ Error getting doctor AI usage stats map:', error)
+      throw error
+    }
+  }
+
+  async getAllDoctorAIUsageSummary(limitCount = 500) {
+    try {
+      const snapshot = await getDocs(
+        query(
+          collection(db, 'doctorAiUsageStats'),
+          limit(limitCount)
+        )
+      )
+      const rows = snapshot.docs
+        .map((docSnap) => docSnap.data() || {})
+        .sort((a, b) => String(b?.updatedAt || '').localeCompare(String(a?.updatedAt || '')))
+
+      const todayKey = new Date().toISOString().slice(0, 10)
+      const summary = {
+        total: { tokens: 0, cost: 0, requests: 0 },
+        today: { tokens: 0, cost: 0, requests: 0 },
+        thisMonth: { tokens: 0, cost: 0, requests: 0 },
+        lastUpdated: null
+      }
+
+      rows.forEach((row) => {
+        summary.total.tokens += Number(row?.totalTokens || 0)
+        summary.total.cost += Number(row?.totalCost || 0)
+        summary.total.requests += Number(row?.totalRequests || 0)
+        if (String(row?.todayDate || '') === todayKey) {
+          summary.today.tokens += Number(row?.todayTokens || 0)
+          summary.today.cost += Number(row?.todayCost || 0)
+          summary.today.requests += Number(row?.todayRequests || 0)
+        }
+        const updatedAt = String(row?.updatedAt || '')
+        if (!summary.lastUpdated || updatedAt > summary.lastUpdated) {
+          summary.lastUpdated = updatedAt
+        }
+      })
+
+      // Monthly aggregate is not precomputed server-side yet; keep deterministic zero.
+      return summary
+    } catch (error) {
+      console.error('❌ Error getting all doctor AI usage summary:', error)
       throw error
     }
   }

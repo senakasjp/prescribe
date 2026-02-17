@@ -19,8 +19,10 @@ vi.mock('../../services/firebaseStorage.js', () => ({
     getDoctorBroadcastEmailTemplate: vi.fn().mockResolvedValue(null),
     getSmtpSettings: vi.fn().mockResolvedValue(null),
     getMessagingTemplates: vi.fn().mockResolvedValue(null),
+    getPaymentPricingSettings: vi.fn().mockResolvedValue(null),
     getEmailTemplate: vi.fn().mockResolvedValue(null),
     saveMessagingTemplates: vi.fn().mockResolvedValue(null),
+    savePaymentPricingSettings: vi.fn().mockResolvedValue(null),
     saveWelcomeEmailTemplate: vi.fn().mockResolvedValue(null),
     savePatientWelcomeEmailTemplate: vi.fn().mockResolvedValue(null),
     saveAppointmentReminderEmailTemplate: vi.fn().mockResolvedValue(null),
@@ -32,6 +34,17 @@ vi.mock('../../services/firebaseStorage.js', () => ({
     getAuthLogs: vi.fn().mockResolvedValue([]),
     getSmsLogs: vi.fn().mockResolvedValue([]),
     getDoctorPaymentRecords: vi.fn().mockResolvedValue([]),
+    getDoctorAIUsageStatsMap: vi.fn().mockResolvedValue({}),
+    getDoctorAIUsageStats: vi.fn().mockResolvedValue({
+      total: { tokens: 0, cost: 0, requests: 0 },
+      today: { tokens: 0, cost: 0, requests: 0 }
+    }),
+    getAllDoctorAIUsageSummary: vi.fn().mockResolvedValue({
+      total: { tokens: 0, cost: 0, requests: 0 },
+      today: { tokens: 0, cost: 0, requests: 0 },
+      thisMonth: { tokens: 0, cost: 0, requests: 0 },
+      lastUpdated: null
+    }),
     getDoctorReferralWalletStats: vi.fn().mockResolvedValue({
       totalReferredDoctors: 0,
       referralBonusAppliedCount: 0,
@@ -39,7 +52,20 @@ vi.mock('../../services/firebaseStorage.js', () => ({
       referralFreeMonthsAvailable: 0
     }),
     getDoctorById: vi.fn().mockResolvedValue(null),
-    addDoctorPaymentRecord: vi.fn().mockResolvedValue(null)
+    addDoctorPaymentRecord: vi.fn().mockResolvedValue(null),
+    getPromoCodes: vi.fn().mockResolvedValue([]),
+    createPromoCode: vi.fn().mockResolvedValue({
+      id: 'promo-1',
+      code: 'WELCOME25',
+      percentOff: 25,
+      maxRedemptions: 100,
+      redemptionCount: 0,
+      isActive: true,
+      validUntil: '2026-12-31T00:00:00.000Z'
+    }),
+    updatePromoCodeStatus: vi.fn().mockResolvedValue(null),
+    generatePromoCode: vi.fn(() => 'NEWDOC25'),
+    normalizePromoCode: vi.fn((value = '') => String(value).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, ''))
   }
 }));
 
@@ -95,6 +121,73 @@ describe('AdminDashboard.svelte', () => {
 
     expect(screen.getByRole('heading', { name: 'Email' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Templates' })).toBeInTheDocument();
+  });
+
+  it('loads payment pricing settings in admin payments tab', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getPaymentPricingSettings.mockResolvedValueOnce({
+      monthlyUsd: 29,
+      annualUsd: 290,
+      monthlyLkr: 6500,
+      annualLkr: 65000,
+      appliesTo: 'all_customers',
+      enabled: true
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Payments' }));
+
+    expect(await screen.findByLabelText('USD monthly price')).toHaveValue(29);
+    expect(screen.getByLabelText('USD annual price')).toHaveValue(290);
+    expect(screen.getByLabelText('LKR monthly price')).toHaveValue(6500);
+    expect(screen.getByLabelText('LKR annual price')).toHaveValue(65000);
+    expect(screen.getByLabelText('Apply pricing to')).toHaveValue('all_customers');
+  });
+
+  it('saves payment pricing settings with selected scope', async () => {
+    const user = userEvent.setup();
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Payments' }));
+
+    const monthlyUsdInput = await screen.findByLabelText('USD monthly price');
+    const annualUsdInput = screen.getByLabelText('USD annual price');
+    const monthlyLkrInput = screen.getByLabelText('LKR monthly price');
+    const annualLkrInput = screen.getByLabelText('LKR annual price');
+
+    await user.clear(monthlyUsdInput);
+    await user.type(monthlyUsdInput, '35');
+    await user.clear(annualUsdInput);
+    await user.type(annualUsdInput, '350');
+    await user.clear(monthlyLkrInput);
+    await user.type(monthlyLkrInput, '7000');
+    await user.clear(annualLkrInput);
+    await user.type(annualLkrInput, '70000');
+    await user.selectOptions(screen.getByLabelText('Apply pricing to'), 'new_customers');
+
+    await user.click(screen.getByRole('button', { name: 'Save Pricing' }));
+
+    expect(firebaseStorage.savePaymentPricingSettings).toHaveBeenCalledTimes(1);
+    expect(firebaseStorage.savePaymentPricingSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        monthlyUsd: 35,
+        annualUsd: 350,
+        monthlyLkr: 7000,
+        annualLkr: 70000,
+        appliesTo: 'new_customers',
+        enabled: true
+      })
+    );
   });
 
   it('saves messaging templates updates', async () => {
@@ -873,5 +966,662 @@ describe('AdminDashboard.svelte', () => {
     expect(await screen.findByText('Referral Free Months Available')).toBeInTheDocument();
     expect(await screen.findByText('1 month')).toBeInTheDocument();
     expect(await screen.findByText('stripe_payment')).toBeInTheDocument();
+  });
+
+  it('derives billing wallet summary cards from payment records when doctor wallet fields are missing', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-derived-1',
+        email: 'derived@test.com',
+        name: 'Dr. Derived',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-derived-1',
+      email: 'derived@test.com',
+      name: 'Dr. Derived',
+      role: 'doctor'
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([
+      {
+        id: 'rec-derived-confirmed',
+        createdAt: '2026-02-15T08:30:00.000Z',
+        type: 'stripe_checkout',
+        monthsDelta: 1,
+        amount: 5000,
+        currency: 'LKR',
+        source: 'stripeCheckoutLogs',
+        status: 'confirmed',
+        referenceId: 'cs_test_confirmed'
+      },
+      {
+        id: 'rec-derived-created',
+        createdAt: '2026-02-16T08:30:00.000Z',
+        type: 'stripe_checkout',
+        monthsDelta: 1,
+        amount: 5000,
+        currency: 'LKR',
+        source: 'stripeCheckoutLogs',
+        status: 'created',
+        referenceId: 'cs_test_created'
+      }
+    ]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    expect(await screen.findByText('Billing Wallet')).toBeInTheDocument();
+    expect(await screen.findByText('1 month')).toBeInTheDocument();
+    expect(await screen.findByText(/^created$/i)).toBeInTheDocument();
+    expect(await screen.findByText(/\/03\/2026/)).toBeInTheDocument();
+  });
+
+  it('loads doctor details billing data and refreshes wallet records with doctor email fallback', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockReset();
+    firebaseStorage.getDoctorById.mockReset();
+    firebaseStorage.getDoctorPaymentRecords.mockReset();
+    firebaseStorage.getDoctorReferralWalletStats.mockReset();
+
+    firebaseStorage.getAllDoctors.mockResolvedValue([
+      {
+        id: 'doc-live-1',
+        email: 'live@test.com',
+        name: 'Dr. Live',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z',
+        accessExpiresAt: '2026-03-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById
+      .mockResolvedValueOnce({
+        id: 'doc-live-1',
+        email: 'live@test.com',
+        name: 'Dr. Live',
+        role: 'doctor',
+        paymentStatus: 'paid',
+        walletMonths: 4,
+        accessExpiresAt: '2026-06-01T00:00:00.000Z'
+      })
+      .mockResolvedValueOnce({
+        id: 'doc-live-1',
+        email: 'live@test.com',
+        name: 'Dr. Live',
+        role: 'doctor',
+        paymentStatus: 'paid',
+        walletMonths: 5,
+        accessExpiresAt: '2026-07-01T00:00:00.000Z'
+      });
+    firebaseStorage.getDoctorPaymentRecords
+      .mockResolvedValueOnce([
+        {
+          id: 'rec-live-1',
+          createdAt: '2026-02-15T08:30:00.000Z',
+          type: 'stripe_payment',
+          monthsDelta: 1,
+          amount: 20,
+          currency: 'USD',
+          source: 'stripe',
+          status: 'paid',
+          referenceId: 'cs_live_1',
+          note: 'professional_monthly_usd'
+        }
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'rec-live-2',
+          createdAt: '2026-03-15T08:30:00.000Z',
+          type: 'stripe_payment',
+          monthsDelta: 1,
+          amount: 20,
+          currency: 'USD',
+          source: 'stripe',
+          status: 'paid',
+          referenceId: 'cs_live_2',
+          note: 'professional_monthly_usd'
+        }
+      ]);
+    firebaseStorage.getDoctorReferralWalletStats
+      .mockResolvedValueOnce({
+        totalReferredDoctors: 3,
+        referralBonusAppliedCount: 1,
+        referralBonusPendingCount: 1,
+        referralFreeMonthsAvailable: 1
+      })
+      .mockResolvedValueOnce({
+        totalReferredDoctors: 3,
+        referralBonusAppliedCount: 2,
+        referralBonusPendingCount: 0,
+        referralFreeMonthsAvailable: 2
+      });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    expect(await screen.findByRole('heading', { name: 'Doctor Details' })).toBeInTheDocument();
+    expect(await screen.findByText('Dr. Live')).toBeInTheDocument();
+    expect(await screen.findByText(/payment status/i)).toBeInTheDocument();
+    expect((await screen.findAllByText(/^paid$/i)).length).toBeGreaterThan(0);
+    expect(await screen.findByText('stripe_payment')).toBeInTheDocument();
+    expect(await screen.findByText('4 months')).toBeInTheDocument();
+
+    expect(firebaseStorage.getDoctorPaymentRecords).toHaveBeenCalledWith(
+      'doc-live-1',
+      200,
+      'live@test.com'
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    await waitFor(() => {
+      expect(firebaseStorage.getDoctorPaymentRecords).toHaveBeenCalledTimes(2);
+    });
+    expect(firebaseStorage.getDoctorPaymentRecords).toHaveBeenLastCalledWith(
+      'doc-live-1',
+      200,
+      'live@test.com'
+    );
+    expect(await screen.findByText('cs_live_2')).toBeInTheDocument();
+  });
+
+  it('shows AI token usage block in doctor details page', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getDoctorAIUsageStatsMap.mockResolvedValueOnce({
+      'doc-token-1': {
+        total: { tokens: 12000, cost: 0.3456, requests: 18 },
+        today: { tokens: 3000, cost: 0.08, requests: 4 }
+      }
+    });
+    firebaseStorage.getDoctorAIUsageStats.mockResolvedValueOnce({
+      total: { tokens: 12000, cost: 0.3456, requests: 18 },
+      today: { tokens: 3000, cost: 0.08, requests: 4 }
+    });
+
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-token-1',
+        email: 'token@test.com',
+        name: 'Dr. Token',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-token-1',
+      email: 'token@test.com',
+      name: 'Dr. Token',
+      role: 'doctor'
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    expect(await screen.findByText('AI Token Usage')).toBeInTheDocument();
+    expect(await screen.findByText('$0.3456')).toBeInTheDocument();
+    expect(await screen.findByText('12K')).toBeInTheDocument();
+    expect(await screen.findByText('18')).toBeInTheDocument();
+  });
+
+  it('loads token usage on doctors list from server usage map', async () => {
+    const user = userEvent.setup();
+    const doctorRawId = '11111'
+    firebaseStorage.getDoctorAIUsageStatsMap.mockResolvedValueOnce({
+      [doctorRawId]: {
+        total: { tokens: 4200, cost: 0.1234, requests: 7 },
+        today: { tokens: 0, cost: 0, requests: 0 }
+      }
+    });
+
+    firebaseStorage.getAllDoctors.mockResolvedValue([
+      {
+        id: doctorRawId,
+        email: 'list@test.com',
+        name: 'Dr. List',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getPatientsByDoctorId.mockResolvedValue([]);
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await waitFor(() => {
+      expect(firebaseStorage.getDoctorAIUsageStatsMap).toHaveBeenCalledWith([doctorRawId]);
+    });
+  });
+
+  it('shows only stripe success/fail rows in doctor billing history and hides pending rows', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-filter-1',
+        email: 'filter@test.com',
+        name: 'Dr. Filter',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-filter-1',
+      email: 'filter@test.com',
+      name: 'Dr. Filter',
+      role: 'doctor'
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([
+      {
+        id: 'rec-created',
+        createdAt: '2026-02-15T08:00:00.000Z',
+        type: 'stripe_checkout',
+        monthsDelta: 1,
+        amount: 5000,
+        currency: 'LKR',
+        source: 'stripeCheckoutLogs',
+        sourceCollection: 'stripeCheckoutLogs',
+        status: 'created',
+        referenceId: 'cs_created'
+      },
+      {
+        id: 'rec-confirmed',
+        createdAt: '2026-02-15T09:00:00.000Z',
+        type: 'stripe_checkout',
+        monthsDelta: 1,
+        amount: 5000,
+        currency: 'LKR',
+        source: 'stripeCheckoutLogs',
+        sourceCollection: 'stripeCheckoutLogs',
+        status: 'confirmed',
+        referenceId: 'cs_confirmed'
+      },
+      {
+        id: 'rec-failed',
+        createdAt: '2026-02-15T10:00:00.000Z',
+        type: 'stripe_checkout',
+        monthsDelta: 1,
+        amount: 5000,
+        currency: 'LKR',
+        source: 'stripeCheckoutLogs',
+        sourceCollection: 'stripeCheckoutLogs',
+        status: 'failed',
+        referenceId: 'cs_failed'
+      }
+    ]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    expect(await screen.findByText('cs_confirmed')).toBeInTheDocument();
+    expect(await screen.findByText('cs_failed')).toBeInTheDocument();
+    expect(screen.queryByText('cs_created')).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Amount' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Type' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Months' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Reference' })).not.toBeInTheDocument();
+  });
+
+  it('can shrink and restore doctor billing history section', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-shrink-1',
+        email: 'shrink@test.com',
+        name: 'Dr. Shrink',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-shrink-1',
+      email: 'shrink@test.com',
+      name: 'Dr. Shrink',
+      role: 'doctor'
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([
+      {
+        id: 'rec-shrink-1',
+        createdAt: '2026-02-15T09:00:00.000Z',
+        type: 'stripe_payment',
+        monthsDelta: 1,
+        amount: 5000,
+        currency: 'LKR',
+        source: 'stripe',
+        status: 'confirmed',
+        referenceId: 'cs_shrink_1'
+      }
+    ]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    expect(await screen.findByText('cs_shrink_1')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Shrink history' }));
+    expect(await screen.findByText('Billing history is collapsed.')).toBeInTheDocument();
+    expect(screen.queryByText('cs_shrink_1')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show history' }));
+    expect(await screen.findByText('cs_shrink_1')).toBeInTheDocument();
+  });
+
+  it('deduplicates duplicate doctor billing rows in admin doctor view', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-dedupe-1',
+        email: 'dedupe@test.com',
+        name: 'Dr. Dedupe',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-dedupe-1',
+      email: 'dedupe@test.com',
+      name: 'Dr. Dedupe',
+      role: 'doctor'
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([
+      {
+        id: 'rec-dedupe-amount',
+        createdAt: '2026-02-15T09:51:00.000Z',
+        type: 'stripe_payment',
+        monthsDelta: 1,
+        amount: 5000,
+        currency: 'LKR',
+        source: 'stripe',
+        status: 'confirmed',
+        referenceId: 'cs_dedupe'
+      },
+      {
+        id: 'rec-dedupe-zero',
+        createdAt: '2026-02-15T09:51:30.000Z',
+        type: 'stripe_payment',
+        monthsDelta: 0,
+        amount: 0,
+        currency: '',
+        source: 'stripe',
+        status: 'confirmed',
+        referenceId: 'in_dedupe'
+      }
+    ]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    expect(await screen.findByText('cs_dedupe')).toBeInTheDocument();
+    expect(screen.queryByText('in_dedupe')).not.toBeInTheDocument();
+  });
+
+  it('saves doctor admin discount percent from doctor details page', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-discount-1',
+        email: 'discount@test.com',
+        name: 'Dr. Discount',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-discount-1',
+      email: 'discount@test.com',
+      name: 'Dr. Discount',
+      role: 'doctor',
+      adminStripeDiscountPercent: 15
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    const discountInput = await screen.findByLabelText('Discount percentage (0 to 100)');
+    expect(discountInput).toHaveValue(15);
+
+    await user.clear(discountInput);
+    await user.type(discountInput, '35');
+    await user.click(screen.getByRole('button', { name: 'Save Discount' }));
+
+    expect(firebaseStorage.updateDoctor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'doc-discount-1',
+        adminStripeDiscountPercent: 35
+      })
+    );
+  });
+
+  it('clamps doctor admin discount percent to 100 when saving values above 100', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getAllDoctors.mockResolvedValueOnce([
+      {
+        id: 'doc-discount-2',
+        email: 'discount2@test.com',
+        name: 'Dr. Discount 2',
+        role: 'doctor',
+        isApproved: true,
+        isDisabled: false,
+        createdAt: '2026-02-01T00:00:00.000Z'
+      }
+    ]);
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: 'doc-discount-2',
+      email: 'discount2@test.com',
+      name: 'Dr. Discount 2',
+      role: 'doctor',
+      adminStripeDiscountPercent: 0
+    });
+    firebaseStorage.getDoctorPaymentRecords.mockResolvedValueOnce([]);
+    firebaseStorage.getDoctorReferralWalletStats.mockResolvedValueOnce({
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Doctors' }));
+    await user.click((await screen.findAllByRole('button', { name: 'View' }))[0]);
+
+    const discountInput = await screen.findByLabelText('Discount percentage (0 to 100)');
+    await user.clear(discountInput);
+    await user.type(discountInput, '250');
+    await user.click(screen.getByRole('button', { name: 'Save Discount' }));
+
+    expect(firebaseStorage.updateDoctor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'doc-discount-2',
+        adminStripeDiscountPercent: 100
+      })
+    );
+  });
+
+  it('creates a promo code from Promotions tab using generated/sanitized code', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getPromoCodes.mockResolvedValueOnce([]);
+    firebaseStorage.generatePromoCode.mockReturnValueOnce('new*doc25');
+    firebaseStorage.createPromoCode.mockResolvedValueOnce({
+      id: 'promo-2',
+      code: 'NEWDOC25',
+      percentOff: 20,
+      maxRedemptions: 100,
+      redemptionCount: 0,
+      isActive: true,
+      validUntil: '2026-12-31T00:00:00.000Z'
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Promotions' }));
+
+    const generateDraftButton = await screen.findByRole('button', { name: 'Generate' });
+    await user.click(generateDraftButton);
+
+    const customCodeInput = screen.getByLabelText('Custom code (optional)');
+    expect(customCodeInput).toHaveValue('NEWDOC25');
+
+    const discountInput = screen.getByLabelText('Discount %');
+    await user.clear(discountInput);
+    await user.type(discountInput, '20');
+
+    await user.click(screen.getByRole('button', { name: 'Generate Promo Code' }));
+
+    await waitFor(() => {
+      expect(firebaseStorage.createPromoCode).toHaveBeenCalledTimes(1);
+    });
+    expect(firebaseStorage.createPromoCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'NEWDOC25',
+        percentOff: 20,
+        createdBy: 'admin@test.com'
+      })
+    );
+  });
+
+  it('copies and toggles promo codes in Promotions table', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getPromoCodes.mockResolvedValueOnce([
+      {
+        id: 'promo-3',
+        code: 'WELCOME50',
+        percentOff: 50,
+        maxRedemptions: 200,
+        redemptionCount: 5,
+        isActive: true,
+        validUntil: '2026-12-31T00:00:00.000Z'
+      }
+    ]);
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Promotions' }));
+    await screen.findByText('WELCOME50');
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(writeText).toHaveBeenCalledWith('WELCOME50');
+
+    await user.click(screen.getByRole('button', { name: 'Disable' }));
+    await waitFor(() => {
+      expect(firebaseStorage.updatePromoCodeStatus).toHaveBeenCalledWith('promo-3', false);
+    });
   });
 });
