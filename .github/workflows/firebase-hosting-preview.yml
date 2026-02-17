@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  checks: write
 
 concurrency:
   group: firebase-hosting-preview-${{ github.event.pull_request.number || github.ref }}
@@ -15,6 +16,7 @@ concurrency:
 
 jobs:
   build_and_preview:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,4 +41,3 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PRESCRIBE_7E1E8 }}
           projectId: prescribe-7e1e8
           channelId: pr-${{ github.event.pull_request.number || github.run_id }}
-
