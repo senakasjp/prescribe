@@ -1,5 +1,5 @@
 <script>
-  import { createEventDispatcher, onMount, onDestroy } from 'svelte'
+  import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte'
   import firebaseStorage from '../services/firebaseStorage.js'
   import authService from '../services/authService.js'
   import PatientForm from './PatientForm.svelte'
@@ -7,15 +7,42 @@
   import PatientList from './PatientList.svelte'
   import MedicalSummary from './MedicalSummary.svelte'
   import PharmacistManagement from './PharmacistManagement.svelte'
-  import { Chart, registerables } from 'chart.js'
+  import ApexCharts from 'apexcharts'
   import { countries } from '../data/countries.js'
   import { cities, getCitiesByCountry } from '../data/cities.js'
-  
-  // Register Chart.js components
-  Chart.register(...registerables)
+  import LoadingSpinner from './LoadingSpinner.svelte'
+  import ThreeDots from './ThreeDots.svelte'
+  import ConfirmationModal from './ConfirmationModal.svelte'
+  import prescriptionStatusService from '../services/doctor/prescriptionStatusService.js'
+  import backupService from '../services/backupService.js'
+  import { formatPatientId } from '../utils/idFormat.js'
+  import { splitTitleFromName } from '../utils/patientName.js'
+  import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import { formatPrescriptionId } from '../utils/idFormat.js'
+  import { formatDate } from '../utils/dataProcessing.js'
+  import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
+  import JsBarcode from 'jsbarcode'
   
   const dispatch = createEventDispatcher()
   export let user
+  export let authUser = null
+  export let currentView = 'patients' // Navigation from menubar: 'home', 'patients', 'prescriptions', 'pharmacies'
+  
+  export let openSettings = false // Trigger to open settings modal
+  
+  // Watch for openSettings trigger from menubar
+  $: if (openSettings && !isExternalDoctor) {
+    editingProfile = true
+    editFirstName = user?.firstName || ''
+    editLastName = user?.lastName || ''
+    editCountry = user?.country || ''
+    editCity = user?.city || ''
+    profileError = ''
+    activeTab = 'edit-profile'
+    setTimeout(() => dispatch('settings-opened'), 100)
+  }
   
   // Reactive statement to ensure component updates when user changes
   $: userKey = user?.id || user?.email || 'default'
@@ -43,25 +70,42 @@
 
   // Get doctor's data from storage - reactive to user changes
   let doctorData = null
+  let ownerDoctor = null
+  let settingsDoctor = null
+  $: isExternalDoctor = user?.externalDoctor && user?.invitedByDoctorId
   
   // Load doctor data when user changes
   $: if (user?.email) {
     loadDoctorData()
   }
   
+  // Reactive doctorId that updates when doctorData changes
+  // Use consistent ID logic that matches App.svelte
+  $: doctorId = settingsDoctor?.id || doctorData?.id || user?.id || user?.uid || user?.email || 'default-user'
+  
   const loadDoctorData = async () => {
     try {
+      if (isExternalDoctor && user?.invitedByDoctorId) {
+        ownerDoctor = await firebaseStorage.getDoctorById(user.invitedByDoctorId)
+        doctorData = ownerDoctor
+        settingsDoctor = ownerDoctor || user
+        return
+      }
+      
+      ownerDoctor = null
       doctorData = await firebaseStorage.getDoctorByEmail(user.email)
+      settingsDoctor = doctorData || user
     } catch (error) {
       console.error('Error loading doctor data:', error)
       doctorData = null
+      settingsDoctor = null
     }
   }
   $: doctorName = userProfileData.firstName && userProfileData.lastName ? 
     `${userProfileData.firstName} ${userProfileData.lastName}` : 
     userProfileData.firstName || user?.displayName || user?.name || user?.email || 'Doctor'
-  $: doctorCountry = userProfileData.country || 'Not specified'
-  $: doctorCity = userProfileData.city || 'Not specified'
+  $: doctorCountry = settingsDoctor?.country || userProfileData.country || 'Not specified'
+  $: doctorCity = settingsDoctor?.city || userProfileData.city || 'Not specified'
   
   // Force reactive updates when user properties change
   $: userDisplayName = userProfileData.firstName && userProfileData.lastName ? 
@@ -78,15 +122,87 @@
   let selectedPatient = null
   let showPatientForm = false
   let chartInstance = null
+  let incomeChartInstance = null
+  let incomeChartRenderToken = 0
+  let homeChartRenderTimer = null
   let loading = true
+  let chartLoading = false
+  let incomeChartLoading = false
+  let lastUserEmail = null
   let searchQuery = ''
   let filteredPatients = []
-  let currentView = 'patients' // 'patients' or 'pharmacists'
+  let showAllLastPrescriptionMeds = false // Track if last prescription medications are expanded
   
   // Medical data for selected patient
   let illnesses = []
   let prescriptions = []
   let symptoms = []
+  let reports = []
+  
+  // Dispensed status tracking
+  let prescriptionDispensedStatus = {}
+  let checkingDispensedStatus = false
+
+  // Backup/restore state
+  let backupLoading = false
+  let backupError = ''
+  let backupSuccess = ''
+  let restoreLoading = false
+  let restoreError = ''
+  let restoreSuccess = ''
+  let restoreFile = null
+  let restoreSummary = null
+  
+  // Reactive prescription selection for Last Prescription card
+  $: selectedPrescriptionForCard = (() => {
+    console.log('🔄 Reactive statement triggered!')
+    console.log('🔄 Prescriptions length:', prescriptions.length)
+    console.log('🔄 Dispensed status keys:', Object.keys(prescriptionDispensedStatus).length)
+    console.log('🔄 CheckingDispensedStatus:', checkingDispensedStatus)
+    console.log('🔄 Full prescriptionDispensedStatus:', prescriptionDispensedStatus)
+    
+    if (!prescriptions.length) {
+      console.log('🔍 No prescriptions available yet')
+      return null
+    }
+    
+    // Don't wait for dispensed status - show prescription even if status is still loading
+    // if (!Object.keys(prescriptionDispensedStatus).length) {
+    //   console.log('🔍 No dispensed status available yet')
+    //   return null
+    // }
+    
+    console.log('🔍 Selecting prescription for Last Prescription card...')
+    console.log('🔍 Prescriptions available:', prescriptions.length)
+    console.log('🔍 Dispensed status loaded:', Object.keys(prescriptionDispensedStatus).length > 0)
+    console.log('🔍 CheckingDispensedStatus:', checkingDispensedStatus)
+    
+    // First, try to find the most recent dispensed prescription
+    const dispensedPrescriptions = prescriptions.filter(p => 
+      p.medications && p.medications.length > 0 && 
+      prescriptionDispensedStatus[p.id]?.isDispensed
+    )
+    
+    console.log('🔍 Available prescriptions:', prescriptions.map(p => ({ 
+      id: p.id, 
+      hasMeds: p.medications?.length > 0, 
+      isDispensed: prescriptionDispensedStatus[p.id]?.isDispensed,
+      dispensedStatus: prescriptionDispensedStatus[p.id]
+    })))
+    console.log('🔍 Dispensed prescriptions found:', dispensedPrescriptions.length)
+    
+    if (dispensedPrescriptions.length > 0) {
+      // Sort by creation date and return the most recent dispensed prescription
+      const selected = dispensedPrescriptions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+      console.log('✅ Selected dispensed prescription:', selected.id)
+      return selected
+    }
+    
+    // Fall back to the most recent prescription with medications
+    const fallback = prescriptions.find(p => p.medications && p.medications.length > 0)
+    console.log('✅ Fallback to prescription with medications:', fallback?.id)
+    return fallback
+  })()
   
   // Notes visibility state
   let showSymptomsNotes = false
@@ -95,9 +211,11 @@
   
   // Medical summary tab state
   let activeMedicalTab = 'prescriptions'
+  let editPatientTrigger = 0
   
   // Prescription state
   let currentPrescription = []
+  let patientDetailsRef = null
   
   // Refresh trigger for right side updates
   let refreshTrigger = 0
@@ -106,6 +224,325 @@
   let totalPrescriptions = 0
   let totalDrugs = 0
   let connectedPharmacies = 0
+  let newPatientsCount = 0
+  let existingPatientsCount = 0
+  let statisticsLoading = false
+  const NEW_PATIENT_WINDOW_DAYS = 30
+  
+  // Confirmation modal state
+  let showConfirmationModal = false
+  let confirmationConfig = {
+    title: 'Confirm Action',
+    message: 'Are you sure you want to proceed?',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning',
+    requireCode: false
+  }
+  let pendingAction = null
+  let deleteCode = ''
+  
+  // Confirmation modal helper functions
+  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+    const normalizedConfirm = String(confirmText || '').toLowerCase()
+    const isDestructive = type === 'danger' && /delete|clear|remove/.test(normalizedConfirm)
+    confirmationConfig = { title, message, confirmText, cancelText, type, requireCode: isDestructive }
+    showConfirmationModal = true
+  }
+  
+  function handleConfirmationConfirm() {
+    if (pendingAction) {
+      pendingAction()
+      pendingAction = null
+    }
+    showConfirmationModal = false
+  }
+  
+  function handleConfirmationCancel() {
+    pendingAction = null
+    showConfirmationModal = false
+  }
+
+  const handleDeletePatientFromList = (patient) => {
+    if (!patient?.id) return
+    const patientName = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'this patient'
+    pendingAction = async () => {
+      try {
+        await firebaseStorage.deletePatient(patient.id)
+        patients = patients.filter((p) => p.id !== patient.id)
+        filteredPatients = filteredPatients.filter((p) => p.id !== patient.id)
+        if (selectedPatient?.id === patient.id) {
+          selectedPatient = null
+          currentView = 'patients'
+        }
+      } catch (error) {
+        console.error('❌ Error deleting patient:', error)
+      }
+    }
+    showConfirmation(
+      'Delete Patient',
+      `Are you sure you want to delete ${patientName}? This action cannot be undone.`,
+      'Delete',
+      'Cancel',
+      'danger'
+    )
+  }
+
+  const getPatientNameParts = (patient) => {
+    const normalize = (value) => String(value || '').trim()
+    const isGenderWord = (value) => {
+      const lower = normalize(value).toLowerCase()
+      return ['male', 'female', 'other', 'm', 'f'].includes(lower)
+    }
+    const looksLikeEmail = (value) => {
+      const normalized = normalize(value)
+      return normalized.includes('@')
+    }
+
+    const rawFirstName = normalize(patient?.firstName)
+    const rawLastName = normalize(patient?.lastName)
+    const resolved = splitTitleFromName(rawFirstName)
+    const camelFirst = normalize(resolved.firstName || rawFirstName)
+    const camelLast = rawLastName
+
+    const alternateCandidates = [
+      camelFirst && !isGenderWord(camelFirst) ? `${camelFirst} ${camelLast}`.trim() : '',
+      camelLast && !isGenderWord(camelLast) ? camelLast : '',
+      patient?.name,
+      patient?.fullName,
+      patient?.displayName,
+      patient?.patientName,
+      patient?.patient_name,
+      patient?.first_name && patient?.last_name
+        ? `${patient.first_name} ${patient.last_name}`
+        : '',
+      patient?.first_name,
+      patient?.last_name
+    ].map(normalize)
+
+    const fallbackName = alternateCandidates.find(
+      (candidate) => candidate && !looksLikeEmail(candidate) && !isGenderWord(candidate)
+    )
+
+    let firstName = ''
+    let lastName = ''
+    if (fallbackName) {
+      const parts = fallbackName.split(/\s+/)
+      firstName = parts.shift() || ''
+      lastName = parts.join(' ')
+    } else if (patient?.idNumber) {
+      firstName = String(patient.idNumber)
+    } else {
+      firstName = 'Patient'
+    }
+
+    const initialSource = firstName || lastName
+    const initial = String(initialSource || '').charAt(0) || 'P'
+    return { firstName, lastName, initial }
+  }
+
+  const printPatientBarcode = (patient) => {
+    if (!patient) return
+    const barcodeValue = String(patient.idNumber || formatPatientId(patient.id) || '').trim()
+    if (!barcodeValue) {
+      notifyError('Patient ID not available for barcode')
+      return
+    }
+
+    const canvas = document.createElement('canvas')
+    try {
+      JsBarcode(canvas, barcodeValue, {
+        format: 'CODE128',
+        displayValue: true,
+        height: 60,
+        margin: 10
+      })
+    } catch (error) {
+      console.error('❌ Failed to generate barcode:', error)
+      notifyError('Failed to generate barcode')
+      return
+    }
+
+    const patientName = `${patient.firstName || ''} ${patient.lastName || ''}`.trim() || 'Patient'
+    const doctorName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.name || 'Doctor'
+    const dataUrl = canvas.toDataURL('image/png')
+    const printHtml = `
+      <html>
+        <head>
+          <title>Patient Barcode</title>
+          <style>
+            @page { size: 85.6mm 53.98mm; margin: 0; }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              width: 85.6mm;
+              height: 53.98mm;
+              background: white;
+            }
+            .card {
+              width: 85.6mm;
+              height: 53.98mm;
+              box-sizing: border-box;
+              border: 1px dashed #9aa0a6;
+              border-radius: 6mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              padding: 6mm 4mm;
+            }
+            .name { font-size: 11pt; font-weight: 600; margin-bottom: 3mm; }
+            .barcode-wrap {
+              width: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 2mm;
+              border: 1px dashed #c2c6cc;
+              border-radius: 999px;
+            }
+            .clinic { font-size: 9.5pt; color: #4b5563; margin-top: 2mm; }
+            img { max-width: 100%; height: auto; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="name">${patientName}</div>
+            <div class="barcode-wrap">
+              <img src="${dataUrl}" alt="Patient Barcode" />
+            </div>
+            <div class="clinic">Clinic of Dr. ${doctorName}</div>
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+              window.close();
+            };
+          <\/script>
+        </body>
+      </html>
+    `
+
+    const frame = document.createElement('iframe')
+    frame.style.position = 'fixed'
+    frame.style.right = '0'
+    frame.style.bottom = '0'
+    frame.style.width = '0'
+    frame.style.height = '0'
+    frame.style.border = '0'
+    document.body.appendChild(frame)
+
+    const frameDoc = frame.contentWindow?.document
+    if (!frameDoc) {
+      notifyError('Unable to open print view.')
+      frame.remove()
+      return
+    }
+    frameDoc.open()
+    frameDoc.write(printHtml)
+    frameDoc.close()
+
+    const cleanup = () => {
+      if (frame.parentNode) {
+        frame.parentNode.removeChild(frame)
+      }
+    }
+
+    frame.onload = () => {
+      frame.contentWindow?.focus()
+      frame.contentWindow?.print()
+      setTimeout(cleanup, 1000)
+    }
+  }
+
+  const downloadJsonFile = (data, filename) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleDoctorBackupDownload = async () => {
+    try {
+      backupLoading = true
+      backupError = ''
+      backupSuccess = ''
+
+      const resolvedDoctorId = doctorData?.id || doctorId
+      if (!resolvedDoctorId) {
+        throw new Error('Doctor ID is not available for backup')
+      }
+
+      const backup = await backupService.exportDoctorBackup(resolvedDoctorId)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      downloadJsonFile(backup, `doctor-backup-${resolvedDoctorId}-${timestamp}.json`)
+
+      backupSuccess = 'Backup downloaded successfully.'
+    } catch (error) {
+      backupError = error.message || 'Failed to create backup.'
+    } finally {
+      backupLoading = false
+    }
+  }
+
+  const handleDoctorRestoreFile = (event) => {
+    restoreFile = event.target.files?.[0] || null
+    restoreError = ''
+    restoreSuccess = ''
+    restoreSummary = null
+  }
+
+  const performDoctorRestore = async () => {
+    if (!restoreFile) {
+      restoreError = 'Please select a backup file to restore.'
+      return
+    }
+
+    try {
+      restoreLoading = true
+      restoreError = ''
+      restoreSuccess = ''
+      restoreSummary = null
+
+      const resolvedDoctorId = doctorData?.id || doctorId
+      if (!resolvedDoctorId) {
+        throw new Error('Doctor ID is not available for restore')
+      }
+
+      const fileText = await restoreFile.text()
+      const backup = JSON.parse(fileText)
+      if (backup.type !== 'doctor') {
+        throw new Error('Selected backup file is not a doctor backup.')
+      }
+
+      const summary = await backupService.restoreDoctorBackup(resolvedDoctorId, backup)
+      restoreSummary = summary
+      restoreSuccess = 'Backup restored successfully.'
+    } catch (error) {
+      restoreError = error.message || 'Failed to restore backup.'
+    } finally {
+      restoreLoading = false
+    }
+  }
+
+  const confirmDoctorRestore = () => {
+    pendingAction = performDoctorRestore
+    showConfirmation(
+      'Restore Backup',
+      'This will merge backup data into your account and may overwrite records with the same IDs. Continue?',
+      'Restore',
+      'Cancel',
+      'warning'
+    )
+  }
   
   // Profile editing state removed - now using tabbed modal
   
@@ -116,10 +553,7 @@
     loadMedicalData(selectedPatient.id)
   }
   
-  // Reload statistics when patients change
-  $: if (patients.length >= 0) {
-    loadStatistics()
-  }
+  // Load statistics only when explicitly needed (removed reactive loop)
   
   $: if (symptoms) {
     symptoms = symptoms || []
@@ -132,12 +566,22 @@
   $: if (prescriptions) {
     prescriptions = prescriptions || []
   }
-  
-  // Update chart when patients data changes
-  $: if (patients.length > 0) {
-    setTimeout(() => {
+
+  const scheduleHomeChartsRender = (delayMs = 120) => {
+    if (homeChartRenderTimer) {
+      clearTimeout(homeChartRenderTimer)
+      homeChartRenderTimer = null
+    }
+    homeChartRenderTimer = setTimeout(() => {
+      if (currentView !== 'home') return
       createPrescriptionsChart()
-    }, 100)
+      createIncomeComparisonChart()
+    }, delayMs)
+  }
+
+  // Ensure charts are re-rendered whenever the Home tab becomes active.
+  $: if (currentView === 'home' && patients.length >= 0) {
+    scheduleHomeChartsRender(120)
   }
   
   // Reactive tab counts
@@ -148,38 +592,29 @@
   // Load patients from storage
   const loadPatients = async () => {
     try {
+      if (!user?.email) {
+        loading = false
+        return
+      }
       loading = true
       
-      console.log('🔍 PatientManagement: Starting loadPatients')
-      console.log('🔍 PatientManagement: User object:', user)
-      console.log('🔍 PatientManagement: User.id:', user?.id)
-      console.log('🔍 PatientManagement: User.uid:', user?.uid)
-      console.log('🔍 PatientManagement: User.email:', user?.email)
-      
       // Always get the doctor from Firebase to ensure we have the correct ID
-      console.log('🔍 PatientManagement: Getting doctor from Firebase for email:', user.email)
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
-      console.log('🔍 PatientManagement: Doctor from Firebase:', doctor)
+      const doctor = await resolveSettingsDoctor()
       
       if (!doctor) {
-        console.error('❌ PatientManagement: Doctor not found in Firebase for email:', user.email)
         throw new Error('Doctor not found in database')
       }
       
-      const doctorId = doctor.id
-      console.log('✅ PatientManagement: Using doctor ID:', doctorId)
+      // Update component-level doctorData to ensure reactive doctorId is correct
+      doctorData = doctor
       
-      console.log('🔍 PatientManagement: Loading patients for doctor ID:', doctorId)
-      patients = await firebaseStorage.getPatients(doctorId)
+      patients = await firebaseStorage.getPatients(doctor.id)
       filteredPatients = [...patients]
-      console.log('✅ PatientManagement: Loaded patients:', patients.length)
-      console.log('🔍 PatientManagement: Patients data:', patients)
       
-      // Load statistics after loading patients
+      // Load statistics after patients are loaded
       await loadStatistics()
     } catch (error) {
-      console.error('❌ PatientManagement: Error loading patients:', error)
-      console.error('❌ PatientManagement: Error stack:', error.stack)
+      console.error('Error loading patients:', error)
       patients = []
       filteredPatients = []
     } finally {
@@ -189,15 +624,35 @@
   
   // Load all statistics
   const loadStatistics = async () => {
+    // Prevent multiple simultaneous calls
+    if (statisticsLoading) {
+      return
+    }
+    
+    statisticsLoading = true
     try {
+      const now = Date.now()
+      const newPatientWindowMs = NEW_PATIENT_WINDOW_DAYS * 24 * 60 * 60 * 1000
+      newPatientsCount = patients.filter((patient) => {
+        if (!patient?.createdAt) return false
+        const createdAtMs = new Date(patient.createdAt).getTime()
+        if (Number.isNaN(createdAtMs)) return false
+        return (now - createdAtMs) <= newPatientWindowMs
+      }).length
+      existingPatientsCount = Math.max(0, patients.length - newPatientsCount)
+
       totalPrescriptions = await getTotalPrescriptions()
       totalDrugs = await getTotalDrugs()
       connectedPharmacies = await getConnectedPharmacies()
     } catch (error) {
       console.error('Error loading statistics:', error)
+      newPatientsCount = 0
+      existingPatientsCount = 0
       totalPrescriptions = 0
       totalDrugs = 0
       connectedPharmacies = 0
+    } finally {
+      statisticsLoading = false
     }
   }
   
@@ -210,14 +665,22 @@
     
     const query = searchQuery.toLowerCase().trim()
     filteredPatients = patients.filter(patient => {
-      const fullName = `${patient.firstName} ${patient.lastName}`.toLowerCase()
+      const fullName = `${patient.firstName || ''} ${patient.lastName || ''}`.trim().toLowerCase()
+      const patientIdShort = formatPatientId(patient.id).toLowerCase()
+      const hasPrescriptionMatch = prescriptions.some(prescription => {
+        if (prescription?.patientId !== patient.id) return false
+        const shortId = formatPrescriptionId(prescription.id).toLowerCase()
+        return shortId.includes(query)
+      })
       return fullName.includes(query) || 
-             patient.firstName.toLowerCase().includes(query) || 
-             patient.lastName.toLowerCase().includes(query) || 
-             patient.idNumber.toLowerCase().includes(query) || 
-             patient.email.toLowerCase().includes(query) || 
-             (patient.phone && patient.phone.toLowerCase().includes(query)) ||
-             (patient.dateOfBirth && patient.dateOfBirth.includes(query))
+             (patient.firstName || '').toLowerCase().includes(query) || 
+             (patient.lastName || '').toLowerCase().includes(query) || 
+             (patient.idNumber || '').toLowerCase().includes(query) || 
+             (patient.email || '').toLowerCase().includes(query) || 
+             (patient.phone || '').toLowerCase().includes(query) ||
+             (patient.dateOfBirth || '').toLowerCase().includes(query) ||
+             patientIdShort.includes(query) ||
+             hasPrescriptionMatch
     }).slice(0, 20) // Limit to 20 results for performance
   }
   
@@ -252,14 +715,19 @@
         return
       }
       
-      // Always get the doctor from Firebase to ensure we have the correct ID
-      console.log('🔍 PatientManagement: Getting doctor from Firebase for email:', user.email)
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
-      console.log('🔍 PatientManagement: Doctor from Firebase:', doctor)
+      // Get the doctor from Firebase to ensure we have the correct ID
+      console.log('🔍 PatientManagement: Resolving owner doctor for patient creation')
+      let doctor = await resolveSettingsDoctor()
+      console.log('🔍 PatientManagement: Doctor resolved:', doctor)
       
+      // If doctor not found in Firebase, try to use the user object directly
       if (!doctor) {
-        console.error('❌ PatientManagement: Doctor not found in Firebase for email:', user.email)
-        throw new Error('Doctor not found in database')
+        console.warn('⚠️ PatientManagement: Doctor not found in Firebase, using user object directly')
+        if (!user || !user.id) {
+          console.error('❌ PatientManagement: No user or user ID available')
+          throw new Error('User not authenticated properly')
+        }
+        doctor = user
       }
       
       const doctorId = doctor.id
@@ -273,23 +741,76 @@
       
       const newPatient = await firebaseStorage.createPatient(patientToCreate)
       console.log('✅ PatientManagement: Patient created successfully:', newPatient)
-      
-      // Reload patients to ensure we get the latest data
-      console.log('🔍 PatientManagement: Reloading patients after creation...')
-      await loadPatients()
-      
+
+      // Add the new patient to the local state immediately (optimistic update)
+      // This ensures the patient appears in the list right away
+      patients = [newPatient, ...patients]
+      filteredPatients = [...patients]
+      console.log('✅ PatientManagement: Added new patient to local state, total patients:', patients.length)
+
+      // Reload patients after a short delay to ensure Firestore consistency
+      // This helps catch any edge cases where the optimistic update might differ from server state
+      setTimeout(async () => {
+        console.log('🔍 PatientManagement: Reloading patients after creation (background sync)...')
+        await loadPatients()
+      }, 1000)
+
       showPatientForm = false
+      notifySuccess('Patient added successfully!')
       console.log('✅ PatientManagement: Patient creation process completed')
     } catch (error) {
       console.error('❌ PatientManagement: Error adding patient:', error)
       console.error('❌ PatientManagement: Error stack:', error.stack)
+      notifyError(error?.message || 'Failed to add patient.')
     }
+  }
+  
+  // Handle view patient request from PatientDetails
+  const handleViewPatient = (event) => {
+    const { patient } = event.detail
+    console.log('👁️ View patient requested:', patient)
+    console.log('👁️ Current view before:', currentView)
+    console.log('👁️ Selected patient before:', selectedPatient)
+    
+    // Ensure patient is selected (refresh/reload the patient view)
+    selectPatient(patient)
+    
+    // Navigate to prescriptions view (which shows sidebar with patient details and medical summary)
+    // This ensures the sidebar layout is shown
+    currentView = 'prescriptions'
+    
+    console.log('👁️ Current view after:', currentView)
+    console.log('👁️ Selected patient after:', selectedPatient)
+  }
+
+  const handleEditPatientFromList = (patient) => {
+    selectPatient(patient)
+    currentView = 'prescriptions'
+    editPatientTrigger += 1
   }
   
   // Handle data updates from PatientDetails
   const handleDataUpdated = async (event) => {
     const { type, data } = event.detail
     console.log('🔄 Data updated in PatientDetails:', type, data)
+
+    if (type === 'patient-deleted') {
+      patients = patients.filter(patient => patient.id !== data?.patientId)
+      selectedPatient = null
+      illnesses = []
+      prescriptions = []
+      symptoms = []
+      reports = []
+      currentView = 'patients'
+      await loadPatients()
+      return
+    }
+
+    if (type === 'patient' && data?.id) {
+      selectedPatient = data
+      patients = patients.map(patient => patient.id === data.id ? { ...patient, ...data } : patient)
+      filteredPatients = filteredPatients.map(patient => patient.id === data.id ? { ...patient, ...data } : patient)
+    }
     
     // Refresh medical data to update MedicalSummary
     if (selectedPatient) {
@@ -305,67 +826,63 @@
   // Statistics functions for dashboard
   const getTotalPrescriptions = async () => {
     let total = 0
-    console.log('🔍 getTotalPrescriptions: Patients count:', patients.length)
     
-    // Check if we have any patients at all
-    if (patients.length === 0) {
-      console.log('🔍 getTotalPrescriptions: No patients found, checking all prescriptions in storage')
-      // If no patients, check all prescriptions in storage
-      const allPrescriptions = await firebaseStorage.getAllPrescriptions()
-      console.log('🔍 getTotalPrescriptions: All prescriptions in storage:', allPrescriptions)
-      total = allPrescriptions.length
-    } else {
-      for (const patient of patients) {
-        const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
-        console.log(`🔍 getTotalPrescriptions: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
-        console.log(`🔍 getTotalPrescriptions: Prescription data:`, patientPrescriptions)
-        total += patientPrescriptions.length
-      }
+    // Only count prescriptions for the current doctor's patients
+    for (const patient of patients) {
+      const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
+      
+      // Filter prescriptions to only include those created by the current doctor
+      const doctorPrescriptions = patientPrescriptions.filter(prescription => 
+        prescription.doctorId === doctorId || prescription.createdBy === doctorId
+      )
+      
+      // Deduplicate prescriptions by ID, keeping the most recent one
+      const uniquePrescriptions = new Map()
+      doctorPrescriptions.forEach(prescription => {
+        const existing = uniquePrescriptions.get(prescription.id)
+        if (!existing || new Date(prescription.createdAt) > new Date(existing.createdAt)) {
+          uniquePrescriptions.set(prescription.id, prescription)
+        }
+      })
+      const deduplicatedPrescriptions = Array.from(uniquePrescriptions.values())
+      
+      total += deduplicatedPrescriptions.length
     }
     
-    console.log('🔍 getTotalPrescriptions: Total prescriptions:', total)
     return total
   }
   
   const getTotalDrugs = async () => {
     let total = 0
-    console.log('🔍 getTotalDrugs: Patients count:', patients.length)
     
-    // Check if we have any patients at all
-    if (patients.length === 0) {
-      console.log('🔍 getTotalDrugs: No patients found, checking all prescriptions in storage')
-      // If no patients, check all prescriptions in storage
-      const allPrescriptions = await firebaseStorage.getAllPrescriptions()
-      console.log('🔍 getTotalDrugs: All prescriptions in storage:', allPrescriptions)
+    // Only count medications from prescriptions created by the current doctor
+    for (const patient of patients) {
+      const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
       
-      allPrescriptions.forEach(prescription => {
-        console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
+      // Filter prescriptions to only include those created by the current doctor
+      const doctorPrescriptions = patientPrescriptions.filter(prescription => 
+        prescription.doctorId === doctorId || prescription.createdBy === doctorId
+      )
+      
+      // Deduplicate prescriptions by ID, keeping the most recent one
+      const uniquePrescriptions = new Map()
+      doctorPrescriptions.forEach(prescription => {
+        const existing = uniquePrescriptions.get(prescription.id)
+        if (!existing || new Date(prescription.createdAt) > new Date(existing.createdAt)) {
+          uniquePrescriptions.set(prescription.id, prescription)
+        }
+      })
+      const deduplicatedPrescriptions = Array.from(uniquePrescriptions.values())
+      
+      deduplicatedPrescriptions.forEach(prescription => {
         if (prescription.medications && Array.isArray(prescription.medications)) {
-          console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
           total += prescription.medications.length
         } else {
-          console.log(`🔍 getTotalDrugs: Prescription has no medications array, counting as 1`)
           total += 1 // Single medication prescription
         }
       })
-    } else {
-      for (const patient of patients) {
-        const patientPrescriptions = await firebaseStorage.getPrescriptionsByPatientId(patient.id) || []
-        console.log(`🔍 getTotalDrugs: Patient ${patient.firstName} has ${patientPrescriptions.length} prescriptions`)
-        patientPrescriptions.forEach(prescription => {
-          console.log(`🔍 getTotalDrugs: Prescription structure:`, prescription)
-          if (prescription.medications && Array.isArray(prescription.medications)) {
-            console.log(`🔍 getTotalDrugs: Prescription has ${prescription.medications.length} medications`)
-            total += prescription.medications.length
-          } else {
-            console.log(`🔍 getTotalDrugs: Prescription has no medications array, counting as 1`)
-            total += 1 // Single medication prescription
-          }
-        })
-      }
     }
     
-    console.log('🔍 getTotalDrugs: Total drugs:', total)
     return total
   }
   
@@ -390,12 +907,6 @@
         return pharmacistHasDoctor || doctorHasPharmacist
       }).length
       
-      console.log('🔍 Connected pharmacies count:', connectedCount)
-      console.log('🔍 Doctor ID:', doctor.id)
-      console.log('🔍 All pharmacists:', allPharmacists.map(p => ({ 
-        name: p.businessName, 
-        connectedDoctors: p.connectedDoctors 
-      })))
       
       return connectedCount
     } catch (error) {
@@ -405,188 +916,592 @@
   }
 
   
-  // Create responsive prescriptions per day chart using Chart.js
+  // Create responsive prescriptions per day chart using ApexCharts with caching
   const createPrescriptionsChart = async () => {
     try {
+      chartLoading = true
+      
       // Destroy existing chart if it exists
       if (chartInstance) {
         chartInstance.destroy()
         chartInstance = null
       }
       
-      // Calculate prescriptions per day for last 30 days
-      const last30Days = []
-      const prescriptionsPerDay = []
+      // Check cache first
+      const cacheKey = `prescriptions-chart-${user?.id}-${patients.length}`
+      const cachedData = localStorage.getItem(cacheKey)
+      const cacheTimestamp = localStorage.getItem(`${cacheKey}-timestamp`)
+      const now = Date.now()
+      const cacheExpiry = 5 * 60 * 1000 // 5 minutes cache
       
-      for (let i = 29; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        const year = date.getFullYear()
-        const month = date.getMonth() + 1
-        const day = date.getDate()
-        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      let last30Days = []
+      let prescriptionsPerDay = []
+      let returningPerDay = []
+      
+      // Force reload fresh data (skip cache for now to test deduplication)
+      console.log('Force loading fresh chart data (cache disabled for testing)')
+      // Use cached data if available and not expired
+      // if (cachedData && cacheTimestamp && (now - parseInt(cacheTimestamp)) < cacheExpiry) {
+      //   console.log('Using cached chart data')
+      //   const parsedData = JSON.parse(cachedData)
+      //   last30Days = parsedData.last30Days
+      //   prescriptionsPerDay = parsedData.prescriptionsPerDay
+      // } else {
+      console.log('Loading fresh chart data')
         
-        last30Days.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
-        
-        // Count prescriptions created on this day
-        let dayPrescriptions = 0
+        // Batch load all prescription data once
+        const allPrescriptions = []
         for (const patient of patients) {
-          const patientPrescriptions = await firebaseStorage.getMedicationsByPatientId(patient.id) || []
-          patientPrescriptions.forEach(prescription => {
-            const createdDate = new Date(prescription.createdAt || prescription.dateCreated)
-            const prescriptionYear = createdDate.getFullYear()
-            const prescriptionMonth = createdDate.getMonth() + 1
-            const prescriptionDay = createdDate.getDate()
-            const prescriptionDateStr = `${prescriptionYear}-${String(prescriptionMonth).padStart(2, '0')}-${String(prescriptionDay).padStart(2, '0')}`
-            
-            if (prescriptionDateStr === dateStr) {
-              dayPrescriptions++
-            }
+          try {
+            const patientPrescriptions = await firebaseStorage.getMedicationsByPatientId(patient.id) || []
+            allPrescriptions.push(
+              ...patientPrescriptions.map((prescription) => ({
+                ...prescription,
+                patientId: prescription?.patientId || patient.id
+              }))
+            )
+          } catch (error) {
+            console.warn(`Failed to load prescriptions for patient ${patient.id}:`, error)
+          }
+        }
+        
+        // Deduplicate prescriptions by ID, keeping the most recent one
+        const uniquePrescriptions = new Map()
+        allPrescriptions.forEach(prescription => {
+          const existing = uniquePrescriptions.get(prescription.id)
+          if (!existing || new Date(prescription.createdAt) > new Date(existing.createdAt)) {
+            uniquePrescriptions.set(prescription.id, prescription)
+          }
+        })
+        const deduplicatedPrescriptions = Array.from(uniquePrescriptions.values())
+        
+        console.log('📊 Chart: Total prescriptions before deduplication:', allPrescriptions.length)
+        console.log('📊 Chart: Total prescriptions after deduplication:', deduplicatedPrescriptions.length)
+        
+        // Generate date range
+        const dateRange = []
+        for (let i = 29; i >= 0; i--) {
+          const date = new Date()
+          date.setDate(date.getDate() - i)
+          const year = date.getFullYear()
+          const month = date.getMonth() + 1
+          const day = date.getDate()
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          
+          dateRange.push({
+            dateStr,
+            displayDate: formatDate(date, { country: user?.country })
           })
         }
         
-        prescriptionsPerDay.push(dayPrescriptions)
-      }
+        const toDateKey = (dateValue) => {
+          const createdDate = new Date(dateValue)
+          if (Number.isNaN(createdDate.getTime())) return null
+          const year = createdDate.getFullYear()
+          const month = createdDate.getMonth() + 1
+          const day = createdDate.getDate()
+          return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        }
+
+        // Build first seen date per patient, then derive total + returning activity per day
+        const firstPrescriptionByPatient = new Map()
+        deduplicatedPrescriptions.forEach((prescription) => {
+          const patientId = prescription?.patientId
+          const dateStr = toDateKey(prescription?.createdAt || prescription?.dateCreated)
+          if (!patientId || !dateStr) return
+          const existing = firstPrescriptionByPatient.get(patientId)
+          if (!existing || new Date(dateStr) < new Date(existing)) {
+            firstPrescriptionByPatient.set(patientId, dateStr)
+          }
+        })
+
+        const totalByDay = new Map()
+        const returningByDay = new Map()
+        deduplicatedPrescriptions.forEach((prescription) => {
+          const patientId = prescription?.patientId
+          const dateStr = toDateKey(prescription?.createdAt || prescription?.dateCreated)
+          if (!dateStr) return
+
+          totalByDay.set(dateStr, (totalByDay.get(dateStr) || 0) + 1)
+
+          const firstDate = patientId ? firstPrescriptionByPatient.get(patientId) : null
+          if (firstDate && firstDate !== dateStr) {
+            returningByDay.set(dateStr, (returningByDay.get(dateStr) || 0) + 1)
+          }
+        })
+
+        // Count prescriptions per day using deduplicated data
+        last30Days = dateRange.map(d => d.displayDate)
+        prescriptionsPerDay = dateRange.map(({ dateStr }) => {
+          return totalByDay.get(dateStr) || 0
+        })
+        returningPerDay = dateRange.map(({ dateStr }) => returningByDay.get(dateStr) || 0)
+        
+        // Cache the results
+        const cacheData = { last30Days, prescriptionsPerDay, returningPerDay }
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData))
+        localStorage.setItem(`${cacheKey}-timestamp`, now.toString())
+      // }
       
-      // Create Chart.js chart with proper error handling
+      // Create ApexCharts chart with Flowbite styling
       setTimeout(() => {
-        const canvas = document.getElementById('prescriptionsChart')
-        if (!canvas) {
-          console.log('Canvas not found, skipping chart creation')
+        const chartElement = document.getElementById('prescriptionsChart')
+        if (!chartElement) {
+          console.log('Chart element not found, skipping chart creation')
           return
         }
         
-        // Check if canvas is already in use
-        if (canvas.chart) {
-          console.log('Canvas already has a chart, destroying it first')
-          canvas.chart.destroy()
-          canvas.chart = null
+        // Destroy existing chart if it exists
+        if (chartInstance) {
+          chartInstance.destroy()
+          chartInstance = null
         }
         
-        const ctx = canvas.getContext('2d')
-        
-        chartInstance = new Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: last30Days,
-                     datasets: [{
-                       label: 'Prescriptions',
-                       data: prescriptionsPerDay,
-                       backgroundColor: 'rgba(var(--bs-primary-rgb), 0.8)',
-                       borderColor: 'rgba(var(--bs-primary-rgb), 1)',
-                       borderWidth: 1,
-                       borderRadius: 4,
-                       borderSkipped: false,
-                     }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                display: false
-              },
-                       tooltip: {
-                         backgroundColor: 'rgba(var(--bs-dark-rgb), 0.8)',
-                         titleColor: 'var(--bs-light)',
-                         bodyColor: 'var(--bs-light)',
-                         borderColor: 'rgba(var(--bs-primary-rgb), 1)',
-                         borderWidth: 1,
-                         cornerRadius: 6,
-                         displayColors: false,
-                callbacks: {
-                  title: function(context) {
-                    return context[0].label
-                  },
-                  label: function(context) {
-                    return `${context.parsed.y} prescription${context.parsed.y !== 1 ? 's' : ''}`
-                  }
-                }
-              }
+        const options = {
+          chart: {
+            type: 'area',
+            height: 250,
+            toolbar: {
+              show: false
             },
-            scales: {
-              x: {
-                grid: {
-                  display: false
-                },
-                         ticks: {
-                           color: 'var(--bs-secondary)',
-                           font: {
-                             size: 10
-                           },
-                           maxRotation: 45,
-                           minRotation: 0,
-                           maxTicksLimit: 15
-                         }
-              },
-              y: {
-                beginAtZero: true,
-                grid: {
-                  color: 'rgba(var(--bs-dark-rgb), 0.1)',
-                  drawBorder: false
-                },
-                ticks: {
-                  color: 'var(--bs-secondary)',
-                  font: {
-                    size: 11
-                  },
-                  stepSize: 1,
-                  callback: function(value) {
-                    return Number.isInteger(value) ? value : ''
-                  }
-                }
-              }
+            animations: {
+              enabled: true,
+              easing: 'easeout',
+              speed: 650
             },
-            interaction: {
-              intersect: false,
-              mode: 'index'
-            },
-            animation: {
-              duration: 750,
-              easing: 'easeInOutQuart'
+            zoom: {
+              enabled: false
             }
-          }
-        })
+          },
+          series: [
+            {
+              name: 'Total Prescriptions',
+              data: prescriptionsPerDay
+            },
+            {
+              name: 'Returning',
+              data: returningPerDay
+            }
+          ],
+          xaxis: {
+            categories: last30Days,
+            labels: {
+              style: {
+                colors: '#6b7280', // gray-500
+                fontSize: '10px'
+              },
+              rotate: -45,
+              rotateAlways: false,
+              maxHeight: 60,
+              hideOverlappingLabels: true,
+              trim: true
+            },
+            tooltip: {
+              enabled: false
+            },
+            axisBorder: {
+              show: false
+            },
+            axisTicks: {
+              show: false
+            }
+          },
+          yaxis: {
+            min: 0,
+            forceNiceScale: true,
+            tickAmount: 5,
+            labels: {
+              style: {
+                colors: '#6b7280', // gray-500
+                fontSize: '11px'
+              },
+              formatter: function(value) {
+                return Number.isInteger(value) ? value : ''
+              }
+            }
+          },
+          grid: {
+            borderColor: 'rgba(31, 41, 55, 0.1)', // gray-800 with low opacity
+            strokeDashArray: 4,
+            padding: {
+              left: 4,
+              right: 8,
+              top: 4
+            },
+            xaxis: {
+              lines: {
+                show: false
+              }
+            },
+            yaxis: {
+              lines: {
+                show: true
+              }
+            }
+          },
+          colors: ['#0891b2', '#f97316'], // cyan-600, orange-500
+          legend: {
+            show: true,
+            position: 'top',
+            horizontalAlign: 'right',
+            labels: {
+              colors: '#4b5563'
+            }
+          },
+          stroke: {
+            curve: 'smooth',
+            width: [3, 3],
+            dashArray: [0, 6]
+          },
+          fill: {
+            type: 'gradient',
+            gradient: {
+              shadeIntensity: 0.25,
+              opacityFrom: 0.4,
+              opacityTo: 0.08,
+              stops: [0, 95, 100]
+            }
+          },
+          markers: {
+            size: 3,
+            strokeWidth: 2,
+            strokeColors: '#ffffff',
+            hover: {
+              size: 5
+            }
+          },
+          dataLabels: {
+            enabled: false
+          },
+          tooltip: {
+            theme: 'dark',
+            shared: true,
+            intersect: false,
+            style: {
+              fontSize: '12px'
+            },
+            x: {
+              show: true
+            },
+            y: {
+              formatter: function(value) {
+                return `${value} prescription${value !== 1 ? 's' : ''}`
+              }
+            },
+            custom: function({series, dataPointIndex, w}) {
+              const date = w.globals.labels[dataPointIndex]
+              const rows = w.globals.seriesNames
+                .map((name, index) => {
+                  const value = series[index]?.[dataPointIndex] ?? 0
+                  const color = w.globals.colors[index] || '#0891b2'
+                  return `<div class="flex items-center justify-between gap-3">
+                    <span class="flex items-center"><span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${color};margin-right:6px;"></span>${name}</span>
+                    <span class="font-semibold">${value}</span>
+                  </div>`
+                })
+                .join('')
+              return `
+                <div class="bg-slate-900 text-white px-3 py-2 rounded-xl shadow-lg border border-cyan-500/60">
+                  <div class="font-semibold">${date}</div>
+                  <div class="mt-1 text-cyan-100">${rows}</div>
+                </div>
+              `
+            }
+          },
+          responsive: [{
+            breakpoint: 768,
+            options: {
+              chart: {
+                height: 200
+              },
+              xaxis: {
+                labels: {
+                  fontSize: '8px',
+                  rotate: -90,
+                  hideOverlappingLabels: true,
+                  trim: true,
+                  maxHeight: 80
+                },
+                tickAmount: 10
+              }
+            }
+          }, {
+            breakpoint: 480,
+            options: {
+              chart: {
+                height: 180
+              },
+              xaxis: {
+                labels: {
+                  fontSize: '7px',
+                  rotate: -90,
+                  hideOverlappingLabels: true,
+                  trim: true,
+                  maxHeight: 100
+                },
+                tickAmount: 8
+              }
+            }
+          }]
+        }
         
-        // Store chart reference on canvas for cleanup
-        canvas.chart = chartInstance
+        chartInstance = new ApexCharts(chartElement, options)
+        chartInstance.render()
         
       }, 200)
       
     } catch (error) {
       console.error('Error creating prescriptions chart:', error)
+    } finally {
+      chartLoading = false
     }
+  }
+
+  // Function to invalidate chart cache when new prescriptions are added
+  const invalidateChartCache = () => {
+    const cacheKey = `prescriptions-chart-${user?.id}-${patients.length}`
+    localStorage.removeItem(cacheKey)
+    localStorage.removeItem(`${cacheKey}-timestamp`)
+    console.log('Chart cache invalidated')
+  }
+
+  const createIncomeComparisonChart = async () => {
+    const renderToken = ++incomeChartRenderToken
+    try {
+      incomeChartLoading = true
+
+      if (incomeChartInstance) {
+        incomeChartInstance.destroy()
+        incomeChartInstance = null
+      }
+
+      const now = new Date()
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const currentMonthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      const previousMonthDays = new Date(now.getFullYear(), now.getMonth(), 0).getDate()
+      const daysToShow = Math.max(currentMonthDays, previousMonthDays)
+
+      const categories = Array.from({ length: daysToShow }, (_, index) => `Day ${index + 1}`)
+      const currentMonthIncome = Array.from({ length: daysToShow }, () => 0)
+      const previousMonthIncome = Array.from({ length: daysToShow }, () => 0)
+
+      const resolvedDoctorId = settingsDoctor?.id || doctorId
+      if (!resolvedDoctorId) {
+        return
+      }
+
+      const prescriptions = await firebaseStorage.getPrescriptionsByDoctorId(resolvedDoctorId)
+      const pharmacyStock = await pharmacyMedicationService.getPharmacyStock(resolvedDoctorId)
+      if (renderToken !== incomeChartRenderToken) return
+
+      prescriptions.forEach((prescription) => {
+        const prescriptionDate = new Date(prescription?.createdAt || prescription?.dateCreated || prescription?.sentAt || 0)
+        if (Number.isNaN(prescriptionDate.getTime())) return
+
+        const expectedCharge = chargeCalculationService.calculateExpectedChargeFromStock(
+          prescription,
+          settingsDoctor || doctorData || user,
+          pharmacyStock,
+          {
+            roundingPreference: (settingsDoctor || doctorData || user)?.roundingPreference || 'none',
+            currency: (settingsDoctor || doctorData || user)?.currency || resolveCurrencyFromCountry((settingsDoctor || doctorData || user)?.country),
+            ignoreAvailability: false,
+            assumeDispensedForAvailable: true
+          }
+        )
+
+        const totalIncome = (expectedCharge?.doctorCharges?.totalAfterDiscount || 0) + (expectedCharge?.drugCharges?.totalCost || 0)
+        const dayIndex = prescriptionDate.getDate() - 1
+        if (dayIndex < 0 || dayIndex >= daysToShow) return
+
+        if (prescriptionDate >= currentMonthStart && prescriptionDate < nextMonthStart) {
+          currentMonthIncome[dayIndex] += totalIncome
+        } else if (prescriptionDate >= previousMonthStart && prescriptionDate < currentMonthStart) {
+          previousMonthIncome[dayIndex] += totalIncome
+        }
+      })
+
+      const options = {
+        chart: {
+          type: 'bar',
+          height: 260,
+          toolbar: { show: false },
+          zoom: { enabled: false },
+          animations: {
+            enabled: true,
+            easing: 'easeout',
+            speed: 650
+          }
+        },
+        series: [
+          { name: 'This Month', data: currentMonthIncome.map((value) => Number(value.toFixed(2))) },
+          { name: 'Last Month', data: previousMonthIncome.map((value) => Number(value.toFixed(2))) }
+        ],
+        xaxis: {
+          categories,
+          labels: {
+            style: { colors: '#6b7280', fontSize: '10px' },
+            rotate: -45,
+            maxHeight: 60,
+            hideOverlappingLabels: true
+          },
+          axisBorder: { show: false },
+          axisTicks: { show: false }
+        },
+        yaxis: {
+          min: 0,
+          forceNiceScale: true,
+          labels: {
+            style: { colors: '#6b7280', fontSize: '11px' },
+            formatter: (value) => Math.round(value).toString()
+          }
+        },
+        colors: ['#0891b2', '#a855f7'],
+        plotOptions: {
+          bar: {
+            borderRadius: 4,
+            columnWidth: '70%',
+            dataLabels: { position: 'top' }
+          }
+        },
+        dataLabels: { enabled: false },
+        grid: {
+          borderColor: 'rgba(31, 41, 55, 0.1)',
+          strokeDashArray: 4,
+          xaxis: { lines: { show: false } },
+          yaxis: { lines: { show: true } }
+        },
+        legend: {
+          show: true,
+          position: 'top',
+          horizontalAlign: 'right',
+          labels: { colors: '#4b5563' }
+        },
+        tooltip: {
+          theme: 'dark',
+          shared: true,
+          intersect: false
+        }
+      }
+
+      // Ensure the chart container is in the DOM after loading state flips.
+      incomeChartLoading = false
+      await tick()
+      if (renderToken !== incomeChartRenderToken) return
+      const chartElement = document.getElementById('incomeComparisonChart')
+      if (!chartElement) {
+        return
+      }
+      chartElement.innerHTML = ''
+
+      incomeChartInstance = new ApexCharts(chartElement, options)
+      incomeChartInstance.render()
+    } catch (error) {
+      console.error('Error creating income comparison chart:', error)
+    } finally {
+      if (renderToken === incomeChartRenderToken) {
+        incomeChartLoading = false
+      }
+    }
+  }
+
+  // Navigation functions for dashboard cards
+  const navigateToPatients = () => {
+    dispatch('view-change', 'patients')
+  }
+
+  const navigateToPrescriptions = () => {
+    dispatch('view-change', 'prescriptions')
+  }
+
+  const navigateToPharmacies = () => {
+    dispatch('view-change', 'pharmacies')
   }
   
   // Load medical data for selected patient
   const loadMedicalData = async (patientId) => {
     try {
-      console.log('Loading medical data for patient:', patientId)
+      console.log('🔍 PatientManagement: Loading medical data for patient:', patientId)
       
       // Load illnesses
       illnesses = await firebaseStorage.getIllnessesByPatientId(patientId) || []
-      console.log('Loaded illnesses:', illnesses.length)
+      console.log('🔍 PatientManagement: Loaded illnesses:', illnesses.length)
       
       // Load prescriptions
       prescriptions = await firebaseStorage.getPrescriptionsByPatientId(patientId) || []
-      console.log('Loaded prescriptions:', prescriptions.length)
+      console.log('🔍 PatientManagement: Loaded prescriptions:', prescriptions.length)
+      console.log('🔍 PatientManagement: Prescriptions data:', prescriptions)
+      
+      // Debug each prescription
+      prescriptions.forEach((prescription, index) => {
+        console.log(`🔍 PatientManagement: Prescription ${index}:`, {
+          id: prescription.id,
+          patientId: prescription.patientId,
+          medications: prescription.medications,
+          medicationsLength: prescription.medications?.length || 0,
+          createdAt: prescription.createdAt
+        })
+      })
       
       // Load symptoms
       symptoms = await firebaseStorage.getSymptomsByPatientId(patientId) || []
-      console.log('Loaded symptoms:', symptoms.length)
+      console.log('🔍 PatientManagement: Loaded symptoms:', symptoms.length)
+
+      // Load reports
+      reports = await firebaseStorage.getReportsByPatientId(patientId) || []
+      console.log('🔍 PatientManagement: Loaded reports:', reports.length)
+      
+      // Check dispensed status for prescriptions
+      await checkPrescriptionDispensedStatus(patientId)
       
     } catch (error) {
-      console.error('Error loading medical data:', error)
+      console.error('❌ PatientManagement: Error loading medical data:', error)
       // Ensure arrays are always defined
       illnesses = []
       prescriptions = []
       symptoms = []
+      reports = []
+    }
+  }
+
+  // Check dispensed status for patient's prescriptions
+  const checkPrescriptionDispensedStatus = async (patientId) => {
+    try {
+      if (!doctorId || !patientId) return
+      
+      checkingDispensedStatus = true
+      console.log('🔍 Checking dispensed status for patient:', patientId)
+      
+      // Get dispensed status for all patient prescriptions
+      const status = await prescriptionStatusService.getPatientPrescriptionsStatus(patientId, doctorId)
+      prescriptionDispensedStatus = status
+      
+      console.log('✅ Dispensed status loaded:', prescriptionDispensedStatus)
+      console.log('🔍 Available prescription IDs:', Object.keys(prescriptionDispensedStatus))
+      
+      // Debug each prescription status
+      Object.entries(prescriptionDispensedStatus).forEach(([prescriptionId, status]) => {
+        console.log(`🔍 Prescription ${prescriptionId}:`, {
+          isDispensed: status.isDispensed,
+          dispensedMedications: status.dispensedMedications,
+          dispensedMedicationsLength: status.dispensedMedications?.length || 0
+        })
+      })
+      
+    } catch (error) {
+      console.error('❌ Error checking dispensed status:', error)
+      prescriptionDispensedStatus = {}
+    } finally {
+      checkingDispensedStatus = false
     }
   }
 
   // Select a patient
   const selectPatient = (patient) => {
     selectedPatient = patient
+    showAllLastPrescriptionMeds = false // Reset expanded state when selecting new patient
     if (patient) {
       loadMedicalData(patient.id)
     } else {
@@ -599,12 +1514,14 @@
   
   // Show add patient form
   const showAddPatientForm = () => {
-    showPatientForm = true
+    // Clear selected patient and medical data first
     selectedPatient = null
-    // Clear medical data when showing add form
     illnesses = []
     prescriptions = []
     symptoms = []
+    
+    // Set showPatientForm to true
+    showPatientForm = true
   }
   
   // Toggle notes visibility
@@ -619,7 +1536,7 @@
   const togglePrescriptionsNotes = () => {
     showPrescriptionsNotes = !showPrescriptionsNotes
   }
-  
+
   // Check if notes are available
   const hasNotes = (items, field = 'notes') => {
     return items && items.some(item => item[field] && item[field].trim())
@@ -652,10 +1569,89 @@
       console.error('Error adding prescription:', error)
     }
   }
+
+  const loadLastPrescriptionToEditor = () => {
+    if (!selectedPrescriptionForCard || !patientDetailsRef) return
+    patientDetailsRef.loadPrescriptionForEditing(selectedPrescriptionForCard)
+  }
   
   // Check if medication is already in prescription
   const isInPrescription = (medicationId) => {
     return prescriptions.some(item => item.id === medicationId)
+  }
+
+  // Check if a prescription is dispensed
+  const isPrescriptionDispensed = (prescriptionId) => {
+    return prescriptionDispensedStatus[prescriptionId]?.isDispensed || false
+  }
+
+  // Get dispensed info for a prescription
+  const getPrescriptionDispensedInfo = (prescriptionId) => {
+    // First try direct lookup
+    if (prescriptionDispensedStatus[prescriptionId]) {
+      return prescriptionDispensedStatus[prescriptionId]
+    }
+    
+    // If not found, try to find by checking all mapped IDs
+    for (const [mappedId, status] of Object.entries(prescriptionDispensedStatus)) {
+      // Check if this mapped ID corresponds to our prescription ID
+      if (mappedId.includes(prescriptionId) || prescriptionId.includes(mappedId)) {
+        console.log('🔍 Found dispensed status via mapped ID:', mappedId, 'for prescription:', prescriptionId)
+        return status
+      }
+    }
+    
+    // Fallback
+    return {
+      isDispensed: false,
+      dispensedAt: null,
+      dispensedBy: null,
+      dispensedMedications: []
+    }
+  }
+
+  // Check if a specific medication is dispensed
+  const isMedicationDispensed = (prescriptionId, medicationId) => {
+    const dispensedInfo = getPrescriptionDispensedInfo(prescriptionId)
+    console.log('🔍 Checking if medication is dispensed:', {
+      prescriptionId,
+      medicationId,
+      dispensedInfo,
+      dispensedMedications: dispensedInfo.dispensedMedications,
+      allPrescriptionStatus: prescriptionDispensedStatus,
+      allPrescriptionStatusKeys: Object.keys(prescriptionDispensedStatus)
+    })
+    
+    if (!dispensedInfo.dispensedMedications || !Array.isArray(dispensedInfo.dispensedMedications)) {
+      console.log('❌ No dispensed medications array found for prescription:', prescriptionId)
+      console.log('❌ Dispensed info:', dispensedInfo)
+      return false
+    }
+    
+    console.log('🔍 Dispensed medications array:', dispensedInfo.dispensedMedications)
+    
+    // Check if the medication ID is in the dispensed medications array
+    const isDispensed = dispensedInfo.dispensedMedications.some(dispensedMed => {
+      console.log('🔍 Comparing medication:', {
+        dispensedMed,
+        medicationId,
+        medicationIdType: typeof medicationId,
+        dispensedMedId: dispensedMed.medicationId,
+        dispensedMedIdType: typeof dispensedMed.medicationId,
+        dispensedMedName: dispensedMed.name,
+        matchById: dispensedMed.medicationId === medicationId,
+        matchByIdString: dispensedMed.medicationId === medicationId.toString(),
+        matchByName: dispensedMed.name === medicationId,
+        matchByNameString: dispensedMed.name === medicationId.toString()
+      })
+      return dispensedMed.medicationId === medicationId || 
+             dispensedMed.medicationId === medicationId.toString() ||
+             dispensedMed.name === medicationId ||
+             dispensedMed.name === medicationId.toString()
+    })
+    
+    console.log('🔍 Final medication dispensed result:', isDispensed)
+    return isDispensed
   }
   
   // Group items by date
@@ -663,7 +1659,7 @@
     if (!items || !Array.isArray(items)) return []
     
     const grouped = items.reduce((groups, item) => {
-      const date = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'No date'
+      const date = item.createdAt ? formatDate(item.createdAt, { country: user?.country }) : 'No date'
       if (!groups[date]) {
         groups[date] = []
       }
@@ -685,11 +1681,13 @@
   let profileLoading = false
   let profileError = ''
   let activeTab = 'edit-profile'
+  let showSaveProfileHint = false
   
   // Prescription template variables
-  let templateType = '' // 'printed', 'upload', 'system'
+  let templateType = 'printed' // 'printed', 'upload', 'system'
   let uploadedHeader = null
   let templatePreview = null
+  let headerText = ''
   let headerSize = 300 // Default header size in pixels
   
   // Reactive variable for cities based on selected country
@@ -702,7 +1700,11 @@
   
   // Handle edit profile click - show inline tabbed interface
   const handleEditProfile = () => {
+    if (isExternalDoctor) {
+      return
+    }
     editingProfile = true
+    activeTab = 'edit-profile'
     // Initialize form fields with current user data
     editFirstName = user?.firstName || ''
     editLastName = user?.lastName || ''
@@ -714,6 +1716,7 @@
   // Handle profile cancel
   const handleProfileCancel = () => {
     editingProfile = false
+    showSaveProfileHint = false
     editFirstName = ''
     editLastName = ''
     editCountry = ''
@@ -754,7 +1757,8 @@
         lastName: editLastName.trim(),
         country: editCountry.trim(),
         city: editCity.trim(),
-        name: `${editFirstName.trim()} ${editLastName.trim()}`
+        name: `${editFirstName.trim()} ${editLastName.trim()}`,
+        currency: resolveCurrencyFromCountry(editCountry.trim()) || user?.currency || 'USD'
       }
       
       // Update in auth service
@@ -764,7 +1768,9 @@
       dispatch('profile-updated', updatedUser)
       
       // Exit edit mode
+      showSaveProfileHint = false
       editingProfile = false
+      notifySuccess('Profile updated successfully!')
       
     } catch (err) {
       profileError = err.message
@@ -772,12 +1778,26 @@
       profileLoading = false
     }
   }
+
+  const handleCardKeydown = (event, action) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      action()
+    }
+  }
   
   // Handle template type selection
   const selectTemplateType = (type) => {
     templateType = type
     uploadedHeader = null
-    templatePreview = null
+    
+    // Only clear templatePreview if not switching to system
+    if (type !== 'system') {
+      templatePreview = null
+    } else {
+      // Initialize system template preview
+      generateSystemHeader()
+    }
   }
   
   // Handle header image upload
@@ -797,25 +1817,87 @@
     templatePreview = {
       type: 'system',
       doctorName: user?.name || 'Dr. [Your Name]',
-      practiceName: '[Your Practice Name]',
-      address: '[Your Address]',
-      phone: '[Your Phone]',
+      practiceName: `${user?.firstName || ''} ${user?.lastName || ''} Medical Practice`.trim() || '[Your Practice Name]',
+      address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
+      phone: user?.phone || '[Your Phone]',
       email: user?.email || '[Your Email]'
     }
+    
+    // Initialize header text
+    updateHeaderText()
+  }
+  
+  // Update header text from template preview
+  const updateHeaderText = () => {
+    if (templatePreview) {
+      headerText = `
+        <h5 class="font-bold mb-1 text-lg">${templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
+        <p class="mb-1 font-semibold text-base">${templatePreview.practiceName || '[Your Practice Name]'}</p>
+        <p class="mb-1 text-sm text-sm text-gray-600">${templatePreview.address || '[Your Address]'}</p>
+        <p class="mb-1 text-sm text-sm text-gray-600">Tel: ${templatePreview.phone || '[Your Phone]'} | Email: ${templatePreview.email || '[Your Email]'}</p>
+        <hr class="my-2">
+        <p class="mb-0 font-bold text-teal-600">PRESCRIPTION</p>
+      `
+    }
+  }
+  
+  // Handle text editor input
+  const handleHeaderTextChange = (event) => {
+    headerText = event.target.innerHTML
+  }
+  
+  // Parse header text back to template preview when editing is done
+  const parseHeaderText = (event) => {
+    const text = event.target.innerHTML
+    
+    // Extract doctor name (first h5 element)
+    const doctorNameMatch = text.match(/<h5[^>]*>(.*?)<\/h5>/)
+    if (doctorNameMatch) {
+      templatePreview.doctorName = doctorNameMatch[1].replace(/<[^>]*>/g, '')
+    }
+    
+    // Extract practice name (first p element after h5)
+    const practiceNameMatch = text.match(/<p class="mb-1 font-semibold[^>]*>(.*?)<\/p>/)
+    if (practiceNameMatch) {
+      templatePreview.practiceName = practiceNameMatch[1].replace(/<[^>]*>/g, '')
+    }
+    
+    // Extract address (p with text-gray-600 class)
+    const addressMatch = text.match(/<p class="mb-1 text-sm text-sm text-gray-600">(.*?)<\/p>/)
+    if (addressMatch) {
+      templatePreview.address = addressMatch[1].replace(/<[^>]*>/g, '')
+    }
+    
+    // Extract phone and email from contact line
+    const contactMatch = text.match(/Tel: (.*?) \| Email: (.*?)<\/p>/)
+    if (contactMatch) {
+      templatePreview.phone = contactMatch[1].replace(/<[^>]*>/g, '')
+      templatePreview.email = contactMatch[2].replace(/<[^>]*>/g, '')
+    }
+  }
+
+  const resolveSettingsDoctor = async () => {
+    if (settingsDoctor?.id) {
+      return settingsDoctor
+    }
+
+    if (isExternalDoctor && user?.invitedByDoctorId) {
+      return await firebaseStorage.getDoctorById(user.invitedByDoctorId)
+    }
+
+    if (user?.email) {
+      return await firebaseStorage.getDoctorByEmail(user.email)
+    }
+
+    return null
   }
   
   // Load template settings
   const loadTemplateSettings = async () => {
     try {
-      if (!user?.email) {
-        console.log('⚠️ No user email available for loading template settings')
-        return
-      }
-
-      // Get the doctor from Firebase using email
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      const doctor = await resolveSettingsDoctor()
       if (!doctor) {
-        console.log('⚠️ Doctor not found in Firebase for email:', user.email)
+        console.log('⚠️ Doctor not found in Firebase for template settings')
         return
       }
 
@@ -849,6 +1931,17 @@
   // Save template settings
   const saveTemplateSettings = async () => {
     try {
+      if (isExternalDoctor) {
+        showConfirmation(
+          'Settings Restricted',
+          'External doctors cannot update template settings.',
+          'OK',
+          '',
+          'warning'
+        )
+        return
+      }
+
       console.log('🔍 saveTemplateSettings: User object:', user)
       console.log('🔍 saveTemplateSettings: User.id:', user?.id)
       console.log('🔍 saveTemplateSettings: User.uid:', user?.uid)
@@ -857,22 +1950,44 @@
       // Check if user is authenticated - try different ID properties
       const userId = user?.id || user?.uid || user?.email
       if (!userId) {
-        alert('User not authenticated')
+        showConfirmation(
+          'Authentication Error',
+          'User not authenticated',
+          'OK',
+          '',
+          'danger'
+        )
         return
       }
 
       // Get the doctor ID from Firebase using email
-      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      let doctor = await resolveSettingsDoctor()
       if (!doctor) {
-        alert('Doctor profile not found. Please try logging in again.')
+        console.warn('⚠️ Template settings: Doctor not found in Firebase, using user object directly')
+        if (!user || !user.id) {
+          showConfirmation(
+            'Profile Error',
+            'Doctor profile not found. Please try logging in again.',
+            'OK',
+            '',
+            'danger'
+          )
         return
+        }
+        doctor = user
       }
 
+      // Ensure headerText is included in templatePreview for system template
+      if (templateType === 'system' && templatePreview) {
+        templatePreview.formattedHeader = headerText
+      }
+      
       const templateData = {
         templateType,
         uploadedHeader,
         headerSize,
         templatePreview,
+        headerText, // Include headerText separately for easy access
         doctorId: doctor.id,
         updatedAt: new Date().toISOString()
       }
@@ -888,260 +2003,590 @@
         doctorId: doctor.id
       })
       
-      alert('Template settings saved successfully!')
+      showConfirmation(
+        'Success',
+        'Template settings saved successfully!',
+        'OK',
+        '',
+        'success'
+      )
       
     } catch (error) {
       console.error('❌ Error saving template settings:', error)
-      alert('Error saving template settings. Please try again.')
+      showConfirmation(
+        'Error',
+        'Error saving template settings. Please try again.',
+        'OK',
+        '',
+        'danger'
+      )
     }
   }
   
   onMount(() => {
     loadPatients()
     loadTemplateSettings() // Load saved template settings
+    loadDeleteCode()
     // Create chart after a short delay to ensure DOM is ready
-    setTimeout(() => {
-      createPrescriptionsChart()
-    }, 500)
+    scheduleHomeChartsRender(500)
+    
+    // Listen for prescription save events to invalidate cache
+    const handlePrescriptionSaved = (event) => {
+      invalidateChartCache()
+      // Recreate chart with fresh data
+      scheduleHomeChartsRender(100)
+    }
+
+    const handleWindowResize = () => {
+      scheduleHomeChartsRender(150)
+    }
+    
+    window.addEventListener('prescriptionSaved', handlePrescriptionSaved)
+    window.addEventListener('resize', handleWindowResize)
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener('prescriptionSaved', handlePrescriptionSaved)
+      window.removeEventListener('resize', handleWindowResize)
+    }
   })
+
+  const loadDeleteCode = async () => {
+    try {
+      const doctor = await resolveSettingsDoctor()
+      if (!doctor) return
+      deleteCode = doctor?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ Error loading delete code:', error)
+      deleteCode = ''
+    }
+  }
+
+  $: if (user?.email) {
+    loadDeleteCode()
+  }
+
+  $: if (user?.email && user.email !== lastUserEmail) {
+    lastUserEmail = user.email
+    loadPatients()
+  }
   
   // Cleanup chart instance when component is destroyed
   onDestroy(() => {
+    if (homeChartRenderTimer) {
+      clearTimeout(homeChartRenderTimer)
+      homeChartRenderTimer = null
+    }
     if (chartInstance) {
       chartInstance.destroy()
       chartInstance = null
     }
+    if (incomeChartInstance) {
+      incomeChartInstance.destroy()
+      incomeChartInstance = null
+    }
+    chartLoading = false
+    incomeChartLoading = false
   })
 </script>
 
-<!-- Navigation Tabs -->
-<div class="card mb-3">
-  <div class="card-body py-2 px-2 px-md-3">
-    <ul class="nav nav-pills nav-fill">
-      <li class="nav-item">
-        <button 
-          class="nav-link {currentView === 'patients' ? 'active' : ''} btn-sm"
-          on:click={() => currentView = 'patients'}
-        >
-          <i class="fas fa-users me-1 me-md-2"></i>
-          <span class="d-none d-sm-inline">Patients</span>
-          <span class="d-sm-none">Patients</span>
-        </button>
-      </li>
-      <li class="nav-item">
-        <button 
-          class="nav-link {currentView === 'pharmacists' ? 'active' : ''} btn-sm"
-          on:click={() => currentView = 'pharmacists'}
-        >
-          <i class="fas fa-pills me-1 me-md-2"></i>
-          <span class="d-none d-sm-inline">Pharmacists</span>
-          <span class="d-sm-none">Pharmacy</span>
-        </button>
-      </li>
-    </ul>
-  </div>
-</div>
-
-{#if currentView === 'patients'}
-<div class="row g-3">
-  <!-- Patient List Sidebar -->
-  <div class="col-12 col-lg-4">
-    <!-- Patients Card -->
-    <div class="card border-2 border-info mb-3 shadow-sm">
-      <!-- Fixed Header -->
-      <div class="card-header px-2 px-md-3">
-        <div class="d-flex justify-content-between align-items-center mb-2 mb-md-3">
-          <h5 class="mb-0 fs-6 fs-md-5">
-            <i class="fas fa-users me-1 me-md-2"></i>
-            <span class="d-none d-sm-inline">Patients</span>
-            <span class="d-sm-none">Patients</span>
-          </h5>
-          <button 
-            class="btn btn-primary btn-sm" 
-            on:click={showAddPatientForm}
-          >
-            <i class="fas fa-plus me-1"></i>
-            <span class="d-none d-sm-inline">Add Patient</span>
-            <span class="d-sm-none">Add</span>
-          </button>
-        </div>
-        
-        <!-- Search Bar -->
-        <div class="input-group input-group-sm">
-          <span class="input-group-text">
-            <i class="fas fa-search"></i>
-          </span>
-          <input 
-            type="text" 
-            class="form-control" 
-            placeholder="Search patients..."
-            bind:value={searchQuery}
-          >
-          {#if searchQuery}
-            <button 
-              class="btn btn-outline-secondary btn-sm" 
-              type="button" 
-              on:click={clearSearch}
-              title="Clear search"
-            >
-              <i class="fas fa-times"></i>
-            </button>
-          {/if}
-        </div>
-        
-        {#if searchQuery}
-          <div class="mt-2">
-            <small class="text-muted">
-              <i class="fas fa-info-circle me-1"></i>
-              Showing {filteredPatients.length} of {patients.filter(p => {
-                const query = searchQuery.toLowerCase().trim()
-                const fullName = `${p.firstName} ${p.lastName}`.toLowerCase()
-                return fullName.includes(query) || 
-                       p.firstName.toLowerCase().includes(query) || 
-                       p.lastName.toLowerCase().includes(query) || 
-                       p.idNumber.toLowerCase().includes(query) || 
-                       p.email.toLowerCase().includes(query) || 
-                       (p.phone && p.phone.toLowerCase().includes(query)) ||
-                       (p.dateOfBirth && p.dateOfBirth.includes(query))
-              }).length} patient{filteredPatients.length !== 1 ? 's' : ''} matching "{searchQuery}"
-              {#if patients.filter(p => {
-                const query = searchQuery.toLowerCase().trim()
-                const fullName = `${p.firstName} ${p.lastName}`.toLowerCase()
-                return fullName.includes(query) || 
-                       p.firstName.toLowerCase().includes(query) || 
-                       p.lastName.toLowerCase().includes(query) || 
-                       p.idNumber.toLowerCase().includes(query) || 
-                       p.email.toLowerCase().includes(query) || 
-                       (p.phone && p.phone.toLowerCase().includes(query)) ||
-                       (p.dateOfBirth && p.dateOfBirth.includes(query))
-              }).length > 20}
-                <br><small class="text-warning">
-                  <i class="fas fa-exclamation-triangle me-1"></i>
-                  Showing first 20 results. Refine your search for more specific results.
-                </small>
-              {/if}
-            </small>
+<div>
+{#if currentView === 'home'}
+<!-- Home Dashboard - Quick Stats and Chart -->
+<div class="space-y-4 sm:space-y-6">
+  <div class="relative overflow-hidden rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-600 via-teal-600 to-emerald-600 p-5 sm:p-7 shadow-lg">
+    <div class="absolute -right-20 -top-20 h-52 w-52 rounded-full bg-white/10 blur-3xl"></div>
+    <div class="absolute -left-12 -bottom-16 h-40 w-40 rounded-full bg-black/10 blur-3xl"></div>
+    <div class="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex items-center gap-4">
+        {#if authUser?.photoURL || user?.photoURL}
+          <img
+            src={authUser?.photoURL || user?.photoURL}
+            alt="Doctor profile"
+            class="h-14 w-14 sm:h-16 sm:w-16 rounded-full object-cover border-2 border-white/70 shadow-sm"
+            loading="lazy"
+          />
+        {:else}
+          <div class="h-14 w-14 sm:h-16 sm:w-16 rounded-full bg-white/15 border border-white/30 flex items-center justify-center">
+            <i class="fas fa-user-md text-2xl sm:text-3xl text-white"></i>
           </div>
         {/if}
+        <div>
+          <h2 class="text-xl sm:text-2xl font-semibold text-white">Welcome, Dr. {doctorName}!</h2>
+          <p class="text-sm sm:text-base text-cyan-50 mt-1">Your clinic dashboard is ready for today.</p>
+          <p class="text-xs sm:text-sm text-cyan-100/90 mt-1.5">
+            <i class="fas fa-map-marker-alt mr-1"></i>
+            {doctorCity || 'Not specified'}, {doctorCountry || 'Not specified'}
+          </p>
+        </div>
       </div>
-      
-      <!-- Scrollable Content Area -->
-      <div class="card-body p-0 overflow-auto" style="max-height: 300px;">
-        {#if searchQuery}
-          {#if loading}
-            <div class="text-center p-3">
-              <i class="fas fa-spinner fa-spin fa-2x text-primary mb-2"></i>
-              <p class="text-muted">Loading patients...</p>
-            </div>
-          {:else if filteredPatients.length === 0}
-            <div class="text-center p-3 text-muted">
-              <i class="fas fa-search fa-2x mb-2"></i>
-              <p>No patients found matching "{searchQuery}"</p>
-              <button class="btn btn-outline-primary btn-sm" on:click={clearSearch}>
-                <i class="fas fa-times me-1"></i>Clear Search
-              </button>
-            </div>
-          {:else}
-            <div class="list-group list-group-flush">
-              {#each filteredPatients as patient}
-                <button 
-                  class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
-                  on:click={() => selectPatient(patient)}
-                >
-                  <div class="d-flex w-100 justify-content-between align-items-center">
-                    <div class="flex-grow-1">
-                      <h6 class="mb-1">
-                        <i class="fas fa-user me-1"></i>
-                        {patient.firstName} {patient.lastName}
-                      </h6>
-                    </div>
-                    <div class="text-end">
-                      <small class="text-muted">
-                        <i class="fas fa-calendar me-1"></i>
-                        {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
-                          {patient.age} years
-                        {:else if patient.dateOfBirth}
-                          {(() => {
-                            const birthDate = new Date(patient.dateOfBirth)
-                            if (!isNaN(birthDate.getTime())) {
-                              const today = new Date()
-                              const age = today.getFullYear() - birthDate.getFullYear()
-                              const monthDiff = today.getMonth() - birthDate.getMonth()
-                              const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-                              return calculatedAge + ' years'
-                            }
-                            return 'Age not specified'
-                          })()}
-                        {:else}
-                          Age not specified
-                        {/if}
-                      </small>
-                    </div>
-                  </div>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        {:else if !selectedPatient}
-          {#if loading}
-            <div class="text-center p-3">
-              <i class="fas fa-spinner fa-spin fa-2x text-primary mb-2"></i>
-              <p class="text-muted">Loading patients...</p>
-            </div>
-          {:else if filteredPatients.length === 0}
-            <div class="text-center p-3 text-muted">
-              <i class="fas fa-user-plus fa-2x mb-2"></i>
-              <p>No patients yet. Add your first patient!</p>
-              <button class="btn btn-primary btn-sm" on:click={showAddPatientForm}>
-                <i class="fas fa-plus me-1"></i>Get Started
-              </button>
-            </div>
-          {:else}
-            <div class="list-group list-group-flush">
-              {#each filteredPatients as patient}
-                <button 
-                  class="list-group-item list-group-item-action {selectedPatient?.id === patient.id ? 'active' : ''}"
-                  on:click={() => selectPatient(patient)}
-                >
-                  <div class="d-flex w-100 justify-content-between align-items-center">
-                    <div class="flex-grow-1">
-                      <h6 class="mb-1">
-                        <i class="fas fa-user me-1"></i>
-                        {patient.firstName} {patient.lastName}
-                      </h6>
-                    </div>
-                    <div class="text-end">
-                      <small class="text-muted">
-                        <i class="fas fa-calendar me-1"></i>
-                        {#if patient.age && patient.age !== '' && !isNaN(patient.age)}
-                          {patient.age} years
-                        {:else if patient.dateOfBirth}
-                          {(() => {
-                            const birthDate = new Date(patient.dateOfBirth)
-                            if (!isNaN(birthDate.getTime())) {
-                              const today = new Date()
-                              const age = today.getFullYear() - birthDate.getFullYear()
-                              const monthDiff = today.getMonth() - birthDate.getMonth()
-                              const calculatedAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age
-                              return calculatedAge + ' years'
-                            }
-                            return 'Age not specified'
-                          })()}
-                        {:else}
-                          Age not specified
-                        {/if}
-                      </small>
-                    </div>
-                  </div>
-                </button>
-              {/each}
-            </div>
-          {/if}
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center px-3 py-2 rounded-lg bg-white text-cyan-700 hover:bg-cyan-50 text-sm font-semibold transition-colors duration-200"
+          on:click={navigateToPatients}
+        >
+          <i class="fas fa-users mr-2 text-xs"></i>
+          Patients
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center px-3 py-2 rounded-lg bg-white text-cyan-700 hover:bg-cyan-50 text-sm font-semibold transition-colors duration-200"
+          on:click={handleEditProfile}
+        >
+          <i class="fas fa-cog mr-2 text-xs"></i>
+          Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 sm:gap-4">
+    <div
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPatients}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPatients)}
+    >
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Total Patients</p>
+          <p class="text-3xl font-bold text-cyan-700 mt-1">{patients.length}</p>
+        </div>
+        <div class="h-11 w-11 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center">
+          <i class="fas fa-users text-lg"></i>
+        </div>
+      </div>
+    </div>
+    <div
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm transition-all duration-200"
+    >
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Prescriptions</p>
+          <p class="text-3xl font-bold text-rose-600 mt-1">{totalPrescriptions}</p>
+        </div>
+        <div class="h-11 w-11 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+          <i class="fas fa-prescription-bottle-alt text-lg"></i>
+        </div>
+      </div>
+    </div>
+    <div
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPatients}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPatients)}
+    >
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Existing vs New</p>
+          <div class="mt-2 space-y-1.5">
+            <p class="text-sm text-gray-700">
+              <span class="font-semibold text-slate-700">{existingPatientsCount}</span>
+              existing
+            </p>
+            <p class="text-sm text-gray-700">
+              <span class="font-semibold text-cyan-700">{newPatientsCount}</span>
+              new ({NEW_PATIENT_WINDOW_DAYS}d)
+            </p>
+          </div>
+        </div>
+        <div class="h-11 w-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+          <i class="fas fa-user-plus text-lg"></i>
+        </div>
+      </div>
+    </div>
+    <div
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm transition-all duration-200"
+    >
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Drug Count</p>
+          <p class="text-3xl font-bold text-emerald-600 mt-1">{totalDrugs}</p>
+        </div>
+        <div class="h-11 w-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+          <i class="fas fa-capsules text-lg"></i>
+        </div>
+      </div>
+    </div>
+    <div
+      class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+      role="button"
+      tabindex="0"
+      on:click={navigateToPharmacies}
+      on:keydown={(e) => handleCardKeydown(e, navigateToPharmacies)}
+    >
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Connected Pharmacies</p>
+          <p class="text-3xl font-bold text-indigo-600 mt-1">{connectedPharmacies}</p>
+        </div>
+        <div class="h-11 w-11 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+          <i class="fas fa-store text-lg"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+        <div class="flex items-center">
+          <i class="fas fa-chart-bar text-cyan-700 text-base sm:text-lg mr-2 sm:mr-3"></i>
+          <h3 class="text-base sm:text-lg font-semibold text-gray-900">Prescription Activity</h3>
+        </div>
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-200">
+          Last 30 days
+        </span>
+      </div>
+      <div class="relative rounded-xl border border-gray-100 bg-gray-50/70 p-2 sm:p-3">
+        {#if chartLoading}
+          <div class="flex items-center justify-center h-48 sm:h-64">
+            <ThreeDots size="medium" color="teal" />
+          </div>
         {:else}
-          <!-- Empty space when patient is selected and no search -->
+          <div id="prescriptionsChart" class="rounded" style="min-height: 200px;"></div>
         {/if}
       </div>
     </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3 sm:mb-4">
+        <div class="flex items-center">
+          <i class="fas fa-coins text-teal-700 text-base sm:text-lg mr-2 sm:mr-3"></i>
+          <h3 class="text-base sm:text-lg font-semibold text-gray-900">Income Comparison</h3>
+        </div>
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200">
+          This month vs last month
+        </span>
+      </div>
+      <div class="relative rounded-xl border border-gray-100 bg-gray-50/70 p-2 sm:p-3">
+        {#if incomeChartLoading}
+          <div class="flex items-center justify-center h-48 sm:h-64">
+            <ThreeDots size="medium" color="teal" />
+          </div>
+        {:else}
+          <div id="incomeComparisonChart" class="rounded" style="min-height: 220px;"></div>
+        {/if}
+      </div>
+    </div>
+  </div>
+</div>
+
+{:else if currentView === 'patients'}
+<!-- Patients List View -->
+<div class="space-y-4">
+  <!-- Search Patient Card -->
+  <div class="bg-white rounded-lg shadow-sm border-2 border-teal-200">
+    <div class="bg-teal-50 px-4 py-3 border-b border-teal-200 rounded-t-lg flex items-center justify-between gap-3">
+      <h3 class="text-sm sm:text-base md:text-xl font-semibold text-gray-900 mb-0">
+        <i class="fas fa-search text-teal-600 mr-1 sm:mr-2"></i>
+        Search Patient
+      </h3>
+        
+    </div>
+    <div class="p-4">
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <i class="fas fa-search text-gray-400"></i>
+        </div>
+        <input 
+          type="text" 
+          class="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+          placeholder="Search patients by name, ID, phone, or email..."
+          bind:value={searchQuery}
+        >
+        {#if searchQuery}
+        <button 
+            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600" 
+            type="button" 
+            on:click={clearSearch}
+            title="Clear search"
+          >
+            <i class="fas fa-times"></i>
+        </button>
+        {/if}
+      </div>
+      {#if searchQuery}
+        <div class="mt-2 text-xs text-gray-600">
+          {#if filteredPatients.length > 0}
+            Showing {Math.min(filteredPatients.length, 20)} of {filteredPatients.length} result{filteredPatients.length !== 1 ? 's' : ''}
+            {#if filteredPatients.length > 20}
+              <span class="text-orange-600 font-medium">(First 20 shown)</span>
+            {/if}
+          {:else}
+            No patients found
+          {/if}
+        </div>
+      {/if}
+    </div>
+  </div>
+
+
+  
+  {#if showPatientForm}
+    <div
+      class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+      on:click={(event) => {
+        if (event.target === event.currentTarget) {
+          showPatientForm = false
+        }
+      }}
+      on:keydown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape')) {
+          showPatientForm = false
+        }
+      }}
+      role="button"
+      tabindex="0"
+      aria-label="Close patient form modal"
+    >
+      <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
+      </div>
+    </div>
+  {/if}
+
+  <!-- All Patients Table Card -->
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200" data-tour="patients-list">
+    <div class="p-3 sm:p-6 border-b border-gray-200">
+      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <h3 class="text-sm sm:text-base md:text-lg font-semibold text-gray-900">
+          <i class="fas fa-users text-teal-600 mr-1 sm:mr-2"></i>
+          All Patients ({patients.length})
+        </h3>
+        <button 
+          class="bg-teal-600 hover:bg-teal-700 text-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 w-full sm:w-auto"
+          on:click={showAddPatientForm}
+          data-tour="patients-add"
+        >
+          <i class="fas fa-plus mr-2"></i>
+          Add New Patient
+        </button>
+      </div>
+    </div>
+
+    <!-- Desktop Table View -->
+    <div class="hidden md:block overflow-x-auto">
+      <table class="w-full">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+            <th class="px-6 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Age</th>
+            <th class="px-6 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">ID Number</th>
+            <th class="px-6 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Contact</th>
+            <th class="px-6 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          {#if (searchQuery ? filteredPatients : patients).length > 0}
+            {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient, index (patient.id)}
+              <tr 
+                class="hover:bg-gray-50 transition-colors duration-150 cursor-pointer"
+                on:click={() => {
+                  selectPatient(patient)
+                  currentView = 'prescriptions' // Change view to show sidebar layout
+                }}
+                role="button"
+                tabindex="0"
+                on:keydown={(e) => e.key === 'Enter' && (selectPatient(patient), currentView = 'prescriptions')}
+              >
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="flex items-center">
+                    <div class="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm sm:text-base font-semibold mr-3">
+                      {getPatientNameParts(patient).initial}
+                    </div>
+                    <div>
+                      <p class="text-sm sm:text-base font-medium text-gray-900">
+                        {getPatientNameParts(patient).firstName} {getPatientNameParts(patient).lastName}
+                      </p>
+                      <p class="text-xs sm:text-sm text-gray-500">{patient.gender || 'N/A'}</p>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm sm:text-base text-gray-900">
+                  {patient.age || 'N/A'} {patient.age ? 'years' : ''}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm sm:text-base text-gray-900">
+                  {patient.idNumber || 'N/A'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm sm:text-base text-gray-500">
+                  {#if patient.phone || patient.email}
+                    {#if patient.phone}<p><i class="fas fa-phone mr-1"></i>{patient.phone}</p>{/if}
+                    {#if patient.email}<p><i class="fas fa-envelope mr-1"></i>{patient.email}</p>{/if}
+                  {:else}
+                    <p>No contact info</p>
+                  {/if}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm sm:text-base">
+                  <button 
+                    class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                    on:click|stopPropagation={() => {
+                      selectPatient(patient)
+                      currentView = 'prescriptions' // Change view to show sidebar layout
+                    }}
+                    data-tour={index === 0 ? 'patients-view' : undefined}
+                  >
+                    <i class="fas fa-eye mr-1"></i>
+                    View
+                  </button>
+                  <button
+                    class="inline-flex items-center px-3 py-1.5 border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
+                    on:click|stopPropagation={() => handleEditPatientFromList(patient)}
+                  >
+                    <i class="fas fa-edit mr-1"></i>
+                    Edit
+                  </button>
+                  <button
+                    class="inline-flex items-center px-3 py-1.5 border border-gray-500 text-gray-700 hover:bg-gray-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
+                    on:click|stopPropagation={() => printPatientBarcode(patient)}
+                  >
+                    <i class="fas fa-barcode mr-1"></i>
+                    Barcode
+                  </button>
+                  <button
+                    class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200 ml-2"
+                    on:click|stopPropagation={() => handleDeletePatientFromList(patient)}
+                  >
+                    <i class="fas fa-trash mr-1"></i>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            {/each}
+          {:else}
+            <tr>
+              <td colspan="5" class="px-6 py-12 text-center">
+                <i class="fas fa-users text-5xl text-gray-300 mb-3"></i>
+                <p class="text-gray-500">
+                  {#if searchQuery}
+                    No patients found matching "{searchQuery}"
+                  {:else}
+                    No patients yet. Click "Add New Patient" to get started.
+                  {/if}
+                </p>
+              </td>
+            </tr>
+          {/if}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile Card View -->
+    <div class="md:hidden space-y-3 p-4">
+      {#if (searchQuery ? filteredPatients : patients).length > 0}
+        {#each (searchQuery ? filteredPatients.slice(0, 20) : patients) as patient, index (patient.id)}
+          <div 
+            class="bg-gray-50 border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-100 transition-colors duration-200"
+            on:click={() => {
+              selectPatient(patient)
+              currentView = 'prescriptions' // Change view to show sidebar layout
+            }}
+            role="button"
+            tabindex="0"
+            on:keydown={(e) => e.key === 'Enter' && (selectPatient(patient), currentView = 'prescriptions')}
+          >
+            <div class="flex justify-between items-start mb-3">
+              <div class="flex items-center">
+                <div class="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white text-sm sm:text-base font-semibold mr-3">
+                  {getPatientNameParts(patient).initial}
+                </div>
+                <div>
+                  <h3 class="font-semibold text-gray-900 text-sm sm:text-base">
+                    {getPatientNameParts(patient).firstName} {getPatientNameParts(patient).lastName}
+                  </h3>
+                  <p class="text-xs sm:text-sm text-gray-500">{patient.gender || 'N/A'}</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button 
+                  class="inline-flex items-center px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => {
+                    selectPatient(patient)
+                    currentView = 'prescriptions' // Change view to show sidebar layout
+                  }}
+                  data-tour={index === 0 ? 'patients-view' : undefined}
+                >
+                  <i class="fas fa-eye mr-1"></i>
+                  View
+                </button>
+                <button
+                  class="inline-flex items-center px-3 py-1.5 border border-blue-500 text-blue-600 hover:bg-blue-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => handleEditPatientFromList(patient)}
+                >
+                  <i class="fas fa-edit mr-1"></i>
+                  Edit
+                </button>
+                <button
+                  class="inline-flex items-center px-3 py-1.5 border border-gray-500 text-gray-700 hover:bg-gray-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => printPatientBarcode(patient)}
+                >
+                  <i class="fas fa-barcode mr-1"></i>
+                  Barcode
+                </button>
+                <button
+                  class="inline-flex items-center px-3 py-1.5 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs sm:text-sm font-medium transition-colors duration-200"
+                  on:click|stopPropagation={() => handleDeletePatientFromList(patient)}
+                >
+                  <i class="fas fa-trash mr-1"></i>
+                  Delete
+                </button>
+              </div>
+            </div>
+            
+            <div class="space-y-2">
+              <div class="flex items-center text-xs sm:text-sm">
+                <i class="fas fa-birthday-cake text-blue-600 mr-2 w-3"></i>
+                <span class="text-gray-600 font-medium">{patient.age || 'N/A'} {patient.age ? 'years' : ''}</span>
+              </div>
+              <div class="flex items-center text-xs sm:text-sm">
+                <i class="fas fa-id-card text-green-600 mr-2 w-3"></i>
+                <span class="text-gray-600">{patient.idNumber || 'N/A'}</span>
+              </div>
+              {#if patient.phone || patient.email}
+                {#if patient.phone}
+                  <div class="flex items-center text-xs sm:text-sm">
+                    <i class="fas fa-phone text-purple-600 mr-2 w-3"></i>
+                    <span class="text-gray-600">{patient.phone}</span>
+                  </div>
+                {/if}
+                {#if patient.email}
+                  <div class="flex items-center text-xs sm:text-sm">
+                    <i class="fas fa-envelope text-orange-600 mr-2 w-3"></i>
+                    <span class="text-gray-600">{patient.email}</span>
+                  </div>
+                {/if}
+              {:else}
+                <div class="flex items-center text-xs sm:text-sm">
+                  <i class="fas fa-exclamation-triangle text-gray-400 mr-2 w-3"></i>
+                  <span class="text-gray-500">No contact info</span>
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      {:else}
+        <div class="text-center p-8">
+          <i class="fas fa-users text-5xl text-gray-300 mb-3"></i>
+          <p class="text-gray-500">
+            {#if searchQuery}
+              No patients found matching "{searchQuery}"
+            {:else}
+              No patients yet. Click "Add New Patient" to get started.
+            {/if}
+          </p>
+        </div>
+      {/if}
+    </div>
+  </div>
+</div>
+
+{:else if currentView === 'prescriptions'}
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+  <!-- Patient List Sidebar -->
+  <div class="lg:col-span-4">
     
     <!-- Medical Summary (No Card Wrapper) -->
     {#if selectedPatient}
@@ -1150,6 +2595,7 @@
         {illnesses}
         {prescriptions}
         {symptoms}
+        {reports}
         {activeMedicalTab}
         {showSymptomsNotes}
         {showIllnessesNotes}
@@ -1160,52 +2606,208 @@
         {toggleIllnessesNotes}
         {togglePrescriptionsNotes}
         {groupByDate}
+        {doctorId}
         on:tabChange={(e) => activeMedicalTab = e.detail.tab}
       />
     {/if}
+
+    <!-- Last Prescription Card -->
+    {#if selectedPatient}
+      <div class="bg-white border-2 border-rose-200 rounded-lg shadow-sm mt-3">
+        <div class="bg-rose-50 px-3 py-2 border-b border-rose-200 rounded-t-lg">
+          <div class="flex items-center justify-between">
+            <h6 class="text-lg font-semibold text-gray-900 mb-0">
+              <i class="fas fa-prescription-bottle-alt text-rose-600 mr-2"></i>
+              Last Prescription
+            </h6>
+            {#if selectedPrescriptionForCard}
+              <button
+                type="button"
+                class="inline-flex items-center px-2.5 py-1 border border-rose-300 text-xs font-medium text-rose-700 bg-white hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 rounded-lg transition-colors duration-200"
+                on:click={loadLastPrescriptionToEditor}
+                title="Load this prescription for editing"
+              >
+                <i class="fas fa-pen mr-1"></i>
+                Load
+              </button>
+            {/if}
+          </div>
+        </div>
+        <div class="p-3">
+          
+          {#if prescriptions.length > 0}
+            {#if selectedPrescriptionForCard}
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
+                <span><i class="fas fa-calendar mr-1"></i>{formatDate(selectedPrescriptionForCard.createdAt, { country: user?.country })}</span>
+                <div class="flex items-center gap-2">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{selectedPrescriptionForCard.medications.length} drug{selectedPrescriptionForCard.medications.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+              {#each (showAllLastPrescriptionMeds ? selectedPrescriptionForCard.medications : selectedPrescriptionForCard.medications.slice(0, 3)) as medication}
+                <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2 mb-1">
+                        <p class="text-base font-semibold text-blue-600">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</p>
+                        {#if isMedicationDispensed(selectedPrescriptionForCard.id, medication.id || medication.name)}
+                          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            Dispensed
+                          </span>
+                        {:else}
+                          <!-- Debug: Show why medication is not dispensed -->
+                          <span class="text-xs text-gray-400" title="Debug: {JSON.stringify({prescriptionId: selectedPrescriptionForCard.id, medicationId: medication.id || medication.name, dispensedStatus: prescriptionDispensedStatus[selectedPrescriptionForCard.id]})}">
+                            Not dispensed
+                          </span>
+                        {/if}
+                      </div>
+                      <div class="flex items-center flex-wrap gap-2">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          <i class="fas fa-pills mr-1"></i>{medication.dosage || medication.dose || 'N/A'}
+                        </span>
+                        {#if medication.frequency || medication.duration}
+                          <text-sm class="text-gray-500 text-xs">
+                            <i class="fas fa-clock mr-1"></i>{medication.frequency || ''}{#if medication.frequency && medication.duration} · {/if}{medication.duration || ''}
+                          </text-sm>
+                        {/if}
+                      </div>
+                      {#if medication.instructions}
+                        <p class="text-xs text-gray-500 mt-1 italic">
+                          <i class="fas fa-info-circle mr-1"></i>{medication.instructions}
+                        </p>
+                      {/if}
+                    </div>
+                    <button 
+                      class="inline-flex items-center px-3 py-1 border border-teal-300 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 rounded-lg transition-colors duration-200 flex-shrink-0"
+                      on:click={() => addToPrescription(medication)}
+                      title="Add to current prescription"
+                    >
+                      <i class="fas fa-plus mr-1"></i>
+                      Add
+                    </button>
+                  </div>
+                </div>
+              {/each}
+                {#if selectedPrescriptionForCard.medications.length > 3}
+                  <button
+                    type="button"
+                    class="w-full text-gray-500 hover:text-teal-600 text-xs block text-center mt-2 py-1 transition-colors duration-200"
+                    on:click={() => showAllLastPrescriptionMeds = !showAllLastPrescriptionMeds}
+                  >
+                    {#if showAllLastPrescriptionMeds}
+                      <i class="fas fa-chevron-up mr-1"></i>Show less
+                    {:else}
+                      <i class="fas fa-chevron-down mr-1"></i>+{selectedPrescriptionForCard.medications.length - 3} more medication{selectedPrescriptionForCard.medications.length - 3 !== 1 ? 's' : ''}
+                    {/if}
+                  </button>
+                {/if}
+            </div>
+            {:else}
+              <text-sm class="text-gray-500 text-xs block text-center py-2">No medications in any prescription</text-sm>
+            {/if}
+          {:else}
+            <text-sm class="text-gray-500 text-xs block text-center py-2">No prescriptions found</text-sm>
+          {/if}
+        </div>
+      </div>
+    {/if}
   </div>
   
-  <!-- Main Content Area -->
-    <div class="col-12 col-lg-8">
+    <!-- Main Content Area -->
+    <div class="lg:col-span-8" data-tour="patient-prescriptions-window">
+      
       {#if showPatientForm}
-        <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} />
+        <div
+          class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+          on:click={(event) => {
+            if (event.target === event.currentTarget) {
+              showPatientForm = false
+            }
+          }}
+          on:keydown={(event) => {
+            if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ' || event.key === 'Escape')) {
+              showPatientForm = false
+            }
+          }}
+          role="button"
+          tabindex="0"
+          aria-label="Close patient form modal"
+        >
+          <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <PatientForm on:patient-added={addPatient} on:cancel={() => showPatientForm = false} defaultCountry={user?.country || ''} />
+          </div>
+        </div>
       {:else if selectedPatient}
-        <PatientDetails 
-          {selectedPatient} 
-          {addToPrescription} 
-          {refreshTrigger} 
-          doctorId={user?.uid || user?.id} 
-          currentUser={user}
-          on:dataUpdated={handleDataUpdated}
-        />
+          <PatientDetails 
+            bind:this={patientDetailsRef}
+            selectedPatient={selectedPatient}
+            {addToPrescription} 
+            {refreshTrigger} 
+            {editPatientTrigger}
+            {doctorId}
+            {settingsDoctor}
+            currentUser={user}
+            authUser={authUser}
+            on:dataUpdated={handleDataUpdated}
+            on:view-patient={handleViewPatient}
+            on:view-change={(e) => dispatch('view-change', e.detail)}
+          />
       {:else}
       <!-- Welcome Dashboard -->
-      <div class="row g-3">
+      <div class="space-y-4">
                  <!-- Welcome Message -->
-                 <div class="col-12" key={userKey}>
-                   <div class="card border-2 border-info shadow-sm">
-                     <div class="card-body bg-transparent text-dark rounded-3">
-                       <div class="d-flex align-items-center">
-                         <div class="flex-shrink-0">
-                           <i class="fas fa-user-md fa-2x text-primary"></i>
-                         </div>
-                         <div class="flex-grow-1 ms-3">
-                           <div class="d-flex justify-content-between align-items-center">
-                             <div class="d-flex align-items-center">
-                               <h4 class="card-title mb-1 fw-bold text-dark me-2" style="cursor: pointer;" on:click={handleEditProfile} title="Click to edit profile">
+                 <div key={userKey}>
+                   <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+                     <div class="p-6">
+                       <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                          {#if authUser?.photoURL || user?.photoURL}
+                            <img
+                              src={authUser?.photoURL || user?.photoURL}
+                              alt="Doctor profile"
+                              class="h-12 w-12 rounded-full object-cover border-2 border-teal-200"
+                              loading="lazy"
+                            />
+                          {:else}
+                            <i class="fas fa-user-md fa-2x text-teal-600"></i>
+                          {/if}
+                        </div>
+                         <div class="flex-1 ml-4">
+                           <!-- Desktop Layout -->
+                           <div class="hidden sm:flex justify-between items-center">
+                             <div class="flex items-center">
+                               <button type="button" class="text-xl font-bold text-gray-900 mb-1 mr-3 hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
                                  Welcome, Dr. {doctorName}!
-                               </h4>
-                               <button class="btn btn-link p-1" on:click={handleEditProfile} title="Edit Profile Settings" data-bs-toggle="tooltip" data-bs-placement="bottom">
-                                 <i class="fas fa-cog text-danger fa-sm"></i>
                                </button>
                              </div>
+                             {#if !isExternalDoctor}
+                               <button class="flex items-center space-x-2 px-3 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                                 <i class="fas fa-cog text-sm text-red-600"></i>
+                                 <span class="text-sm font-medium">Settings</span>
+                               </button>
+                             {/if}
+                             </div>
+                           
+                           <!-- Mobile Layout -->
+                           <div class="sm:hidden">
+                             <div class="flex items-center justify-between mb-2">
+                               <button type="button" class="text-lg font-bold text-gray-900 hover:text-teal-600 transition-colors duration-200" on:click={handleEditProfile} title="Click to edit profile">
+                                  Welcome, Dr. {doctorName}!
+                               </button>
+                               {#if !isExternalDoctor}
+                                 <button class="flex items-center space-x-1 px-2 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white dark:text-gray-700 dark:border-gray-300 dark:hover:bg-gray-50 transition-all duration-200" on:click={handleEditProfile} title="Edit Profile Settings">
+                                   <i class="fas fa-cog text-xs text-red-600"></i>
+                                   <span class="text-xs font-medium">Settings</span>
+                                 </button>
+                               {/if}
                            </div>
-                           <p class="card-text mb-0 text-muted">
+                           </div>
+                           <p class="text-gray-600 mb-0">
                              Ready to provide excellent patient care with AI-powered assistance
                            </p>
                            <!-- Added Country Information -->
-                           <p class="card-text mt-2 mb-0 text-muted small">
-                             <i class="fas fa-map-marker-alt me-1"></i>
+                           <p class="text-gray-500 mt-2 mb-0 text-sm">
+                             <i class="fas fa-map-marker-alt mr-1"></i>
                              Location: {doctorCity || 'Not specified'}, {doctorCountry || 'Not specified'}
                            </p>
                          </div>
@@ -1216,76 +2818,90 @@
         
         {#if !editingProfile}
         <!-- Statistics Cards -->
-        <div class="col-6 col-md-4">
-          <div class="card border-0 shadow-sm h-100">
-            <div class="card-body bg-info text-white rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <!-- Patients Card - Ocean Blue Outline -->
+        <div
+          class="bg-white border-2 border-blue-500 text-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-blue-50 cursor-pointer"
+          role="button"
+          tabindex="0"
+          on:click={navigateToPatients}
+          on:keydown={(e) => handleCardKeydown(e, navigateToPatients)}
+        >
+          <div class="p-4">
+            <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-users fa-sm fa-md-lg"></i>
+                <div class="bg-blue-100 border-2 border-blue-500 rounded-full p-3">
+                  <i class="fas fa-users text-lg text-blue-600"></i>
                   </div>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPatients">{patients.length}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Patients Registered</small>
-                  <small class="opacity-75 d-sm-none">Patients</small>
-                </div>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0 text-blue-600" id="totalPatients">{patients.length}</h4>
+                <text-sm class="text-blue-500 hidden sm:block">Patients Registered</text-sm>
+                <text-sm class="text-blue-500 sm:hidden">Patients</text-sm>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-6 col-md-4">
-          <div class="card border-0 shadow-sm h-100">
-            <div class="card-body bg-warning text-dark rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
+        <!-- Prescriptions Card - Sunset Orange Outline -->
+        <div
+          class="bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-lg transition-all duration-300 h-full"
+        >
+          <div class="p-4">
+            <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-prescription fa-sm fa-md-lg"></i>
+                <div class="bg-orange-100 border-2 border-orange-500 rounded-full p-3">
+                  <i class="fas fa-prescription text-lg text-orange-600"></i>
                   </div>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalPrescriptions">{totalPrescriptions}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Total Prescriptions</small>
-                  <small class="opacity-75 d-sm-none">Prescriptions</small>
-                </div>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0 text-orange-600" id="totalPrescriptions">{totalPrescriptions}</h4>
+                <text-sm class="text-orange-500 hidden sm:block">Total Prescriptions</text-sm>
+                <text-sm class="text-orange-500 sm:hidden">Prescriptions</text-sm>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-6 col-md-4">
-          <div class="card border border-light shadow-sm h-100">
-            <div class="card-body bg-secondary text-white rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
+        <!-- Drugs Card - Forest Green Outline -->
+        <div
+          class="bg-white border-2 border-green-500 text-green-600 rounded-lg shadow-lg transition-all duration-300 h-full"
+        >
+          <div class="p-4">
+            <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-pills fa-sm fa-md-lg"></i>
+                <div class="bg-green-100 border-2 border-green-500 rounded-full p-3">
+                  <i class="fas fa-pills text-lg text-green-600"></i>
                   </div>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="totalDrugs">{totalDrugs}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Total Drugs</small>
-                  <small class="opacity-75 d-sm-none">Drugs</small>
-                </div>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0 text-green-600" id="totalDrugs">{totalDrugs}</h4>
+                <text-sm class="text-green-500 hidden sm:block">Total Drugs</text-sm>
+                <text-sm class="text-green-500 sm:hidden">Drugs</text-sm>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="col-6 col-md-4">
-          <div class="card border border-light shadow-sm h-100">
-            <div class="card-body bg-success text-white rounded-3 p-2 p-md-3">
-              <div class="d-flex align-items-center">
+        <!-- Pharmacies Card - Royal Purple Outline -->
+        <div
+          class="bg-white border-2 border-purple-500 text-purple-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 h-full transform hover:scale-105 hover:bg-purple-50 cursor-pointer"
+          role="button"
+          tabindex="0"
+          on:click={navigateToPharmacies}
+          on:keydown={(e) => handleCardKeydown(e, navigateToPharmacies)}
+        >
+          <div class="p-4">
+            <div class="flex items-center">
                 <div class="flex-shrink-0">
-                  <div class="bg-white bg-opacity-25 rounded-circle p-1 p-md-2">
-                    <i class="fas fa-store fa-sm fa-md-lg"></i>
+                <div class="bg-purple-100 border-2 border-purple-500 rounded-full p-3">
+                  <i class="fas fa-store text-lg text-purple-600"></i>
                   </div>
                 </div>
-                <div class="flex-grow-1 ms-2 ms-md-3">
-                  <h4 class="card-title mb-0 fw-bold fs-5 fs-md-4" id="connectedPharmacies">{connectedPharmacies}</h4>
-                  <small class="opacity-75 d-none d-sm-block">Connected Pharmacies</small>
-                  <small class="opacity-75 d-sm-none">Pharmacies</small>
+              <div class="flex-1 ml-3">
+                <h4 class="text-2xl font-bold mb-0 text-purple-600" id="connectedPharmacies">{connectedPharmacies}</h4>
+                <text-sm class="text-purple-500 hidden sm:block">Connected Pharmacies</text-sm>
+                <text-sm class="text-purple-500 sm:hidden">Pharmacies</text-sm>
                 </div>
               </div>
             </div>
@@ -1293,19 +2909,30 @@
         </div>
         
         <!-- Prescriptions Per Day Chart -->
-        <div class="col-12">
-          <div class="card border border-light shadow-sm">
-            <div class="card-header bg-light border-0 py-2 py-md-3 px-2 px-md-3">
-              <h6 class="card-title mb-0 fw-bold text-dark fs-6 fs-md-5">
-                <i class="fas fa-chart-line me-1 me-md-2 text-primary"></i>
-                <span class="d-none d-sm-inline">Prescriptions Per Day (Last 30 Days)</span>
-                <span class="d-sm-none">Prescriptions Per Day</span>
+        <div class="col-span-full">
+          <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div class="bg-gray-50 border-b border-gray-200 py-3 px-4">
+              <h6 class="text-lg font-semibold text-gray-900 mb-0">
+                <i class="fas fa-chart-line mr-2 text-teal-600"></i>
+                <span class="hidden sm:inline">Prescriptions Per Day (Last 30 Days)</span>
+                <span class="sm:hidden">Prescriptions Per Day</span>
               </h6>
             </div>
-            <div class="card-body p-2 p-md-4">
-              <div class="chart-container position-relative w-100" style="height: 250px;">
-                <canvas id="prescriptionsChart" class="rounded"></canvas>
+            <div class="p-4">
+              {#if chartLoading}
+                <div class="flex items-center justify-center h-64">
+                  <LoadingSpinner 
+                    size="medium" 
+                    color="teal" 
+                    text="Generating chart..." 
+                    fullScreen={false}
+                  />
               </div>
+              {:else}
+                <div class="relative w-full">
+                  <div id="prescriptionsChart" class="rounded"></div>
+                </div>
+              {/if}
             </div>
           </div>
         </div>
@@ -1313,67 +2940,85 @@
         
         {#if editingProfile}
         <!-- Inline Tabbed Profile Editing Interface -->
-        <div class="col-12">
-          <div class="card border-0 shadow-sm">
-            <div class="card-header bg-primary text-white">
-              <div class="d-flex justify-content-between align-items-center">
-                <h6 class="card-title mb-0">
-                  <i class="fas fa-cog me-2 fa-sm"></i>
+        <div class="col-span-full">
+          <div class="bg-white border-2 border-teal-500 rounded-lg shadow-sm" style="border-color: #36807a;">
+            <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg relative">
+              <div class="flex justify-between items-center">
+                <h6 class="text-lg font-semibold mb-0">
+                  <i class="fas fa-cog mr-2 fa-sm"></i>
                   Settings
                 </h6>
-                <button class="btn btn-outline-light btn-sm" on:click={handleProfileCancel}>
+                <button class="inline-flex items-center px-3 py-2 border border-white text-white bg-transparent hover:bg-white hover:text-teal-600 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-white focus:ring-offset-2 focus:ring-offset-teal-600 transition-all duration-200" on:click={handleProfileCancel}>
                   <i class="fas fa-times fa-sm"></i>
                 </button>
               </div>
             </div>
-            
+
             <!-- Tab Navigation -->
-            <div class="card-body p-0">
-              <ul class="nav nav-tabs nav-fill" id="settingsTabs" role="tablist">
-                <li class="nav-item" role="presentation">
+            <div class="border-b border-gray-200">
+              <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" id="default-tab" data-tabs-toggle="#default-tab-content" role="tablist">
+                <li class="flex-1" role="presentation">
                   <button 
-                    class="nav-link {activeTab === 'edit-profile' ? 'active' : ''} btn-sm" 
+                    class="inline-block w-full p-4 border-b-2 rounded-t-lg {activeTab === 'edit-profile' ? 'text-teal-600 border-teal-600 active' : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'}" 
                     id="edit-profile-tab" 
+                    data-tabs-target="#edit-profile" 
                     type="button" 
                     role="tab" 
                     aria-controls="edit-profile" 
                     aria-selected={activeTab === 'edit-profile'}
                     on:click={() => switchTab('edit-profile')}
                   >
-                    <i class="fas fa-user-edit me-2 fa-sm"></i>
+                    <i class="fas fa-user-edit mr-2 fa-sm"></i>
                     Edit Profile
                   </button>
                 </li>
-                <li class="nav-item" role="presentation">
+                <li class="flex-1" role="presentation">
                   <button 
-                    class="nav-link {activeTab === 'prescription-template' ? 'active' : ''} btn-sm" 
+                    class="inline-block w-full p-4 border-b-2 rounded-t-lg {activeTab === 'prescription-template' ? 'text-teal-600 border-teal-600 active' : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'}" 
                     id="prescription-template-tab" 
+                    data-tabs-target="#prescription-template" 
                     type="button" 
                     role="tab" 
                     aria-controls="prescription-template" 
                     aria-selected={activeTab === 'prescription-template'}
                     on:click={() => switchTab('prescription-template')}
                   >
-                    <i class="fas fa-file-medical me-2 fa-sm"></i>
+                    <i class="fas fa-file-medical mr-2 fa-sm"></i>
                     Prescription Template
                   </button>
                 </li>
+                <li class="flex-1" role="presentation">
+                  <button 
+                    class="inline-block w-full p-4 border-b-2 rounded-t-lg {activeTab === 'backup-restore' ? 'text-teal-600 border-teal-600 active' : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'}" 
+                    id="backup-restore-tab" 
+                    data-tabs-target="#backup-restore" 
+                    type="button" 
+                    role="tab" 
+                    aria-controls="backup-restore" 
+                    aria-selected={activeTab === 'backup-restore'}
+                    on:click={() => switchTab('backup-restore')}
+                  >
+                    <i class="fas fa-database mr-2 fa-sm"></i>
+                    Backup & Restore
+                  </button>
+                </li>
               </ul>
+            </div>
               
               <!-- Tab Content -->
-              <div class="tab-content p-3" id="settingsTabContent">
+            <div id="default-tab-content">
                 <!-- Edit Profile Tab -->
                 {#if activeTab === 'edit-profile'}
-                <div class="tab-pane fade show active" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
+              <div class="p-4 rounded-lg bg-white" id="edit-profile" role="tabpanel" aria-labelledby="edit-profile-tab">
                   <form on:submit={handleProfileSubmit}>
-                    <div class="row mb-3">
-                      <div class="col-md-6">
-                        <label for="editFirstName" class="form-label">
-                          First Name <span class="text-danger">*</span>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                      <div>
+                        <label for="editFirstName" class="block text-sm font-medium text-gray-700 mb-1">
+                          First Name <span class="text-red-600">*</span>
                         </label>
                         <input 
                           type="text" 
-                          class="form-control form-control-sm" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                           id="editFirstName"
                           bind:value={editFirstName}
                           placeholder="Enter your first name"
@@ -1381,13 +3026,13 @@
                           disabled={profileLoading}
                         />
                       </div>
-                      <div class="col-md-6">
-                        <label for="editLastName" class="form-label">
-                          Last Name <span class="text-danger">*</span>
+                      <div>
+                        <label for="editLastName" class="block text-sm font-medium text-gray-700 mb-1">
+                          Last Name <span class="text-red-600">*</span>
                         </label>
                         <input 
                           type="text" 
-                          class="form-control form-control-sm" 
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                           id="editLastName"
                           bind:value={editLastName}
                           placeholder="Enter your last name"
@@ -1398,27 +3043,27 @@
                     </div>
 
                     <div class="mb-3">
-                      <label for="editEmail" class="form-label">Email Address</label>
+                      <label for="editEmail" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                       <input 
                         type="email" 
-                        class="form-control form-control-sm" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                         id="editEmail"
                         value={user?.email || ''}
                         disabled
                         readonly
                       />
-                      <div class="form-text">
-                        <i class="fas fa-info-circle me-1"></i>
+                      <div class="text-sm text-gray-500">
+                        <i class="fas fa-info-circle mr-1"></i>
                         Email cannot be changed for security reasons
                       </div>
                     </div>
 
                     <div class="mb-3">
-                      <label for="editCountry" class="form-label">
-                        Country <span class="text-danger">*</span>
+                      <label for="editCountry" class="block text-sm font-medium text-gray-700 mb-1">
+                        Country <span class="text-red-600">*</span>
                       </label>
                       <select 
-                        class="form-select form-select-sm" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                         id="editCountry"
                         bind:value={editCountry}
                         required
@@ -1432,11 +3077,11 @@
                     </div>
 
                     <div class="mb-3">
-                      <label for="editCity" class="form-label">
-                        City <span class="text-danger">*</span>
+                      <label for="editCity" class="block text-sm font-medium text-gray-700 mb-1">
+                        City <span class="text-red-600">*</span>
                       </label>
                       <select 
-                        class="form-select form-select-sm" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                         id="editCity"
                         bind:value={editCity}
                         required
@@ -1448,38 +3093,55 @@
                         {/each}
                       </select>
                       {#if editCountry && availableCities.length === 0}
-                        <div class="form-text text-warning">
-                          <i class="fas fa-exclamation-triangle me-1"></i>
+                        <div class="text-sm text-yellow-600">
+                          <i class="fas fa-exclamation-triangle mr-1"></i>
                           No cities available for the selected country. Please contact support.
                         </div>
                       {/if}
                     </div>
 
                     {#if profileError}
-                      <div class="alert alert-danger" role="alert">
-                        <i class="fas fa-exclamation-triangle me-2"></i>{profileError}
+                      <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-3" role="alert">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>{profileError}
                       </div>
                     {/if}
 
-                    <div class="d-flex justify-content-end gap-2">
+                    {#if showSaveProfileHint}
+                      <div class="mb-3 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-teal-900">
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="text-sm font-semibold">
+                            Save your profile to keep these changes.
+                          </div>
+                          <button
+                            type="button"
+                            class="text-xs font-semibold text-teal-700 hover:text-teal-900"
+                            on:click={() => (showSaveProfileHint = false)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    {/if}
+
+                    <div class="flex justify-end gap-2">
                       <button 
                         type="button" 
-                        class="btn btn-outline-secondary btn-sm" 
+                        class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed" 
                         on:click={handleProfileCancel}
                         disabled={profileLoading}
                       >
-                        <i class="fas fa-times me-1 fa-sm"></i>
+                        <i class="fas fa-times mr-1 fa-sm"></i>
                         Cancel
                       </button>
                       <button 
                         type="submit" 
-                        class="btn btn-primary btn-sm"
+                        class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                         disabled={profileLoading}
                       >
                         {#if profileLoading}
-                          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                          <ThreeDots size="text-sm" color="white" />
                         {/if}
-                        <i class="fas fa-save me-1 fa-sm"></i>
+                        <i class="fas fa-save mr-1 fa-sm"></i>
                         Save Changes
                       </button>
                     </div>
@@ -1489,27 +3151,27 @@
                 
                 <!-- Prescription Template Tab -->
                 {#if activeTab === 'prescription-template'}
-                <div class="tab-pane fade show active" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
+              <div class="p-4 rounded-lg bg-white" id="prescription-template" role="tabpanel" aria-labelledby="prescription-template-tab">
                   <div class="mb-4">
-                    <h6 class="fw-bold mb-3">
-                      <i class="fas fa-file-medical me-2"></i>
+                    <h6 class="font-bold mb-3">
+                      <i class="fas fa-file-medical mr-2"></i>
                       Prescription Template Settings
                     </h6>
-                    <p class="text-muted small mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
+                    <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">Choose how you want your prescription header to appear on printed prescriptions.</p>
                   </div>
                   
                   <!-- Template Type Selection -->
-                  <div class="row mb-4">
-                    <div class="col-12">
-                      <label class="form-label fw-semibold mb-3">Select Template Type:</label>
+                  <div class="grid grid-cols-1 gap-4 mb-4">
+                    <div class="col-span-full">
+                      <p class="block text-sm font-semibold text-gray-700 mb-3">Select Template Type:</p>
                       
                       <!-- Option 1: Printed Letterheads -->
                       {#if templateType !== 'upload'}
-                      <div class="card mb-3 border {templateType === 'printed' ? 'border-primary' : ''}">
-                        <div class="card-body p-3">
-                          <div class="form-check">
+                      <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'printed' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'printed' ? '#36807a' : '#e5e7eb'};">
+                        <div class="p-4">
+                          <div class="flex items-center">
                             <input 
-                              class="form-check-input" 
+                              class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
                               type="radio" 
                               name="templateType" 
                               id="templatePrinted" 
@@ -1517,76 +3179,76 @@
                               bind:group={templateType}
                               on:change={() => selectTemplateType('printed')}
                             />
-                            <label class="form-check-label w-100" for="templatePrinted">
-                              <div class="d-flex align-items-center">
-                                <div class="flex-shrink-0 me-3">
-                                  <i class="fas fa-print fa-2x text-primary"></i>
+                            <label class="w-full cursor-pointer" for="templatePrinted">
+                              <div class="flex items-center">
+                                <div class="flex-shrink-0 mr-3">
+                                  <i class="fas fa-print text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow-1">
-                                  <h6 class="mb-1">I have printed A3 letterheads</h6>
-                                  <p class="text-muted small mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
+                                <div class="flex-1">
+                                  <h6 class="text-sm font-semibold text-gray-900 mb-1">I have printed A3 letterheads</h6>
+                                  <p class="text-gray-500 text-sm mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
                                 </div>
                               </div>
                             </label>
                           </div>
                           
                           {#if templateType === 'printed'}
-                          <div class="mt-3">
-                            <label class="form-label small">Header Size Adjustment:</label>
-                            <div class="row align-items-center">
-                              <div class="col-8">
+                          <div class="mt-4">
+                            <p class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</p>
+                            <div class="flex items-center">
+                              <div class="flex-1 mr-4">
                                 <input 
                                   type="range" 
-                                  class="form-range" 
+                                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
                                   min="50" 
                                   max="300" 
                                   step="10"
                                   bind:value={headerSize}
                                 />
                               </div>
-                              <div class="col-4">
-                                <span class="badge bg-primary">{headerSize}px</span>
+                              <div class="flex-shrink-0">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{headerSize}px</span>
                               </div>
                             </div>
-                            <div class="form-text">
-                              <i class="fas fa-info-circle me-1"></i>
+                            <div class="text-sm text-gray-500 mt-2">
+                              <i class="fas fa-info-circle mr-1"></i>
                               Adjust the header space to match your printed letterhead height.
                             </div>
                             
                             <!-- Template Preview -->
-                            <div class="mt-3">
-                              <label class="form-label small">Template Preview:</label>
-                              <div class="border rounded p-2 bg-light">
+                            <div class="mt-4">
+                              <p class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</p>
+                              <div class="border rounded p-2 bg-gray-50">
                                 <div class="template-preview">
                                   <!-- Header Space (representing printed letterhead) -->
                                   <div 
-                                    class="header-space border-bottom border-2 border-primary mb-3"
+                                    class="header-space border-bottom border-2 border-teal-500 mb-3"
                                     style="height: {headerSize}px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);"
                                   >
-                                    <div class="d-flex align-items-center justify-content-center h-100">
-                                      <div class="text-center text-muted">
+                                    <div class="flex items-center justify-center h-full">
+                                      <div class="text-center text-gray-600 dark:text-gray-300">
                                         <i class="fas fa-print fa-2x mb-2"></i>
-                                        <div class="small">Printed Letterhead Area</div>
-                                        <div class="small fw-bold">{headerSize}px height</div>
+                                        <div class="text-sm">Printed Letterhead Area</div>
+                                        <div class="text-sm font-bold">{headerSize}px height</div>
                                       </div>
                                     </div>
                                   </div>
                                   
                                   <!-- Prescription Content Area -->
                                   <div class="prescription-content">
-                                    <div class="row mb-2">
-                                      <div class="col-6">
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                      <div class="col-span-1">
                                         <strong>Patient Name:</strong> [Patient Name]
                                       </div>
-                                      <div class="col-6 text-end">
+                                      <div class="col-span-1 text-right">
                                         <strong>Date:</strong> [Date]
                                       </div>
                                     </div>
-                                    <div class="row mb-2">
-                                      <div class="col-6">
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                      <div class="col-span-1">
                                         <strong>Age:</strong> [Age]
                                       </div>
-                                      <div class="col-6 text-end">
+                                      <div class="col-span-1 text-right">
                                         <strong>Prescription #:</strong> [Rx Number]
                                       </div>
                                     </div>
@@ -1594,19 +3256,19 @@
                                     <div class="medications mb-3">
                                       <strong>Medications:</strong>
                                       <div class="mt-2">
-                                        <div class="d-flex justify-content-between">
+                                        <div class="flex justify-between">
                                           <span>• Medication Name</span>
                                           <span><strong>Dosage</strong></span>
                                         </div>
-                                        <div class="small text-muted">Instructions and notes here</div>
+                                        <div class="text-sm text-gray-600 dark:text-gray-300">Instructions and notes here</div>
                                       </div>
                                     </div>
                                     <div class="signature-area border-top pt-2 mt-3">
-                                      <div class="row">
-                                        <div class="col-6">
+                                      <div class="grid grid-cols-2 gap-2">
+                                        <div class="col-span-1">
                                           <strong>Doctor's Signature:</strong> _______________
                                         </div>
-                                        <div class="col-6 text-end">
+                                        <div class="col-span-1 text-right">
                                           <strong>Date:</strong> _______________
                                         </div>
                                       </div>
@@ -1622,11 +3284,11 @@
                       {/if}
                       
                       <!-- Option 2: Upload Image -->
-                      <div class="card mb-3 border {templateType === 'upload' ? 'border-primary' : ''}">
-                        <div class="card-body p-3">
-                          <div class="form-check">
+                      <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'upload' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'upload' ? '#36807a' : '#e5e7eb'};">
+                        <div class="p-4">
+                          <div class="flex items-center">
                             <input 
-                              class="form-check-input" 
+                              class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
                               type="radio" 
                               name="templateType" 
                               id="templateUpload" 
@@ -1634,14 +3296,14 @@
                               bind:group={templateType}
                               on:change={() => selectTemplateType('upload')}
                             />
-                            <label class="form-check-label w-100" for="templateUpload">
-                              <div class="d-flex align-items-center">
-                                <div class="flex-shrink-0 me-3">
-                                  <i class="fas fa-image fa-2x text-success"></i>
+                            <label class="w-full cursor-pointer" for="templateUpload">
+                              <div class="flex items-center">
+                                <div class="flex-shrink-0 mr-3">
+                                  <i class="fas fa-image text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow-1">
-                                  <h6 class="mb-1">I want to upload an image for header</h6>
-                                  <p class="text-muted small mb-0">Upload your custom header image to be used on all prescriptions.</p>
+                                <div class="flex-1">
+                                  <h6 class="text-sm font-semibold text-gray-900 mb-1">I want to upload an image for header</h6>
+                                  <p class="text-gray-500 text-sm mb-0">Upload your custom header image to be used on all prescriptions.</p>
                                 </div>
                               </div>
                             </label>
@@ -1651,71 +3313,74 @@
                           <div class="mt-3">
                             <input 
                               type="file" 
-                              class="form-control form-control-sm" 
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
                               accept="image/*"
                               on:change={handleHeaderUpload}
                             />
-                            <div class="form-text">
-                              <i class="fas fa-info-circle me-1"></i>
+                            <div class="text-sm text-gray-500">
+                              <i class="fas fa-info-circle mr-1"></i>
                               Supported formats: JPG, PNG, GIF. Recommended size: 800x200 pixels.
                             </div>
                             
                             {#if uploadedHeader}
-                            <div class="mt-3">
-                              <label class="form-label small">Header Size Adjustment:</label>
-                              <div class="row align-items-center">
-                                <div class="col-8">
+                            <div class="mt-4">
+                              <label class="block text-sm font-medium text-gray-700 mb-2" for="uploadHeaderSize">
+                                Header Size Adjustment:
+                              </label>
+                              <div class="flex items-center">
+                                <div class="flex-1 mr-4">
                                   <input 
                                     type="range" 
-                                    class="form-range" 
+                                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
                                     min="50" 
                                     max="300" 
                                     step="10"
+                                    id="uploadHeaderSize"
                                     bind:value={headerSize}
                                   />
                                 </div>
-                                <div class="col-4">
-                                  <span class="badge bg-primary">{headerSize}px</span>
+                                <div class="flex-shrink-0">
+                                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{headerSize}px</span>
                                 </div>
                               </div>
-                              <div class="form-text">
-                                <i class="fas fa-info-circle me-1"></i>
+                              <div class="text-sm text-gray-500 mt-2">
+                                <i class="fas fa-info-circle mr-1"></i>
                                 Adjust the header space to match your uploaded image height.
                               </div>
                               
                               <!-- Template Preview with Uploaded Image -->
-                              <div class="mt-3">
-                                <label class="form-label small">Template Preview:</label>
-                                <div class="border rounded p-2 bg-light">
+                              <div class="mt-4">
+                                <p class="block text-sm font-medium text-gray-700 mb-2">Template Preview:</p>
+                                <div class="border rounded p-2 bg-gray-50">
                                   <div class="template-preview">
                                     <!-- Header Space with Uploaded Image -->
                                     <div 
-                                      class="header-space border-bottom border-2 border-primary mb-3"
+                                      class="header-space border-bottom border-2 border-teal-500 mb-3"
                                       style="height: {headerSize}px; background-image: url('{uploadedHeader}'); background-size: contain; background-repeat: no-repeat; background-position: center;"
                                     >
-                                      <div class="d-flex align-items-center justify-content-center h-100">
-                                        <div class="text-center text-muted" style="background: rgba(255,255,255,0.8); padding: 0.5rem; border-radius: 0.25rem;">
-                                          <div class="small">Custom Header Image</div>
-                                          <div class="small fw-bold">{headerSize}px height</div>
+                                      <div class="flex items-center justify-center h-full">
+                                        <div class="text-center text-gray-600 dark:text-gray-300" style="background: rgba(255,255,255,0.8); padding: 0.5rem; border-radius: 0.25rem;">
+                                          <div class="text-sm">Custom Header Image</div>
+                                          <div class="text-sm font-bold">{headerSize}px height</div>
                                         </div>
                                       </div>
                                     </div>
                                     
                                     <!-- Prescription Content Area -->
                                     <div class="prescription-content">
-                                      <div class="row mb-2">
-                                        <div class="col-6">
+                                      <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div class="col-span-1">
                                           <strong>Patient Name:</strong> [Patient Name]
                                         </div>
-                                        <div class="col-6 text-end">
+                                        <div class="col-span-1 text-right">
                                           <strong>Date:</strong> [Date]
                                         </div>
                                       </div>
-                                      <div class="row mb-2">
-                                        <div class="col-6">
+                                      <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div class="col-span-1">
                                           <strong>Age:</strong> [Age]
                                         </div>
-                                        <div class="col-6 text-end">
+                                        <div class="col-span-1 text-right">
                                           <strong>Prescription #:</strong> [Rx Number]
                                         </div>
                                       </div>
@@ -1723,19 +3388,19 @@
                                       <div class="medications mb-3">
                                         <strong>Medications:</strong>
                                         <div class="mt-2">
-                                          <div class="d-flex justify-content-between">
+                                          <div class="flex justify-between">
                                             <span>• Medication Name</span>
                                             <span><strong>Dosage</strong></span>
                                           </div>
-                                          <div class="small text-muted">Instructions and notes here</div>
+                                          <div class="text-sm text-gray-600 dark:text-gray-300">Instructions and notes here</div>
                                         </div>
                                       </div>
                                       <div class="signature-area border-top pt-2 mt-3">
-                                        <div class="row">
-                                          <div class="col-6">
+                                        <div class="grid grid-cols-2 gap-2">
+                                          <div class="col-span-1">
                                             <strong>Doctor's Signature:</strong> _______________
                                           </div>
-                                          <div class="col-6 text-end">
+                                          <div class="col-span-1 text-right">
                                             <strong>Date:</strong> _______________
                                           </div>
                                         </div>
@@ -1752,12 +3417,11 @@
                       </div>
                       
                       <!-- Option 3: System Header -->
-                      {#if templateType !== 'printed' && templateType !== 'upload'}
-                      <div class="card mb-3 border {templateType === 'system' ? 'border-primary' : ''}">
-                        <div class="card-body p-3">
-                          <div class="form-check">
+                      <div class="bg-white border-2 rounded-lg shadow-sm mb-4 {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'}" style="border-color: {templateType === 'system' ? '#36807a' : '#e5e7eb'};">
+                        <div class="p-4">
+                          <div class="flex items-center">
                             <input 
-                              class="form-check-input" 
+                              class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
                               type="radio" 
                               name="templateType" 
                               id="templateSystem" 
@@ -1765,14 +3429,14 @@
                               bind:group={templateType}
                               on:change={() => selectTemplateType('system')}
                             />
-                            <label class="form-check-label w-100" for="templateSystem">
-                              <div class="d-flex align-items-center">
-                                <div class="flex-shrink-0 me-3">
-                                  <i class="fas fa-cog fa-2x text-info"></i>
+                            <label class="w-full cursor-pointer" for="templateSystem">
+                              <div class="flex items-center">
+                                <div class="flex-shrink-0 mr-3">
+                                  <i class="fas fa-cog text-2xl text-teal-600"></i>
                                 </div>
-                                <div class="flex-grow-1">
-                                  <h6 class="mb-1">I want system to add header for template</h6>
-                                  <p class="text-muted small mb-0">Use a system-generated header with your practice information.</p>
+                                <div class="flex-1">
+                                  <h6 class="text-sm font-semibold text-gray-900 mb-1">I want system to add header for template</h6>
+                                  <p class="text-gray-500 text-sm mb-0">Use a system-generated header with your practice information.</p>
                                 </div>
                               </div>
                             </label>
@@ -1780,61 +3444,137 @@
                           
                           {#if templateType === 'system'}
                           <div class="mt-3">
-                            <button 
-                              type="button" 
-                              class="btn btn-outline-info btn-sm"
-                              on:click={generateSystemHeader}
-                            >
-                              <i class="fas fa-eye me-2"></i>
-                              Preview System Header
-                            </button>
+                            <!-- Initialize templatePreview if not already set -->
+                            {#if !templatePreview || templatePreview.type !== 'system'}
+                              {generateSystemHeader()}
+                            {/if}
                             
-                            {#if templatePreview && templatePreview.type === 'system'}
-                            <div class="mt-3">
-                              <label class="form-label small">System Header Preview:</label>
-                              <div class="border rounded p-3 bg-light">
-                                <div class="text-center">
-                                  <h5 class="fw-bold mb-1">{templatePreview.doctorName}</h5>
-                                  <p class="mb-1 fw-semibold">{templatePreview.practiceName}</p>
-                                  <p class="mb-1 small">{templatePreview.address}</p>
-                                  <p class="mb-1 small">Tel: {templatePreview.phone} | Email: {templatePreview.email}</p>
-                                  <hr class="my-2">
-                                  <p class="mb-0 fw-bold">PRESCRIPTION</p>
+                            <div class="mt-4">
+                              <p class="block text-sm font-medium text-gray-700 mb-2">System Header Text Editor:</p>
+                              
+                              <!-- Inline Text Editor -->
+                              <div class="border rounded p-3 bg-gray-50">
+                                <p class="block text-xs font-medium text-gray-600 mb-2">Click and edit the text directly:</p>
+                                <div class="text-center bg-white p-4 rounded border min-h-[200px] focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+                                  <div contenteditable="true" class="outline-none" 
+                                       bind:innerHTML={headerText}
+                                       on:input={handleHeaderTextChange}
+                                       on:blur={parseHeaderText}>
+                                    <h5 class="font-bold mb-1 text-lg">{templatePreview.doctorName || 'Dr. [Your Name]'}</h5>
+                                    <p class="mb-1 font-semibold text-base">{templatePreview.practiceName || '[Your Practice Name]'}</p>
+                                    <p class="mb-1 text-sm text-sm text-gray-600">{templatePreview.address || '[Your Address]'}</p>
+                                    <p class="mb-1 text-sm text-sm text-gray-600">Tel: {templatePreview.phone || '[Your Phone]'} | Email: {templatePreview.email || '[Your Email]'}</p>
+                                    <hr class="my-2">
+                                    <p class="mb-0 font-bold text-teal-600">PRESCRIPTION</p>
+                                  </div>
                                 </div>
+                                <p class="text-xs text-gray-500 mt-2">
+                                  <i class="fas fa-info-circle mr-1"></i>
+                                  Click on any text to edit it directly. The header will be saved with your changes.
+                                </p>
                               </div>
                             </div>
-                            {/if}
                           </div>
                           {/if}
                         </div>
                       </div>
-                      {/if}
                     </div>
                   </div>
                   
                   <!-- Save Button -->
-                  <div class="d-flex justify-content-end gap-2">
+                  <div class="flex justify-end gap-2">
                     <button 
                       type="button" 
-                      class="btn btn-outline-secondary btn-sm" 
+                      class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200" 
                       on:click={handleProfileCancel}
                     >
-                      <i class="fas fa-times me-1 fa-sm"></i>
+                      <i class="fas fa-times mr-1 fa-sm"></i>
                       Cancel
                     </button>
                     <button 
                       type="button" 
-                      class="btn btn-primary btn-sm"
+                      class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                       on:click={saveTemplateSettings}
                       disabled={!templateType}
                     >
-                      <i class="fas fa-save me-1 fa-sm"></i>
+                      <i class="fas fa-save mr-1 fa-sm"></i>
                       Save Template Settings
                     </button>
                   </div>
                 </div>
                 {/if}
-              </div>
+                
+                <!-- Backup & Restore Tab -->
+                {#if activeTab === 'backup-restore'}
+              <div class="p-4 rounded-lg bg-white" id="backup-restore" role="tabpanel" aria-labelledby="backup-restore-tab">
+                  <div class="mb-4">
+                    <h6 class="font-bold mb-2">
+                      <i class="fas fa-database mr-2"></i>
+                      Backup & Restore
+                    </h6>
+                    <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">
+                      Download a full backup of your patients and prescriptions, then restore it if data is deleted.
+                    </p>
+                  </div>
+
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
+                      <p class="text-xs text-gray-500 mb-3">
+                        Exports patients, prescriptions, symptoms, illnesses, and long-term medications.
+                      </p>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        on:click={handleDoctorBackupDownload}
+                        disabled={backupLoading}
+                      >
+                        <i class="fas fa-download mr-2"></i>
+                        {backupLoading ? 'Preparing...' : 'Download Backup'}
+                      </button>
+                      {#if backupError}
+                        <div class="mt-3 text-xs text-red-600">{backupError}</div>
+                      {/if}
+                      {#if backupSuccess}
+                        <div class="mt-3 text-xs text-green-600">{backupSuccess}</div>
+                      {/if}
+                    </div>
+
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h6 class="text-sm font-semibold text-gray-800 mb-2">Restore Backup</h6>
+                      <p class="text-xs text-gray-500 mb-3">
+                        Upload a backup file to restore missing data. Existing records with the same IDs will be updated.
+                      </p>
+                      <input
+                        type="file"
+                        accept="application/json"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                        on:change={handleDoctorRestoreFile}
+                      />
+                      <button
+                        type="button"
+                        class="mt-3 inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        on:click={confirmDoctorRestore}
+                        disabled={restoreLoading || !restoreFile}
+                      >
+                        <i class="fas fa-upload mr-2"></i>
+                        {restoreLoading ? 'Restoring...' : 'Restore Backup'}
+                      </button>
+                      {#if restoreError}
+                        <div class="mt-3 text-xs text-red-600">{restoreError}</div>
+                      {/if}
+                      {#if restoreSuccess}
+                        <div class="mt-3 text-xs text-green-600">{restoreSuccess}</div>
+                      {/if}
+                      {#if restoreSummary}
+                        <div class="mt-3 text-xs text-gray-600">
+                          Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms, {restoreSummary.reports || 0} reports.
+                        </div>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+                {/if}
             </div>
           </div>
         </div>
@@ -1843,10 +3583,31 @@
     {/if}
   </div>
 </div>
-{:else}
+{/if}
+
+{#if currentView === 'pharmacies'}
 <!-- Pharmacist Management View -->
 <PharmacistManagement {user} />
 {/if}
+
+
+<!-- Confirmation Modal -->
+  <ConfirmationModal
+  visible={showConfirmationModal}
+  title={confirmationConfig.title}
+  message={confirmationConfig.message}
+  confirmText={confirmationConfig.confirmText}
+  cancelText={confirmationConfig.cancelText}
+  type={confirmationConfig.type}
+  requireCode={confirmationConfig.requireCode}
+  expectedCode={deleteCode}
+  codeLabel="Delete Code"
+  codePlaceholder="Enter 6-digit delete code"
+  on:confirm={handleConfirmationConfirm}
+  on:cancel={handleConfirmationCancel}
+  on:close={handleConfirmationCancel}
+/>
+</div>
 
 <style>
   /* Template Preview Styles */
@@ -1873,22 +3634,4 @@
     font-size: 0.75rem;
   }
 
-  .form-range {
-    height: 0.5rem;
-  }
-
-  .form-range::-webkit-slider-thumb {
-    width: 1.2rem;
-    height: 1.2rem;
-    background: var(--bs-primary);
-    border-radius: 50%;
-  }
-
-  .form-range::-moz-range-thumb {
-    width: 1.2rem;
-    height: 1.2rem;
-    background: var(--bs-primary);
-    border-radius: 50%;
-    border: none;
-  }
 </style>

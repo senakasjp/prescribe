@@ -1,6 +1,7 @@
 <script>
-  import drugDatabase from '../services/drugDatabase.js'
-  import { notifyInfo, notifySuccess } from '../stores/notifications.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import { pharmacyInventoryIntegration } from '../services/pharmacyInventoryIntegration.js'
+  import { notifyInfo, notifySuccess, notifyError } from '../stores/notifications.js'
   
   export let value = ''
   export let placeholder = 'e.g., Metformin, Lisinopril'
@@ -8,49 +9,143 @@
   export let onDrugSelect = null
   export let disabled = false
   
+  // Brand and generic name inputs
+  let brandName = ''
+  let genericName = ''
+  
   let searchResults = []
   let showDropdown = false
   let selectedIndex = -1
   let searchTimeout = null
+  let matchTimeout = null
+
+  // Helper function to create display name
+  const createDisplayName = (brandName, genericName) => {
+    if (brandName && genericName) {
+      return `${brandName} (${genericName})`
+    } else if (brandName) {
+      return brandName
+    } else if (genericName) {
+      return genericName
+    }
+    return 'Unknown Drug'
+  }
   
-  // Search drugs when value changes
-  $: if (value && value.length >= 2 && doctorId) {
-    console.log('Searching for:', value, 'Doctor ID:', doctorId)
-    clearTimeout(searchTimeout)
-    searchTimeout = setTimeout(() => {
-      searchDrugs()
-    }, 300) // Debounce search
+  // Search drugs when brandName or genericName changes
+  $: if ((brandName && brandName.length >= 2) || (genericName && genericName.length >= 2)) {
+    if (doctorId) {
+      console.log('Searching for:', { brandName, genericName }, 'Doctor ID:', doctorId)
+      clearTimeout(searchTimeout)
+      searchTimeout = setTimeout(async () => {
+        await searchDrugs()
+      }, 300) // Debounce search
+    }
   } else {
     searchResults = []
     showDropdown = false
   }
   
-  // Search drugs in database
-  const searchDrugs = () => {
-    if (!doctorId || !value.trim()) {
-      console.log('Search cancelled - no doctorId or value:', { doctorId, value })
+  // Search drugs in database and pharmacy inventories with enhanced autofill
+  const searchDrugs = async () => {
+    const searchTerm = brandName.trim() || genericName.trim()
+    if (!doctorId || !searchTerm) {
+      console.log('Search cancelled - no doctorId or search term:', { doctorId, brandName, genericName })
       searchResults = []
       showDropdown = false
       return
     }
     
-    console.log('Searching drugs for doctor:', doctorId, 'query:', value)
-    searchResults = drugDatabase.searchDrugs(doctorId, value)
-    console.log('Search results:', searchResults)
-    showDropdown = searchResults.length > 0
-    selectedIndex = -1
+    console.log('Searching drugs for doctor:', doctorId, 'brandName:', brandName, 'genericName:', genericName)
+    
+    try {
+      // Search in connected pharmacy inventories with expanded results for autofill
+      const pharmacyDrugs = await pharmacyMedicationService.searchMedicationsFromPharmacies(doctorId, searchTerm, 20) // Increased limit for better autofill
+      
+      // Process pharmacy drugs with enhanced information
+      const processedPharmacyDrugs = pharmacyDrugs.map(drug => ({
+        ...drug,
+        source: 'inventory',
+        displayName: createDisplayName(drug.brandName, drug.genericName),
+        // Ensure all required fields are present
+        brandName: drug.brandName || '',
+        genericName: drug.genericName || '',
+        strength: drug.strength || '',
+        dosageForm: drug.dosageForm || 'Tablet',
+        currentStock: drug.currentStock || 0,
+        packUnit: drug.packUnit || '',
+        expiryDate: drug.expiryDate || ''
+      }))
+      
+      // Use only inventory results
+      const combinedResults = [...processedPharmacyDrugs]
+      
+      // Sort results by relevance (exact matches first, then partial matches)
+      combinedResults.sort((a, b) => {
+        const aExact = (a.brandName?.toLowerCase() === searchTerm.toLowerCase()) || 
+                      (a.genericName?.toLowerCase() === searchTerm.toLowerCase())
+        const bExact = (b.brandName?.toLowerCase() === searchTerm.toLowerCase()) || 
+                      (b.genericName?.toLowerCase() === searchTerm.toLowerCase())
+        
+        if (aExact && !bExact) return -1
+        if (!aExact && bExact) return 1
+        
+        return a.displayName.localeCompare(b.displayName)
+      })
+      
+      searchResults = combinedResults
+      console.log('Enhanced autofill search results:', { 
+        inventory: processedPharmacyDrugs.length, 
+        combined: combinedResults.length 
+      })
+      showDropdown = searchResults.length > 0
+      selectedIndex = -1
+      
+    } catch (error) {
+      console.error('Error searching drugs:', error)
+      searchResults = []
+      showDropdown = false
+      selectedIndex = -1
+    }
   }
   
-  // Handle input changes
-  function handleInput() {
-    // The reactive statement will handle the search
-    console.log('Input changed:', value)
+  // Check for exact match and populate the other field (debounced)
+  const checkAndPopulateOtherField = (inputField, inputValue) => {
+    // Inventory-only mode: no local database to cross-populate from.
+    return
   }
 
   // Handle input focus
-  const handleFocus = () => {
-    if (value && value.length >= 2) {
-      searchDrugs()
+  const handleFocus = async () => {
+    const searchTerm = brandName.trim() || genericName.trim()
+    if (searchTerm && searchTerm.length >= 2) {
+      await searchDrugs()
+    }
+  }
+
+  // Handle keyboard navigation
+  const handleKeydown = (event) => {
+    if (!showDropdown || searchResults.length === 0) return
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        selectedIndex = Math.min(selectedIndex + 1, searchResults.length - 1)
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        selectedIndex = Math.max(selectedIndex - 1, -1)
+        break
+      case 'Enter':
+        event.preventDefault()
+        if (selectedIndex >= 0 && selectedIndex < searchResults.length) {
+          selectDrug(searchResults[selectedIndex])
+        }
+        break
+      case 'Escape':
+        event.preventDefault()
+        showDropdown = false
+        selectedIndex = -1
+        break
     }
   }
   
@@ -62,34 +157,11 @@
     }, 200)
   }
   
-  // Handle keydown for navigation
-  const handleKeydown = (e) => {
-    if (!showDropdown) return
-    
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault()
-        selectedIndex = Math.min(selectedIndex + 1, searchResults.length - 1)
-        break
-      case 'ArrowUp':
-        e.preventDefault()
-        selectedIndex = Math.max(selectedIndex - 1, -1)
-        break
-      case 'Enter':
-        e.preventDefault()
-        if (selectedIndex >= 0 && selectedIndex < searchResults.length) {
-          selectDrug(searchResults[selectedIndex])
-        }
-        break
-      case 'Escape':
-        showDropdown = false
-        selectedIndex = -1
-        break
-    }
-  }
-  
   // Select a drug from dropdown
   const selectDrug = (drug) => {
+    // Populate brand and generic name fields
+    brandName = drug.brandName || ''
+    genericName = drug.genericName || drug.name || ''
     value = drug.displayName
     showDropdown = false
     selectedIndex = -1
@@ -101,210 +173,204 @@
   
   // Clear search
   const clearSearch = () => {
+    brandName = ''
+    genericName = ''
     value = ''
     searchResults = []
     showDropdown = false
     selectedIndex = -1
+    clearTimeout(searchTimeout)
+    clearTimeout(matchTimeout)
   }
 </script>
 
-<div class="position-relative drug-autocomplete-container">
-  <div class="input-group input-group-sm">
-    <input 
-      type="text" 
-      class="form-control form-control-sm" 
-      bind:value={value}
-      {placeholder}
-      {disabled}
-      on:input={handleInput}
-      on:focus={handleFocus}
-      on:blur={handleBlur}
-      on:keydown={handleKeydown}
-    >
-    <button 
-      class="btn btn-outline-primary btn-sm d-none d-sm-inline-flex" 
-      type="button" 
-      {disabled}
-      on:click={() => {
-        console.log('To database clicked for:', value)
-        if (value.trim()) {
-          // Add the drug to database
-          const drugData = {
-            name: value.trim(),
-            displayName: value.trim(),
-            dosage: '',
-            instructions: '',
-            frequency: '',
-            duration: '',
-            notes: ''
-          }
-          
-          drugDatabase.addDrug(doctorId, drugData)
-          notifySuccess(`"${value.trim()}" added to your drug database`)
-          
-          // Hide dropdown but keep the input value
-          searchResults = []
-          showDropdown = false
-        } else {
-          notifyInfo('Please enter a drug name to add to database')
-        }
-      }}
-      title="Add to database"
-    >
-      <i class="fas fa-database me-1"></i><span class="d-none d-md-inline">To database</span>
-    </button>
-    {#if value}
-      <button 
-        class="btn btn-outline-secondary btn-sm" 
-        type="button" 
-        {disabled}
-        on:click={clearSearch}
-        title="Clear search"
-      >
-        <i class="fas fa-times"></i>
-      </button>
-    {/if}
+            <div class="relative">
+              <!-- Brand and Generic Name Input Fields - Side by Side -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- Brand Name Input -->
+                <div>
+                  <label for="brandNameInput" class="block text-sm font-medium text-gray-700 mb-1">
+                    Brand Name <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="brandNameInput"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    bind:value={brandName}
+                    placeholder="e.g., Glucophage, Prinivil"
+                    required
+                    {disabled}
+                    on:input={() => {
+                      // Check for exact match and populate generic name
+                      checkAndPopulateOtherField('brand', brandName)
+                      
+                      // Update the main value for search
+                      if (brandName.trim() && genericName.trim()) {
+                        value = `${brandName.trim()} (${genericName.trim()})`
+                      } else if (genericName.trim()) {
+                        value = genericName.trim()
+                      } else {
+                        value = brandName.trim()
+                      }
+                    }}
+                    on:focus={handleFocus}
+                    on:blur={handleBlur}
+                    on:keydown={handleKeydown}
+                  >
+                </div>
+
+                <!-- Generic Name Input -->
+                <div>
+                  <label for="genericNameInput" class="block text-sm font-medium text-gray-700 mb-1">
+                    Generic Name <span class="text-red-500">*</span>
+                  </label>
+                  <div class="flex">
+                    <input
+                      type="text"
+                      id="genericNameInput"
+                      class="flex-1 px-3 py-2 border border-gray-300 rounded-l-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      bind:value={genericName}
+                      placeholder="e.g., Metformin, Lisinopril"
+                      {disabled}
+                      on:input={() => {
+                        // Check for exact match and populate brand name
+                        checkAndPopulateOtherField('generic', genericName)
+                        
+                        // Update the main value for search
+                        if (brandName.trim() && genericName.trim()) {
+                          value = `${brandName.trim()} (${genericName.trim()})`
+                        } else if (genericName.trim()) {
+                          value = genericName.trim()
+                        } else {
+                          value = brandName.trim()
+                        }
+                      }}
+                      on:focus={handleFocus}
+                      on:blur={handleBlur}
+                      on:keydown={handleKeydown}
+                    >
+        {#if genericName || brandName}
+          <button 
+            class="inline-flex items-center px-3 py-2 border border-gray-300 border-l-0 text-sm font-medium text-gray-600 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            type="button" 
+            {disabled}
+            on:click={() => {
+              brandName = ''
+              genericName = ''
+              value = ''
+              searchResults = []
+              showDropdown = false
+            }}
+            title="Clear search"
+          >
+            <i class="fas fa-times"></i>
+          </button>
+        {/if}
+      </div>
+    </div>
   </div>
   
-  <!-- Mobile database button (shown on small screens) -->
-  {#if value && value.trim()}
-    <div class="d-block d-sm-none mt-2">
-      <button 
-        class="btn btn-outline-primary btn-sm w-100" 
-        type="button" 
-        {disabled}
-        on:click={() => {
-          console.log('Mobile database button clicked for:', value)
-          if (value.trim()) {
-            const drugData = {
-              name: value.trim(),
-              displayName: value.trim(),
-              dosage: '',
-              instructions: '',
-              frequency: '',
-              duration: '',
-              notes: ''
-            }
-            
-            drugDatabase.addDrug(doctorId, drugData)
-            notifySuccess(`"${value.trim()}" added to your drug database`)
-            
-            searchResults = []
-            showDropdown = false
-          } else {
-            notifyInfo('Please enter a drug name to add to database')
-          }
-        }}
-      >
-        <i class="fas fa-database me-1"></i>Add to Database
-      </button>
-    </div>
-  {/if}
   
-  <!-- Dropdown Results -->
+  <!-- Enhanced Dropdown Results with Autofill -->
   {#if showDropdown && searchResults.length > 0}
-    <div class="dropdown-menu show w-100 position-absolute top-100 start-0" style="z-index: 1000;">
+    <div class="absolute top-full left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
       {#each searchResults as drug, index}
         <button 
-          class="dropdown-item {selectedIndex === index ? 'active' : ''}" 
+          class="w-full px-4 py-3 text-left hover:bg-blue-50 focus:bg-blue-50 focus:outline-none border-b border-gray-100 last:border-b-0 {selectedIndex === index ? 'bg-blue-50' : ''}" 
           type="button"
           on:click={() => selectDrug(drug)}
           on:mouseenter={() => selectedIndex = index}
         >
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <strong>{drug.displayName}</strong>
-              {#if drug.dosage}
-                <br><small class="text-muted">Dosage: {drug.dosage}</small>
+          <div class="flex justify-between items-start">
+            <div class="flex-1">
+              <!-- Main drug name -->
+              <div class="font-semibold text-gray-900 mb-1">{drug.displayName}</div>
+              
+              <!-- Drug details -->
+              <div class="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                {#if drug.strength}
+                  <span class="inline-flex items-center px-2 py-1 rounded bg-gray-100">
+                    <i class="fas fa-weight-hanging mr-1"></i>{drug.strength}
+                {#if drug.currentStock !== undefined}
+                  <span class="ml-1 text-blue-600 font-medium">({drug.currentStock} {drug.packUnit || 'units'})</span>
+                {/if}
+                  </span>
+                {/if}
+                {#if drug.dosageForm}
+                  <span class="inline-flex items-center px-2 py-1 rounded bg-gray-100">
+                    <i class="fas fa-capsules mr-1"></i>{drug.dosageForm}
+                  </span>
+                {/if}
+                {#if drug.dosage}
+                  <span class="inline-flex items-center px-2 py-1 rounded bg-gray-100">
+                    <i class="fas fa-prescription-bottle-alt mr-1"></i>Dosage: {drug.dosage}
+                  </span>
+                {/if}
+              </div>
+              
+              <!-- Brand/Generic breakdown -->
+              {#if drug.brandName && drug.genericName}
+                <div class="text-xs text-gray-500 mt-1">
+                  <span class="font-medium">Brand:</span> {drug.brandName} • 
+                  <span class="font-medium">Generic:</span> {drug.genericName}
+                </div>
               {/if}
             </div>
-            <small class="text-muted">
-              <i class="fas fa-pills"></i>
-            </small>
+            
+            <div class="flex flex-col items-end gap-2 ml-3">
+              <!-- Source indicator -->
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-store mr-1"></i>Inventory
+              </span>
+              
+              <!-- Quick action indicator -->
+              <div class="text-gray-400 text-xs">
+                <i class="fas fa-mouse-pointer"></i> Click to autofill
+              </div>
+            </div>
           </div>
         </button>
       {/each}
+      
+      <!-- Footer with search info -->
+      <div class="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+        <div class="flex justify-between items-center">
+          <span>Found {searchResults.length} medication(s)</span>
+          <span>Use ↑↓ arrows to navigate, Enter to select</span>
+        </div>
+      </div>
     </div>
   {/if}
+
 </div>
 
 <style>
-  .drug-autocomplete-container {
-    width: 100%;
+  /* Minimal custom styles for DrugAutocomplete component */
+  .relative {
+    position: relative;
   }
   
-  .drug-autocomplete-container .input-group {
-    width: 100%;
+  /* Ensure dropdown appears above other elements */
+  .absolute {
+    position: absolute;
   }
   
-  .dropdown-menu {
-    max-height: 200px;
-    overflow-y: auto;
-    font-size: 0.9rem;
+  /* Custom scrollbar for dropdown */
+  .overflow-y-auto::-webkit-scrollbar {
+    width: 6px;
   }
   
-  .dropdown-item {
-    white-space: normal;
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
-    border: none;
-    text-align: left;
-    width: 100%;
+  .overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
   }
   
-  .dropdown-item:hover,
-  .dropdown-item.active {
-    background-color: var(--bs-primary);
-    color: white;
+  .overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
   }
   
-  .dropdown-item strong {
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
-  
-  .dropdown-item small {
-    font-size: 0.8rem;
-  }
-  
-  /* Mobile responsive adjustments */
-  @media (max-width: 576px) {
-    .dropdown-menu {
-      font-size: 0.85rem;
-      max-height: 150px;
-    }
-    
-    .dropdown-item {
-      padding: 0.4rem 0.8rem;
-      font-size: 0.85rem;
-    }
-    
-    .dropdown-item strong {
-      font-size: 0.85rem;
-    }
-    
-    .dropdown-item small {
-      font-size: 0.75rem;
-    }
-    
-    .drug-autocomplete-container .btn {
-      font-size: 0.8rem;
-      padding: 0.4rem 0.6rem;
-    }
-  }
-  
-  /* Tablet adjustments */
-  @media (min-width: 577px) and (max-width: 768px) {
-    .dropdown-menu {
-      font-size: 0.88rem;
-    }
-    
-    .dropdown-item {
-      font-size: 0.88rem;
-    }
-    
-    .dropdown-item strong {
-      font-size: 0.88rem;
-    }
+  .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
   }
 </style>

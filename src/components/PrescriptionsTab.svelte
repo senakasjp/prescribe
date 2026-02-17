@@ -1,13 +1,20 @@
 <script>
-  import { onMount } from 'svelte'
   import PatientForms from './PatientForms.svelte'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import { notifyWarning } from '../stores/notifications.js'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
+  import DateInput from './DateInput.svelte'
+  import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
   
   export let selectedPatient
   export let showMedicationForm
   export let editingMedication
   export let doctorId
+  export let allowNonPharmacyDrugs = true
+  export let excludePharmacyDrugs = false
   export let currentMedications
+  export let savingMedication = false
   export let prescriptionsFinalized
   export let showAIDrugSuggestions
   export let aiDrugSuggestions
@@ -24,60 +31,342 @@
   export let onAddAISuggestedDrug
   export let onRemoveAISuggestedDrug
   export let loadingAIDrugSuggestions
+  export let onGenerateAIAnalysis = null
+  export let loadingAIAnalysis = false
+  export let showAIAnalysis = false
+  export let aiAnalysisHtml = ''
+  export let aiAnalysisError = ''
   export let symptoms
   export let openaiService
   export let onNewPrescription
   export let onAddDrug
   export let onPrintPrescriptions
+  export let onPrintExternalPrescriptions
+  export let prescriptionNotes = ''
+  export let prescriptionDiscount = 0 // New discount field
+  export let prescriptionDiscountScope = 'consultation' // 'consultation' | 'consultation_hospital'
+  export let nextAppointmentDate = ''
+  export let prescriptionProcedures = []
+  export let otherProcedurePrice = ''
+  export let excludeConsultationCharge = false
+  export let currentUserEmail = null
+  export let doctorProfileFallback = null
   
-  // Debug AI suggestions
-  $: console.log('🔍 PrescriptionsTab - showAIDrugSuggestions:', showAIDrugSuggestions)
-  $: console.log('🔍 PrescriptionsTab - aiDrugSuggestions:', aiDrugSuggestions)
-  $: console.log('🔍 PrescriptionsTab - aiDrugSuggestions.length:', aiDrugSuggestions?.length)
+  // Debug AI analysis
+  $: console.log('🔍 PrescriptionsTab - showAIAnalysis:', showAIAnalysis)
+
+  // Preserve unused external props for parent bindings.
+  $: {
+    showAIDrugSuggestions
+    aiDrugSuggestions
+    onGenerateAIDrugSuggestions
+    onAddAISuggestedDrug
+    onRemoveAISuggestedDrug
+    loadingAIDrugSuggestions
+    symptoms
+  }
   
   // Pharmacy stock availability
   let pharmacyStock = []
   let stockLoading = false
+  let resolvedDoctorIdentifier = null
+  let connectedPharmacyIds = []
+  let hasConnectedPharmacies = false
+  let doctorProfile = null
+  let doctorCurrency = 'USD'
+  let expectedPrice = null
+  let expectedPriceLoading = false
+  let expectedPharmacist = null
+  let expectedPriceRequestId = 0
+  let showProcedures = false
+  let showNotes = false
+  let showDiscounts = false
+  let showNextAppointment = false
+  let improvingNotes = false
+  let notesImproved = false
+  let lastImprovedNotes = ''
+  let lastLowStockSignature = ''
+  let pharmacyNameCache = new Map()
+  const hasText = (value) => String(value ?? '').trim().length > 0
+
+  $: hasEnteredPrescriptionContent = Boolean(
+    (currentMedications?.length || 0) > 0 ||
+    hasText(prescriptionNotes) ||
+    hasText(nextAppointmentDate) ||
+    (prescriptionProcedures?.length || 0) > 0 ||
+    hasText(otherProcedurePrice) ||
+    Number(prescriptionDiscount || 0) > 0 ||
+    excludeConsultationCharge
+  )
+  $: disableNewPrescriptionButton = Boolean(currentPrescription) && !hasEnteredPrescriptionContent
   
+  $: if (!prescriptionProcedures?.includes('Other')) {
+    otherProcedurePrice = ''
+  }
+
+  $: if (currentPrescription?.notes && !showNotes) {
+    showNotes = true
+  }
+
+  $: if (!improvingNotes && notesImproved && prescriptionNotes !== lastImprovedNotes) {
+    notesImproved = false
+  }
+
+  $: {
+    const hasDiscount = Number(prescriptionDiscount) > 0 || Number(currentPrescription?.discount) > 0
+    if (hasDiscount && !showDiscounts) {
+      showDiscounts = true
+    }
+  }
+
+  $: if (currentPrescription?.nextAppointmentDate && !showNextAppointment) {
+    showNextAppointment = true
+  }
+
+  $: if (currentPrescription?.notes && !showNotes) {
+    showNotes = true
+  }
+
+  $: {
+    const hasDiscount = Number(prescriptionDiscount) > 0 || Number(currentPrescription?.discount) > 0
+    if (hasDiscount && !showDiscounts) {
+      showDiscounts = true
+    }
+  }
+
+  const handleImprovePrescriptionNotes = async () => {
+    if (!prescriptionNotes || !prescriptionNotes.trim()) {
+      return
+    }
+
+    if (!openaiService) {
+      console.error('OpenAI service is not available for improving notes.')
+      return
+    }
+
+    try {
+      improvingNotes = true
+      const originalNotes = prescriptionNotes
+      const resolvedDoctorId = doctorId || currentPrescription?.doctorId || 'default-user'
+      const result = await openaiService.improveText(prescriptionNotes, resolvedDoctorId)
+      prescriptionNotes = result.improvedText
+
+      const normalizedOriginal = String(originalNotes ?? '').trim()
+      const normalizedImproved = String(prescriptionNotes ?? '').trim()
+      notesImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedNotes = notesImproved ? normalizedImproved : ''
+    } catch (err) {
+      console.error('❌ Error improving prescription notes:', err)
+    } finally {
+      improvingNotes = false
+    }
+  }
+
+  const procedureOptions = [
+    'C&D- type -A',
+    'C&D-type -B',
+    'C&D-type-C',
+    'C&D-type-D',
+    'Suturing- type-A',
+    'Suturing- type-B',
+    'Suturing- type-C',
+    'Suturing- type-D',
+    'Nebulization - Ipra.0.25ml+N. saline2ml+Oxygen',
+    'Nebulization - sal 0. 5ml+Ipra 0. 5ml+N. Saline 3ml',
+    'Nebulization - sal 0. 5ml+Ipra 0. 5ml+N. Saline 3ml+Oxygen',
+    'Nebulization -sal1ml+Ipra1ml+N. Saline2ml+Oxygen',
+    'Nebulization Ipra1ml+N. Saline3ml',
+    'Nebulization -sal1ml+Ipra1ml+N. Saline2ml',
+    'Nebulization - pulmicort(Budesonide)',
+    'catheterization',
+    'IV drip Saline/Dextrose',
+    'Other'
+  ]
+
   // Load pharmacy stock for availability checking
-  const loadPharmacyStock = async () => {
-    if (!doctorId) return
+  const MAX_STOCK_ATTEMPTS = 5
+  const RETRY_DELAY_MS = 1000
+
+  const loadPharmacyStock = async (identifier = null, attempt = 0) => {
+    let resolvedDoctorId = identifier ?? doctorId
+
+    // Fallback to patient-linked doctor ID or email when primary doctorId is missing/default
+    if (!resolvedDoctorId || resolvedDoctorId === 'default-user' || resolvedDoctorId === 'unknown') {
+      resolvedDoctorId = selectedPatient?.doctorId ||
+        selectedPatient?.doctor?.id ||
+        currentPrescription?.doctorId ||
+        selectedPatient?.doctorEmail ||
+        currentPrescription?.doctorEmail ||
+        null
+    }
+
+    if (!resolvedDoctorId) {
+      console.warn('⚠️ Unable to resolve doctor identifier for pharmacy stock lookup')
+      pharmacyStock = []
+      return
+    }
     
     try {
       stockLoading = true
-      console.log('📦 Loading pharmacy stock for doctor:', doctorId)
-      
-      // Get doctor's connected pharmacists
-      const doctor = await firebaseStorage.getDoctorById(doctorId)
-      console.log('👨‍⚕️ Doctor data:', doctor)
-      
-      if (!doctor || !doctor.connectedPharmacists || doctor.connectedPharmacists.length === 0) {
-        console.log('⚠️ No connected pharmacists found for doctor')
-        pharmacyStock = []
+      console.log('📦 Loading pharmacy stock for doctor:', resolvedDoctorId, 'attempt', attempt + 1)
+      console.log('🔍 Selected patient doctorId:', selectedPatient?.doctorId, 'doctor email:', selectedPatient?.doctorEmail)
+
+      // Ensure doctor has connected pharmacies before fetching inventory
+      const connectedPharmacies = await pharmacyMedicationService.getConnectedPharmacies(resolvedDoctorId)
+      connectedPharmacyIds = Array.isArray(connectedPharmacies) ? connectedPharmacies : []
+      hasConnectedPharmacies = connectedPharmacyIds.length > 0
+      console.log('🏥 Connected pharmacies for doctor:', resolvedDoctorId, connectedPharmacies)
+
+      if (!hasConnectedPharmacies && attempt < MAX_STOCK_ATTEMPTS - 1) {
+        console.warn(`⚠️ No connected pharmacies yet (attempt ${attempt + 1}/${MAX_STOCK_ATTEMPTS}). Retrying...`)
+        setTimeout(() => loadPharmacyStock(resolvedDoctorId, attempt + 1), RETRY_DELAY_MS)
         return
       }
-      
-      console.log('🏥 Connected pharmacists:', doctor.connectedPharmacists)
-      
-      // Get stock from all connected pharmacists
-      let allStock = []
-      for (const pharmacistId of doctor.connectedPharmacists) {
-        console.log('📦 Loading stock for pharmacist:', pharmacistId)
-        const stockData = await firebaseStorage.getPharmacistDrugStock(pharmacistId)
-        if (stockData && stockData.length > 0) {
-          allStock = allStock.concat(stockData)
-          console.log('📦 Added', stockData.length, 'items from pharmacist', pharmacistId)
+
+      // Clear cache to ensure we always reflect latest inventory (especially after doctor connection updates)
+      pharmacyMedicationService.clearCache(resolvedDoctorId)
+
+      const stockData = await pharmacyMedicationService.getPharmacyStock(resolvedDoctorId)
+      pharmacyStock = stockData
+
+      const lowStockByPharmacy = new Map()
+      pharmacyStock.forEach(item => {
+        if (!Number.isFinite(item?.minimumStock)) return
+        if ((item?.currentStock ?? 0) > item.minimumStock) return
+
+        const name = (item.drugName || item.genericName || '').trim() || 'Unknown drug'
+        const pharmacyId = item.pharmacyId || 'unknown'
+        if (!lowStockByPharmacy.has(pharmacyId)) {
+          lowStockByPharmacy.set(pharmacyId, new Set())
         }
+        lowStockByPharmacy.get(pharmacyId).add(name)
+      })
+
+      const allLowStockNames = Array.from(lowStockByPharmacy.values())
+        .flatMap(set => Array.from(set))
+      const uniqueLowStock = Array.from(new Set(allLowStockNames)).sort()
+
+      if (uniqueLowStock.length > 0) {
+        const signatureParts = []
+        lowStockByPharmacy.forEach((names, pharmacyId) => {
+          const sortedNames = Array.from(names).sort()
+          signatureParts.push(`${pharmacyId}:${sortedNames.join('|')}`)
+        })
+        const signature = signatureParts.sort().join('||')
+
+        if (signature !== lastLowStockSignature) {
+          lastLowStockSignature = signature
+          const preview = uniqueLowStock.slice(0, 6).join(', ')
+          const extraCount = uniqueLowStock.length - 6
+          const suffix = extraCount > 0 ? ` (+${extraCount} more)` : ''
+
+          let pharmacyLabel = 'connected pharmacies'
+          if (lowStockByPharmacy.size === 1) {
+            const onlyPharmacyId = Array.from(lowStockByPharmacy.keys())[0]
+            const cachedName = pharmacyNameCache.get(onlyPharmacyId)
+            if (cachedName) {
+              pharmacyLabel = cachedName
+            }
+          } else {
+            const nameFetches = Array.from(lowStockByPharmacy.keys())
+              .filter(id => id && id !== 'unknown' && !pharmacyNameCache.has(id))
+              .map(async id => {
+                try {
+                  const pharmacy = await firebaseStorage.getPharmacistById(id)
+                  if (pharmacy?.businessName) {
+                    pharmacyNameCache.set(id, pharmacy.businessName)
+                  }
+                } catch (error) {
+                  console.warn('⚠️ Unable to resolve pharmacy name for low stock notification:', id, error)
+                }
+              })
+            if (nameFetches.length > 0) {
+              await Promise.all(nameFetches)
+            }
+
+            const pharmacyNames = Array.from(lowStockByPharmacy.keys())
+              .map(id => pharmacyNameCache.get(id))
+              .filter(Boolean)
+            if (pharmacyNames.length > 0) {
+              pharmacyLabel = pharmacyNames.join(', ')
+            }
+          }
+
+          notifyWarning(
+            `Low stock (${uniqueLowStock.length}) in ${pharmacyLabel}: ${preview}${suffix}`,
+            7000
+          )
+        }
+      } else {
+        lastLowStockSignature = ''
       }
-      
-      pharmacyStock = allStock
-      console.log('📦 Total loaded pharmacy stock:', pharmacyStock.length, 'items from', doctor.connectedPharmacists.length, 'pharmacists')
-      
+
+      console.log('📦 Total loaded pharmacy stock:', pharmacyStock.length)
+      if (pharmacyStock.length === 0 && attempt < MAX_STOCK_ATTEMPTS - 1) {
+        console.warn(`⚠️ Pharmacy stock empty, retrying fetch (attempt ${attempt + 1}/${MAX_STOCK_ATTEMPTS})`)
+        setTimeout(() => loadPharmacyStock(resolvedDoctorId, attempt + 1), RETRY_DELAY_MS)
+      } else if (pharmacyStock.length === 0) {
+        console.warn('⚠️ Pharmacy stock remains empty after maximum retries')
+      }
+
     } catch (error) {
       console.error('❌ Error loading pharmacy stock:', error)
       pharmacyStock = []
     } finally {
       stockLoading = false
+    }
+  }
+
+  const loadDoctorProfile = async (identifier = null) => {
+    try {
+      let resolvedDoctorId = identifier ?? doctorId
+      let doctorData = null
+
+      if (resolvedDoctorId && resolvedDoctorId !== 'default-user' && resolvedDoctorId !== 'unknown') {
+        doctorData = await firebaseStorage.getDoctorById(resolvedDoctorId)
+      }
+
+      if (!doctorData && resolvedDoctorId) {
+        doctorData = await firebaseStorage.getDoctorByEmail(resolvedDoctorId)
+      }
+
+      if (!doctorData && currentUserEmail) {
+        doctorData = await firebaseStorage.getDoctorByEmail(currentUserEmail)
+      }
+
+      const fallbackHasCharges = doctorProfileFallback &&
+        (doctorProfileFallback.consultationCharge || doctorProfileFallback.hospitalCharge)
+
+      if (!doctorData && currentUserEmail) {
+        doctorData = await firebaseStorage.getDoctorByEmail(currentUserEmail)
+      }
+
+      if (!doctorData && doctorProfileFallback && fallbackHasCharges) {
+        doctorData = doctorProfileFallback
+      }
+
+      doctorProfile = doctorData
+      doctorCurrency = doctorData?.currency || doctorProfileFallback?.currency || 'USD'
+    } catch (error) {
+      console.error('❌ Error loading doctor profile for expected price:', error)
+      doctorProfile = doctorProfileFallback
+      doctorCurrency = doctorProfileFallback?.currency || 'USD'
+    }
+  }
+
+  const loadExpectedPharmacist = async () => {
+    try {
+      if (!connectedPharmacyIds || connectedPharmacyIds.length === 0) {
+        expectedPharmacist = null
+        return
+      }
+
+      const pharmacistId = connectedPharmacyIds[0]
+      const pharmacistData = await firebaseStorage.getPharmacistById(pharmacistId)
+      expectedPharmacist = pharmacistData || null
+    } catch (error) {
+      console.error('❌ Error loading pharmacist for expected price:', error)
+      expectedPharmacist = null
     }
   }
   
@@ -98,13 +387,22 @@
     if (!dosageMatch) {
       console.log('⚠️ Could not parse dosage:', medication.dosage, '- trying name-only match')
       
-      // Try to match by name only if dosage parsing fails
       const matchingStock = pharmacyStock.find(stock => {
         const stockName = stock.drugName?.toLowerCase().trim() || ''
+        const stockGeneric = stock.genericName?.toLowerCase().trim() || ''
+        const stockNames = [stockName, stockGeneric].filter(Boolean)
         const medName = medication.name?.toLowerCase().trim() || ''
-        const nameMatch = stockName && medName && stockName.includes(medName)
+        const normalizedMedNames = Array.from(new Set([
+          medName,
+          medName.split('(')[0]?.trim() || '',
+          medName.replace(/\(.*\)/, '').trim()
+        ])).filter(Boolean)
+
+        const nameMatch = normalizedMedNames.some(name => 
+          stockNames.some(stockValue => stockValue.includes(name) || name.includes(stockValue))
+        )
         
-        console.log('🔍 Name-only comparison:', stockName, 'vs', medName, 'match:', nameMatch)
+        console.log('🔍 Name-only comparison:', stockNames, 'vs', normalizedMedNames, 'match:', nameMatch)
         return nameMatch
       })
       
@@ -128,10 +426,19 @@
     const matchingStock = pharmacyStock.find(stock => {
       // Check drug name match (case insensitive, partial match)
       const stockName = stock.drugName?.toLowerCase().trim() || ''
-      const medName = medication.name?.toLowerCase().trim() || ''
-      const nameMatch = stockName && medName && stockName.includes(medName)
+      const stockGeneric = stock.genericName?.toLowerCase().trim() || ''
+      const stockNames = [stockName, stockGeneric].filter(Boolean)
+      const medNameRaw = medication.name?.toLowerCase().trim() || ''
+      const normalizedMedNames = Array.from(new Set([
+        medNameRaw,
+        medNameRaw.split('(')[0]?.trim() || '',
+        medNameRaw.replace(/\(.*\)/, '').trim()
+      ])).filter(Boolean)
+      const nameMatch = normalizedMedNames.some(name => 
+        stockNames.some(stockValue => stockValue && (stockValue.includes(name) || name.includes(stockValue)))
+      )
       
-      console.log('🔍 Name comparison:', stockName, 'vs', medName, 'match:', nameMatch)
+      console.log('🔍 Name comparison:', stockNames, 'vs', normalizedMedNames, 'match:', nameMatch)
       
       // Check strength match (flexible)
       const stockStrength = stock.strength || ''
@@ -165,89 +472,520 @@
     console.log('❌ No matching stock found for:', medication.name)
     return { available: false, quantity: 0, stockItem: null }
   }
-  
-  // Load stock when component mounts or doctorId changes
-  $: if (doctorId) {
-    loadPharmacyStock()
+
+  const resolveDailyFrequency = (frequency = '') => {
+    const value = String(frequency).toLowerCase()
+    if (value.includes('once daily') || value.includes('(od)') || value.includes('mane') || value.includes('nocte') || value.includes('noon') || value.includes('vesper')) return 1
+    if (value.includes('twice daily') || value.includes('(bd)')) return 2
+    if (value.includes('three times daily') || value.includes('(tds)')) return 3
+    if (value.includes('four times daily') || value.includes('(qds)')) return 4
+    if (value.includes('every 4 hours') || value.includes('(q4h)')) return 6
+    if (value.includes('every 6 hours') || value.includes('(q6h)')) return 4
+    if (value.includes('every 8 hours') || value.includes('(q8h)')) return 3
+    if (value.includes('every 12 hours') || value.includes('(q12h)')) return 2
+    if (value.includes('every other day') || value.includes('(eod)')) return 0.5
+    if (value.includes('weekly')) return 1 / 7
+    if (value.includes('monthly')) return 1 / 30
+    if (value.includes('stat')) return 1
+    return 0
+  }
+
+  const parseDosageMultiplier = (dosageValue) => {
+    const raw = String(dosageValue || '').trim()
+    if (!raw) return 1
+    const parts = raw.split(' ')
+    let total = 0
+    parts.forEach(part => {
+      const piece = part.trim()
+      if (!piece) return
+      if (piece.includes('/')) {
+        const [num, den] = piece.split('/')
+        const n = Number(num)
+        const d = Number(den)
+        if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) {
+          total += n / d
+        }
+      } else {
+        const n = Number(piece)
+        if (Number.isFinite(n)) {
+          total += n
+        }
+      }
+    })
+    return total > 0 ? total : 1
+  }
+
+  const getMedicationDosageDisplay = (medication) => {
+    const strength = String(medication?.strength || '').trim()
+    const strengthUnit = String(medication?.strengthUnit || '').trim()
+    const dosage = String(medication?.dosage || '').trim()
+    if (!strength && !dosage) return ''
+    if (!strength) return dosage
+    const strengthText = strengthUnit ? `${strength} ${strengthUnit}` : strength
+    return dosage ? `${strengthText} ${dosage}` : strengthText
+  }
+
+  const isLiquidMedication = (medication) => {
+    const unit = String(medication?.strengthUnit || '').trim().toLowerCase()
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    const strengthText = String(medication?.strength || '').trim().toLowerCase()
+    return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
+  }
+
+  const requiresQtsPricing = (medication) => {
+    if (isLiquidMedication(medication)) return false
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    if (!form) return false
+    return !(
+      form.includes('tablet') ||
+      form.includes('tab') ||
+      form.includes('capsule') ||
+      form.includes('cap') ||
+      form.includes('syrup') ||
+      form.includes('liquid')
+    )
+  }
+
+  const getQtsMetaLine = (medication) => {
+    if (!requiresQtsPricing(medication)) return ''
+    const formRaw = String(medication?.dosageForm || medication?.form || medication?.packUnit || medication?.unit || '').trim()
+    if (!formRaw) return ''
+    const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
+    const qtsRaw = String(medication?.qts ?? '').trim()
+    const parsedQts = Number.parseInt(qtsRaw, 10)
+    if (!Number.isFinite(parsedQts) || parsedQts <= 0) {
+      return formLabel
+    }
+    return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
+  }
+
+  const getMedicationSecondaryLine = (medication) => {
+    const qtsMeta = getQtsMetaLine(medication)
+    if (qtsMeta) return qtsMeta
+
+    return [
+      getMedicationDosageDisplay(medication),
+      medication?.frequency,
+      medication?.timing,
+      getPrintableDuration(medication?.duration),
+      medication?.dosageForm
+    ]
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+      .join(' • ')
+  }
+
+  const getPrintableDuration = (duration) => {
+    const value = String(duration || '').trim()
+    if (!value) return ''
+    if (/^(?:days?|weeks?|months?|years?|hrs?|hours?|mins?|minutes?)$/i.test(value)) return ''
+    return value
+  }
+
+  const sanitizeMedicationForPharmacy = (medication) => {
+    const strength = String(medication?.strength ?? '').trim()
+    const strengthUnit = strength ? String(medication?.strengthUnit ?? '').trim() : ''
+    return {
+      ...medication,
+      strength,
+      strengthUnit,
+      duration: getPrintableDuration(medication?.duration)
+    }
+  }
+
+  const calculateMedicationQuantity = (medication) => {
+    const parsePositiveInteger = (value) => {
+      const parsed = chargeCalculationService.parseMedicationQuantity(value)
+      if (!parsed || parsed <= 0) return null
+      const normalized = Math.trunc(parsed)
+      return normalized > 0 ? normalized : null
+    }
+    const resolveStrengthToMl = (value, unitHint = '') => {
+      if (value === null || value === undefined || value === '') return null
+      const normalized = String(value).trim().toLowerCase()
+      const match = normalized.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+      if (match) {
+        const amount = parseFloat(match[1])
+        if (!Number.isFinite(amount)) return null
+        return match[2] === 'l' ? amount * 1000 : amount
+      }
+      const unit = String(unitHint || '').trim().toLowerCase()
+      const numeric = parseFloat(normalized.replace(/[^\d.]/g, ''))
+      if (!Number.isFinite(numeric)) return null
+      if (unit === 'l') return numeric * 1000
+      if (unit === 'ml') return numeric
+      return null
+    }
+
+    const isLiquid = isLiquidMedication(medication)
+    const enteredCount = parsePositiveInteger(medication.qts)
+
+    if (requiresQtsPricing(medication)) {
+      const qtsQuantity = parsePositiveInteger(medication.qts)
+      if (qtsQuantity) {
+        return qtsQuantity
+      }
+    }
+
+    if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
+      const base = chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
+      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+      return Math.ceil(base * dosageMultiplier)
+    }
+
+    if (medication?.frequency && medication.frequency.includes('PRN')) {
+      const base = chargeCalculationService.parseMedicationQuantity(medication.prnAmount) || 0
+      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+      return Math.ceil(base * dosageMultiplier)
+    }
+
+    if (!medication?.frequency || !medication?.duration) {
+      return enteredCount || 0
+    }
+
+    const durationMatch = medication.duration.match(/(\d+)\s*days?/i)
+    if (!durationMatch) {
+      return enteredCount || 0
+    }
+    const days = parseInt(durationMatch[1], 10)
+    if (!Number.isFinite(days) || days <= 0) return enteredCount || 0
+
+    const dailyFrequency = resolveDailyFrequency(medication.frequency)
+    if (!dailyFrequency) return enteredCount || 0
+    if (isLiquid) {
+      const strengthMl = resolveStrengthToMl(medication?.strength, medication?.strengthUnit)
+      if (!strengthMl) return enteredCount || 0
+      const totalAmount = days * dailyFrequency * strengthMl
+      return Math.ceil(totalAmount)
+    }
+    const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+    const totalAmount = days * dailyFrequency * dosageMultiplier
+    const calculated = Math.ceil(totalAmount)
+    if (calculated > 0) return calculated
+    return enteredCount || 0
+  }
+
+  const buildExpectedPrescriptionForCharge = (medicationsOverride = null) => {
+    const medicationsSource = Array.isArray(medicationsOverride) ? medicationsOverride : currentMedications
+    if (!currentPrescription || !medicationsSource) {
+      return null
+    }
+
+    const resolvedDiscount = Number.isFinite(Number(prescriptionDiscount))
+      ? Number(prescriptionDiscount)
+      : Number.isFinite(Number(currentPrescription?.discount))
+        ? Number(currentPrescription.discount)
+        : 0
+    const resolvedDiscountScope = prescriptionDiscountScope
+      || currentPrescription?.discountScope
+      || 'consultation'
+
+    const medicationsForCharge = medicationsSource.map(medication => ({
+      ...medication,
+      amount: calculateMedicationQuantity(medication),
+      isDispensed: true
+    }))
+
+    const doctorIdentifier = currentPrescription?.doctorId || doctorProfile?.id || doctorId || null
+    const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+    const hasChargeableItems = medicationsForCharge.length > 0 || procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
+    if (!hasChargeableItems) {
+      return null
+    }
+
+    return {
+      id: currentPrescription.id,
+      doctorId: doctorIdentifier,
+      discount: resolvedDiscount,
+      discountScope: resolvedDiscountScope,
+      procedures: procedures,
+      otherProcedurePrice: otherProcedurePrice,
+      excludeConsultationCharge: !!excludeConsultationCharge,
+      prescriptions: [
+        {
+          id: currentPrescription.id,
+          medications: medicationsForCharge,
+          procedures: procedures,
+          otherProcedurePrice: otherProcedurePrice,
+          discount: resolvedDiscount,
+          discountScope: resolvedDiscountScope,
+          excludeConsultationCharge: !!excludeConsultationCharge
+        }
+      ]
+    }
+  }
+
+  const recomputeExpectedPrice = async (medicationsOverride = null) => {
+    const requestId = ++expectedPriceRequestId
+    expectedPriceLoading = true
+
+    try {
+      if (!expectedPharmacist) {
+        expectedPrice = null
+        return
+      }
+
+      const prescriptionForCharge = buildExpectedPrescriptionForCharge(medicationsOverride)
+      if (!prescriptionForCharge) {
+        expectedPrice = null
+        return
+      }
+
+      const chargeBreakdown = chargeCalculationService.calculateExpectedChargeFromStock(
+        prescriptionForCharge,
+        doctorProfile || doctorProfileFallback || {},
+        pharmacyStock,
+        {
+          roundingPreference: doctorProfile?.roundingPreference
+            || doctorProfileFallback?.roundingPreference
+            || 'none',
+          currency: expectedPharmacist?.currency || doctorCurrency || 'USD',
+          ignoreAvailability: false,
+          assumeDispensedForAvailable: true
+        }
+      )
+      if (requestId !== expectedPriceRequestId) {
+        return
+      }
+      expectedPrice = chargeBreakdown?.totalCharge ?? null
+    } catch (error) {
+      console.error('❌ Error calculating expected price:', error)
+      if (requestId === expectedPriceRequestId) {
+        expectedPrice = null
+      }
+    } finally {
+      if (requestId === expectedPriceRequestId) {
+        expectedPriceLoading = false
+      }
+    }
+  }
+
+  const formatExpectedPrice = (amount) => {
+    if (!Number.isFinite(amount)) {
+      return '--'
+    }
+    const currency = expectedPharmacist?.currency || doctorCurrency || 'USD'
+    const country = doctorProfile?.country || doctorProfileFallback?.country || ''
+    return formatCurrencyByLocale(amount, { currency, country })
+  }
+
+  const getUnavailableMedications = () => {
+    if (!currentMedications || currentMedications.length === 0) {
+      return []
+    }
+
+    return currentMedications.filter(medication => {
+      const availability = isMedicationAvailable(medication)
+      return availability?.available === false || medication?.sendToExternalPharmacy
+    })
+  }
+
+  const getExternalMedications = () => {
+    if (!currentMedications || currentMedications.length === 0) {
+      return []
+    }
+    return currentMedications.filter(medication => {
+      const availability = isMedicationAvailable(medication)
+      return medication?.sendToExternalPharmacy || availability?.available === false || availability === null
+    })
+  }
+
+  const getInternalMedications = () => {
+    if (!currentMedications || currentMedications.length === 0) {
+      return []
+    }
+    return currentMedications.filter(medication => {
+      const availability = isMedicationAvailable(medication)
+      const isUnavailable = availability?.available === false || availability === null
+      return !medication?.sendToExternalPharmacy && !isUnavailable
+    })
+  }
+
+  const toggleExternalMedication = (medication, checked) => {
+    if (!medication) return
+    medication.sendToExternalPharmacy = checked
+    currentMedications = [...currentMedications]
+    if (currentPrescription?.medications) {
+      currentPrescription.medications = currentMedications
+    }
+  }
+
+  const hasChargeableItems = () => {
+    const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+    return procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
+  }
+
+  const handleSendToPharmacy = () => {
+    let internalMedications = getInternalMedications()
+
+    // New prescriptions can be sent before inventory lookup settles. In that case,
+    // avoid blocking send and pass all non-external meds to the pharmacy modal.
+    if ((!internalMedications || internalMedications.length === 0) && Array.isArray(currentMedications) && currentMedications.length > 0) {
+      const fallbackNonExternal = currentMedications.filter((medication) => !medication?.sendToExternalPharmacy)
+      if (fallbackNonExternal.length > 0 && (stockLoading || pharmacyStock.length === 0)) {
+        internalMedications = fallbackNonExternal
+      }
+    }
+
+    if (!internalMedications || internalMedications.length === 0) {
+      if (hasChargeableItems()) {
+        onShowPharmacyModal && onShowPharmacyModal([])
+        return
+      }
+      notifyWarning('All medications are marked for external pharmacy or not in stock.')
+      return
+    }
+
+    onShowPharmacyModal && onShowPharmacyModal(internalMedications.map(sanitizeMedicationForPharmacy))
   }
   
-  onMount(() => {
-    if (doctorId) {
-      loadPharmacyStock()
+  // Determine doctor identifier reactively and load stock
+  $: resolvedDoctorIdentifier = (() => {
+    if (doctorId && doctorId !== 'default-user' && doctorId !== 'unknown') {
+      return doctorId
     }
-  })
+    return selectedPatient?.doctorId ||
+      selectedPatient?.doctor?.id ||
+      currentPrescription?.doctorId ||
+      selectedPatient?.doctorEmail ||
+      currentPrescription?.doctorEmail ||
+      currentUserEmail ||
+      null
+  })()
+  
+  $: if (resolvedDoctorIdentifier) {
+    loadPharmacyStock(resolvedDoctorIdentifier)
+    loadDoctorProfile(resolvedDoctorIdentifier)
+  } else {
+    connectedPharmacyIds = []
+    hasConnectedPharmacies = false
+    pharmacyStock = []
+    doctorProfile = null
+    doctorCurrency = 'USD'
+  }
+
+  $: if (!doctorProfile && currentUserEmail) {
+    loadDoctorProfile(currentUserEmail)
+  }
+
+  $: if (connectedPharmacyIds && connectedPharmacyIds.length > 0) {
+    loadExpectedPharmacist()
+  } else {
+    expectedPharmacist = null
+  }
+
+  $: if (prescriptionsFinalized && currentPrescription) {
+    const internalMedications = getInternalMedications()
+    recomputeExpectedPrice(internalMedications)
+  } else {
+    expectedPrice = null
+  }
+  
 </script>
 
-<div class="prescriptions-responsive-container">
-  <!-- Full Width Layout -->
-  <div class="row">
-    <!-- Main Prescription Column - Full Width -->
-    <div class="col-12 mb-3">
-      <!-- Prescription Card -->
-      <div class="card border-2 border-info shadow-sm">
-        <div class="card-header">
-          <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center">
-            <h5 class="card-title mb-2 mb-md-0">
-              <i class="fas fa-prescription-bottle-alt me-2"></i>Prescription
-            </h5>
-            <div class="d-flex flex-wrap gap-2">
-              <!-- New Prescription Button -->
-              <button 
-                class="btn btn-success btn-sm" 
-                on:click={onNewPrescription}
-                title="Create a new prescription"
-              >
-                <i class="fas fa-plus me-1"></i>New Prescription
-              </button>
-              
-              <!-- Add Drug Button -->
-              <button 
-                  class="btn btn-primary btn-sm" 
-                  on:click={onAddDrug}
-                  disabled={showMedicationForm || !currentPrescription}
-                  title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
-              >
-                <i class="fas fa-plus me-1"></i>Add Drug
-              </button>
-              
-              <!-- AI Drug Suggestions Button -->
-              <button 
-                  class="btn btn-info btn-sm" 
-                  on:click={onGenerateAIDrugSuggestions}
-                  disabled={loadingAIDrugSuggestions || !symptoms || symptoms.length === 0 || !openaiService.isConfigured() || !currentPrescription || (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0))}
-                  title={!currentPrescription ? "Create a prescription first" : (!symptoms || symptoms.length === 0) ? "Add symptoms first" : (currentPrescription && (!currentPrescription.medications || currentPrescription.medications.length === 0)) ? "Add at least one drug first" : "Get AI-assisted drug suggestions"}
-              >
-                {#if loadingAIDrugSuggestions}
-                  <i class="fas fa-spinner fa-spin me-1"></i>Generating...
-                {:else}
-                  <i class="fas fa-brain me-1 text-danger"></i>AI Suggestions
-                {/if}
-              </button>
-            </div>
-          </div>
+<div class="space-y-4">
+  <!-- Prescription Card -->
+  <div class="bg-white border-2 border-gray-200 rounded-lg shadow-sm">
+    <div class="bg-gray-100 text-gray-800 px-4 py-3 rounded-t-lg">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+        <h5 class="text-lg font-semibold mb-2 md:mb-0">
+          <i class="fas fa-prescription-bottle-alt mr-2"></i>Prescription
+        </h5>
+        <div class="flex flex-wrap gap-2">
+          <!-- New Prescription Button -->
+          <button 
+            class="text-white bg-cyan-600 hover:bg-cyan-700 focus:ring-4 focus:outline-none focus:ring-cyan-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-cyan-600 dark:hover:bg-cyan-700 dark:focus:ring-cyan-800 transition-all duration-200" 
+            on:click={onNewPrescription}
+            disabled={disableNewPrescriptionButton}
+            title={disableNewPrescriptionButton
+              ? "Enter at least one prescription detail first (e.g., add a drug or note)"
+              : "Create a new prescription"}
+            data-tour="prescription-new"
+          >
+            <i class="fas fa-plus mr-1"></i>New Prescription
+          </button>
+          
+          <!-- Add Drug Button -->
+          <button 
+              class="text-white bg-cyan-600 hover:bg-cyan-700 focus:ring-4 focus:outline-none focus:ring-cyan-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-cyan-600 dark:hover:bg-cyan-700 dark:focus:ring-cyan-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
+              on:click={onAddDrug}
+              disabled={showMedicationForm || !currentPrescription}
+              title={!currentPrescription ? "Click 'New Prescription' first" : "Add medication to current prescription"}
+              data-tour="prescription-add-drug"
+          >
+            <i class="fas fa-plus mr-1"></i>Add Drug
+          </button>
+          
+          <!-- AI Analysis Button -->
+          <button 
+              class="text-white bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:outline-none focus:ring-purple-300 font-medium rounded-lg text-sm px-3 py-2 text-center dark:bg-purple-600 dark:hover:bg-purple-700 dark:focus:ring-purple-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200" 
+              on:click={onGenerateAIAnalysis}
+              disabled={loadingAIAnalysis || !currentPrescription || !openaiService.isConfigured() || !currentMedications || currentMedications.length === 0}
+              title={!currentPrescription ? "Create a prescription first" : (!currentMedications || currentMedications.length === 0) ? "Add medications first" : "Run AI analysis for this prescription"}
+              data-tour="prescription-ai-analysis"
+          >
+            {#if loadingAIAnalysis}
+              <svg class="animate-spin -ml-1 mr-1 h-3 w-3 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Generating...
+            {:else}
+              <i class="fas fa-brain mr-1 text-red-600"></i>AI Analysis
+            {/if}
+          </button>
         </div>
-        <div class="card-body">
+      </div>
+    </div>
+    <div class="p-4">
           <!-- Patient Forms -->
           <PatientForms 
             {showMedicationForm}
             {selectedPatient}
             {editingMedication}
             {doctorId}
+            {allowNonPharmacyDrugs}
+            {excludePharmacyDrugs}
+            {savingMedication}
             onMedicationAdded={onMedicationAdded}
             onCancelMedication={onCancelMedication}
           />
+          <!-- AI Analysis Section -->
+          {#if showAIAnalysis}
+            <div class="mt-4 border-t border-gray-200 pt-4">
+              <div class="flex justify-between items-center mb-4">
+                <h6 class="text-lg font-semibold text-gray-700 mb-0">
+                  <i class="fas fa-brain mr-2 text-red-600"></i>
+                  AI Analysis
+                </h6>
+              </div>
+              {#if aiAnalysisError}
+                <div class="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {aiAnalysisError}
+                </div>
+              {:else if aiAnalysisHtml}
+                <div class="prose max-w-none text-gray-700 ai-analysis ai-analysis-short" style="font-size: 0.95rem;">
+                  {@html aiAnalysisHtml}
+                </div>
+              {:else}
+                <p class="text-sm text-gray-500">Run AI Analysis to see results.</p>
+              {/if}
+            </div>
+            <hr class="mt-4 border-gray-200" />
+          {/if}
+          
           
           <!-- Current Prescriptions List -->
           {#if currentMedications && currentMedications.length > 0}
             <div class="medication-list">
               {#each currentMedications as medication, index}
-                <div class="medication-item d-flex justify-content-between align-items-center py-2 border-bottom">
-                  <div class="flex-grow-1">
-                    <div class="fw-bold fs-6">
-                      {medication.name}
+                <div class="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
+                  <div class="flex-1">
+                    <div class="font-semibold text-gray-900">
+                      {medication.name}{#if medication.genericName} ({medication.genericName}){/if}
                       {#if medication.aiSuggested}
-                        <span class="badge bg-info ms-2">
-                          <i class="fas fa-brain me-1 text-danger"></i>AI Suggested
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ml-2">
+                          <i class="fas fa-brain mr-1 text-red-600"></i>AI Suggested
                         </span>
                       {/if}
                       <!-- Availability Badge -->
@@ -255,44 +993,58 @@
                         {@const availability = isMedicationAvailable(medication)}
                         {#if availability !== null && availability.available}
                           {@const isLowStock = availability.stockItem && availability.stockItem.initialQuantity && availability.quantity <= (availability.stockItem.initialQuantity * 0.1)}
-                          <span class="badge {isLowStock ? 'bg-danger' : 'bg-warning'} ms-2">
-                            <i class="fas fa-check-circle me-1"></i>In Stock
+                          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {isLowStock ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'} ml-2">
+                            <i class="fas fa-check-circle mr-1"></i>In Stock
                           </span>
                         {/if}
                       {:else}
-                        <span class="badge bg-secondary ms-2">
-                          <i class="fas fa-spinner fa-spin me-1"></i>Checking...
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 ml-2">
+                          <i class="fas fa-spinner fa-spin mr-1"></i>Checking...
                         </span>
                       {/if}
                     </div>
-                    <small class="text-muted">
-                      {medication.dosage} • {medication.frequency} • {medication.duration}
-                    </small>
+                    <div class="text-gray-500 text-sm">
+                      {getMedicationSecondaryLine(medication)}
+                    </div>
+                    {#if !stockLoading}
+                      {@const availability = isMedicationAvailable(medication)}
+                      {#if availability !== null && availability.available}
+                        <label class="mt-1 inline-flex items-center gap-2 text-xs text-gray-500">
+                          <input
+                            type="checkbox"
+                            class="h-3 w-3 rounded border-gray-300 text-gray-600 focus:ring-gray-400"
+                            checked={Boolean(medication?.sendToExternalPharmacy)}
+                            on:change={(event) => toggleExternalMedication(medication, event.target.checked)}
+                          />
+                          Send to external pharmacy
+                        </label>
+                      {/if}
+                    {/if}
                     {#if medication.instructions}
                       <div class="mt-1">
-                        <small class="text-muted">{medication.instructions}</small>
+                        <div class="text-gray-500 text-sm">{medication.instructions}</div>
                       </div>
                     {/if}
                     {#if medication.aiReason}
                       <div class="mt-1">
-                        <small class="text-info">
-                          <i class="fas fa-lightbulb me-1"></i>
-                          <strong>AI Reason:</strong> {medication.aiReason}
-                        </small>
+                        <div class="text-gray-700 text-sm">
+                          <i class="fas fa-lightbulb mr-1"></i>
+                          <span class="font-medium">AI Reason:</span> {medication.aiReason}
+                        </div>
                       </div>
                     {/if}
                   </div>
                   {#if !prescriptionsFinalized}
-                    <div class="btn-group btn-group-sm">
+                    <div class="flex gap-2">
                       <button 
-                        class="btn btn-outline-primary btn-sm"
+                        class="inline-flex items-center px-2 py-1 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                         on:click={() => onEditPrescription(medication, index)}
                         title="Edit medication"
                       >
                         <i class="fas fa-edit"></i>
                       </button>
                       <button 
-                        class="btn btn-outline-danger btn-sm"
+                        class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
                         on:click={() => {
                           if (medication.id) {
                             onDeletePrescription(medication.id, index)
@@ -307,123 +1059,340 @@
                       </button>
                     </div>
                   {:else}
-                    <div class="text-muted">
-                      <small><i class="fas fa-check-circle me-1"></i>Finalized</small>
+                    <div class="text-gray-500">
+                      <div class="text-sm"><i class="fas fa-check-circle mr-1"></i>Finalized</div>
                     </div>
                   {/if}
                 </div>
               {/each}
             </div>
-            
-            <!-- AI Suggestions Section - Inside Prescription Card -->
-            {#if showAIDrugSuggestions && aiDrugSuggestions.length > 0}
-              <div class="mt-4 border-top pt-3">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                  <h6 class="text-info mb-0">
-                    <i class="fas fa-brain me-2 text-danger"></i>
-                    AI Drug Suggestions ({aiDrugSuggestions.length})
-                  </h6>
+          {/if}
+
+          <!-- Procedures / Treatments (only after new prescription) -->
+          {#if currentPrescription}
+            <div class="mt-4">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                  type="checkbox"
+                  id="toggleProcedures"
+                  bind:checked={showProcedures}
+                >
+                <label class="text-sm font-medium text-gray-700" for="toggleProcedures">
+                  Procedures / Treatments
+                </label>
+              </div>
+              {#if showProcedures}
+                <div class="mb-2">
+                  <label class="flex items-center gap-2 text-sm font-medium text-red-600">
+                    <input
+                      class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                      type="checkbox"
+                      bind:checked={excludeConsultationCharge}
+                    >
+                    Exclude consultation charge
+                  </label>
                 </div>
-                <div class="row">
-                  {#each aiDrugSuggestions as suggestion, index}
-                    <div class="col-12 col-md-6 col-lg-4 mb-3">
-                      <div class="card border-info">
-                        <div class="card-body p-2">
-                          <div class="d-flex justify-content-between align-items-start mb-1">
-                            <h6 class="card-title mb-0 text-primary">{suggestion.name}</h6>
-                            <div class="btn-group btn-group-sm">
-                              <button 
-                                class="btn btn-success btn-sm"
-                                on:click={() => onAddAISuggestedDrug(suggestion, index)}
-                                disabled={!currentPrescription}
-                                title="Add to prescription"
-                              >
-                                <i class="fas fa-plus"></i>
-                              </button>
-                              <button 
-                                class="btn btn-outline-danger btn-sm"
-                                on:click={() => onRemoveAISuggestedDrug(index)}
-                                title="Remove suggestion"
-                              >
-                                <i class="fas fa-times"></i>
-                              </button>
-                            </div>
-                          </div>
-                          <div class="small text-muted mb-1">
-                            <strong>Dosage:</strong> {suggestion.dosage} • <strong>Frequency:</strong> {suggestion.frequency}
-                          </div>
-                          {#if suggestion.reason}
-                            <div class="small text-info">
-                              <i class="fas fa-lightbulb me-1"></i>
-                              <strong>Reason:</strong> {suggestion.reason}
-                            </div>
-                          {/if}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {#each procedureOptions as option}
+                    {#if option === 'Other'}
+                      <div class="flex items-center justify-between gap-2 p-2 border border-gray-200 rounded-lg bg-white">
+                        <label class="flex items-start gap-2">
+                          <input
+                            class="w-4 h-4 mt-0.5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                            type="checkbox"
+                            value={option}
+                            bind:group={prescriptionProcedures}
+                          >
+                          <span class="text-sm text-gray-700">Other</span>
+                        </label>
+                        <div class="flex items-center gap-2">
+                          <span class="text-xs text-gray-500">{doctorCurrency}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            class="w-24 px-2 py-1 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                            placeholder="Price"
+                            bind:value={otherProcedurePrice}
+                            disabled={!prescriptionProcedures.includes('Other')}
+                          />
                         </div>
                       </div>
-                    </div>
+                    {:else}
+                      <label class="flex items-start gap-2 p-2 border border-gray-200 rounded-lg bg-white">
+                        <input
+                          class="w-4 h-4 mt-0.5 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                          type="checkbox"
+                          value={option}
+                          bind:group={prescriptionProcedures}
+                        >
+                        <span class="text-sm text-gray-700">{option}</span>
+                      </label>
+                    {/if}
                   {/each}
                 </div>
+              {/if}
+            </div>
+          {/if}
+
+          {#if currentMedications && currentMedications.length > 0}
+            <!-- Prescription Notes Toggle -->
+            <div class="mt-4">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-700" for="toggleNotes">
+                  <input
+                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                    type="checkbox"
+                    id="toggleNotes"
+                    bind:checked={showNotes}
+                    disabled={!currentPrescription}
+                  >
+                  <span>Prescription Notes</span>
+                  {#if notesImproved}
+                    <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                      <i class="fas fa-check-circle mr-1"></i>
+                      AI Improved
+                    </span>
+                  {/if}
+                </label>
+                {#if showNotes}
+                  <button
+                    type="button"
+                    class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+                    on:click={handleImprovePrescriptionNotes}
+                    disabled={!currentPrescription || improvingNotes || notesImproved || !prescriptionNotes}
+                    title="Fix spelling and grammar with AI"
+                  >
+                    {#if improvingNotes}
+                      <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014-12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Improving...
+                    {:else}
+                      <i class="fas fa-sparkles mr-1.5"></i>
+                      Improve English
+                    {/if}
+                  </button>
+                {/if}
               </div>
-            {/if}
+              {#if showNotes}
+                <textarea
+                  id="prescriptionNotes"
+                  bind:value={prescriptionNotes}
+                  rows="3"
+                  class="w-full px-3 py-2 border rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 transition-all duration-200 {notesImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {improvingNotes ? 'bg-gray-100' : ''}"
+                  placeholder="Additional instructions or notes for the prescription..."
+                ></textarea>
+              {/if}
+            </div>
+
+            <!-- Next Appointment Toggle -->
+            <div class="mt-4">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                  type="checkbox"
+                  id="toggleNextAppointment"
+                  bind:checked={showNextAppointment}
+                  disabled={!currentPrescription}
+                >
+                <label class="text-sm font-medium text-gray-700" for="toggleNextAppointment">
+                  Next Appointment Date
+                </label>
+              </div>
+              {#if showNextAppointment}
+                <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy"
+                  class="w-48 max-w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={nextAppointmentDate} />
+              {/if}
+            </div>
+            
+            <!-- Discount Toggle + Fields -->
+            <div class="mt-4">
+              <div class="flex items-center gap-2 mb-2">
+                <input
+                  class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                  type="checkbox"
+                  id="toggleDiscounts"
+                  bind:checked={showDiscounts}
+                  disabled={!currentPrescription}
+                >
+                <label class="text-sm font-medium text-gray-700" for="toggleDiscounts">
+                  Discount (for pharmacy use only)
+                </label>
+              </div>
+              {#if showDiscounts}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label for="prescriptionDiscount" class="block text-sm font-medium text-gray-700 mb-2">
+                      <i class="fas fa-percentage mr-2 text-teal-600"></i>
+                      Discount percentage
+                    </label>
+                    <select
+                      id="prescriptionDiscount"
+                      bind:value={prescriptionDiscount}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      <option value={0}>0% - No Discount</option>
+                      <option value={10}>10%</option>
+                      <option value={20}>20%</option>
+                      <option value={30}>30%</option>
+                      <option value={50}>50%</option>
+                      <option value={100}>100%</option>
+                    </select>
+                    <div class="text-xs text-gray-500 mt-1">
+                      <i class="fas fa-info-circle mr-1"></i>
+                      Discount applies only when sending to pharmacy (not included in PDF)
+                    </div>
+                  </div>
+
+                  <div>
+                    <label for="discountScope" class="block text-sm font-medium text-gray-700 mb-2">
+                      <i class="fas fa-sliders-h mr-2 text-teal-600"></i>
+                      Discount applies to
+                    </label>
+                    <select
+                      id="discountScope"
+                      bind:value={prescriptionDiscountScope}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      <option value="consultation">Only Consultation (default)</option>
+                      <option value="consultation_hospital">Consultation + Hospital</option>
+                    </select>
+                  </div>
+                </div>
+              {/if}
+            </div>
             
             <!-- Prescription Actions -->
-            <div class="mt-3 d-flex gap-2 justify-content-center">
+            <div class="mt-4 flex gap-3 justify-center">
               {#if !prescriptionsFinalized}
                 <button 
-                  class="btn btn-success btn-sm"
+                  class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   on:click={onFinalizePrescription}
-                  disabled={currentMedications.length === 0}
+                  disabled={currentMedications.length === 0 && !hasChargeableItems()}
                   title="Finalize this prescription"
+                  data-tour="prescription-finalize"
                 >
-                  <i class="fas fa-check me-1"></i>Finalize Prescription
+                  <i class="fas fa-check mr-1"></i>Finalize Prescription
                 </button>
               {:else}
                 <button 
-                  class="btn btn-warning btn-sm"
-                  on:click={onShowPharmacyModal}
+                  class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200"
+                  on:click={handleSendToPharmacy}
                   title="Send to pharmacy"
                 >
-                  <i class="fas fa-paper-plane me-1"></i>Send to Pharmacy
+                  <i class="fas fa-paper-plane mr-1"></i>Send to Pharmacy
                 </button>
               {/if}
               
-              <!-- Print/PDF Button - Only available after finalizing -->
+              <!-- Print Buttons - Only available after finalizing -->
               {#if prescriptionsFinalized && currentMedications.length > 0}
                 <button 
-                  class="btn btn-info btn-sm"
+                  class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                   on:click={onPrintPrescriptions}
-                  title="Generate and download prescription PDF"
+                  title="Generate and download full prescription PDF"
+                  data-tour="prescription-print"
                 >
-                  <i class="fas fa-file-pdf me-1"></i>Print PDF
+                  <i class="fas fa-file-pdf mr-1"></i>Print (Full)
+                </button>
+                {@const unavailableMedications = getExternalMedications()}
+                <button 
+                  class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  on:click={() => onPrintExternalPrescriptions && onPrintExternalPrescriptions(unavailableMedications)}
+                  disabled={unavailableMedications.length === 0}
+                  title={unavailableMedications.length === 0 ? 'No medications marked for external pharmacy' : 'Generate PDF for external pharmacy'}
+                >
+                  <i class="fas fa-print mr-1"></i>Print (External)
                 </button>
               {/if}
             </div>
+
+            {#if prescriptionsFinalized && (currentMedications.length > 0 || hasChargeableItems())}
+              <!-- Expected Price -->
+              <div class="mt-4 text-center">
+                <span class="text-sm font-semibold text-green-600">
+                  Expected Price: {expectedPriceLoading ? 'Calculating...' : formatExpectedPrice(expectedPrice)}
+                </span>
+              </div>
+            {/if}
           {:else}
-            <div class="text-center text-muted py-3">
-              <i class="fas fa-pills fa-2x mb-2"></i>
-              <p>No current prescriptions for today</p>
+            <div class="text-center text-gray-500 py-8">
+              <i class="fas fa-pills text-4xl mb-3"></i>
+              <p class="mb-2">No current prescriptions for today</p>
+              <p class="text-sm text-gray-400 mb-1">Click the <span class="font-medium text-teal-600">"+ Add Drug"</span> button to start adding medications to this prescription.</p>
+              <p class="text-sm text-gray-400">Or you can use <span class="font-medium text-teal-600">AI Analysis</span> to review interactions, allergies, and dosing risks.</p>
             </div>
           {/if}
           
         </div>
       </div>
     </div>
-  </div>
   
   <!-- Navigation Buttons -->
-  <div class="row mt-3">
-    <div class="col-12 text-center">
-      <button 
-        class="btn btn-outline-secondary btn-sm"
-        on:click={onGoToPreviousTab}
-        title="Go back to Diagnoses tab"
-      >
-        <i class="fas fa-arrow-left me-2"></i>Back
-      </button>
-    </div>
+  <div class="mt-4 text-center">
+    <button 
+      class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
+      on:click={onGoToPreviousTab}
+      title="Go back to Diagnoses tab"
+    >
+      <i class="fas fa-arrow-left mr-2"></i>Back
+    </button>
   </div>
-</div>
 
 <style>
   /* Component-specific styles - main responsive styles are in PatientDetails.svelte */
+  .ai-analysis :global(h1),
+  .ai-analysis :global(h2),
+  .ai-analysis :global(h3) {
+    font-weight: 700;
+    color: #0f172a;
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .ai-analysis :global(p) {
+    line-height: 1.6;
+    margin: 0.5rem 0;
+  }
+
+  .ai-analysis :global(ul),
+  .ai-analysis :global(ol) {
+    padding-left: 1.25rem;
+    margin: 0.5rem 0 0.75rem;
+  }
+
+  .ai-analysis :global(li) {
+    margin: 0.25rem 0;
+  }
+
+  .ai-analysis :global(strong) {
+    color: #0f172a;
+  }
+
+  .ai-analysis-short {
+    max-height: 220px;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar-track {
+    background: #e5e7eb;
+    border-radius: 999px;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 999px;
+  }
+
+  .ai-analysis-short::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
 </style>

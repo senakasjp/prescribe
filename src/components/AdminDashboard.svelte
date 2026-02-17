@@ -2,13 +2,18 @@
   import { createEventDispatcher, onMount } from 'svelte'
   import adminAuthService from '../services/adminAuthService.js'
   import firebaseStorage from '../services/firebaseStorage.js'
+  import { auth } from '../firebase-config.js'
+  import LoadingSpinner from './LoadingSpinner.svelte'
   import aiTokenTracker from '../services/aiTokenTracker.js'
   import AIPromptLogs from './AIPromptLogs.svelte'
+  import ConfirmationModal from './ConfirmationModal.svelte'
+  import { formatDoctorId } from '../utils/idFormat.js'
   
   const dispatch = createEventDispatcher()
   
   // Accept admin data as prop from AdminPanel
   export let currentAdmin = null
+  export let handleBackToApp = null
   let statistics = {
     totalDoctors: 0,
     totalPatients: 0,
@@ -17,11 +22,301 @@
     totalIllnesses: 0
   }
   let aiUsageStats = null
+  let aiWeeklyUsage = []
+  let aiMonthlyUsage = []
+  let aiRecentRequests = []
   let doctors = []
+  let serverDoctorTokenUsageMap = {}
   // Removed patients array and doctorPatientCounts for HIPAA compliance
   // Admins should not have access to patient PHI data
   let loading = true
   let activeTab = 'overview'
+  
+  // Quota management variables
+  let showQuotaModal = false
+  let selectedDoctorId = ''
+  let quotaInput = 0
+  
+  // Confirmation modal state
+  let showConfirmationModal = false
+  let confirmationConfig = {
+    title: 'Confirm Action',
+    message: 'Are you sure you want to proceed?',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    type: 'warning'
+  }
+  let pendingAction = null
+  
+  // Confirmation modal helper functions
+  function showConfirmation(title, message, confirmText = 'Confirm', cancelText = 'Cancel', type = 'warning') {
+    confirmationConfig = { title, message, confirmText, cancelText, type }
+    showConfirmationModal = true
+  }
+  
+  function handleConfirmationConfirm() {
+    if (pendingAction) {
+      pendingAction()
+      pendingAction = null
+    }
+    showConfirmationModal = false
+  }
+  
+  function handleConfirmationCancel() {
+    pendingAction = null
+    showConfirmationModal = false
+  }
+  
+  // Configuration variables
+  let defaultQuotaInput = 0
+  let modelPricingRows = []
+  let modelPricingStatus = ''
+  let aiModelSettingsLoading = false
+  let aiModelSettingsSaving = false
+  let aiModelSettingsStatus = ''
+  let aiImageAnalysisModel = 'gpt-4o-mini'
+  let aiOtherAnalysisModel = 'gpt-4o-mini'
+  let aiSpellGrammarModel = 'gpt-4o-mini'
+  const aiModelOptions = [
+    'gpt-4o-mini',
+    'gpt-4o',
+    'gpt-4.1-mini',
+    'gpt-4.1',
+    'gpt-5-mini',
+    'gpt-5'
+  ]
+
+  // Welcome email template (system setting)
+  let welcomeEmailLoading = false
+  let welcomeEmailSaving = false
+  let welcomeEmailStatus = ''
+  let welcomeSubject = ''
+  let welcomeText = ''
+  let welcomeHtml = ''
+  let welcomeFromName = ''
+  let welcomeFromEmail = ''
+  let welcomeReplyTo = ''
+  let welcomeTextOnly = false
+  let welcomeEmailEnabled = true
+
+  // Patient welcome email template
+  let patientWelcomeLoading = false
+  let patientWelcomeSaving = false
+  let patientWelcomeStatus = ''
+  let patientWelcomeSubject = ''
+  let patientWelcomeText = ''
+  let patientWelcomeHtml = ''
+  let patientWelcomeFromName = ''
+  let patientWelcomeFromEmail = ''
+  let patientWelcomeReplyTo = ''
+  let patientWelcomeTextOnly = false
+  let patientWelcomeEnabled = true
+
+  // Appointment reminder email template
+  let appointmentEmailLoading = false
+  let appointmentEmailSaving = false
+  let appointmentEmailStatus = ''
+  let appointmentEmailSubject = ''
+  let appointmentEmailText = ''
+  let appointmentEmailHtml = ''
+  let appointmentEmailFromName = ''
+  let appointmentEmailFromEmail = ''
+  let appointmentEmailReplyTo = ''
+  let appointmentEmailTextOnly = false
+  let appointmentEmailEnabled = true
+
+  // Doctor broadcast email template
+  let doctorBroadcastLoading = false
+  let doctorBroadcastSaving = false
+  let doctorBroadcastStatus = ''
+  let doctorBroadcastSending = false
+  let doctorBroadcastSubject = ''
+  let doctorBroadcastText = ''
+  let doctorBroadcastHtml = ''
+  let doctorBroadcastFromName = ''
+  let doctorBroadcastFromEmail = ''
+  let doctorBroadcastReplyTo = ''
+  let doctorBroadcastTextOnly = false
+
+  // Email templates for single-doctor sends
+  let selectedDoctorForEmail = ''
+  let approvalWelcomeLoading = false
+  let approvalWelcomeSaving = false
+  let approvalWelcomeStatus = ''
+  let approvalWelcomeSubject = ''
+  let approvalWelcomeText = ''
+  let approvalWelcomeHtml = ''
+  let approvalWelcomeFromName = ''
+  let approvalWelcomeFromEmail = ''
+  let approvalWelcomeReplyTo = ''
+  let approvalWelcomeTextOnly = false
+  let approvalWelcomeEnabled = true
+
+  let paymentReminderLoading = false
+  let paymentReminderSaving = false
+  let paymentReminderStatus = ''
+  let paymentReminderSubject = ''
+  let paymentReminderText = ''
+  let paymentReminderHtml = ''
+  let paymentReminderFromName = ''
+  let paymentReminderFromEmail = ''
+  let paymentReminderReplyTo = ''
+  let paymentReminderTextOnly = false
+
+  let paymentThanksLoading = false
+  let paymentThanksSaving = false
+  let paymentThanksStatus = ''
+  let paymentThanksSubject = ''
+  let paymentThanksText = ''
+  let paymentThanksHtml = ''
+  let paymentThanksFromName = ''
+  let paymentThanksFromEmail = ''
+  let paymentThanksReplyTo = ''
+  let paymentThanksTextOnly = false
+
+  let otherMessageLoading = false
+  let otherMessageSaving = false
+  let otherMessageStatus = ''
+  let otherMessageSubject = ''
+  let otherMessageText = ''
+  let otherMessageHtml = ''
+  let otherMessageFromName = ''
+  let otherMessageFromEmail = ''
+  let otherMessageReplyTo = ''
+  let otherMessageTextOnly = false
+
+  // OpenAI proxy test
+  let openaiTestRunning = false
+  let openaiTestStatus = ''
+  let openaiDebugBaseUrl = ''
+  let openaiDebugProjectId = ''
+  let openaiDebugRegion = ''
+  let openaiDebugFunctionsBaseUrl = ''
+  let openaiDebugUserId = ''
+  let openaiDebugUserEmail = ''
+  let openaiDebugLastStatus = ''
+  let openaiDebugLastBody = ''
+  let openaiDebugLastError = ''
+  let openaiDebugLastTime = ''
+
+  // SMTP settings (stored in Firestore)
+  let smtpLoading = false
+  let smtpSaving = false
+  let smtpStatus = ''
+  let smtpHost = ''
+  let smtpPort = '587'
+  let smtpSecure = false
+  let smtpUser = ''
+  let smtpTestRunning = false
+  let smtpTestStatus = ''
+  let messagingTab = 'templates'
+  let whatsappTestNumber = 'whatsapp:+642041210342'
+  let whatsappTestMessage = 'Welcome to M-Prescribe!'
+  let whatsappTestRunning = false
+  let whatsappTestStatus = ''
+  let smsTestRecipient = '94712345678'
+  let smsTestSenderId = 'YourName'
+  let smsTestType = 'plain'
+  let smsTestMessage = 'This is a test message'
+  let smsTestRunning = false
+  let smsTestStatus = ''
+  let smsSenderIdSaving = false
+  let smsSenderIdStatus = ''
+  let smsTestRecipientSaving = false
+  let smsTestRecipientStatus = ''
+  let registrationTestStatus = ''
+  let appointmentReminderTestStatus = ''
+  let doctorRegistrationTestStatus = ''
+  let doctorApprovedTestStatus = ''
+  let appUrl = ''
+  let appUrlSaving = false
+  let appUrlStatus = ''
+  let registrationTemplate =
+    'Welcome {{name}} to Prescribe! Your account is ready with Dr. {{doctorName}}. Sign in at {{appUrl}}.'
+  let registrationTemplateEnabled = true
+  let appointmentReminderTemplate =
+    'Reminder: your appointment with {{doctorName}} is on {{date}} at {{time}}. Reply if you need to reschedule.'
+  let appointmentReminderTemplateEnabled = true
+  let doctorRegistrationTemplate =
+    'Hi Dr. {{doctorName}}, your registration is received. We will review and approve soon. — M-Prescribe'
+  let doctorRegistrationTemplateEnabled = true
+  let doctorRegistrationCopyToTestEnabled = false
+  let doctorApprovedTemplate =
+    'Hi Dr. {{doctorName}}, your account is approved. You can sign in at {{appUrl}}. — M-Prescribe'
+  let doctorApprovedTemplateEnabled = true
+  let registrationChannel = 'sms'
+  let appointmentReminderChannel = 'sms'
+  let messagingTemplatesLoading = false
+  let messagingTemplatesSaving = false
+  let messagingTemplatesStatus = ''
+  let emailTab = 'settings'
+  let aiUsageView = 'statistics'
+  // Email logs
+  let emailLogs = []
+  let emailLogsLoading = false
+  let emailLogsError = ''
+  let authLogs = []
+  let authLogsLoading = false
+  let authLogsError = ''
+  let smsLogs = []
+  let smsLogsLoading = false
+  let smsLogsError = ''
+  let promoCodes = []
+  let promoCodesLoading = false
+  let promoCodesError = ''
+  let promoActionStatus = ''
+  let creatingPromoCode = false
+  let promoName = ''
+  let promoCustomCode = ''
+  let promoPercentOff = 10
+  let promoMaxRedemptions = 100
+  let promoValidDays = 30
+  let promoCurrencyScope = 'all'
+  let promoPlanScope = 'all'
+  let promoCodeCopied = ''
+  let paymentPricingLoading = false
+  let paymentPricingLoaded = false
+  let paymentPricingSaving = false
+  let paymentPricingStatus = ''
+  let paymentPricingMonthlyUsd = '20'
+  let paymentPricingAnnualUsd = '200'
+  let paymentPricingMonthlyLkr = '5000'
+  let paymentPricingAnnualLkr = '50000'
+  let paymentPricingAppliesTo = 'new_customers'
+  let paymentPricingEnabled = true
+  let logView = 'email'
+  let showReferralPendingOnly = false
+  let selectedDoctorView = null
+  let doctorPaymentRecords = []
+  let visibleDoctorPaymentRecords = []
+  let dedupedDoctorPaymentRecords = []
+  let displayedDoctorPaymentRecords = []
+  let doctorPaymentRecordsLoading = false
+  let doctorPaymentRecordsError = ''
+  let doctorBillingHistoryCollapsed = false
+  let doctorBillingHistoryExpanded = false
+  let canExpandDoctorBillingHistory = false
+  const DOCTOR_BILLING_PREVIEW_COUNT = 8
+  let doctorWalletSummaryFallback = {
+    walletMonths: 0,
+    paymentStatus: 'N/A',
+    accessExpiresAt: null
+  }
+  let displayWalletMonths = 0
+  let displayPaymentStatus = 'N/A'
+  let displayAccessExpiresAt = null
+  let settledPaymentRecords = []
+  let displayTotalPaidAmount = 0
+  let displayTotalPaidCurrency = ''
+  let doctorReferralWalletStats = {
+    totalReferredDoctors: 0,
+    referralBonusAppliedCount: 0,
+    referralBonusPendingCount: 0,
+    referralFreeMonthsAvailable: 0
+  }
+  let doctorAdminDiscountPercentInput = 0
+  let doctorAdminDiscountSaving = false
+  let doctorAdminDiscountStatus = ''
   
   // Reactive statement to reload data when currentAdmin changes
   $: if (currentAdmin) {
@@ -29,10 +324,17 @@
     loadAdminData()
   }
   
-  // Load admin data on component mount
+  // Load admin data and initialize Flowbite components on mount
   onMount(async () => {
     console.log('🚀 AdminDashboard component mounted')
+    
+    // Initialize Flowbite dropdowns
+    if (typeof window !== 'undefined' && window.Flowbite && typeof window.Flowbite.initDropdowns === 'function') {
+      window.Flowbite.initDropdowns()
+    }
+    
     await loadAdminData()
+    refreshOpenAIDebug()
   })
   
   // Load admin data and statistics
@@ -56,13 +358,29 @@
       
       // Load AI usage statistics
       console.log('🔍 Loading AI usage stats...')
-      loadAIUsageStats()
+      await loadAIUsageStats()
+      loadModelPricingRows()
       console.log('✅ AI usage stats loaded')
+      await loadAIModelSettings()
+      console.log('✅ AI model settings loaded')
       
       // Load doctors data only (no patient data for HIPAA compliance)
       console.log('🔍 Loading doctors...')
       await loadDoctors()
       console.log('✅ Doctors loaded')
+
+      // Load system settings (welcome email template)
+      await loadWelcomeEmailTemplate()
+      await loadPatientWelcomeTemplate()
+      await loadAppointmentReminderTemplate()
+      await loadDoctorBroadcastTemplate()
+      await loadSmtpSettings()
+      await loadPaymentPricingSettings()
+      await loadMessagingTemplates()
+      await loadApprovalWelcomeTemplate()
+      await loadPaymentReminderTemplate()
+      await loadPaymentThanksTemplate()
+      await loadOtherMessageTemplate()
       
       console.log('🎉 All admin data loaded successfully')
       
@@ -72,6 +390,1224 @@
     } finally {
       loading = false
       console.log('🔍 Loading set to false')
+    }
+  }
+
+  const loadEmailLogs = async () => {
+    try {
+      emailLogsError = ''
+      emailLogsLoading = true
+      emailLogs = await firebaseStorage.getEmailLogs(200)
+    } catch (error) {
+      console.error('❌ Error loading email logs:', error)
+      emailLogsError = error?.message || 'Failed to load email logs.'
+      emailLogs = []
+    } finally {
+      emailLogsLoading = false
+    }
+  }
+
+  const loadAuthLogs = async () => {
+    try {
+      authLogsError = ''
+      authLogsLoading = true
+      authLogs = await firebaseStorage.getAuthLogs(200)
+    } catch (error) {
+      console.error('❌ Error loading auth logs:', error)
+      authLogsError = error?.message || 'Failed to load auth logs.'
+      authLogs = []
+    } finally {
+      authLogsLoading = false
+    }
+  }
+
+  const loadSmsLogs = async () => {
+    try {
+      smsLogsError = ''
+      smsLogsLoading = true
+      smsLogs = await firebaseStorage.getSmsLogs(200)
+    } catch (error) {
+      console.error('❌ Error loading sms logs:', error)
+      smsLogsError = error?.message || 'Failed to load SMS logs.'
+      smsLogs = []
+    } finally {
+      smsLogsLoading = false
+    }
+  }
+
+  const normalizeMajorAmountInput = (value = '', fallback = '0') => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return fallback
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed < 0) return fallback
+    return String(parsed)
+  }
+
+  const loadPaymentPricingSettings = async () => {
+    try {
+      paymentPricingLoading = true
+      const settings = await firebaseStorage.getPaymentPricingSettings()
+      paymentPricingMonthlyUsd = normalizeMajorAmountInput(settings?.monthlyUsd, '20')
+      paymentPricingAnnualUsd = normalizeMajorAmountInput(settings?.annualUsd, '200')
+      paymentPricingMonthlyLkr = normalizeMajorAmountInput(settings?.monthlyLkr, '5000')
+      paymentPricingAnnualLkr = normalizeMajorAmountInput(settings?.annualLkr, '50000')
+      paymentPricingAppliesTo =
+        settings?.appliesTo === 'all_customers' ? 'all_customers' : 'new_customers'
+      paymentPricingEnabled = settings?.enabled !== false
+      paymentPricingLoaded = true
+    } catch (error) {
+      console.error('❌ Error loading payment pricing settings:', error)
+    } finally {
+      paymentPricingLoading = false
+    }
+  }
+
+  const savePaymentPricingSettings = async () => {
+    try {
+      paymentPricingSaving = true
+      paymentPricingStatus = ''
+      await firebaseStorage.savePaymentPricingSettings({
+        monthlyUsd: Number(paymentPricingMonthlyUsd || 0),
+        annualUsd: Number(paymentPricingAnnualUsd || 0),
+        monthlyLkr: Number(paymentPricingMonthlyLkr || 0),
+        annualLkr: Number(paymentPricingAnnualLkr || 0),
+        appliesTo: paymentPricingAppliesTo === 'all_customers' ? 'all_customers' : 'new_customers',
+        enabled: paymentPricingEnabled,
+        updatedBy: currentAdmin?.email || currentAdmin?.id || ''
+      })
+      paymentPricingStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving payment pricing settings:', error)
+      paymentPricingStatus = error?.message || 'Save failed'
+    } finally {
+      paymentPricingSaving = false
+      setTimeout(() => {
+        paymentPricingStatus = ''
+      }, 2500)
+    }
+  }
+
+  const resolvePromoPlanIds = () => {
+    const scope = String(promoPlanScope || 'all')
+    const currencyScope = String(promoCurrencyScope || 'all')
+    const allPlanIds = [
+      'professional_monthly_usd',
+      'professional_annual_usd',
+      'professional_monthly_lkr',
+      'professional_annual_lkr'
+    ]
+    return allPlanIds.filter((planId) => {
+      if (scope === 'monthly' && !planId.includes('monthly')) return false
+      if (scope === 'annual' && !planId.includes('annual')) return false
+      if (currencyScope === 'usd' && !planId.endsWith('_usd')) return false
+      if (currencyScope === 'lkr' && !planId.endsWith('_lkr')) return false
+      return true
+    })
+  }
+
+  const normalizePromoCodeInput = (value = '') => {
+    if (typeof firebaseStorage?.normalizePromoCode === 'function') {
+      return firebaseStorage.normalizePromoCode(value)
+    }
+    return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '')
+  }
+
+  const generatePromoCodeDraft = () => {
+    const generated = typeof firebaseStorage?.generatePromoCode === 'function'
+      ? firebaseStorage.generatePromoCode(8)
+      : Math.random().toString(36).replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 8)
+    promoCustomCode = normalizePromoCodeInput(generated)
+  }
+
+  const copyPromoCode = async (code = '') => {
+    const normalized = normalizePromoCodeInput(code)
+    if (!normalized) return
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+        throw new Error('Clipboard is unavailable in this browser.')
+      }
+      await navigator.clipboard.writeText(normalized)
+      promoCodeCopied = normalized
+      promoActionStatus = `Copied promo code ${normalized}.`
+    } catch (error) {
+      promoActionStatus = error?.message || 'Failed to copy promo code.'
+    }
+  }
+
+  const loadPromoCodes = async () => {
+    try {
+      promoCodesLoading = true
+      promoCodesError = ''
+      promoCodes = await firebaseStorage.getPromoCodes(200)
+    } catch (error) {
+      console.error('❌ Error loading promo codes:', error)
+      promoCodesError = error?.message || 'Failed to load promo codes.'
+    } finally {
+      promoCodesLoading = false
+    }
+  }
+
+  const createPromoCode = async () => {
+    try {
+      creatingPromoCode = true
+      promoActionStatus = ''
+      const code = normalizePromoCodeInput(promoCustomCode)
+      const created = await firebaseStorage.createPromoCode({
+        code: code || firebaseStorage.generatePromoCode(8),
+        name: promoName.trim() || `${Number(promoPercentOff || 0)}% Off`,
+        percentOff: Number(promoPercentOff || 0),
+        maxRedemptions: Number(promoMaxRedemptions || 0),
+        validDays: Number(promoValidDays || 0),
+        currency: promoCurrencyScope === 'all' ? '' : promoCurrencyScope,
+        planIds: resolvePromoPlanIds(),
+        createdBy: currentAdmin?.email || currentAdmin?.id || ''
+      })
+      promoCodes = [created, ...promoCodes]
+      promoCustomCode = ''
+      promoCodeCopied = ''
+      promoActionStatus = `Promo code ${created.code} created.`
+    } catch (error) {
+      console.error('❌ Error creating promo code:', error)
+      promoActionStatus = error?.message || 'Failed to create promo code.'
+    } finally {
+      creatingPromoCode = false
+    }
+  }
+
+  const togglePromoCode = async (promo) => {
+    if (!promo?.id) return
+    try {
+      promoActionStatus = ''
+      await firebaseStorage.updatePromoCodeStatus(promo.id, !promo.isActive)
+      promoCodes = promoCodes.map((item) =>
+        item.id === promo.id
+          ? { ...item, isActive: !promo.isActive, updatedAt: new Date().toISOString() }
+          : item
+      )
+      promoActionStatus = `Promo code ${promo.code} ${promo.isActive ? 'disabled' : 'enabled'}.`
+    } catch (error) {
+      console.error('❌ Error toggling promo code:', error)
+      promoActionStatus = error?.message || 'Failed to update promo code.'
+    }
+  }
+
+  const clearEmailLogs = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      return
+    }
+    try {
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/clearEmailLogs`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      })
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      await loadEmailLogs()
+    } catch (error) {
+      console.error('❌ Error clearing email logs:', error)
+    }
+  }
+
+  const loadWelcomeEmailTemplate = async () => {
+    try {
+      welcomeEmailLoading = true
+      const template = await firebaseStorage.getWelcomeEmailTemplate()
+      welcomeSubject = template?.subject || ''
+      welcomeText = template?.text || ''
+      welcomeHtml = template?.html || ''
+      welcomeFromName = template?.fromName || ''
+      welcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      welcomeReplyTo = template?.replyTo || ''
+      welcomeTextOnly = Boolean(template?.textOnly)
+      welcomeEmailEnabled = template?.enabled !== false
+    } catch (error) {
+      console.error('❌ Error loading welcome email template:', error)
+    } finally {
+      welcomeEmailLoading = false
+    }
+  }
+
+  const loadPatientWelcomeTemplate = async () => {
+    try {
+      patientWelcomeLoading = true
+      const template = await firebaseStorage.getPatientWelcomeEmailTemplate()
+      patientWelcomeSubject = template?.subject || ''
+      patientWelcomeText = template?.text || ''
+      patientWelcomeHtml = template?.html || ''
+      patientWelcomeFromName = template?.fromName || ''
+      patientWelcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      patientWelcomeReplyTo = template?.replyTo || ''
+      patientWelcomeTextOnly = Boolean(template?.textOnly)
+      patientWelcomeEnabled = template?.enabled !== false
+    } catch (error) {
+      console.error('❌ Error loading patient welcome template:', error)
+    } finally {
+      patientWelcomeLoading = false
+    }
+  }
+
+  const loadAppointmentReminderTemplate = async () => {
+    try {
+      appointmentEmailLoading = true
+      const template = await firebaseStorage.getAppointmentReminderEmailTemplate()
+      appointmentEmailSubject = template?.subject || ''
+      appointmentEmailText = template?.text || ''
+      appointmentEmailHtml = template?.html || ''
+      appointmentEmailFromName = template?.fromName || ''
+      appointmentEmailFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      appointmentEmailReplyTo = template?.replyTo || ''
+      appointmentEmailTextOnly = Boolean(template?.textOnly)
+      appointmentEmailEnabled = template?.enabled !== false
+    } catch (error) {
+      console.error('❌ Error loading appointment reminder template:', error)
+    } finally {
+      appointmentEmailLoading = false
+    }
+  }
+
+  const loadDoctorBroadcastTemplate = async () => {
+    try {
+      doctorBroadcastLoading = true
+      const template = await firebaseStorage.getDoctorBroadcastEmailTemplate()
+      doctorBroadcastSubject = template?.subject || ''
+      doctorBroadcastText = template?.text || ''
+      doctorBroadcastHtml = template?.html || ''
+      doctorBroadcastFromName = template?.fromName || ''
+      doctorBroadcastFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      doctorBroadcastReplyTo = template?.replyTo || ''
+      doctorBroadcastTextOnly = Boolean(template?.textOnly)
+    } catch (error) {
+      console.error('❌ Error loading doctor broadcast email template:', error)
+    } finally {
+      doctorBroadcastLoading = false
+    }
+  }
+
+  const loadApprovalWelcomeTemplate = async () => {
+    try {
+      approvalWelcomeLoading = true
+      const template = await firebaseStorage.getEmailTemplate('approvalWelcomeEmail')
+      approvalWelcomeSubject = template?.subject || ''
+      approvalWelcomeText = template?.text || ''
+      approvalWelcomeHtml = template?.html || ''
+      approvalWelcomeFromName = template?.fromName || ''
+      approvalWelcomeFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      approvalWelcomeReplyTo = template?.replyTo || ''
+      approvalWelcomeTextOnly = Boolean(template?.textOnly)
+      approvalWelcomeEnabled = template?.enabled !== false
+    } catch (error) {
+      console.error('❌ Error loading approval welcome template:', error)
+    } finally {
+      approvalWelcomeLoading = false
+    }
+  }
+
+  const saveApprovalWelcomeTemplate = async () => {
+    try {
+      approvalWelcomeSaving = true
+      approvalWelcomeStatus = ''
+      await firebaseStorage.saveEmailTemplate('approvalWelcomeEmail', {
+        subject: approvalWelcomeSubject.trim(),
+        text: approvalWelcomeText.trim(),
+        html: approvalWelcomeHtml.trim(),
+        fromName: approvalWelcomeFromName.trim(),
+        fromEmail: approvalWelcomeFromEmail.trim(),
+        replyTo: approvalWelcomeReplyTo.trim(),
+        textOnly: approvalWelcomeTextOnly,
+        enabled: approvalWelcomeEnabled
+      })
+      approvalWelcomeStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving approval welcome template:', error)
+      approvalWelcomeStatus = 'Save failed'
+    } finally {
+      approvalWelcomeSaving = false
+      setTimeout(() => {
+        approvalWelcomeStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadPaymentReminderTemplate = async () => {
+    try {
+      paymentReminderLoading = true
+      const template = await firebaseStorage.getEmailTemplate('paymentReminderEmail')
+      paymentReminderSubject = template?.subject || ''
+      paymentReminderText = template?.text || ''
+      paymentReminderHtml = template?.html || ''
+      paymentReminderFromName = template?.fromName || ''
+      paymentReminderFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      paymentReminderReplyTo = template?.replyTo || ''
+      paymentReminderTextOnly = Boolean(template?.textOnly)
+    } catch (error) {
+      console.error('❌ Error loading payment reminder template:', error)
+    } finally {
+      paymentReminderLoading = false
+    }
+  }
+
+  const savePaymentReminderTemplate = async () => {
+    try {
+      paymentReminderSaving = true
+      paymentReminderStatus = ''
+      await firebaseStorage.saveEmailTemplate('paymentReminderEmail', {
+        subject: paymentReminderSubject.trim(),
+        text: paymentReminderText.trim(),
+        html: paymentReminderHtml.trim(),
+        fromName: paymentReminderFromName.trim(),
+        fromEmail: paymentReminderFromEmail.trim(),
+        replyTo: paymentReminderReplyTo.trim(),
+        textOnly: paymentReminderTextOnly
+      })
+      paymentReminderStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving payment reminder template:', error)
+      paymentReminderStatus = 'Save failed'
+    } finally {
+      paymentReminderSaving = false
+      setTimeout(() => {
+        paymentReminderStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadPaymentThanksTemplate = async () => {
+    try {
+      paymentThanksLoading = true
+      const template = await firebaseStorage.getEmailTemplate('paymentThanksEmail')
+      paymentThanksSubject = template?.subject || ''
+      paymentThanksText = template?.text || ''
+      paymentThanksHtml = template?.html || ''
+      paymentThanksFromName = template?.fromName || ''
+      paymentThanksFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      paymentThanksReplyTo = template?.replyTo || ''
+      paymentThanksTextOnly = Boolean(template?.textOnly)
+    } catch (error) {
+      console.error('❌ Error loading payment thanks template:', error)
+    } finally {
+      paymentThanksLoading = false
+    }
+  }
+
+  const savePaymentThanksTemplate = async () => {
+    try {
+      paymentThanksSaving = true
+      paymentThanksStatus = ''
+      await firebaseStorage.saveEmailTemplate('paymentThanksEmail', {
+        subject: paymentThanksSubject.trim(),
+        text: paymentThanksText.trim(),
+        html: paymentThanksHtml.trim(),
+        fromName: paymentThanksFromName.trim(),
+        fromEmail: paymentThanksFromEmail.trim(),
+        replyTo: paymentThanksReplyTo.trim(),
+        textOnly: paymentThanksTextOnly
+      })
+      paymentThanksStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving payment thanks template:', error)
+      paymentThanksStatus = 'Save failed'
+    } finally {
+      paymentThanksSaving = false
+      setTimeout(() => {
+        paymentThanksStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadOtherMessageTemplate = async () => {
+    try {
+      otherMessageLoading = true
+      const template = await firebaseStorage.getEmailTemplate('doctorMessageEmail')
+      otherMessageSubject = template?.subject || ''
+      otherMessageText = template?.text || ''
+      otherMessageHtml = template?.html || ''
+      otherMessageFromName = template?.fromName || ''
+      otherMessageFromEmail = template?.fromEmail || 'support@mprescribe.net'
+      otherMessageReplyTo = template?.replyTo || ''
+      otherMessageTextOnly = Boolean(template?.textOnly)
+    } catch (error) {
+      console.error('❌ Error loading other message template:', error)
+    } finally {
+      otherMessageLoading = false
+    }
+  }
+
+  const saveOtherMessageTemplate = async () => {
+    try {
+      otherMessageSaving = true
+      otherMessageStatus = ''
+      await firebaseStorage.saveEmailTemplate('doctorMessageEmail', {
+        subject: otherMessageSubject.trim(),
+        text: otherMessageText.trim(),
+        html: otherMessageHtml.trim(),
+        fromName: otherMessageFromName.trim(),
+        fromEmail: otherMessageFromEmail.trim(),
+        replyTo: otherMessageReplyTo.trim(),
+        textOnly: otherMessageTextOnly
+      })
+      otherMessageStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving other message template:', error)
+      otherMessageStatus = 'Save failed'
+    } finally {
+      otherMessageSaving = false
+      setTimeout(() => {
+        otherMessageStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveDoctorBroadcastTemplate = async () => {
+    try {
+      doctorBroadcastSaving = true
+      doctorBroadcastStatus = ''
+      await firebaseStorage.saveDoctorBroadcastEmailTemplate({
+        subject: doctorBroadcastSubject.trim(),
+        text: doctorBroadcastText.trim(),
+        html: doctorBroadcastHtml.trim(),
+        fromName: doctorBroadcastFromName.trim(),
+        fromEmail: doctorBroadcastFromEmail.trim(),
+        replyTo: doctorBroadcastReplyTo.trim(),
+        textOnly: doctorBroadcastTextOnly
+      })
+      doctorBroadcastStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving doctor broadcast email template:', error)
+      doctorBroadcastStatus = 'Save failed'
+    } finally {
+      doctorBroadcastSaving = false
+      setTimeout(() => {
+        doctorBroadcastStatus = ''
+      }, 2500)
+    }
+  }
+
+  const loadSmtpSettings = async () => {
+    try {
+      smtpLoading = true
+      const settings = await firebaseStorage.getSmtpSettings()
+      smtpHost = settings?.host || ''
+      smtpPort = String(settings?.port || '587')
+      smtpSecure = Boolean(settings?.secure)
+      smtpUser = settings?.user || ''
+    } catch (error) {
+      console.error('❌ Error loading SMTP settings:', error)
+    } finally {
+      smtpLoading = false
+    }
+  }
+
+  const loadMessagingTemplates = async () => {
+    try {
+      messagingTemplatesLoading = true
+      const templates = await firebaseStorage.getMessagingTemplates()
+      if (templates) {
+        registrationTemplate = templates.registrationTemplate || registrationTemplate
+        registrationTemplateEnabled = templates.registrationTemplateEnabled !== false
+        appointmentReminderTemplate =
+          templates.appointmentReminderTemplate || appointmentReminderTemplate
+        appointmentReminderTemplateEnabled = templates.appointmentReminderTemplateEnabled !== false
+        doctorRegistrationTemplate =
+          templates.doctorRegistrationTemplate || doctorRegistrationTemplate
+        doctorRegistrationTemplateEnabled =
+          templates.doctorRegistrationTemplateEnabled !== false
+        doctorRegistrationCopyToTestEnabled =
+          templates.doctorRegistrationCopyToTestEnabled === true
+        doctorApprovedTemplate =
+          templates.doctorApprovedTemplate || doctorApprovedTemplate
+        doctorApprovedTemplateEnabled = templates.doctorApprovedTemplateEnabled !== false
+        registrationChannel = templates.registrationChannel || registrationChannel
+        appointmentReminderChannel =
+          templates.appointmentReminderChannel || appointmentReminderChannel
+        smsTestSenderId = templates.smsSenderId || smsTestSenderId
+        smsTestRecipient = templates.smsTestRecipient || smsTestRecipient
+        appUrl = templates.appUrl || appUrl
+      }
+    } catch (error) {
+      console.error('❌ Error loading messaging templates:', error)
+    } finally {
+      messagingTemplatesLoading = false
+    }
+  }
+
+  const saveMessagingTemplates = async () => {
+    try {
+      messagingTemplatesSaving = true
+      messagingTemplatesStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        registrationTemplate: registrationTemplate.trim(),
+        appointmentReminderTemplate: appointmentReminderTemplate.trim(),
+        registrationTemplateEnabled,
+        appointmentReminderTemplateEnabled,
+        doctorRegistrationTemplate: doctorRegistrationTemplate.trim(),
+        doctorRegistrationTemplateEnabled,
+        doctorRegistrationCopyToTestEnabled,
+        doctorApprovedTemplate: doctorApprovedTemplate.trim(),
+        doctorApprovedTemplateEnabled,
+        registrationChannel,
+        appointmentReminderChannel,
+        smsSenderId: smsTestSenderId.trim(),
+        smsTestRecipient: smsTestRecipient.trim()
+      })
+      messagingTemplatesStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving messaging templates:', error)
+      messagingTemplatesStatus = 'Save failed'
+    } finally {
+      messagingTemplatesSaving = false
+      setTimeout(() => {
+        messagingTemplatesStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveSmsSenderId = async () => {
+    try {
+      smsSenderIdSaving = true
+      smsSenderIdStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        smsSenderId: smsTestSenderId.trim()
+      })
+      smsSenderIdStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving SMS sender ID:', error)
+      smsSenderIdStatus = 'Save failed'
+    } finally {
+      smsSenderIdSaving = false
+      setTimeout(() => {
+        smsSenderIdStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveSmsTestRecipient = async () => {
+    try {
+      smsTestRecipientSaving = true
+      smsTestRecipientStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        smsTestRecipient: smsTestRecipient.trim()
+      })
+      smsTestRecipientStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving SMS test recipient:', error)
+      smsTestRecipientStatus = 'Save failed'
+    } finally {
+      smsTestRecipientSaving = false
+      setTimeout(() => {
+        smsTestRecipientStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveAppUrl = async () => {
+    try {
+      appUrlSaving = true
+      appUrlStatus = ''
+      await firebaseStorage.saveMessagingTemplates({
+        appUrl: appUrl.trim()
+      })
+      appUrlStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving app URL:', error)
+      appUrlStatus = 'Save failed'
+    } finally {
+      appUrlSaving = false
+      setTimeout(() => {
+        appUrlStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveSmtpSettings = async () => {
+    try {
+      smtpSaving = true
+      smtpStatus = ''
+      await firebaseStorage.saveSmtpSettings({
+        host: smtpHost.trim(),
+        port: smtpPort.trim(),
+        secure: smtpSecure,
+        user: smtpUser.trim(),
+        pass: ''
+      })
+      smtpStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving SMTP settings:', error)
+      smtpStatus = 'Save failed'
+    } finally {
+      smtpSaving = false
+      setTimeout(() => {
+        smtpStatus = ''
+      }, 2500)
+    }
+  }
+
+  const testSmtpSettings = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      smtpTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      smtpTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      smtpTestRunning = true
+      smtpTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/testSmtp`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'SMTP test failed')
+      }
+      smtpTestStatus = 'SMTP test email sent'
+    } catch (error) {
+      smtpTestStatus = error?.message || 'SMTP test failed'
+    } finally {
+      smtpTestRunning = false
+      setTimeout(() => {
+        smtpTestStatus = ''
+      }, 12000)
+    }
+  }
+
+  const testWhatsappWelcome = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      whatsappTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      whatsappTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      whatsappTestRunning = true
+      whatsappTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendWelcomeWhatsapp`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          to: whatsappTestNumber,
+          body: whatsappTestMessage
+        })
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'WhatsApp send failed')
+      }
+      whatsappTestStatus = 'WhatsApp message sent'
+    } catch (error) {
+      whatsappTestStatus = error?.message || 'WhatsApp send failed'
+    } finally {
+      whatsappTestRunning = false
+      setTimeout(() => {
+        whatsappTestStatus = ''
+      }, 12000)
+    }
+  }
+
+  const testSmsSend = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      smsTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      smsTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      smsTestRunning = true
+      smsTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendSmsApi`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipient: smsTestRecipient,
+          senderId: smsTestSenderId,
+          type: smsTestType === 'unicode' ? smsTestType : undefined,
+          message: smsTestMessage
+        })
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'SMS send failed')
+      }
+      smsTestStatus = 'SMS sent'
+    } catch (error) {
+      smsTestStatus = error?.message || 'SMS send failed'
+    } finally {
+      smsTestRunning = false
+      setTimeout(() => {
+        smsTestStatus = ''
+      }, 12000)
+    }
+  }
+
+  const sendTemplateSmsTest = async (message, statusSetter) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    if (!smsTestSenderId.trim()) {
+      statusSetter('Sender ID is required')
+      return
+    }
+    if (!smsTestRecipient.trim()) {
+      statusSetter('Test phone number is required')
+      return
+    }
+    try {
+      statusSetter('Sending...')
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendSmsApi`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          recipient: smsTestRecipient,
+          senderId: smsTestSenderId,
+          type: smsTestType === 'unicode' ? smsTestType : undefined,
+          message
+        })
+      })
+      const text = await response.text()
+      if (!response.ok) {
+        throw new Error(text || 'SMS send failed')
+      }
+      statusSetter('SMS sent')
+    } catch (error) {
+      statusSetter(error?.message || 'SMS send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 12000)
+    }
+  }
+
+  const handleRegistrationSmsTest = () => {
+    const resolvedAppUrl = appUrl || 'https://prescribe-7e1e8.web.app'
+    const message = (registrationTemplate || '')
+      .replace(/\{\{name\}\}/g, 'Kamal')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{patientShortId\}\}/g, 'PT12345')
+      .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
+    sendTemplateSmsTest(message, (msg) => registrationTestStatus = msg)
+  }
+
+  const handleAppointmentReminderSmsTest = () => {
+    const message = (appointmentReminderTemplate || '')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{patientShortId\}\}/g, 'PT12345')
+      .replace(/\{\{date\}\}/g, '10/02/2026')
+      .replace(/\{\{time\}\}/g, '10:30 AM')
+    sendTemplateSmsTest(message, (msg) => appointmentReminderTestStatus = msg)
+  }
+
+  const handleDoctorRegistrationSmsTest = () => {
+    const resolvedAppUrl = appUrl || 'https://prescribe-7e1e8.web.app'
+    const message = (doctorRegistrationTemplate || '')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
+    sendTemplateSmsTest(message, (msg) => doctorRegistrationTestStatus = msg)
+  }
+
+  const handleDoctorApprovedSmsTest = () => {
+    const resolvedAppUrl = appUrl || 'https://prescribe-7e1e8.web.app'
+    const message = (doctorApprovedTemplate || '')
+      .replace(/\{\{doctorName\}\}/g, 'Senaka')
+      .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
+    sendTemplateSmsTest(message, (msg) => doctorApprovedTestStatus = msg)
+  }
+
+  const getFunctionsBaseUrl = () => {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
+    const region = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
+    if (!projectId) return null
+    return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`
+  }
+
+  const refreshOpenAIDebug = () => {
+    openaiDebugProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || ''
+    openaiDebugRegion = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
+    openaiDebugFunctionsBaseUrl = import.meta.env.VITE_FUNCTIONS_BASE_URL || ''
+    openaiDebugBaseUrl = getFunctionsBaseUrl() || ''
+    const currentUser = auth?.currentUser
+    openaiDebugUserId = currentUser?.uid || ''
+    openaiDebugUserEmail = currentUser?.email || ''
+  }
+
+  const sendTemplateToDoctor = async (templateId, doctorId, statusSetter) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    if (!doctorId) {
+      statusSetter('Select a doctor first')
+      return
+    }
+    try {
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendDoctorTemplateEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ templateId, doctorId })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      statusSetter('Sent')
+    } catch (error) {
+      statusSetter(error?.message || 'Send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 3000)
+    }
+  }
+
+  const sendTemplateToTest = async (templateId, statusSetter, templateData = null) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    try {
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendDoctorTemplateEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          templateId,
+          doctorEmail: 'senakahks@gmail.com',
+          templateData: templateData || undefined
+        })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      statusSetter('Test sent to senakahks@gmail.com')
+    } catch (error) {
+      statusSetter(error?.message || 'Send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 3000)
+    }
+  }
+
+  const sendPatientTemplateToTest = async (templateId, statusSetter, templateData = null) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    try {
+      const testPatientId = `test-patient-${Math.random().toString(36).slice(2, 10)}`
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendPatientTemplateEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          templateId,
+          patientEmail: 'senakahks@gmail.com',
+          doctorName: 'Dr. Test',
+          patientData: {
+            id: testPatientId,
+            firstName: 'Test',
+            lastName: 'Patient',
+            email: 'senakahks@gmail.com'
+          },
+          templateData: templateData || undefined
+        })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      statusSetter('Test sent to senakahks@gmail.com')
+    } catch (error) {
+      statusSetter(error?.message || 'Send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 3000)
+    }
+  }
+
+  const sendAppointmentTemplateToTest = async (templateId, statusSetter, templateData = null) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      statusSetter('Functions base URL not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      statusSetter('No authenticated user')
+      return
+    }
+    try {
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendAppointmentReminderTemplateEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          templateId,
+          patientEmail: 'senakahks@gmail.com',
+          doctorName: 'Dr. Test',
+          appointmentDate: '2026-01-01',
+          patientData: {
+            firstName: 'Test',
+            lastName: 'Patient',
+            email: 'senakahks@gmail.com'
+          },
+          templateData: templateData || undefined
+        })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      statusSetter('Test sent to senakahks@gmail.com')
+    } catch (error) {
+      statusSetter(error?.message || 'Send failed')
+    } finally {
+      setTimeout(() => statusSetter(''), 3000)
+    }
+  }
+
+  const sendDoctorBroadcast = async (mode) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      console.error('❌ Functions base URL is not configured')
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      console.error('❌ No authenticated user found for email send')
+      return
+    }
+    try {
+      doctorBroadcastSending = true
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/sendDoctorBroadcastEmail`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ mode })
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Send failed')
+      }
+      const data = await response.json()
+      doctorBroadcastStatus = mode === 'test'
+        ? `Test sent to ${data?.sent || 0} recipient`
+        : `Sent to ${data?.sent || 0} doctors`
+    } catch (error) {
+      console.error('❌ Error sending doctor broadcast:', error)
+      doctorBroadcastStatus = error?.message || 'Send failed'
+    } finally {
+      doctorBroadcastSending = false
+      setTimeout(() => {
+        doctorBroadcastStatus = ''
+      }, 3000)
+    }
+  }
+
+  const testOpenAIProxy = async () => {
+    const baseUrl = getFunctionsBaseUrl()
+    refreshOpenAIDebug()
+    openaiDebugLastTime = new Date().toISOString()
+    openaiDebugLastStatus = ''
+    openaiDebugLastBody = ''
+    openaiDebugLastError = ''
+    if (!baseUrl) {
+      openaiTestStatus = 'Functions base URL not configured'
+      return
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      openaiTestStatus = 'No authenticated user'
+      return
+    }
+    try {
+      openaiTestRunning = true
+      openaiTestStatus = ''
+      const token = await currentUser.getIdToken()
+      const response = await fetch(`${baseUrl}/openaiProxy`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          endpoint: 'chat/completions',
+          requestBody: {
+            model: 'gpt-3.5-turbo',
+            messages: [
+              { role: 'system', content: 'You are a test endpoint.' },
+              { role: 'user', content: 'Reply with OK.' }
+            ],
+            max_tokens: 5,
+            temperature: 0
+          }
+        })
+      })
+      const text = await response.text()
+      openaiDebugLastStatus = `${response.status} ${response.statusText}`
+      openaiDebugLastBody = text?.slice(0, 1000) || ''
+      if (!response.ok) {
+        throw new Error(text || 'OpenAI test failed')
+      }
+      openaiTestStatus = 'OpenAI proxy OK'
+    } catch (error) {
+      openaiTestStatus = error?.message || 'OpenAI test failed'
+      openaiDebugLastError = error?.message || 'OpenAI test failed'
+    } finally {
+      openaiTestRunning = false
+      setTimeout(() => {
+        openaiTestStatus = ''
+      }, 3000)
+    }
+  }
+  const saveWelcomeEmailTemplate = async () => {
+    try {
+      welcomeEmailSaving = true
+      welcomeEmailStatus = ''
+      await firebaseStorage.saveWelcomeEmailTemplate({
+        subject: welcomeSubject.trim(),
+        text: welcomeText.trim(),
+        html: welcomeHtml.trim(),
+        fromName: welcomeFromName.trim(),
+        fromEmail: welcomeFromEmail.trim(),
+        replyTo: welcomeReplyTo.trim(),
+        textOnly: welcomeTextOnly,
+        enabled: welcomeEmailEnabled
+      })
+      welcomeEmailStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving welcome email template:', error)
+      welcomeEmailStatus = 'Save failed'
+    } finally {
+      welcomeEmailSaving = false
+      setTimeout(() => {
+        welcomeEmailStatus = ''
+      }, 2500)
+    }
+  }
+
+  const savePatientWelcomeTemplate = async () => {
+    try {
+      patientWelcomeSaving = true
+      patientWelcomeStatus = ''
+      await firebaseStorage.savePatientWelcomeEmailTemplate({
+        subject: patientWelcomeSubject.trim(),
+        text: patientWelcomeText.trim(),
+        html: patientWelcomeHtml.trim(),
+        fromName: patientWelcomeFromName.trim(),
+        fromEmail: patientWelcomeFromEmail.trim(),
+        replyTo: patientWelcomeReplyTo.trim(),
+        textOnly: patientWelcomeTextOnly,
+        enabled: patientWelcomeEnabled
+      })
+      patientWelcomeStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving patient welcome template:', error)
+      patientWelcomeStatus = 'Save failed'
+    } finally {
+      patientWelcomeSaving = false
+      setTimeout(() => {
+        patientWelcomeStatus = ''
+      }, 2500)
+    }
+  }
+
+  const saveAppointmentReminderTemplate = async () => {
+    try {
+      appointmentEmailSaving = true
+      appointmentEmailStatus = ''
+      await firebaseStorage.saveAppointmentReminderEmailTemplate({
+        subject: appointmentEmailSubject.trim(),
+        text: appointmentEmailText.trim(),
+        html: appointmentEmailHtml.trim(),
+        fromName: appointmentEmailFromName.trim(),
+        fromEmail: appointmentEmailFromEmail.trim(),
+        replyTo: appointmentEmailReplyTo.trim(),
+        textOnly: appointmentEmailTextOnly,
+        enabled: appointmentEmailEnabled
+      })
+      appointmentEmailStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving appointment reminder template:', error)
+      appointmentEmailStatus = 'Save failed'
+    } finally {
+      appointmentEmailSaving = false
+      setTimeout(() => {
+        appointmentEmailStatus = ''
+      }, 2500)
     }
   }
   
@@ -137,10 +1673,10 @@
   }
   
   // Load AI usage statistics
-  const loadAIUsageStats = () => {
+  const loadAIUsageStats = async () => {
     try {
       console.log('📊 Loading AI usage stats...')
-      aiUsageStats = aiTokenTracker.getUsageStats()
+      aiUsageStats = await firebaseStorage.getAllDoctorAIUsageSummary()
       console.log('📊 AI usage stats loaded:', aiUsageStats)
       
       // If no usage data exists, initialize with zero values
@@ -152,6 +1688,10 @@
           lastUpdated: null
         }
       }
+      aiWeeklyUsage = Array.isArray(aiUsageStats?.weeklyUsage) ? aiUsageStats.weeklyUsage : []
+      aiMonthlyUsage = Array.isArray(aiUsageStats?.monthlyUsage) ? aiUsageStats.monthlyUsage : []
+      aiRecentRequests = Array.isArray(aiUsageStats?.recentRequests) ? aiUsageStats.recentRequests : []
+      
     } catch (error) {
       console.error('❌ Error loading AI usage stats:', error)
       aiUsageStats = {
@@ -160,18 +1700,129 @@
         thisMonth: { tokens: 0, cost: 0, requests: 0 },
         lastUpdated: null
       }
+      aiWeeklyUsage = []
+      aiMonthlyUsage = []
+      aiRecentRequests = []
     }
+  }
+
+  const normalizeAIModelInput = (value = '', fallback = 'gpt-4o-mini') => {
+    const model = String(value || '').trim()
+    return model || fallback
+  }
+
+  const loadAIModelSettings = async () => {
+    try {
+      aiModelSettingsLoading = true
+      const settings = await firebaseStorage.getAIModelSettings()
+      aiImageAnalysisModel = normalizeAIModelInput(settings?.imageAnalysisModel, 'gpt-4o-mini')
+      aiOtherAnalysisModel = normalizeAIModelInput(settings?.otherAnalysisModel, 'gpt-4o-mini')
+      aiSpellGrammarModel = normalizeAIModelInput(settings?.spellGrammarModel, 'gpt-4o-mini')
+    } catch (error) {
+      console.error('❌ Error loading AI model settings:', error)
+      aiImageAnalysisModel = 'gpt-4o-mini'
+      aiOtherAnalysisModel = 'gpt-4o-mini'
+      aiSpellGrammarModel = 'gpt-4o-mini'
+    } finally {
+      aiModelSettingsLoading = false
+    }
+  }
+
+  const saveAIModelSettings = async () => {
+    try {
+      aiModelSettingsSaving = true
+      aiModelSettingsStatus = ''
+      await firebaseStorage.saveAIModelSettings({
+        imageAnalysisModel: normalizeAIModelInput(aiImageAnalysisModel, 'gpt-4o-mini'),
+        otherAnalysisModel: normalizeAIModelInput(aiOtherAnalysisModel, 'gpt-4o-mini'),
+        spellGrammarModel: normalizeAIModelInput(aiSpellGrammarModel, 'gpt-4o-mini'),
+        updatedBy: currentAdmin?.email || currentAdmin?.id || ''
+      })
+      aiModelSettingsStatus = 'Saved'
+    } catch (error) {
+      console.error('❌ Error saving AI model settings:', error)
+      aiModelSettingsStatus = error?.message || 'Save failed'
+    } finally {
+      aiModelSettingsSaving = false
+      setTimeout(() => {
+        aiModelSettingsStatus = ''
+      }, 2500)
+    }
+  }
+
+  const parseModelRate = (value = 0) => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed < 0) return 0
+    return parsed
+  }
+
+  const loadModelPricingRows = () => {
+    const configuredPricing = typeof aiTokenTracker?.getAllModelPricing === 'function'
+      ? aiTokenTracker.getAllModelPricing()
+      : {}
+    const baseModels = Array.from(new Set([
+      ...aiModelOptions,
+      ...Object.keys(configuredPricing || {})
+    ]))
+    modelPricingRows = baseModels.map((modelName) => ({
+      model: modelName,
+      prompt: parseModelRate(configuredPricing?.[modelName]?.prompt),
+      completion: parseModelRate(configuredPricing?.[modelName]?.completion)
+    }))
+  }
+
+  const emptyTokenUsageStats = () => ({
+    total: { tokens: 0, cost: 0, requests: 0 },
+    today: { tokens: 0, cost: 0, requests: 0 }
+  })
+
+  const resolveDoctorTokenUsageStats = (doctor) => {
+    const doctorId = String(doctor?.id || '').trim()
+    if (!doctorId) return emptyTokenUsageStats()
+    return serverDoctorTokenUsageMap[doctorId] || emptyTokenUsageStats()
   }
   
   // Load doctors data only (HIPAA compliant - no patient data access)
   const loadDoctors = async () => {
     try {
       console.log('🔍 Loading doctors...')
-      doctors = await firebaseStorage.getAllDoctors()
+      const fetchedDoctors = await firebaseStorage.getAllDoctors()
+      const dedupedDoctors = []
+      const seenByEmail = new Map()
+
+      fetchedDoctors.forEach((doctor) => {
+        const emailKey = (doctor?.email || '').toLowerCase()
+        if (!emailKey) {
+          dedupedDoctors.push(doctor)
+          return
+        }
+
+        const existing = seenByEmail.get(emailKey)
+        if (!existing) {
+          seenByEmail.set(emailKey, doctor)
+          return
+        }
+
+        const existingDate = new Date(existing.createdAt || 0).getTime()
+        const currentDate = new Date(doctor.createdAt || 0).getTime()
+        if (currentDate > existingDate) {
+          seenByEmail.set(emailKey, doctor)
+        }
+      })
+
+      seenByEmail.forEach((doctor) => {
+        dedupedDoctors.push(doctor)
+      })
+
+      doctors = dedupedDoctors
+      await applyReferralBonuses(doctors)
+      serverDoctorTokenUsageMap = await firebaseStorage.getDoctorAIUsageStatsMap(
+        doctors.map((doctor) => doctor.id)
+      )
       
       console.log(`🔍 Found ${doctors.length} doctors`)
       
-      // Get patient counts for each doctor (aggregated data only)
+      // Get patient counts and token usage for each doctor (aggregated data only)
       for (const doctor of doctors) {
         try {
           console.log(`🔍 Getting patient count for doctor: ${doctor.email}`)
@@ -180,9 +1831,13 @@
           
           // Add patient count to doctor object for display (aggregated data only)
           doctor.patientCount = doctorPatients.length
+          
+          doctor.tokenUsage = resolveDoctorTokenUsageStats(doctor)
+          
         } catch (error) {
-          console.error(`❌ Error loading patient count for doctor ${doctor.id}:`, error)
+          console.error(`❌ Error loading data for doctor ${doctor.id}:`, error)
           doctor.patientCount = 0
+          doctor.tokenUsage = emptyTokenUsageStats()
         }
       }
       
@@ -204,522 +1859,1530 @@
   // Handle tab change
   const handleTabChange = (tab) => {
     activeTab = tab
+    if (tab === 'ai-usage') {
+      aiUsageView = 'statistics'
+    }
+    if (tab === 'logs' && !emailLogsLoading && emailLogs.length === 0) {
+      loadEmailLogs()
+    }
+    if (tab === 'logs' && !authLogsLoading && authLogs.length === 0) {
+      loadAuthLogs()
+    }
+    if (tab === 'logs' && !smsLogsLoading && smsLogs.length === 0) {
+      loadSmsLogs()
+    }
+    if (tab === 'promotions' && !promoCodesLoading && promoCodes.length === 0) {
+      loadPromoCodes()
+    }
+    if (tab === 'payments' && !paymentPricingLoading && !paymentPricingLoaded) {
+      loadPaymentPricingSettings()
+    }
+  }
+
+  const openDoctorView = async (doctor) => {
+    if (!doctor) return
+    selectedDoctorView = doctor
+    activeTab = 'doctor-view'
+    await loadDoctorWalletData(doctor.id)
+  }
+
+  const closeDoctorView = () => {
+    selectedDoctorView = null
+    doctorPaymentRecords = []
+    doctorBillingHistoryCollapsed = false
+    doctorBillingHistoryExpanded = false
+    doctorPaymentRecordsError = ''
+    doctorReferralWalletStats = {
+      totalReferredDoctors: 0,
+      referralBonusAppliedCount: 0,
+      referralBonusPendingCount: 0,
+      referralFreeMonthsAvailable: 0
+    }
+    doctorAdminDiscountPercentInput = 0
+    doctorAdminDiscountSaving = false
+    doctorAdminDiscountStatus = ''
+    activeTab = 'doctors'
+  }
+
+  const loadDoctorWalletData = async (doctorId) => {
+    const normalizedDoctorId = String(doctorId || '').trim()
+    if (!normalizedDoctorId) return
+    try {
+      doctorPaymentRecordsLoading = true
+      doctorPaymentRecordsError = ''
+      const [latestDoctor, paymentRecords, referralWalletStats] = await Promise.all([
+        firebaseStorage.getDoctorById(normalizedDoctorId),
+        firebaseStorage.getDoctorPaymentRecords(
+          normalizedDoctorId,
+          200,
+          selectedDoctorView?.email || ''
+        ),
+        firebaseStorage.getDoctorReferralWalletStats(normalizedDoctorId)
+      ])
+      const selectedDoctorTokenUsage = await firebaseStorage.getDoctorAIUsageStats(normalizedDoctorId)
+      serverDoctorTokenUsageMap = {
+        ...serverDoctorTokenUsageMap,
+        [normalizedDoctorId]: selectedDoctorTokenUsage
+      }
+      doctorPaymentRecords = paymentRecords
+      doctorBillingHistoryCollapsed = false
+      doctorBillingHistoryExpanded = false
+      doctorReferralWalletStats = referralWalletStats
+      if (latestDoctor?.id) {
+        doctors = doctors.map((doctor) => {
+          if (doctor.id !== latestDoctor.id) return doctor
+          const mergedDoctor = { ...doctor, ...latestDoctor }
+          return { ...mergedDoctor, tokenUsage: resolveDoctorTokenUsageStats(mergedDoctor) }
+        })
+        const mergedSelectedDoctor = { ...selectedDoctorView, ...latestDoctor }
+        selectedDoctorView = {
+          ...mergedSelectedDoctor,
+          tokenUsage: resolveDoctorTokenUsageStats(mergedSelectedDoctor)
+        }
+        doctorAdminDiscountPercentInput = Math.max(
+          0,
+          Math.min(100, Number(selectedDoctorView?.adminStripeDiscountPercent || 0))
+        )
+        doctorAdminDiscountStatus = ''
+      }
+    } catch (error) {
+      console.error('❌ Error loading doctor wallet data:', error)
+      doctorPaymentRecords = []
+      doctorPaymentRecordsError = error?.message || 'Failed to load doctor billing records.'
+    } finally {
+      doctorPaymentRecordsLoading = false
+    }
+  }
+
+  const saveDoctorAdminDiscount = async () => {
+    if (!selectedDoctorView?.id || doctorAdminDiscountSaving) return
+    try {
+      doctorAdminDiscountSaving = true
+      doctorAdminDiscountStatus = ''
+      const normalizedPercent = Math.max(
+        0,
+        Math.min(100, Number(doctorAdminDiscountPercentInput || 0))
+      )
+      doctorAdminDiscountPercentInput = normalizedPercent
+      const updatedDoctor = {
+        ...selectedDoctorView,
+        adminStripeDiscountPercent: normalizedPercent
+      }
+      await firebaseStorage.updateDoctor(updatedDoctor)
+      selectedDoctorView = {
+        ...selectedDoctorView,
+        adminStripeDiscountPercent: normalizedPercent
+      }
+      doctors = doctors.map((doctor) =>
+        doctor.id === selectedDoctorView.id
+          ? { ...doctor, adminStripeDiscountPercent: normalizedPercent }
+          : doctor
+      )
+      doctorAdminDiscountStatus = 'Saved'
+      setTimeout(() => {
+        if (doctorAdminDiscountStatus === 'Saved') {
+          doctorAdminDiscountStatus = ''
+        }
+      }, 1800)
+    } catch (error) {
+      console.error('❌ Error saving doctor admin discount:', error)
+      doctorAdminDiscountStatus = error?.message || 'Save failed'
+    } finally {
+      doctorAdminDiscountSaving = false
+    }
   }
   
   // Format date
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString()
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
   }
+
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'N/A'
+    return new Date(dateString).toLocaleString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
+  }
+
+  const isTrialActive = (doctor) => {
+    if (!doctor?.accessExpiresAt) return false
+    const expiresAt = new Date(doctor.accessExpiresAt)
+    if (Number.isNaN(expiresAt.getTime())) return false
+    return Date.now() <= expiresAt.getTime()
+  }
+
+  const isReferralBonusPending = (doctor) => {
+    if (!doctor?.referredByDoctorId) return false
+    if (doctor.referralBonusApplied) return false
+    if (!doctor.referralEligibleAt) return false
+    const eligibleAt = new Date(doctor.referralEligibleAt)
+    if (Number.isNaN(eligibleAt.getTime())) return false
+    return Date.now() < eligibleAt.getTime()
+  }
+
+  const getDisplayedDoctors = () => {
+    return showReferralPendingOnly ?
+      doctors.filter(isReferralBonusPending) :
+      doctors
+  }
+
+  const getOwnerDoctor = (doctor) => {
+    if (!doctor?.externalDoctor || !doctor?.invitedByDoctorId) return null
+    return doctors.find(d => d.id === doctor.invitedByDoctorId) || null
+  }
+
+  const isApprovalPending = (doctor) => doctor?.isApproved === false
+
+  const isOwnerDisabled = (doctor) => {
+    const ownerDoctor = getOwnerDoctor(doctor)
+    return !!ownerDoctor?.isDisabled
+  }
+
+  const isEffectivelyDisabled = (doctor) => {
+    return isApprovalPending(doctor) || !!doctor?.isDisabled || isOwnerDisabled(doctor)
+  }
+
+  const addOneMonthToDate = (value) => {
+    const base = value ? new Date(value) : new Date()
+    const baseTime = Number.isNaN(base.getTime()) ? new Date() : base
+    const now = new Date()
+    const effectiveBase = baseTime < now ? now : baseTime
+    const next = new Date(effectiveBase)
+    next.setMonth(next.getMonth() + 1)
+    return next.toISOString()
+  }
+
+  let referralBonusRunning = false
+
+  const resolveReferrerId = (referrerId) => {
+    if (!referrerId) return ''
+    const direct = doctors.find(d => d.id === referrerId)
+    if (direct) return direct.id
+    const shortMatch = doctors.find(d => formatDoctorId(d.id) === referrerId)
+    return shortMatch ? shortMatch.id : referrerId
+  }
+
+  const applyReferralBonuses = async (currentDoctors) => {
+    if (referralBonusRunning) return
+    referralBonusRunning = true
+    try {
+      const now = new Date()
+      const eligible = currentDoctors.filter(d =>
+        d.referredByDoctorId &&
+        d.referralEligibleAt &&
+        !d.referralBonusApplied &&
+        d.isApproved !== false &&
+        !d.isDisabled
+      )
+      for (const referredDoctor of eligible) {
+        const eligibleAt = new Date(referredDoctor.referralEligibleAt)
+        if (Number.isNaN(eligibleAt.getTime()) || eligibleAt > now) {
+          continue
+        }
+        const referrerId = resolveReferrerId(referredDoctor.referredByDoctorId)
+        const referrer = currentDoctors.find(d => d.id === referrerId) || null
+
+        const updatedReferred = {
+          ...referredDoctor,
+          referredByDoctorId: referrerId,
+          accessExpiresAt: addOneMonthToDate(referredDoctor.accessExpiresAt),
+          referralBonusApplied: true,
+          referralBonusAppliedAt: new Date().toISOString()
+        }
+        await firebaseStorage.updateDoctor(updatedReferred)
+        await firebaseStorage.addDoctorPaymentRecord({
+          doctorId: updatedReferred.id,
+          type: 'referral_bonus',
+          source: 'referral',
+          status: 'credited',
+          monthsDelta: 1,
+          note: 'Referral free month credited'
+        })
+
+        let updatedReferrer = null
+        if (referrer) {
+          updatedReferrer = {
+            ...referrer,
+            accessExpiresAt: addOneMonthToDate(referrer.accessExpiresAt)
+          }
+          await firebaseStorage.updateDoctor(updatedReferrer)
+          await firebaseStorage.addDoctorPaymentRecord({
+            doctorId: updatedReferrer.id,
+            type: 'referral_reward',
+            source: 'referral',
+            status: 'credited',
+            monthsDelta: 1,
+            referenceId: updatedReferred.id,
+            note: `Referral reward from ${formatDoctorId(updatedReferred.id)}`
+          })
+        }
+
+        doctors = doctors.map(d => {
+          if (d.id === updatedReferred.id) {
+            return { ...d, ...updatedReferred }
+          }
+          if (updatedReferrer && d.id === updatedReferrer.id) {
+            return { ...d, accessExpiresAt: updatedReferrer.accessExpiresAt }
+          }
+          return d
+        })
+      }
+    } catch (error) {
+      console.error('❌ Error applying referral bonuses:', error)
+    } finally {
+      referralBonusRunning = false
+    }
+  }
+
+  const getDoctorStatusLabel = (doctor) => {
+    if (isApprovalPending(doctor)) {
+      return 'Approval Pending'
+    }
+    if (isOwnerDisabled(doctor)) {
+      return 'Disabled (Owner)'
+    }
+    return doctor?.isDisabled ? 'Disabled' : 'Enabled'
+  }
+
+  const getDoctorStatusBadgeClass = (doctor) => {
+    if (isApprovalPending(doctor)) {
+      return 'bg-amber-100 text-amber-700'
+    }
+    return isEffectivelyDisabled(doctor) ? 'bg-red-100 text-red-700' : 'bg-teal-100 text-teal-700'
+  }
+
+  const canToggleDoctor = (doctor) => {
+    if (!doctor) return false
+    if (doctor.isAdmin || doctor.email === 'senakahks@gmail.com') return false
+    if (doctor.externalDoctor && isOwnerDisabled(doctor)) return false
+    if (isApprovalPending(doctor)) return false
+    return true
+  }
+
+  const approveDoctor = async (doctor) => {
+    if (!doctor || doctor.isApproved) return
+    try {
+      const date = new Date()
+      date.setMonth(date.getMonth() + 1)
+      let referredByDoctorId = doctor.referredByDoctorId
+      if (referredByDoctorId) {
+        referredByDoctorId = resolveReferrerId(referredByDoctorId)
+      }
+      const updatedDoctor = {
+        ...doctor,
+        isApproved: true,
+        isDisabled: false,
+        accessExpiresAt: date.toISOString(),
+        referredByDoctorId,
+        referralEligibleAt: referredByDoctorId ? date.toISOString() : null,
+        referralBonusApplied: false
+      }
+      await firebaseStorage.updateDoctor(updatedDoctor)
+      doctors = doctors.map(d => d.id === doctor.id ? { ...d, ...updatedDoctor } : d)
+      try {
+        await sendTemplateToDoctor('approvalWelcomeEmail', doctor.id, () => {})
+      } catch (error) {
+        console.error('❌ Error sending approval welcome email:', error)
+      }
+    } catch (error) {
+      console.error('❌ Error approving doctor:', error)
+    }
+  }
+
+  const toggleDoctorStatus = async (doctor) => {
+    if (!doctor || !canToggleDoctor(doctor)) return
+    try {
+      const enabling = doctor.isDisabled
+      const accessExpiresAt = enabling
+        ? (() => {
+            const date = new Date()
+            date.setMonth(date.getMonth() + 1)
+            return date.toISOString()
+          })()
+        : doctor.accessExpiresAt || null
+      const updatedDoctor = { ...doctor, isDisabled: !doctor.isDisabled, accessExpiresAt }
+      await firebaseStorage.updateDoctor(updatedDoctor)
+      doctors = doctors.map(d => d.id === doctor.id ? { ...d, isDisabled: updatedDoctor.isDisabled, accessExpiresAt } : d)
+    } catch (error) {
+      console.error('❌ Error updating doctor status:', error)
+    }
+  }
+
+  const formatCompactNumber = (value) => {
+    const num = Number(value)
+    if (!Number.isFinite(num)) {
+      return '0'
+    }
+    const abs = Math.abs(num)
+    const format = (divisor, suffix) => {
+      const trimmed = (num / divisor).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')
+      return `${trimmed}${suffix}`
+    }
+    if (abs >= 1e12) return format(1e12, 'T')
+    if (abs >= 1e9) return format(1e9, 'G')
+    if (abs >= 1e6) return format(1e6, 'M')
+    if (abs >= 1e3) return format(1e3, 'K')
+    return num.toLocaleString()
+  }
+
+  const formatMonthsLabel = (monthsValue) => {
+    const months = Number(monthsValue || 0)
+    if (!Number.isFinite(months)) return '0 months'
+    return `${months} month${months === 1 ? '' : 's'}`
+  }
+
+  const SETTLED_PAYMENT_STATUSES = new Set(['confirmed', 'paid', 'succeeded', 'complete', 'completed', 'recorded'])
+  const FAILED_PAYMENT_STATUSES = new Set(['failed', 'fail', 'canceled', 'cancelled'])
+
+  const getRecordTimestamp = (record) => {
+    const time = new Date(record?.createdAt || '').getTime()
+    return Number.isFinite(time) ? time : 0
+  }
+
+  const deriveWalletSummaryFromRecords = (records = []) => {
+    if (!Array.isArray(records) || records.length === 0) {
+      return {
+        walletMonths: 0,
+        paymentStatus: 'N/A',
+        accessExpiresAt: null
+      }
+    }
+
+    const sorted = [...records].sort((a, b) => getRecordTimestamp(b) - getRecordTimestamp(a))
+    const latestRecord = sorted[0]
+    const settled = sorted.filter((record) =>
+      SETTLED_PAYMENT_STATUSES.has(String(record?.status || '').toLowerCase())
+    )
+
+    const walletMonths = settled.reduce((total, record) => {
+      const months = Number(record?.monthsDelta || 0)
+      return total + (Number.isFinite(months) ? Math.max(0, months) : 0)
+    }, 0)
+
+    let accessExpiresAt = null
+    const latestSettled = settled[0]
+    const latestSettledDate = latestSettled?.createdAt ? new Date(latestSettled.createdAt) : null
+    const latestSettledMonths = Number(latestSettled?.monthsDelta || 0)
+    if (latestSettledDate && !Number.isNaN(latestSettledDate.getTime()) && latestSettledMonths > 0) {
+      const derivedExpiry = new Date(latestSettledDate)
+      derivedExpiry.setMonth(derivedExpiry.getMonth() + latestSettledMonths)
+      accessExpiresAt = derivedExpiry.toISOString()
+    }
+
+    return {
+      walletMonths,
+      paymentStatus: latestRecord?.status || 'N/A',
+      accessExpiresAt
+    }
+  }
+
+  const getStripeOutcome = (record) => {
+    const status = String(record?.status || '').toLowerCase()
+    if (SETTLED_PAYMENT_STATUSES.has(status)) return 'success'
+    if (FAILED_PAYMENT_STATUSES.has(status)) return 'fail'
+    return 'pending'
+  }
+
+  const getCanonicalPaymentReference = (record) => {
+    const metadata = record?.metadata && typeof record.metadata === 'object' ? record.metadata : {}
+    const refs = [
+      record?.referenceId,
+      record?.sessionId,
+      record?.checkoutSessionId,
+      record?.paymentIntentId,
+      metadata?.referenceId,
+      metadata?.sessionId,
+      metadata?.checkoutSessionId,
+      metadata?.paymentIntentId
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+    if (refs.length === 0) return ''
+    const byPrefix = (prefix) => refs.find((ref) => ref.startsWith(prefix))
+    return byPrefix('cs_') || byPrefix('pi_') || refs[0]
+  }
+
+  const getRecordPriority = (record) => {
+    let score = 0
+    const outcome = getStripeOutcome(record)
+    if (outcome !== 'pending') score += 50
+    if (Number(record?.amount || 0) > 0) score += 40
+    if (String(record?.sourceCollection || '').toLowerCase() === 'doctorpaymentrecords') score += 20
+    if (String(record?.source || '').toLowerCase().includes('stripe')) score += 5
+    return score
+  }
+
+  const formatBillingAmount = (record) => {
+    const amount = Number(record?.amount || 0)
+    if (!Number.isFinite(amount) || amount <= 0) return '-'
+    const currency = String(record?.currency || '').toUpperCase()
+    return `${currency ? `${currency} ` : ''}${amount.toFixed(2)}`
+  }
+
+  const dedupeVisibleDoctorRecords = (records) => {
+    const toTimestamp = (record) => {
+      const ts = new Date(record?.createdAt || 0).getTime()
+      return Number.isFinite(ts) ? ts : 0
+    }
+    const DUPLICATE_WINDOW_MS = 3 * 60 * 1000
+    const sorted = [...(records || [])].sort((a, b) => toTimestamp(b) - toTimestamp(a))
+
+    const byReference = new Map()
+    sorted.forEach((record) => {
+      const ref = getCanonicalPaymentReference(record)
+      if (!ref) return
+      const existing = byReference.get(ref)
+      if (
+        !existing ||
+        getRecordPriority(record) > getRecordPriority(existing) ||
+        (
+          getRecordPriority(record) === getRecordPriority(existing) &&
+          toTimestamp(record) > toTimestamp(existing)
+        )
+      ) {
+        byReference.set(ref, record)
+      }
+    })
+
+    const preDeduped = sorted.filter((record) => {
+      const ref = getCanonicalPaymentReference(record)
+      if (!ref) return true
+      const chosen = byReference.get(ref)
+      return chosen?.id === record.id
+    })
+
+    const deduped = []
+    preDeduped.forEach((record) => {
+      const outcome = getStripeOutcome(record)
+      const monthsDelta = Number(record?.monthsDelta || 0)
+      const amount = Number(record?.amount || 0)
+      const currency = String(record?.currency || '').toUpperCase()
+      const ts = toTimestamp(record)
+      const equivalent = deduped.find((existing) => {
+        if (getStripeOutcome(existing) !== outcome) return false
+        const existingMonths = Number(existing?.monthsDelta || 0)
+        const existingCurrency = String(existing?.currency || '').toUpperCase()
+        const monthMatches = monthsDelta <= 0 || existingMonths <= 0 || existingMonths === monthsDelta
+        const currencyMatches = !currency || !existingCurrency || existingCurrency === currency
+        if (!monthMatches || !currencyMatches) return false
+        return Math.abs(toTimestamp(existing) - ts) <= DUPLICATE_WINDOW_MS
+      })
+      if (!equivalent) {
+        deduped.push(record)
+        return
+      }
+      const existingAmount = Number(equivalent?.amount || 0)
+      // Prefer the paid row when paired with a duplicate zero-amount event row.
+      if (
+        amount > existingAmount ||
+        (amount === existingAmount && getRecordPriority(record) > getRecordPriority(equivalent))
+      ) {
+        const idx = deduped.findIndex((row) => row.id === equivalent.id)
+        if (idx >= 0) deduped[idx] = record
+      }
+    })
+    return deduped.sort((a, b) => toTimestamp(b) - toTimestamp(a))
+  }
+
+  $: doctorWalletSummaryFallback = deriveWalletSummaryFromRecords(doctorPaymentRecords)
+  $: visibleDoctorPaymentRecords = (doctorPaymentRecords || []).filter((record) => {
+    const source = String(record?.source || '').toLowerCase()
+    const sourceCollection = String(record?.sourceCollection || '').toLowerCase()
+    const isStripeRecord = source.includes('stripe') || sourceCollection.includes('stripe')
+    if (!isStripeRecord) return true
+    return getStripeOutcome(record) !== 'pending'
+  })
+  $: dedupedDoctorPaymentRecords = dedupeVisibleDoctorRecords(visibleDoctorPaymentRecords)
+  $: displayedDoctorPaymentRecords = doctorBillingHistoryExpanded
+    ? dedupedDoctorPaymentRecords
+    : dedupedDoctorPaymentRecords.slice(0, DOCTOR_BILLING_PREVIEW_COUNT)
+  $: canExpandDoctorBillingHistory = dedupedDoctorPaymentRecords.length > DOCTOR_BILLING_PREVIEW_COUNT
+  $: displayWalletMonths = selectedDoctorView?.walletMonths ?? doctorWalletSummaryFallback.walletMonths
+  $: displayPaymentStatus = selectedDoctorView?.paymentStatus || doctorWalletSummaryFallback.paymentStatus || 'N/A'
+  $: displayAccessExpiresAt = selectedDoctorView?.accessExpiresAt || doctorWalletSummaryFallback.accessExpiresAt
+  $: settledPaymentRecords = (doctorPaymentRecords || []).filter((record) =>
+    SETTLED_PAYMENT_STATUSES.has(String(record?.status || '').toLowerCase())
+  )
+  $: displayTotalPaidAmount = settledPaymentRecords.reduce((sum, record) => {
+    const amount = Number(record?.amount || 0)
+    return sum + (Number.isFinite(amount) ? Math.max(0, amount) : 0)
+  }, 0)
+  $: displayTotalPaidCurrency = String(settledPaymentRecords[0]?.currency || doctorPaymentRecords?.[0]?.currency || '').toUpperCase()
   
   // Refresh data
   const refreshData = async () => {
     await loadAdminData()
   }
 
+  // Quota Management Functions
+  
+  // Get doctor name by ID
+  const getDoctorName = (doctorId) => {
+    const doctor = doctors.find(d => d.id === doctorId || d.uid === doctorId)
+    if (doctor) {
+      return doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'
+    }
+    return 'Unknown Doctor'
+  }
+  
+  // Open quota modal
+  const openQuotaModal = (doctorId, currentQuota = 0) => {
+    selectedDoctorId = doctorId
+    quotaInput = currentQuota
+    showQuotaModal = true
+  }
+  
+  // Close quota modal
+  const closeQuotaModal = () => {
+    showQuotaModal = false
+    selectedDoctorId = ''
+    quotaInput = 0
+  }
+  
+  // Save quota
+  const saveQuota = () => {
+    if (!selectedDoctorId || quotaInput < 0) return
+    
+    try {
+      aiTokenTracker.setDoctorQuota(selectedDoctorId, parseInt(quotaInput))
+      
+      // Show success notification
+      console.log(`✅ Quota set for doctor ${selectedDoctorId}: ${quotaInput} tokens`)
+      
+      // Close modal
+      closeQuotaModal()
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        void loadAIUsageStats()
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Error setting quota:', error)
+    }
+  }
+
+  // Configuration Management Functions
+  
+  // Save default quota
+  const saveDefaultQuota = () => {
+    if (!defaultQuotaInput || defaultQuotaInput < 0) return
+    
+    try {
+      aiTokenTracker.setDefaultQuota(defaultQuotaInput)
+      console.log(`✅ Default quota saved: ${defaultQuotaInput} tokens`)
+      
+      // Clear input
+      defaultQuotaInput = 0
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        void loadAIUsageStats()
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Error saving default quota:', error)
+    }
+  }
+  
+  // Apply default quota to all doctors
+  const applyDefaultQuotaToAll = () => {
+    try {
+      const appliedCount = aiTokenTracker.applyDefaultQuotaToAllDoctors()
+      console.log(`✅ Applied default quota to ${appliedCount} doctors`)
+      
+      // Refresh the page to show updated data
+      setTimeout(() => {
+        void loadAIUsageStats()
+      }, 100)
+      
+    } catch (error) {
+      console.error('❌ Error applying default quota:', error)
+    }
+  }
+  
+  const addModelPricingRow = () => {
+    modelPricingRows = [
+      ...modelPricingRows,
+      { model: '', prompt: 0, completion: 0 }
+    ]
+  }
+
+  const removeModelPricingRow = (index) => {
+    modelPricingRows = modelPricingRows.filter((_, rowIndex) => rowIndex !== index)
+  }
+
+  const saveModelPricing = async () => {
+    try {
+      modelPricingStatus = ''
+      const existing = typeof aiTokenTracker?.getAllModelPricing === 'function'
+        ? aiTokenTracker.getAllModelPricing()
+        : {}
+      const nextModels = new Set()
+
+      modelPricingRows.forEach((row) => {
+        const modelName = String(row?.model || '').trim()
+        if (!modelName) return
+        const promptRate = parseModelRate(row?.prompt)
+        const completionRate = parseModelRate(row?.completion)
+        aiTokenTracker.setModelPricing(modelName, promptRate, completionRate)
+        nextModels.add(modelName)
+      })
+
+      Object.keys(existing || {}).forEach((modelName) => {
+        if (!nextModels.has(modelName)) {
+          aiTokenTracker.removeModelPricing(modelName)
+        }
+      })
+
+      modelPricingStatus = 'Saved'
+      loadModelPricingRows()
+    } catch (error) {
+      console.error('❌ Error saving model pricing:', error)
+      modelPricingStatus = error?.message || 'Save failed'
+    } finally {
+      setTimeout(() => {
+        modelPricingStatus = ''
+      }, 2500)
+    }
+  }
+
   // Delete doctor
   const deleteDoctor = async (doctor) => {
-    try {
-      // Show confirmation dialog
-      const confirmed = confirm(
-        `Are you sure you want to delete doctor "${doctor.name || doctor.email}"?\n\n` +
-        `This will permanently delete:\n` +
-        `• The doctor account\n` +
-        `• All patients belonging to this doctor\n` +
-        `• All prescriptions, symptoms, and illnesses\n` +
-        `• All drug database entries\n\n` +
-        `This action cannot be undone!`
-      )
-      
-      if (!confirmed) {
-        return
-      }
-      
+    const targetDoctor = {
+      id: doctor?.id,
+      email: doctor?.email,
+      name: doctor?.name || `${doctor?.firstName || ''} ${doctor?.lastName || ''}`.trim()
+    }
+
+    pendingAction = async () => {
+      try {
       // Show loading state
-      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      const deleteButton = document.querySelector(`[data-doctor-id="${targetDoctor.id}"]`)
       if (deleteButton) {
         deleteButton.disabled = true
-        deleteButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Deleting...'
+          deleteButton.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Deleting...'
       }
       
-      console.log('🗑️ Admin: Deleting doctor:', doctor.email)
+      console.log('🗑️ Admin: Deleting doctor:', targetDoctor.email)
       
       // Call the delete function
-      await firebaseStorage.deleteDoctor(doctor.id)
+      try {
+        await firebaseStorage.deleteDoctor(targetDoctor.id)
+      } catch (deleteError) {
+        console.warn('⚠️ Full doctor cleanup failed, retrying without patient cleanup:', deleteError)
+        await firebaseStorage.deleteDoctor(targetDoctor.id, { skipPatientCleanup: true })
+      }
       
       // Remove doctor from local array
-      doctors = doctors.filter(d => d.id !== doctor.id)
+      doctors = doctors.filter(d => d.id !== targetDoctor.id)
       
       // Update statistics
       statistics.totalDoctors = doctors.length
       
-      // Recalculate patient counts
-      await loadDoctorsAndPatients()
+      // Refresh doctors list and stats
+      await loadDoctors()
       
       console.log('✅ Admin: Doctor deleted successfully')
-      alert(`Doctor "${doctor.name || doctor.email}" has been deleted successfully.`)
+        
+        // Show success message
+        showConfirmation(
+          'Success',
+          `Doctor "${targetDoctor.name || targetDoctor.email}" has been deleted successfully.`,
+          'OK',
+          '',
+          'success'
+        )
       
     } catch (error) {
       console.error('❌ Admin: Error deleting doctor:', error)
-      alert('Error deleting doctor. Please try again.')
+        
+        // Show error message
+        showConfirmation(
+          'Error',
+          error?.message || 'Error deleting doctor. Please try again.',
+          'OK',
+          '',
+          'danger'
+        )
       
       // Reset button state
-      const deleteButton = document.querySelector(`[data-doctor-id="${doctor.id}"]`)
+      const deleteButton = document.querySelector(`[data-doctor-id="${targetDoctor.id}"]`)
       if (deleteButton) {
         deleteButton.disabled = false
-        deleteButton.innerHTML = '<i class="fas fa-trash me-2"></i>Delete'
+          deleteButton.innerHTML = '<i class="fas fa-trash mr-2"></i>Delete'
+        }
       }
     }
+    
+    showConfirmation(
+      'Delete Doctor',
+      `Are you sure you want to delete doctor "${targetDoctor.name || targetDoctor.email}"?\n\nThis will permanently delete:\n• The doctor account\n• All patients belonging to this doctor\n• All prescriptions, symptoms, and illnesses\n• All drug database entries\n\nThis action cannot be undone!`,
+      'Delete',
+      'Cancel',
+      'danger'
+    )
   }
 </script>
 
-<div class="min-vh-100 bg-light">
+<div class="min-h-screen bg-gray-50">
   {#if loading}
-    <div class="d-flex justify-content-center align-items-center vh-100">
-      <div class="text-center">
-        <div class="spinner-border text-danger mb-3" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="text-muted">Loading admin dashboard...</p>
-      </div>
-    </div>
+    <LoadingSpinner 
+      size="large" 
+      color="red" 
+      text="Loading admin dashboard..." 
+      fullScreen={true}
+    />
   {:else}
     <!-- Admin Header -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark" style="height: 50px; min-height: 50px; max-height: 50px; padding: 0.25rem 1rem;">
-      <div class="container-fluid">
-        <span class="navbar-brand fs-5 fw-semibold text-white py-1 my-0">
-          <i class="fas fa-shield-alt me-2"></i>
+    <nav class="bg-gray-900 border-gray-200 dark:bg-gray-900" style="height: 50px; min-height: 50px; max-height: 50px;">
+      <div class="max-w-screen-xl flex flex-wrap items-center justify-between mx-auto px-4 py-1">
+        <span class="text-lg font-semibold text-white">
+          <i class="fas fa-shield-alt mr-2"></i>
           Admin Panel
         </span>
         
-        <div class="navbar-nav ms-auto d-flex flex-row align-items-center m-0 p-0">
-          <div class="nav-item dropdown">
-            <button class="nav-link dropdown-toggle text-white border-0 bg-transparent py-1 px-2 small" type="button" data-bs-toggle="dropdown">
-              <i class="fas fa-user-shield me-2"></i>
-              {currentAdmin?.name || 'Admin'}
+        <div class="flex items-center gap-3">
+          {#if handleBackToApp}
+            <button
+              type="button"
+              class="text-white border border-gray-500 hover:bg-gray-800 font-medium rounded-lg text-xs px-3 py-1.5 transition-colors duration-200 flex items-center"
+              on:click={handleBackToApp}
+            >
+              <i class="fas fa-user-md mr-2"></i>
+              Doctor Panel
             </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li><h6 class="dropdown-header">Admin Account</h6></li>
-              <li><span class="dropdown-item-text">{currentAdmin?.email}</span></li>
-              <li><hr class="dropdown-divider"></li>
-              <li>
-                <button class="dropdown-item" on:click={handleSignOut}>
-                  <i class="fas fa-sign-out-alt me-2"></i>Sign Out
+          {/if}
+          <div class="relative">
+            <button 
+              class="text-white hover:text-gray-300 border-0 bg-transparent py-1 px-2 text-sm flex items-center transition-colors duration-200" 
+              type="button" 
+              data-dropdown-toggle="adminDropdown"
+              data-dropdown-placement="bottom-end"
+              aria-expanded="false"
+            >
+              <i class="fas fa-user-shield mr-2"></i>
+              {currentAdmin?.name || 'Admin'}
+              <svg class="w-2.5 h-2.5 ml-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
+              </svg>
+            </button>
+            <div 
+              id="adminDropdown" 
+              class="z-10 hidden bg-white divide-y divide-gray-100 rounded-lg shadow w-44 dark:bg-gray-700"
+            >
+              <div class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                <div class="font-medium">Admin Account</div>
+                <div class="truncate">{currentAdmin?.email}</div>
+              </div>
+              <ul class="py-2 text-sm text-gray-700 dark:text-gray-200">
+                <li>
+                  <button 
+                    type="button"
+                    class="block w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" 
+                    on:click={handleSignOut}
+                  >
+                    <i class="fas fa-sign-out-alt mr-2"></i>Sign Out
                 </button>
               </li>
             </ul>
+            </div>
           </div>
         </div>
       </div>
     </nav>
     
     <!-- Main Content -->
-    <div class="container-fluid mt-4">
-      <div class="row mx-2 mx-md-3 mx-lg-4">
+    <div class="max-w-screen-xl mx-auto px-4 py-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <!-- Sidebar -->
-        <div class="col-md-3 col-lg-2">
-          <div class="list-group">
+        <div class="lg:col-span-3">
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="p-4">
+              <nav class="space-y-2">
             <button
-              class="list-group-item list-group-item-action {activeTab === 'overview' ? 'active' : ''}"
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'overview' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
               on:click={() => handleTabChange('overview')}
             >
-              <i class="fas fa-chart-bar me-2"></i>Overview
+                  <i class="fas fa-chart-bar mr-3"></i>Overview
             </button>
             <button
-              class="list-group-item list-group-item-action {activeTab === 'doctors' ? 'active' : ''}"
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'doctors' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
               on:click={() => handleTabChange('doctors')}
             >
-              <i class="fas fa-user-md me-2"></i>Doctors
+                  <i class="fas fa-user-md mr-3"></i>Doctors
             </button>
             <!-- Patients tab removed for HIPAA compliance - admins should not access patient PHI data -->
             <button
-              class="list-group-item list-group-item-action {activeTab === 'ai-usage' ? 'active' : ''}"
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'ai-usage' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
               on:click={() => handleTabChange('ai-usage')}
             >
-              <i class="fas fa-brain me-2 text-danger"></i>AI Usage
+                  <i class="fas fa-brain mr-3 text-red-500"></i>AI Usage
             </button>
             <button
-              class="list-group-item list-group-item-action {activeTab === 'ai-logs' ? 'active' : ''}"
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'ai-logs' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
               on:click={() => handleTabChange('ai-logs')}
             >
-              <i class="fas fa-brain me-2 text-danger"></i>AI Logs
+                  <i class="fas fa-brain mr-3 text-red-500"></i>AI Logs
             </button>
             <button
-              class="list-group-item list-group-item-action {activeTab === 'system' ? 'active' : ''}"
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'logs' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('logs')}
+            >
+                  <i class="fas fa-clipboard-list mr-3"></i>Logs
+            </button>
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'payments' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('payments')}
+            >
+                  <i class="fas fa-credit-card mr-3"></i>Payments
+            </button>
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'promotions' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('promotions')}
+            >
+                  <i class="fas fa-bullhorn mr-3"></i>Promotions
+            </button>
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'messaging' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('messaging')}
+            >
+                  <i class="fas fa-comment-dots mr-3"></i>Messaging
+            </button>
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'email' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
+              on:click={() => handleTabChange('email')}
+            >
+                  <i class="fas fa-envelope mr-3"></i>Email
+            </button>
+            <hr class="border-gray-200" />
+            <button
+                  class="w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 {activeTab === 'system' ? 'bg-red-50 text-red-700 border border-red-200' : 'text-gray-700 hover:bg-gray-50'}"
               on:click={() => handleTabChange('system')}
             >
-              <i class="fas fa-cog me-2"></i>System
+                  <i class="fas fa-cog mr-3"></i>System
             </button>
+              </nav>
+            </div>
           </div>
         </div>
         
         <!-- Main Content Area -->
-        <div class="col-md-9 col-lg-10">
+        <div class="lg:col-span-9">
           {#if activeTab === 'overview'}
+            <div>
             <!-- Overview Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-chart-bar me-2 text-danger"></i>System Overview</h2>
-              <button class="btn btn-outline-primary btn-sm" on:click={refreshData}>
-                <i class="fas fa-sync-alt me-2"></i>Refresh
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-chart-bar mr-2 text-red-500"></i>System Overview</h2>
+              <button class="text-white bg-teal-600 hover:bg-teal-700 focus:ring-4 focus:outline-none focus:ring-teal-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-teal-600 dark:hover:bg-teal-700 dark:focus:ring-teal-800 transition-all duration-200 flex items-center" on:click={refreshData}>
+                <i class="fas fa-sync-alt mr-2"></i>Refresh
               </button>
             </div>
             
             <!-- HIPAA Compliance Notice -->
-            <div class="alert alert-info mb-4" role="alert">
-              <i class="fas fa-shield-alt me-2"></i>
+            <div class="bg-blue-50 border border-teal-200 rounded-lg p-4 mb-6" role="alert">
+              <i class="fas fa-shield-alt text-blue-500 mr-2"></i>
+              <span class="text-sm text-blue-700">
               <strong>HIPAA Compliance:</strong> This admin panel displays only aggregated system statistics. 
               Individual patient data is not accessible to administrators to maintain HIPAA compliance and patient privacy.
+              </span>
             </div>
             
             <!-- Statistics Cards -->
-            <div class="row mb-4">
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-primary">
-                  <div class="card-body text-center">
-                    <i class="fas fa-user-md fa-2x text-primary mb-2"></i>
-                    <h5 class="card-title">{statistics.totalDoctors}</h5>
-                    <p class="card-text text-muted">Total Doctors</p>
-                  </div>
-                </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+              <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-user-md text-2xl text-blue-500 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalDoctors}</h3>
+                <p class="text-sm text-gray-500">Total Doctors</p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-success">
-                  <div class="card-body text-center">
-                    <i class="fas fa-users fa-2x text-success mb-2"></i>
-                    <h5 class="card-title">{statistics.totalPatients}</h5>
-                    <p class="card-text text-muted">Total Patients <small>(Aggregated)</small></p>
-                  </div>
-                </div>
+              <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-users text-2xl text-teal-500 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalPatients}</h3>
+                <p class="text-sm text-gray-500">Total Patients <small>(Aggregated)</small></p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-warning">
-                  <div class="card-body text-center">
-                    <i class="fas fa-pills fa-2x text-warning mb-2"></i>
-                    <h5 class="card-title">{statistics.totalPrescriptions}</h5>
-                    <p class="card-text text-muted">Total Prescriptions <small>(Aggregated)</small></p>
-                  </div>
-                </div>
+              <div class="bg-white border-2 border-yellow-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-pills text-2xl text-yellow-600 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalPrescriptions}</h3>
+                <p class="text-sm text-gray-500">Total Prescriptions <small>(Aggregated)</small></p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-info">
-                  <div class="card-body text-center">
-                    <i class="fas fa-heartbeat fa-2x text-info mb-2"></i>
-                    <h5 class="card-title">{statistics.totalSymptoms}</h5>
-                    <p class="card-text text-muted">Total Symptoms <small>(Aggregated)</small></p>
-                  </div>
-                </div>
+              <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-heartbeat text-2xl text-teal-600 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">{statistics.totalSymptoms}</h3>
+                <p class="text-sm text-gray-500">Total Symptoms <small>(Aggregated)</small></p>
               </div>
               
-              <div class="col-md-6 col-lg-2 mb-3">
-                <div class="card border-danger">
-                  <div class="card-body text-center">
-                    <i class="fas fa-brain fa-2x text-danger mb-2"></i>
-                    <h5 class="card-title">
+              <div class="bg-white border-2 border-red-200 rounded-lg shadow-sm p-4 text-center">
+                <i class="fas fa-brain text-2xl text-red-600 mb-2"></i>
+                <h3 class="text-xl font-bold text-gray-900">
                       {#if aiUsageStats}
                         ${aiUsageStats.total.cost.toFixed(3)}
                       {:else}
                         $0.000
                       {/if}
-                    </h5>
-                    <p class="card-text text-muted">AI Cost <small>(Est.)</small></p>
-                  </div>
-                </div>
+                </h3>
+                <p class="text-sm text-gray-500">AI Cost <small>(Est.)</small></p>
               </div>
             </div>
-            
+
             <!-- Recent Activity -->
-            <div class="card border-2 border-info shadow-sm">
-              <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Recent Activity</h5>
+            <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0"><i class="fas fa-clock mr-2"></i>Recent Activity</h5>
               </div>
-              <div class="card-body">
-                <p class="text-muted">Recent system activity will be displayed here.</p>
+              <div class="p-4">
+                <p class="text-gray-500">Recent system activity will be displayed here.</p>
               </div>
             </div>
-            
+            </div>
           {:else if activeTab === 'doctors'}
             <!-- Doctors Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-user-md me-2 text-danger"></i>Doctors Management</h2>
-              <span class="badge bg-primary fs-6">{doctors.length} Doctors</span>
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-user-md mr-2 text-red-600"></i>Doctors Management</h2>
+              <div class="flex items-center gap-3">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctors.length} Doctors</span>
+                <label class="inline-flex items-center text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    class="h-3 w-3 text-red-600 border-gray-300 rounded mr-2"
+                    bind:checked={showReferralPendingOnly}
+                  />
+                  Show referral pending only
+                </label>
+              </div>
             </div>
             
-            <div class="card border-2 border-info shadow-sm">
-              <div class="card-header">
-                <h5 class="mb-0">All Registered Doctors</h5>
+            <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">All Registered Doctors</h5>
               </div>
-              <div class="card-body">
-                {#if doctors.length > 0}
-                  <div class="table-responsive">
-                    <table class="table table-hover">
-                      <thead>
+              <div class="p-4">
+                {#if getDisplayedDoctors().length > 0}
+                  <!-- Desktop Table View -->
+                  <div class="hidden lg:block overflow-x-auto">
+                    <table class="min-w-full table-fixed divide-y divide-gray-200">
+                      <thead class="bg-gray-50">
                         <tr>
-                          <th>Email</th>
-                          <th>Name</th>
-                          <th>Role</th>
-                          <th>Created</th>
-                          <th>Patients</th>
-                          <th>Actions</th>
+                          <th class="w-[20%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                          <th class="w-[10%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                          <th class="w-[8%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patients</th>
+                          <th class="w-[12%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token Usage</th>
+                          <th class="w-[50%] px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {#each doctors as doctor}
-                          <tr>
-                            <td>{doctor.email}</td>
-                            <td>{doctor.name || 'N/A'}</td>
-                            <td>
-                              <span class="badge bg-primary">{doctor.role}</span>
-                              {#if doctor.isAdmin}
-                                <span class="badge bg-danger ms-1">Admin</span>
+                      <tbody class="bg-white divide-y divide-gray-200">
+                        {#each getDisplayedDoctors() as doctor (doctor.id)}
+                          <tr class="hover:bg-gray-50">
+                            <td class="px-3 py-2 text-sm text-gray-900 break-words">
+                              <div class="truncate" title={doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}>
+                                {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}
+                              </div>
+                              <div class="truncate text-gray-700 mt-0.5" title={doctor.email}>{doctor.email}</div>
+                              <div class="truncate text-gray-600 text-xs mt-0.5" title={doctor.phone || 'N/A'}>
+                                Phone: {doctor.phone || 'N/A'}
+                              </div>
+                              <div class="text-[11px] text-gray-500 mt-0.5">ID: {formatDoctorId(doctor.id)}</div>
+                              {#if isTrialActive(doctor)}
+                                <div class="mt-0.5">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
+                                    Trial until {formatDate(doctor.accessExpiresAt)}
+                                  </span>
+                                </div>
+                              {/if}
+                              {#if doctor.externalDoctor}
+                                {@const ownerDoctor = getOwnerDoctor(doctor)}
+                                <div class="mt-0.5">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 text-indigo-700">
+                                    External of {ownerDoctor?.id ? formatDoctorId(ownerDoctor.id) : 'Owner'}
+                                  </span>
+                                </div>
+                              {/if}
+                              {#if doctor.referredByDoctorId}
+                                {@const referrer = doctors.find(d => d.id === doctor.referredByDoctorId)}
+                                <div class="mt-0.5">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700">
+                                    Referred by {referrer?.id ? formatDoctorId(referrer.id) : formatDoctorId(doctor.referredByDoctorId)}
+                                  </span>
+                                </div>
+                              {/if}
+                              {#if isReferralBonusPending(doctor)}
+                                <div class="mt-0.5">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700">
+                                    Referral bonus pending until {formatDate(doctor.referralEligibleAt)}
+                                  </span>
+                                </div>
+                              {/if}
+                              {#if doctor.referralBonusAppliedAt}
+                                <div class="mt-0.5">
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-700">
+                                    Referral bonus applied on {formatDate(doctor.referralBonusAppliedAt)}
+                                  </span>
+                                </div>
                               {/if}
                             </td>
-                            <td>{formatDate(doctor.createdAt)}</td>
-                            <td>{doctor.patientCount || 0}</td>
-                            <td>
-                              {#if doctor.email !== 'senakahks@gmail.com'}
-                                <button 
-                                  class="btn btn-outline-danger btn-sm"
-                                  data-doctor-id={doctor.id}
-                                  on:click={() => deleteDoctor(doctor)}
-                                  title="Delete doctor and all related data"
-                                >
-                                  <i class="fas fa-trash me-2"></i>Delete
-                                </button>
-                              {:else}
-                                <span class="text-muted small">
-                                  <i class="fas fa-shield-alt me-1"></i>Super Admin
+                            <td class="px-3 py-2 text-sm text-gray-900">{formatDate(doctor.createdAt)}</td>
+                            <td class="px-3 py-2 text-sm text-gray-900 text-center">{doctor.patientCount || 0}</td>
+                            <td class="px-3 py-2 text-sm text-gray-900">
+                              <div class="space-y-0.5 leading-4">
+                                <div class="flex items-center">
+                                  <i class="fas fa-coins text-yellow-600 mr-1 flex-shrink-0"></i>
+                                  <span class="font-medium text-xs truncate">${(doctor.tokenUsage?.total?.cost || 0).toFixed(4)}</span>
+                                </div>
+                                <div class="flex items-center text-[11px] text-gray-500">
+                                  <i class="fas fa-hashtag text-blue-600 mr-1 flex-shrink-0"></i>
+                                  <span class="truncate">{formatCompactNumber(doctor.tokenUsage?.total?.tokens || 0)} tokens</span>
+                                </div>
+                                <div class="flex items-center text-[11px] text-gray-500">
+                                  <i class="fas fa-bolt text-teal-600 mr-1 flex-shrink-0"></i>
+                                  <span class="truncate">{doctor.tokenUsage?.total?.requests || 0} requests</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td class="px-3 py-2 text-sm text-gray-900">
+                              <div class="flex flex-wrap items-center gap-1.5">
+                                {#if !doctor.externalDoctor}
+                                  <button
+                                    class="inline-flex items-center px-2 py-1 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-xs font-medium rounded-lg whitespace-nowrap"
+                                    on:click={() => openDoctorView(doctor)}
+                                  >
+                                    <i class="fas fa-eye mr-1"></i>View
+                                  </button>
+                                  {#if isApprovalPending(doctor)}
+                                    <button
+                                      class="inline-flex items-center px-2 py-1 border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 text-xs font-medium rounded-lg whitespace-nowrap"
+                                      on:click={() => approveDoctor(doctor)}
+                                    >
+                                      <i class="fas fa-check mr-1"></i>Approve
+                                    </button>
+                                  {:else}
+                                    <button
+                                      class="inline-flex items-center px-2 py-1 border {isEffectivelyDisabled(doctor) ? 'border-teal-300 text-teal-700 hover:bg-teal-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                      on:click={() => toggleDoctorStatus(doctor)}
+                                      disabled={!canToggleDoctor(doctor)}
+                                    >
+                                      <i class="fas {isEffectivelyDisabled(doctor) ? 'fa-unlock' : 'fa-ban'} mr-1"></i>
+                                      {#if isOwnerDisabled(doctor)}
+                                        Owner Disabled
+                                      {:else if doctor.isDisabled}
+                                        Enable
+                                      {:else}
+                                        Disable
+                                      {/if}
+                                    </button>
+                                  {/if}
+                                  {#if doctor.email !== 'senakahks@gmail.com'}
+                                    <button 
+                                      class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-lg whitespace-nowrap"
+                                      data-doctor-id={doctor.id}
+                                      on:click={() => deleteDoctor(doctor)}
+                                      title="Delete doctor and all related data"
+                                    >
+                                      <i class="fas fa-trash mr-1"></i>Delete
+                                    </button>
+                                  {:else}
+                                    <span class="text-gray-500 text-xs">
+                                      <i class="fas fa-shield-alt mr-1"></i>Super Admin
+                                    </span>
+                                  {/if}
+                                {:else}
+                                  <span class="text-xs text-gray-500">Managed by owner</span>
+                                {/if}
+                                <span class="basis-full h-0"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {getDoctorStatusBadgeClass(doctor)} w-fit order-last">
+                                  {getDoctorStatusLabel(doctor)}
                                 </span>
-                              {/if}
+                              </div>
                             </td>
                           </tr>
                         {/each}
                       </tbody>
                     </table>
                   </div>
-                {:else}
-                  <p class="text-muted text-center py-4">No doctors registered yet.</p>
+                  
+                  <!-- Mobile Card View -->
+                  <div class="lg:hidden space-y-4">
+                    {#each getDisplayedDoctors() as doctor (doctor.id)}
+                      <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                        <div class="flex flex-col space-y-3">
+                          <!-- Header Row -->
+                          <div class="flex justify-between items-start">
+                            <div class="flex-1 min-w-0">
+                              <h3 class="text-sm font-medium text-gray-900 truncate" title={doctor.email}>{doctor.email}</h3>
+                              <p class="text-xs text-gray-500 truncate" title={doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}>
+                                {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'Unknown Doctor'}
+                              </p>
+                              {#if isTrialActive(doctor)}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700 mt-1">
+                                  Trial until {formatDate(doctor.accessExpiresAt)}
+                                </span>
+                              {/if}
+                              {#if doctor.externalDoctor}
+                                {@const ownerDoctor = getOwnerDoctor(doctor)}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-100 text-indigo-700 mt-1">
+                                  External of {ownerDoctor?.id ? formatDoctorId(ownerDoctor.id) : 'Owner'}
+                                </span>
+                              {/if}
+                              {#if doctor.referredByDoctorId}
+                                {@const referrer = doctors.find(d => d.id === doctor.referredByDoctorId)}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-700 mt-1">
+                                  Referred by {referrer?.id ? formatDoctorId(referrer.id) : formatDoctorId(doctor.referredByDoctorId)}
+                                </span>
+                              {/if}
+                              {#if isReferralBonusPending(doctor)}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-700 mt-1">
+                                  Referral bonus pending until {formatDate(doctor.referralEligibleAt)}
+                                </span>
+                              {/if}
+                              {#if doctor.referralBonusAppliedAt}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-teal-100 text-teal-700 mt-1">
+                                  Referral bonus applied on {formatDate(doctor.referralBonusAppliedAt)}
+                                </span>
+                              {/if}
+                            </div>
+                            <div class="flex flex-wrap gap-1 ml-2">
+                              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{doctor.role}</span>
+                              {#if doctor.isAdmin}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Admin</span>
                 {/if}
               </div>
             </div>
             
+                          <!-- Details Grid -->
+                          <div class="grid grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <span class="text-gray-500">Created:</span>
+                              <div class="font-medium text-gray-900">{formatDate(doctor.createdAt)}</div>
+            </div>
+                            <div>
+                              <span class="text-gray-500">Phone:</span>
+                              <div class="font-medium text-gray-900">{doctor.phone || 'N/A'}</div>
+                            </div>
+                            <div>
+                              <span class="text-gray-500">Patients:</span>
+                              <div class="font-medium text-gray-900">{doctor.patientCount || 0}</div>
+                            </div>
+              </div>
+              
+                          <!-- Token Usage -->
+                          <div class="border-t pt-3">
+                            <div class="text-xs text-gray-500 mb-2">Token Usage:</div>
+                            <div class="space-y-1">
+                              <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                  <i class="fas fa-coins text-yellow-600 mr-1"></i>
+                                  <span class="text-gray-500">Cost:</span>
+                    </div>
+                                <span class="font-medium text-gray-900">${(doctor.tokenUsage?.total?.cost || 0).toFixed(4)}</span>
+                  </div>
+                              <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                  <i class="fas fa-hashtag text-blue-600 mr-1"></i>
+                                  <span class="text-gray-500">Tokens:</span>
+                </div>
+                                <span class="font-medium text-gray-900">{formatCompactNumber(doctor.tokenUsage?.total?.tokens || 0)}</span>
+                    </div>
+                              <div class="flex items-center justify-between">
+                                <div class="flex items-center">
+                                  <i class="fas fa-bolt text-teal-600 mr-1"></i>
+                                  <span class="text-gray-500">Requests:</span>
+                  </div>
+                                <span class="font-medium text-gray-900">{doctor.tokenUsage?.total?.requests || 0}</span>
+                </div>
+                    </div>
+                  </div>
+
+                          <div class="border-t pt-3">
+                            <div class="flex items-center justify-between mb-2">
+                              <span class="text-xs text-gray-500">Status:</span>
+                              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {getDoctorStatusBadgeClass(doctor)}">
+                                {getDoctorStatusLabel(doctor)}
+                              </span>
+                            </div>
+                            {#if !doctor.externalDoctor}
+                              {#if isApprovalPending(doctor)}
+                                <button
+                                  class="w-full inline-flex items-center justify-center px-3 py-2 border border-amber-300 text-amber-700 bg-white hover:bg-amber-50 text-sm font-medium rounded-lg"
+                                  on:click={() => approveDoctor(doctor)}
+                                >
+                                  <i class="fas fa-check mr-2"></i>Approve
+                                </button>
+                              {:else}
+                                <button
+                                  class="w-full inline-flex items-center justify-center px-3 py-2 border {isEffectivelyDisabled(doctor) ? 'border-teal-300 text-teal-700 hover:bg-teal-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'} bg-white text-sm font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                  on:click={() => toggleDoctorStatus(doctor)}
+                                  disabled={!canToggleDoctor(doctor)}
+                                >
+                                  <i class="fas {isEffectivelyDisabled(doctor) ? 'fa-unlock' : 'fa-ban'} mr-2"></i>
+                                  {#if isOwnerDisabled(doctor)}
+                                    Owner Disabled
+                                  {:else if doctor.isDisabled}
+                                    Enable
+                                  {:else}
+                                    Disable
+                                  {/if}
+                                </button>
+                              {/if}
+                            {:else}
+                              <span class="text-xs text-gray-500">Managed by owner</span>
+                            {/if}
+                          </div>
+                          
+                          <!-- Actions -->
+                          <div class="border-t pt-3">
+                            {#if !doctor.externalDoctor}
+                              <div class="flex flex-wrap items-center gap-2">
+                                <button
+                                  class="inline-flex items-center justify-center px-3 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg whitespace-nowrap"
+                                  on:click={() => openDoctorView(doctor)}
+                                >
+                                  <i class="fas fa-eye mr-2"></i>View
+                                </button>
+                                {#if doctor.email !== 'senakahks@gmail.com'}
+                                  <button 
+                                    class="inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg whitespace-nowrap"
+                                    data-doctor-id={doctor.id}
+                                    on:click={() => deleteDoctor(doctor)}
+                                    title="Delete doctor and all related data"
+                                  >
+                                    <i class="fas fa-trash mr-2"></i>Delete Doctor
+                                  </button>
+                                {:else}
+                                  <div class="text-gray-500 text-sm whitespace-nowrap">
+                                    <i class="fas fa-shield-alt mr-1"></i>Super Admin - Protected
+                                  </div>
+                                {/if}
+                              </div>
+                            {:else}
+                              <div class="text-center text-gray-500 text-sm">Managed by owner</div>
+                            {/if}
+                          </div>
+                  </div>
+                      </div>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="text-gray-500 text-center py-8">No doctors registered yet.</p>
+                {/if}
+                </div>
+              </div>
+              
           <!-- Patients tab removed for HIPAA compliance -->
           <!-- Admins should not have access to patient PHI data -->
           <!-- Patient data access is restricted to individual doctors only -->
           {:else if activeTab === 'ai-usage'}
             <!-- AI Usage Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-brain me-2 text-danger"></i>AI Usage Analytics</h2>
-              <button class="btn btn-outline-danger btn-sm" on:click={loadAIUsageStats}>
-                <i class="fas fa-sync-alt me-1"></i>Refresh
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-brain mr-2 text-red-600"></i>AI Usage Analytics</h2>
+              <button class="inline-flex items-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-red-300 focus:ring-offset-2 dark:bg-white dark:text-red-700 dark:border-red-300 dark:hover:bg-red-50 transition-all duration-200" on:click={loadAIUsageStats}>
+                <i class="fas fa-sync-alt mr-2"></i>Refresh
               </button>
+            </div>
+
+            <div class="mb-6 border-b border-gray-200">
+              <div class="flex">
+                <button
+                  class="px-4 py-2 text-sm font-medium border-b-2 {aiUsageView === 'statistics' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                  on:click={() => (aiUsageView = 'statistics')}
+                >
+                  Statistics
+                </button>
+                <button
+                  class="px-4 py-2 text-sm font-medium border-b-2 {aiUsageView === 'settings' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                  on:click={() => (aiUsageView = 'settings')}
+                >
+                  Settings
+                </button>
+              </div>
             </div>
             
             {#if aiUsageStats}
+              {#if aiUsageView === 'statistics'}
               <!-- Cost Disclaimer -->
-              <div class="alert alert-warning mb-4" role="alert">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                <strong>Cost Disclaimer:</strong> These cost estimates are approximate and may not reflect actual OpenAI billing. 
+              <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6" role="alert">
+                <i class="fas fa-exclamation-triangle mr-2 text-yellow-600"></i>
+                <strong class="text-yellow-800">Cost Disclaimer:</strong> <span class="text-yellow-700">These cost estimates are approximate and may not reflect actual OpenAI billing. 
                 Actual costs may be higher due to taxes, fees, or pricing changes. 
-                Check your <a href="https://platform.openai.com/usage" target="_blank" class="alert-link">OpenAI dashboard</a> for exact billing amounts.
-              </div>
+                Check your <a href="https://platform.openai.com/usage" target="_blank" class="text-yellow-600 hover:text-yellow-800 underline">OpenAI dashboard</a> for exact billing amounts.</span>
+                  </div>
               
               <!-- Usage Overview Cards -->
-              <div class="row mb-4">
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-primary mb-2">
-                        <i class="fas fa-coins me-1"></i>Total Cost
-                      </h6>
-                      <h5 class="text-primary mb-1">${aiUsageStats.total.cost.toFixed(4)}</h5>
-                      <small class="text-muted">All Time</small>
-                    </div>
-                  </div>
+              <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-coins mr-1"></i>Total Cost
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.cost.toFixed(4)}</h5>
+                  <small class="text-gray-500">All Time</small>
                 </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-success mb-2">
-                        <i class="fas fa-hashtag me-1"></i>Total Tokens
-                      </h6>
-                      <h5 class="text-success mb-1">{aiUsageStats.total.tokens.toLocaleString()}</h5>
-                      <small class="text-muted">All Time</small>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-hashtag mr-1"></i>Total Tokens
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">{formatCompactNumber(aiUsageStats.total.tokens)}</h5>
+                  <small class="text-gray-500">All Time</small>
                     </div>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-bolt mr-1"></i>Total Requests
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">{aiUsageStats.total.requests}</h5>
+                  <small class="text-gray-500">All Time</small>
                   </div>
+                <div class="bg-white border-2 border-yellow-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-yellow-600 font-semibold mb-2">
+                    <i class="fas fa-calendar-day mr-1"></i>Today
+                  </h6>
+                  <h5 class="text-yellow-600 text-xl font-bold mb-1">${aiUsageStats.today.cost.toFixed(4)}</h5>
+                  <small class="text-gray-500">{aiUsageStats.today.requests} requests</small>
                 </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-info mb-2">
-                        <i class="fas fa-bolt me-1"></i>Total Requests
-                      </h6>
-                      <h5 class="text-info mb-1">{aiUsageStats.total.requests}</h5>
-                      <small class="text-muted">All Time</small>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-calendar-alt mr-1"></i>This Month
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.thisMonth.cost.toFixed(4)}</h5>
+                  <small class="text-gray-500">{aiUsageStats.thisMonth.requests} requests</small>
                     </div>
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-percentage mr-1"></i>Avg Cost/Request
+                  </h6>
+                  <h5 class="text-teal-600 text-xl font-bold mb-1">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h5>
+                  <small class="text-gray-500">All Time Average</small>
                   </div>
-                </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-warning mb-2">
-                        <i class="fas fa-calendar-day me-1"></i>Today
-                      </h6>
-                      <h5 class="text-warning mb-1">${aiUsageStats.today.cost.toFixed(4)}</h5>
-                      <small class="text-muted">{aiUsageStats.today.requests} requests</small>
-                    </div>
                   </div>
-                </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-success text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-success mb-2">
-                        <i class="fas fa-calendar-alt me-1"></i>This Month
-                      </h6>
-                      <h5 class="text-success mb-1">${aiUsageStats.thisMonth.cost.toFixed(4)}</h5>
-                      <small class="text-muted">{aiUsageStats.thisMonth.requests} requests</small>
-                    </div>
-                  </div>
-                </div>
-                <div class="col-md-2 col-sm-6 mb-3">
-                  <div class="card border-2 border-info text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-info mb-2">
-                        <i class="fas fa-percentage me-1"></i>Avg Cost/Request
-                      </h6>
-                      <h5 class="text-info mb-1">${aiUsageStats.total.requests > 0 ? (aiUsageStats.total.cost / aiUsageStats.total.requests).toFixed(4) : '0.0000'}</h5>
-                      <small class="text-muted">All Time Average</small>
-                    </div>
-                  </div>
-                </div>
-              </div>
               
               <!-- Last Updated Card -->
-              <div class="row mb-4">
-                <div class="col-md-3 col-sm-6 mb-3">
-                  <div class="card border-2 border-primary text-center shadow-sm">
-                    <div class="card-body py-3">
-                      <h6 class="card-title text-primary mb-2">
-                        <i class="fas fa-clock me-1"></i>Last Updated
-                      </h6>
-                      <h6 class="text-primary mb-1">{aiUsageStats.lastUpdated ? new Date(aiUsageStats.lastUpdated).toLocaleString() : 'Never'}</h6>
-                      <small class="text-muted">Usage Data</small>
-                    </div>
-                  </div>
-                </div>
-              
-              <!-- Daily Usage Chart -->
-              <div class="row mb-4">
-                <div class="col-12">
-                  <div class="card">
-                    <div class="card-header">
-                      <h5 class="mb-0">
-                        <i class="fas fa-chart-line me-2"></i>Daily Usage (Last 7 Days)
-                      </h5>
-                    </div>
-                    <div class="card-body">
-                      <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                          <thead>
-                            <tr>
-                              <th>Date</th>
-                              <th>Requests</th>
-                              <th>Tokens</th>
-                              <th>Cost</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {#each aiTokenTracker.getWeeklyUsage() as day}
-                              <tr>
-                                <td>{new Date(day.date).toLocaleDateString()}</td>
-                                <td>{day.requests || 0}</td>
-                                <td>{(day.tokens || 0).toLocaleString()}</td>
-                                <td>${(day.cost || 0).toFixed(4)}</td>
-                              </tr>
-                            {/each}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm p-4 text-center">
+                  <h6 class="text-teal-600 font-semibold mb-2">
+                    <i class="fas fa-clock mr-1"></i>Last Updated
+                  </h6>
+                  <h6 class="text-teal-600 text-lg font-bold mb-1">{aiUsageStats.lastUpdated ? formatDateTime(aiUsageStats.lastUpdated) : 'Never'}</h6>
+                  <small class="text-gray-500">Usage Data</small>
                 </div>
               </div>
               
-              <!-- Monthly Usage Chart -->
-              <div class="row mb-4">
-                <div class="col-12">
-                  <div class="card">
-                    <div class="card-header">
-                      <h5 class="mb-0">
-                        <i class="fas fa-chart-bar me-2"></i>Monthly Usage (Last 6 Months)
+              <!-- Daily Usage Chart -->
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-chart-line mr-2"></i>Daily Usage (Last 7 Days)
                       </h5>
                     </div>
-                    <div class="card-body">
-                      <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                          <thead>
+                  <div class="p-4">
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                          <thead class="bg-gray-50">
                             <tr>
-                              <th>Month</th>
-                              <th>Requests</th>
-                              <th>Tokens</th>
-                              <th>Cost</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
+                              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
                             </tr>
                           </thead>
-                          <tbody>
-                            {#each aiTokenTracker.getMonthlyUsage() as month}
-                              <tr>
-                                <td>{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
-                                <td>{month.requests || 0}</td>
-                                <td>{(month.tokens || 0).toLocaleString()}</td>
-                                <td>${(month.cost || 0).toFixed(4)}</td>
+                          <tbody class="bg-white divide-y divide-gray-200">
+                            {#each aiWeeklyUsage as day}
+                              <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(day.date).toLocaleDateString('en-GB', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric'
+                                })}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{day.requests || 0}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCompactNumber(day.tokens || 0)}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(day.cost || 0).toFixed(4)}</td>
                               </tr>
                             {/each}
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              
+              <!-- Monthly Usage Chart -->
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-chart-bar mr-2"></i>Monthly Usage (Last 6 Months)
+                      </h5>
+                    </div>
+                  <div class="p-4">
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                            </tr>
+                          </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {#each aiMonthlyUsage as month}
+                            <tr class="hover:bg-gray-50">
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(month.month + '-01').toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{month.requests || 0}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCompactNumber(month.tokens || 0)}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${(month.cost || 0).toFixed(4)}</td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
                     </div>
                   </div>
                 </div>
               </div>
               
               <!-- Recent Requests -->
-              <div class="row">
-                <div class="col-12">
-                  <div class="card">
-                    <div class="card-header">
-                      <h5 class="mb-0">
-                        <i class="fas fa-history me-2 text-danger"></i>Recent AI Requests
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-history mr-2 text-red-600"></i>Recent AI Requests
                       </h5>
                     </div>
-                    <div class="card-body">
-                      <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                          <thead>
-                            <tr>
-                              <th>Time</th>
-                              <th>Type</th>
-                              <th>Tokens</th>
-                              <th>Cost</th>
+                  <div class="p-4">
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
                             </tr>
                           </thead>
-                          <tbody>
-                            {#each aiTokenTracker.getRecentRequests(10) as request}
-                              <tr>
-                                <td>{new Date(request.timestamp).toLocaleString()}</td>
-                                <td>
-                                  <span class="badge bg-primary">
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {#each aiRecentRequests as request}
+                            <tr class="hover:bg-gray-50">
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatDateTime(request.timestamp)}</td>
+                              <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
                                     {request.type.replace('generate', '').replace('check', '')}
                                   </span>
                                 </td>
-                                <td>{request.totalTokens.toLocaleString()}</td>
-                                <td>${request.cost.toFixed(4)}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{request.totalTokens.toLocaleString()}</td>
+                              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${request.cost.toFixed(4)}</td>
                               </tr>
                             {:else}
                               <tr>
-                                <td colspan="4" class="text-center text-muted py-3">
-                                  <i class="fas fa-info-circle me-2"></i>
+                              <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                <i class="fas fa-info-circle mr-2"></i>
                                   No recent AI requests found
                                 </td>
                               </tr>
@@ -727,24 +3390,421 @@
                           </tbody>
                         </table>
                       </div>
+                  </div>
+                </div>
+              </div>
+              {:else}
+              <!-- AI Configuration Section -->
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-cog mr-2 text-red-600"></i>AI Configuration
+                    </h5>
+              </div>
+                  <div class="p-4">
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                      <h6 class="text-lg font-semibold text-gray-900 mb-3">
+                        <i class="fas fa-microchip mr-2 text-teal-600"></i>AI Models
+                      </h6>
+                      <p class="text-sm text-gray-600 mb-4">
+                        Set model per workflow. Leave as default unless you need a specific model.
+                      </p>
+                      {#if aiModelSettingsLoading}
+                        <p class="text-sm text-gray-500">Loading model settings...</p>
+                      {:else}
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label for="aiImageAnalysisModel" class="block text-sm font-medium text-gray-700 mb-1">Image analysis model</label>
+                            <input
+                              id="aiImageAnalysisModel"
+                              type="text"
+                              bind:value={aiImageAnalysisModel}
+                              list="aiModelOptions"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="gpt-4o-mini"
+                            />
+                          </div>
+                          <div>
+                            <label for="aiOtherAnalysisModel" class="block text-sm font-medium text-gray-700 mb-1">Other analysis model</label>
+                            <input
+                              id="aiOtherAnalysisModel"
+                              type="text"
+                              bind:value={aiOtherAnalysisModel}
+                              list="aiModelOptions"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="gpt-4o-mini"
+                            />
+                          </div>
+                          <div>
+                            <label for="aiSpellGrammarModel" class="block text-sm font-medium text-gray-700 mb-1">Spell and grammar model</label>
+                            <input
+                              id="aiSpellGrammarModel"
+                              type="text"
+                              bind:value={aiSpellGrammarModel}
+                              list="aiModelOptions"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              placeholder="gpt-4o-mini"
+                            />
+                          </div>
+                        </div>
+                        <datalist id="aiModelOptions">
+                          {#each aiModelOptions as modelOption}
+                            <option value={modelOption}></option>
+                          {/each}
+                        </datalist>
+                        <div class="flex items-center gap-3 mt-4">
+                          <button
+                            type="button"
+                            class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+                            on:click={saveAIModelSettings}
+                            disabled={aiModelSettingsSaving}
+                          >
+                            <i class="fas fa-save mr-1"></i>{aiModelSettingsSaving ? 'Saving...' : 'Save AI Models'}
+                          </button>
+                          {#if aiModelSettingsStatus}
+                            <span class="text-sm text-gray-600">{aiModelSettingsStatus}</span>
+                          {/if}
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <!-- Default Quota Configuration -->
+                      <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h6 class="text-lg font-semibold text-gray-900 mb-3">
+                          <i class="fas fa-users mr-2 text-teal-600"></i>Default Quota
+                        </h6>
+                        <p class="text-sm text-gray-600 mb-4">
+                          Set the default monthly token quota for all doctors. This will be applied to new doctors and can be used to update existing doctors.
+                        </p>
+                        <div class="space-y-3">
+                          <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                              Monthly Token Quota:
+                            </label>
+                            <input
+                              type="number"
+                              bind:value={defaultQuotaInput}
+                              placeholder="Enter default quota"
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                              min="0"
+                              step="1000"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">
+                              Current: {aiTokenTracker.getDefaultQuota().toLocaleString()} tokens
+                            </p>
+            </div>
+                          <div class="flex space-x-2">
+                            <button
+                              class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+                              on:click={saveDefaultQuota}
+                              disabled={!defaultQuotaInput || defaultQuotaInput < 0}
+                            >
+                              <i class="fas fa-save mr-1"></i>Save Default
+                            </button>
+                            <button
+                              class="px-4 py-2 text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors duration-200"
+                              on:click={applyDefaultQuotaToAll}
+                            >
+                              <i class="fas fa-user-plus mr-1"></i>Apply to All
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <!-- Model Pricing Configuration -->
+                      <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h6 class="text-lg font-semibold text-gray-900 mb-3">
+                          <i class="fas fa-dollar-sign mr-2 text-teal-600"></i>Model Pricing
+                        </h6>
+                        <p class="text-sm text-gray-600 mb-4">
+                          Set prompt/completion prices per 1K tokens for each model used in requests.
+                        </p>
+                        <div class="space-y-3">
+                          <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                              <thead class="bg-gray-100">
+                                <tr>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prompt ($/1K)</th>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Completion ($/1K)</th>
+                                  <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody class="bg-white divide-y divide-gray-200">
+                                {#each modelPricingRows as row, rowIndex}
+                                  <tr>
+                                    <td class="px-3 py-2">
+                                      <input
+                                        type="text"
+                                        bind:value={row.model}
+                                        list="aiModelOptions"
+                                        class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                        placeholder="model-name"
+                                      />
+                                    </td>
+                                    <td class="px-3 py-2">
+                                      <input
+                                        type="number"
+                                        bind:value={row.prompt}
+                                        class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                        min="0"
+                                        step="0.000001"
+                                      />
+                                    </td>
+                                    <td class="px-3 py-2">
+                                      <input
+                                        type="number"
+                                        bind:value={row.completion}
+                                        class="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                        min="0"
+                                        step="0.000001"
+                                      />
+                                    </td>
+                                    <td class="px-3 py-2">
+                                      <button
+                                        type="button"
+                                        class="px-2 py-1 text-xs font-medium text-red-700 border border-red-300 rounded hover:bg-red-50"
+                                        on:click={() => removeModelPricingRow(rowIndex)}
+                                        title="Remove model row"
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div class="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200"
+                              on:click={addModelPricingRow}
+                            >
+                              <i class="fas fa-plus mr-1"></i>Add Model
+                            </button>
+                            <button
+                              class="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors duration-200"
+                              on:click={saveModelPricing}
+                            >
+                              <i class="fas fa-save mr-1"></i>Save Pricing
+                            </button>
+                            {#if modelPricingStatus}
+                              <span class="text-sm text-gray-600 self-center">{modelPricingStatus}</span>
+                            {/if}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+              
+              <!-- Doctor Token Quotas Section -->
+              <div class="mb-6">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-user-md mr-2 text-red-600"></i>Doctor Token Quotas
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                    <!-- Desktop Table View -->
+                    <div class="hidden lg:block overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor Name</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monthly Quota</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Used This Month</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each aiTokenTracker.getAllDoctorsWithQuotas() as doctor}
+                            <tr class="hover:bg-gray-50">
+                              <td class="px-4 py-4 text-sm text-gray-900 break-words max-w-xs">
+                                <div class="font-medium text-gray-900 truncate" title={getDoctorName(doctor.doctorId)}>{getDoctorName(doctor.doctorId)}</div>
+                                <div class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {formatDoctorId(doctor.doctorId)}</div>
+                              </td>
+                              <td class="px-4 py-4 text-sm text-gray-900">
+                                {#if doctor.quota}
+                                  <div class="truncate">{doctor.quota.monthlyTokens.toLocaleString()} tokens</div>
+                                {:else}
+                                  <span class="text-gray-400">No quota set</span>
+                                {/if}
+                              </td>
+                              <td class="px-4 py-4 text-sm text-gray-900">
+                                <div class="truncate">{doctor.monthlyUsage.tokens.toLocaleString()} tokens</div>
+                                <div class="text-xs text-gray-500 truncate">${doctor.monthlyUsage.cost.toFixed(4)}</div>
+                              </td>
+                              <td class="px-4 py-4 text-sm text-gray-900">
+                                {#if doctor.quotaStatus.hasQuota}
+                                  <div class="truncate">{doctor.quotaStatus.remainingTokens.toLocaleString()} tokens</div>
+                                {:else}
+                                  <span class="text-gray-400">-</span>
+                                {/if}
+                              </td>
+                              <td class="px-4 py-4 text-sm text-gray-900">
+                                <div class="flex flex-col space-y-1">
+                                  {#if doctor.quotaStatus.hasQuota}
+                                    {#if doctor.quotaStatus.isExceeded}
+                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>Exceeded
+                                      </span>
+                                    {:else if doctor.quotaStatus.percentageUsed > 80}
+                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        <i class="fas fa-exclamation-circle mr-1"></i>Warning
+                                      </span>
+                                    {:else}
+                                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                                        <i class="fas fa-check-circle mr-1"></i>Good
+                                      </span>
+                                    {/if}
+                                    <div class="text-xs text-gray-500">{doctor.quotaStatus.percentageUsed.toFixed(1)}% used</div>
+                                  {:else}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                      No Quota
+                                    </span>
+                                  {/if}
+                                </div>
+                              </td>
+                              <td class="px-4 py-4 text-sm text-gray-900">
+                                <button 
+                                  class="text-red-600 hover:text-red-900 font-medium text-xs"
+                                  on:click={() => openQuotaModal(doctor.doctorId, doctor.quota?.monthlyTokens || 0)}
+                                >
+                                  <i class="fas fa-edit mr-1"></i>Set Quota
+                                </button>
+                              </td>
+                            </tr>
+                          {:else}
+                            <tr>
+                              <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+                                <i class="fas fa-info-circle mr-2"></i>
+                                No doctors with AI usage found
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                    
+                    <!-- Mobile Card View -->
+                    <div class="lg:hidden space-y-4">
+                      {#each aiTokenTracker.getAllDoctorsWithQuotas() as doctor}
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                          <div class="flex flex-col space-y-3">
+                            <!-- Header Row -->
+                            <div class="flex justify-between items-start">
+                              <div class="flex-1 min-w-0">
+                                <h3 class="text-sm font-medium text-gray-900 truncate" title={getDoctorName(doctor.doctorId)}>{getDoctorName(doctor.doctorId)}</h3>
+                                <p class="text-xs text-gray-500 truncate" title={doctor.doctorId}>ID: {formatDoctorId(doctor.doctorId)}</p>
+                              </div>
+                              <div class="ml-2">
+                                {#if doctor.quotaStatus.hasQuota}
+                                  {#if doctor.quotaStatus.isExceeded}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                      <i class="fas fa-exclamation-triangle mr-1"></i>Exceeded
+                                    </span>
+                                  {:else if doctor.quotaStatus.percentageUsed > 80}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                      <i class="fas fa-exclamation-circle mr-1"></i>Warning
+                                    </span>
+                                  {:else}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                                      <i class="fas fa-check-circle mr-1"></i>Good
+                                    </span>
+                                  {/if}
+                                {:else}
+                                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                    No Quota
+                                  </span>
+                                {/if}
+                              </div>
+                            </div>
+                            
+                            <!-- Quota Details -->
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <span class="text-gray-500">Monthly Quota:</span>
+                                <div class="font-medium text-gray-900">
+                                  {#if doctor.quota}
+                                    {doctor.quota.monthlyTokens.toLocaleString()} tokens
+                                  {:else}
+                                    <span class="text-gray-400">No quota set</span>
+                                  {/if}
+                                </div>
+                              </div>
+                              <div>
+                                <span class="text-gray-500">Used This Month:</span>
+                                <div class="font-medium text-gray-900">{doctor.monthlyUsage.tokens.toLocaleString()} tokens</div>
+                                <div class="text-gray-500">${doctor.monthlyUsage.cost.toFixed(4)}</div>
+                              </div>
+                            </div>
+                            
+                            <!-- Remaining and Percentage -->
+                            <div class="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <span class="text-gray-500">Remaining:</span>
+                                <div class="font-medium text-gray-900">
+                                  {#if doctor.quotaStatus.hasQuota}
+                                    {doctor.quotaStatus.remainingTokens.toLocaleString()} tokens
+                                  {:else}
+                                    <span class="text-gray-400">-</span>
+                                  {/if}
+                                </div>
+                              </div>
+                              <div>
+                                <span class="text-gray-500">Usage:</span>
+                                <div class="font-medium text-gray-900">
+                                  {#if doctor.quotaStatus.hasQuota}
+                                    {doctor.quotaStatus.percentageUsed.toFixed(1)}% used
+                                  {:else}
+                                    <span class="text-gray-400">-</span>
+                                  {/if}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- Actions -->
+                            <div class="border-t pt-3">
+                              <button 
+                                class="w-full inline-flex items-center justify-center px-3 py-2 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-sm font-medium rounded-lg"
+                                on:click={() => openQuotaModal(doctor.doctorId, doctor.quota?.monthlyTokens || 0)}
+                              >
+                                <i class="fas fa-edit mr-2"></i>Set Quota
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      {:else}
+                        <div class="text-center py-8 text-gray-500">
+                          <i class="fas fa-info-circle mr-2"></i>
+                          No doctors with AI usage found
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/if}
             {:else}
-              <div class="card">
-                <div class="card-body text-center py-5">
-                  <i class="fas fa-brain fa-3x text-muted mb-3"></i>
-                  <h5 class="text-muted">No AI Usage Data Available</h5>
-                  <p class="text-muted mb-4">AI usage statistics will appear here once AI features are used.</p>
-                  <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>
-                    <strong>Getting Started:</strong> AI usage tracking begins when doctors use AI features like:
-                    <ul class="list-unstyled mt-2 mb-0">
-                      <li><i class="fas fa-check text-success me-1"></i> AI Medical Analysis</li>
-                      <li><i class="fas fa-check text-success me-1"></i> AI Drug Suggestions</li>
-                      <li><i class="fas fa-check text-success me-1"></i> AI Chat Assistant</li>
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="text-center py-8">
+                  <i class="fas fa-brain text-4xl text-gray-400 mb-3"></i>
+                  <h5 class="text-gray-500">No AI Usage Data Available</h5>
+                  <p class="text-gray-500 mb-6">AI usage statistics will appear here once AI features are used.</p>
+                  <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <i class="fas fa-info-circle mr-2 text-blue-600"></i>
+                    <strong class="text-blue-800">Getting Started:</strong> <span class="text-blue-700">AI usage tracking begins when doctors use AI features like:</span>
+                    <ul class="list-disc list-inside mt-2 text-sm text-blue-700">
+                      <li><i class="fas fa-check text-teal-600 mr-1"></i> AI Medical Analysis</li>
+                      <li><i class="fas fa-check text-teal-600 mr-1"></i> AI Drug Suggestions</li>
+                      <li><i class="fas fa-check text-teal-600 mr-1"></i> AI Chat Assistant</li>
                     </ul>
                   </div>
                 </div>
@@ -753,65 +3813,2654 @@
             
           {:else if activeTab === 'ai-logs'}
             <!-- AI Logs Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-brain me-2 text-danger"></i>AI Prompt Logs</h2>
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-brain mr-2 text-red-600"></i>AI Prompt Logs</h2>
             </div>
             
             <AIPromptLogs />
             
-          {:else if activeTab === 'system'}
-            <!-- System Tab -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-              <h2><i class="fas fa-cog me-2 text-danger"></i>System Settings</h2>
+          {:else if activeTab === 'logs'}
+            <!-- Logs Tab -->
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-clipboard-list mr-2 text-red-600"></i>System Logs</h2>
             </div>
             
-            <div class="row">
-              <div class="col-md-6">
-                <div class="card">
-                  <div class="card-header">
-                    <h5 class="mb-0">System Information</h5>
-                  </div>
-                  <div class="card-body">
-                    <dl class="row">
-                      <dt class="col-sm-4">Version:</dt>
-                      <dd class="col-sm-8">1.0.0</dd>
-                      
-                      <dt class="col-sm-4">Last Updated:</dt>
-                      <dd class="col-sm-8">{new Date().toLocaleDateString()}</dd>
-                      
-                      <dt class="col-sm-4">Admin Email:</dt>
-                      <dd class="col-sm-8">senakahks@gmail.com</dd>
-                    </dl>
-                  </div>
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <div class="border-b border-gray-200">
+                <div class="flex">
+                  <button
+                    class="px-4 py-2 text-sm font-medium border-b-2 {logView === 'email' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                    on:click={() => logView = 'email'}
+                  >
+                    Email Logs
+                  </button>
+                  <button
+                    class="px-4 py-2 text-sm font-medium border-b-2 {logView === 'auth' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                    on:click={() => logView = 'auth'}
+                  >
+                    Login/Logout Logs
+                  </button>
+                  <button
+                    class="px-4 py-2 text-sm font-medium border-b-2 {logView === 'sms' ? 'border-red-500 text-red-700' : 'border-transparent text-gray-600 hover:text-gray-800'}"
+                    on:click={() => logView = 'sms'}
+                  >
+                    SMS Logs
+                  </button>
                 </div>
               </div>
-              
-              <div class="col-md-6">
-                <div class="card">
-                  <div class="card-header">
-                    <h5 class="mb-0">Quick Actions</h5>
-                  </div>
-                  <div class="card-body">
-                    <div class="d-grid gap-2">
-                      <button class="btn btn-outline-primary btn-sm">
-                        <i class="fas fa-download me-2"></i>Export Data
+              <div class="p-4">
+                {#if logView === 'email'}
+                  <div class="flex items-center justify-between mb-4">
+                    <p class="text-sm text-gray-600">Email send confirmations (latest 200).</p>
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                        on:click={loadEmailLogs}
+                        disabled={emailLogsLoading}
+                      >
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
                       </button>
-                      <button class="btn btn-outline-warning btn-sm">
-                        <i class="fas fa-backup me-2"></i>Backup System
-                      </button>
-                      <button class="btn btn-outline-info btn-sm" on:click={refreshData}>
-                        <i class="fas fa-sync-alt me-2"></i>Refresh Data
+                      <button
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                        on:click={() => {
+                          pendingAction = clearEmailLogs
+                          showConfirmation(
+                            'Clear Email Logs',
+                            'Delete all email logs?',
+                            'Delete',
+                            'Cancel',
+                            'danger'
+                          )
+                        }}
+                      >
+                        <i class="fas fa-trash mr-2"></i>Clear Logs
                       </button>
                     </div>
                   </div>
+                  {#if emailLogsError}
+                    <p class="text-sm text-red-600 mb-3">{emailLogsError}</p>
+                  {/if}
+                  {#if emailLogsLoading}
+                    <p class="text-sm text-gray-500">Loading logs...</p>
+                  {:else if emailLogs.length === 0}
+                    <p class="text-sm text-gray-500">No email logs yet.</p>
+                  {:else}
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor ID</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each emailLogs as log (log.id)}
+                            <tr>
+                              <td class="px-3 py-2 text-gray-900">{formatDateTime(log.createdAt)}</td>
+                              <td class="px-3 py-2 text-gray-700">{log.type || '-'}</td>
+                              <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {log.status === 'sent' ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'}">
+                                  {log.status || 'unknown'}
+                                </span>
+                              </td>
+                              <td class="px-3 py-2 text-gray-700">{log.to || '-'}</td>
+                              <td class="px-3 py-2 text-gray-700" title={log.doctorId || ''}>
+                                {log.doctorId ? formatDoctorId(log.doctorId) : '-'}
+                              </td>
+                              <td class="px-3 py-2 text-gray-500 text-xs">{log.error || '-'}</td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {/if}
+                {:else if logView === 'auth'}
+                  <div class="flex items-center justify-between mb-4">
+                    <p class="text-sm text-gray-600">Authentication events (latest 200).</p>
+                    <button
+                      class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={loadAuthLogs}
+                      disabled={authLogsLoading}
+                    >
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                  </div>
+                  {#if authLogsError}
+                    <p class="text-sm text-red-600 mb-3">{authLogsError}</p>
+                  {/if}
+                  {#if authLogsLoading}
+                    <p class="text-sm text-gray-500">Loading logs...</p>
+                  {:else if authLogs.length === 0}
+                    <p class="text-sm text-gray-500">No login/logout logs yet.</p>
+                  {:else}
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor ID</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each authLogs as log (log.id)}
+                            <tr>
+                              <td class="px-3 py-2 text-gray-900">{formatDateTime(log.createdAt)}</td>
+                              <td class="px-3 py-2 text-gray-700">{log.action || '-'}</td>
+                              <td class="px-3 py-2 text-gray-700">{log.role || '-'}</td>
+                              <td class="px-3 py-2 text-gray-700">{log.email || '-'}</td>
+                              <td class="px-3 py-2 text-gray-700" title={log.doctorId || ''}>
+                                {log.doctorId ? formatDoctorId(log.doctorId) : '-'}
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {/if}
+                {:else}
+                  <div class="flex items-center justify-between mb-4">
+                    <p class="text-sm text-gray-600">SMS delivery attempts (latest 200).</p>
+                    <button
+                      class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={loadSmsLogs}
+                      disabled={smsLogsLoading}
+                    >
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                  </div>
+                  {#if smsLogsError}
+                    <p class="text-sm text-red-600 mb-3">{smsLogsError}</p>
+                  {/if}
+                  {#if smsLogsLoading}
+                    <p class="text-sm text-gray-500">Loading logs...</p>
+                  {:else if smsLogs.length === 0}
+                    <p class="text-sm text-gray-500">No SMS logs yet.</p>
+                  {:else}
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor ID</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each smsLogs as log (log.id)}
+                            <tr>
+                              <td class="px-3 py-2 text-gray-900">{formatDateTime(log.createdAt)}</td>
+                              <td class="px-3 py-2 text-gray-700">{log.type || '-'}</td>
+                              <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {['sent', 'delivered', 'success'].includes((log.status || '').toLowerCase()) ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'}">
+                                  {log.status || 'unknown'}
+                                </span>
+                              </td>
+                              <td class="px-3 py-2 text-gray-700">{log.to || '-'}</td>
+                              <td class="px-3 py-2 text-gray-700" title={log.doctorId || ''}>
+                                {log.doctorId ? formatDoctorId(log.doctorId) : '-'}
+                              </td>
+                              <td class="px-3 py-2 text-gray-500 text-xs">{log.error || '-'}</td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {/if}
+                {/if}
+              </div>
+            </div>
+          {:else if activeTab === 'payments'}
+            <!-- Payments Tab -->
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-credit-card mr-2 text-red-600"></i>Payments</h2>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Stripe Plan Pricing</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if paymentPricingLoading}
+                  <p class="text-sm text-gray-500">Loading payment pricing settings...</p>
+                {/if}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label for="paymentPricingMonthlyUsd" class="block text-xs text-gray-500 mb-1">USD monthly price</label>
+                    <input id="paymentPricingMonthlyUsd" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingMonthlyUsd} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingAnnualUsd" class="block text-xs text-gray-500 mb-1">USD annual price</label>
+                    <input id="paymentPricingAnnualUsd" type="number" min="0" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingAnnualUsd} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingMonthlyLkr" class="block text-xs text-gray-500 mb-1">LKR monthly price</label>
+                    <input id="paymentPricingMonthlyLkr" type="number" min="0" step="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingMonthlyLkr} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingAnnualLkr" class="block text-xs text-gray-500 mb-1">LKR annual price</label>
+                    <input id="paymentPricingAnnualLkr" type="number" min="0" step="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingAnnualLkr} />
+                  </div>
+                  <div>
+                    <label for="paymentPricingAppliesTo" class="block text-xs text-gray-500 mb-1">Apply pricing to</label>
+                    <select id="paymentPricingAppliesTo" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={paymentPricingAppliesTo}>
+                      <option value="new_customers">New customers only</option>
+                      <option value="all_customers">All customers</option>
+                    </select>
+                  </div>
+                  <div class="flex items-end">
+                    <label class="inline-flex items-center text-sm text-gray-700">
+                      <input type="checkbox" class="mr-2" bind:checked={paymentPricingEnabled} />
+                      Enable custom pricing
+                    </label>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    type="button"
+                    class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                    on:click={savePaymentPricingSettings}
+                    disabled={paymentPricingSaving}
+                  >
+                    {#if paymentPricingSaving}
+                      <i class="fas fa-circle-notch fa-spin mr-2"></i>Saving...
+                    {:else}
+                      <i class="fas fa-save mr-2"></i>Save Pricing
+                    {/if}
+                  </button>
+                  {#if paymentPricingStatus}
+                    <span class="text-sm text-gray-600">{paymentPricingStatus}</span>
+                  {/if}
+                </div>
+                <p class="text-xs text-gray-500">
+                  Changes affect Stripe checkout pricing. Scope determines whether overrides are applied only to new customers or everyone.
+                </p>
+              </div>
+            </div>
+          {:else if activeTab === 'promotions'}
+            <!-- Promotions Tab -->
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-bullhorn mr-2 text-red-600"></i>Promotions</h2>
+            </div>
+            <div class="space-y-4">
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Generate Promo Code</h5>
+                </div>
+                <div class="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <label for="promoName" class="block text-xs text-gray-500 mb-1">Name</label>
+                    <input id="promoName" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoName} placeholder="New User Discount" />
+                  </div>
+                  <div>
+                    <label for="promoCustomCode" class="block text-xs text-gray-500 mb-1">Custom code (optional)</label>
+                    <div class="flex gap-2">
+                      <input
+                        id="promoCustomCode"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm uppercase"
+                        bind:value={promoCustomCode}
+                        placeholder="WELCOME25"
+                        on:input={() => promoCustomCode = normalizePromoCodeInput(promoCustomCode)}
+                      />
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                        on:click={generatePromoCodeDraft}
+                      >
+                        <i class="fas fa-random mr-1"></i>Generate
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="promoPercentOff" class="block text-xs text-gray-500 mb-1">Discount %</label>
+                    <input id="promoPercentOff" type="number" min="1" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoPercentOff} />
+                  </div>
+                  <div>
+                    <label for="promoMaxRedemptions" class="block text-xs text-gray-500 mb-1">Max redemptions</label>
+                    <input id="promoMaxRedemptions" type="number" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoMaxRedemptions} />
+                  </div>
+                  <div>
+                    <label for="promoValidDays" class="block text-xs text-gray-500 mb-1">Valid for days</label>
+                    <input id="promoValidDays" type="number" min="1" max="365" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoValidDays} />
+                  </div>
+                  <div>
+                    <label for="promoCurrencyScope" class="block text-xs text-gray-500 mb-1">Currency scope</label>
+                    <select id="promoCurrencyScope" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoCurrencyScope}>
+                      <option value="all">All currencies</option>
+                      <option value="usd">USD only</option>
+                      <option value="lkr">LKR only</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="promoPlanScope" class="block text-xs text-gray-500 mb-1">Plan scope</label>
+                    <select id="promoPlanScope" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" bind:value={promoPlanScope}>
+                      <option value="all">All plans</option>
+                      <option value="monthly">Monthly plans</option>
+                      <option value="annual">Annual plans</option>
+                    </select>
+                  </div>
+                  <div class="md:col-span-2 lg:col-span-2 flex items-end">
+                    <button
+                      type="button"
+                      class="inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                      on:click={createPromoCode}
+                      disabled={creatingPromoCode}
+                    >
+                      {#if creatingPromoCode}
+                        <i class="fas fa-circle-notch fa-spin mr-2"></i>Creating...
+                      {:else}
+                        <i class="fas fa-magic mr-2"></i>Generate Promo Code
+                      {/if}
+                    </button>
+                  </div>
+                  {#if promoActionStatus}
+                    <div class="md:col-span-2 lg:col-span-3 text-sm text-gray-600">{promoActionStatus}</div>
+                  {/if}
+                </div>
+              </div>
+
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Promo Codes</h5>
+                  <button type="button" class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100" on:click={loadPromoCodes} disabled={promoCodesLoading}>
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh
+                  </button>
+                </div>
+                <div class="p-4">
+                  {#if promoCodesError}
+                    <p class="text-sm text-red-600">{promoCodesError}</p>
+                  {:else if promoCodesLoading}
+                    <p class="text-sm text-gray-500">Loading promo codes...</p>
+                  {:else if promoCodes.length === 0}
+                    <p class="text-sm text-gray-500">No promo codes created yet.</p>
+                  {:else}
+                    <div class="overflow-x-auto">
+                      <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                          <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valid Until</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                          {#each promoCodes as promo (promo.id)}
+                            <tr>
+                              <td class="px-3 py-2 text-gray-900 font-semibold">{promo.code}</td>
+                              <td class="px-3 py-2 text-gray-700">{Number(promo.percentOff || 0)}%</td>
+                              <td class="px-3 py-2 text-gray-700">{Number(promo.redemptionCount || 0)} / {Number(promo.maxRedemptions || 0)}</td>
+                              <td class="px-3 py-2 text-gray-700">{formatDateTime(promo.validUntil)}</td>
+                              <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {promo.isActive ? 'bg-teal-100 text-teal-700' : 'bg-gray-200 text-gray-700'}">
+                                  {promo.isActive ? 'Active' : 'Inactive'}
+                                </span>
+                              </td>
+                              <td class="px-3 py-2">
+                                <div class="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                    on:click={() => copyPromoCode(promo.code)}
+                                    title="Copy promo code"
+                                  >
+                                    <i class="fas fa-copy mr-1"></i>{promoCodeCopied === promo.code ? 'Copied' : 'Copy'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg border {promo.isActive ? 'border-amber-300 text-amber-700 hover:bg-amber-50' : 'border-teal-300 text-teal-700 hover:bg-teal-50'}"
+                                    on:click={() => togglePromoCode(promo)}
+                                  >
+                                    <i class="fas {promo.isActive ? 'fa-ban' : 'fa-check'} mr-2"></i>
+                                    {promo.isActive ? 'Disable' : 'Enable'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {/if}
                 </div>
               </div>
             </div>
+          {:else if activeTab === 'messaging'}
+            <!-- Messaging Tab -->
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-comment-dots mr-2 text-red-600"></i>Messaging</h2>
+            </div>
+            <div class="flex items-center gap-2 mb-4">
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  messagingTab === 'templates'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (messagingTab = 'templates')}
+              >
+                Templates
+              </button>
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  messagingTab === 'whatsapp'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (messagingTab = 'whatsapp')}
+              >
+                Whatsapp
+              </button>
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  messagingTab === 'sms'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (messagingTab = 'sms')}
+              >
+                SMS
+              </button>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-6 space-y-5">
+              {#if messagingTab === 'templates'}
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p class="text-sm text-blue-900 font-semibold mb-1">Message Templates</p>
+                  <p class="text-sm text-blue-800">
+                    Use placeholders like &#123;&#123;name&#125;&#125;, &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;.
+                  </p>
+                </div>
+                {#if messagingTemplatesLoading}
+                  <p class="text-sm text-gray-500">Loading templates...</p>
+                {:else}
+                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-user-plus text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Registration</p>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1" for="registrationChannel">Channel</label>
+                      <select
+                        id="registrationChannel"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                        bind:value={registrationChannel}
+                      >
+                        <option value="sms">SMS</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="both">Both</option>
+                      </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="registrationTemplateEnabled"
+                        type="checkbox"
+                        bind:checked={registrationTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="registrationTemplateEnabled" class="text-sm text-gray-700">
+                        Enable registration messages
+                      </label>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={registrationTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;name&#125;&#125;, &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleRegistrationSmsTest}
+                        disabled={!registrationTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if registrationTestStatus}
+                        <span class="text-xs text-gray-500">{registrationTestStatus}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-bell text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Appointment Reminder</p>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1" for="appointmentChannel">Channel</label>
+                      <select
+                        id="appointmentChannel"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                        bind:value={appointmentReminderChannel}
+                      >
+                        <option value="sms">SMS</option>
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="both">Both</option>
+                      </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="appointmentReminderEnabled"
+                        type="checkbox"
+                        bind:checked={appointmentReminderTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="appointmentReminderEnabled" class="text-sm text-gray-700">
+                        Enable appointment reminders
+                      </label>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={appointmentReminderTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;date&#125;&#125;, &#123;&#123;time&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleAppointmentReminderSmsTest}
+                        disabled={!appointmentReminderTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if appointmentReminderTestStatus}
+                        <span class="text-xs text-gray-500">{appointmentReminderTestStatus}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-user-check text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Doctor Registration Confirm</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="doctorRegistrationTemplateEnabled"
+                        type="checkbox"
+                        bind:checked={doctorRegistrationTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="doctorRegistrationTemplateEnabled" class="text-sm text-gray-700">
+                        Enable doctor registration SMS
+                      </label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="doctorRegistrationCopyToTestEnabled"
+                        type="checkbox"
+                        bind:checked={doctorRegistrationCopyToTestEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="doctorRegistrationCopyToTestEnabled" class="text-sm text-gray-700">
+                        Send a copy to test number
+                      </label>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={doctorRegistrationTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleDoctorRegistrationSmsTest}
+                        disabled={!doctorRegistrationTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if doctorRegistrationTestStatus}
+                        <span class="text-xs text-gray-500">{doctorRegistrationTestStatus}</span>
+                      {/if}
+                    </div>
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                    <div class="flex items-center gap-2">
+                      <i class="fas fa-check-circle text-red-600"></i>
+                      <p class="text-sm font-semibold text-gray-800">Doctor Approved</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <input
+                        id="doctorApprovedTemplateEnabled"
+                        type="checkbox"
+                        bind:checked={doctorApprovedTemplateEnabled}
+                        class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                      />
+                      <label for="doctorApprovedTemplateEnabled" class="text-sm text-gray-700">
+                        Enable doctor approved SMS
+                      </label>
+                    </div>
+                    <label class="block text-xs text-gray-500">Template</label>
+                    <textarea
+                      class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={doctorApprovedTemplate}
+                    ></textarea>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;doctorName&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <div class="flex items-center gap-3">
+                      <button
+                        class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
+                        type="button"
+                        on:click={handleDoctorApprovedSmsTest}
+                        disabled={!doctorApprovedTemplateEnabled}
+                      >
+                        <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                      </button>
+                      {#if doctorApprovedTestStatus}
+                        <span class="text-xs text-gray-500">{doctorApprovedTestStatus}</span>
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    class="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                    on:click={saveMessagingTemplates}
+                    disabled={messagingTemplatesSaving}
+                  >
+                    {#if messagingTemplatesSaving}
+                      <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                    {:else}
+                      <i class="fas fa-save mr-2"></i>Save Templates
+                    {/if}
+                  </button>
+                  {#if messagingTemplatesStatus}
+                    <span class="text-sm text-gray-600">{messagingTemplatesStatus}</span>
+                  {/if}
+                </div>
+                {/if}
+              {:else if messagingTab === 'whatsapp'}
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p class="text-sm text-blue-900 font-semibold mb-1">Twilio WhatsApp (Welcome Message)</p>
+                  <p class="text-sm text-blue-800">
+                    Store credentials in Firebase Secrets. Do not paste the Auth Token in the UI.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Test Number</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={whatsappTestNumber}
+                      placeholder="whatsapp:+14155238886"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={whatsappTestMessage}
+                      placeholder="Welcome to M-Prescribe!"
+                    />
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                    on:click={testWhatsappWelcome}
+                    disabled={whatsappTestRunning}
+                  >
+                    {#if whatsappTestRunning}
+                      <i class="fas fa-spinner fa-spin mr-2"></i>Sending...
+                    {:else}
+                      <i class="fas fa-paper-plane mr-2"></i>Send Test WhatsApp
+                    {/if}
+                  </button>
+                  {#if whatsappTestStatus}
+                    <span class="text-sm text-gray-600">{whatsappTestStatus}</span>
+                  {/if}
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Secrets (CLI)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set TWILIO_ACCOUNT_SID
+firebase functions:secrets:set TWILIO_AUTH_TOKEN
+firebase functions:secrets:set TWILIO_WHATSAPP_FROM</code></pre>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Sample Node.js (Cloud Function)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>const functions = require('firebase-functions');
+const twilio = require('twilio');
+
+exports.sendWelcomeWhatsapp = functions
+  .runWith(&#123;
+    secrets: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_FROM']
+  &#125;)
+  .https.onCall(async (data) =&gt; &#123;
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const from = process.env.TWILIO_WHATSAPP_FROM; // e.g. whatsapp:+14155238886
+
+    const client = twilio(accountSid, authToken);
+    const to = data?.to; // e.g. whatsapp:+642041210342
+    const body = data?.body || 'Welcome to M-Prescribe!';
+
+    if (!to) &#123;
+      throw new functions.https.HttpsError('invalid-argument', 'Recipient is required.');
+    &#125;
+
+    const message = await client.messages.create(&#123; body, from, to &#125;);
+    return &#123; sid: message.sid &#125;;
+  &#125;);</code></pre>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Test Payload</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>&#123;
+  "to": "whatsapp:+642041210342",
+  "body": "Welcome to M-Prescribe!"
+&#125;</code></pre>
+                </div>
+              {:else}
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <p class="text-sm text-blue-900 font-semibold mb-1">SMS Gateway (notify.lk)</p>
+                  <p class="text-sm text-blue-800">
+                    Store the API token in Firebase Secrets. Do not paste it in the UI.
+                  </p>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm font-semibold text-gray-800">Sender ID</p>
+                    {#if smsSenderIdStatus}
+                      <span class="text-xs text-gray-500">{smsSenderIdStatus}</span>
+                    {/if}
+                  </div>
+                  <div class="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestSenderId}
+                      placeholder="YourName"
+                    />
+                    <button
+                      class="inline-flex w-full sm:w-[170px] items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                      on:click={saveSmsSenderId}
+                      disabled={smsSenderIdSaving}
+                    >
+                      {#if smsSenderIdSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save Sender ID
+                      {/if}
+                    </button>
+                  </div>
+                </div>
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm font-semibold text-gray-800">Test SMS phone number</p>
+                    {#if smsTestRecipientStatus}
+                      <span class="text-xs text-gray-500">{smsTestRecipientStatus}</span>
+                    {/if}
+                  </div>
+                  <div class="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestRecipient}
+                      placeholder="94712345678"
+                    />
+                    <button
+                      class="inline-flex w-full sm:w-[170px] items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                      on:click={saveSmsTestRecipient}
+                      disabled={smsTestRecipientSaving}
+                    >
+                      {#if smsTestRecipientSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save Test Number
+                      {/if}
+                    </button>
+                  </div>
+                  <p class="text-xs text-gray-500 mt-2">
+                    Used for Send Test SMS buttons and optional copy of doctor registration SMS.
+                  </p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sender ID</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestSenderId}
+                      placeholder="YourName"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Type (unicode only)</label>
+                    <select
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestType}
+                    >
+                      <option value="plain">plain</option>
+                      <option value="unicode">unicode</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={smsTestMessage}
+                      placeholder="This is a test message"
+                    />
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button
+                    class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                    on:click={testSmsSend}
+                    disabled={smsTestRunning}
+                  >
+                    {#if smsTestRunning}
+                      <i class="fas fa-spinner fa-spin mr-2"></i>Sending...
+                    {:else}
+                      <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
+                    {/if}
+                  </button>
+                  {#if smsTestStatus}
+                    <span class="text-sm text-gray-600">{smsTestStatus}</span>
+                  {/if}
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Secrets (CLI)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>firebase functions:secrets:set NOTIFY_USER_ID
+firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Sample Node.js (Cloud Function)</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>exports.sendSmsApi = functions
+  .runWith(&#123; secrets: ['NOTIFY_USER_ID', 'NOTIFY_API_KEY'] &#125;)
+  .https.onCall(async (data) =&gt; &#123;
+    const userId = process.env.NOTIFY_USER_ID;
+    const apiKey = process.env.NOTIFY_API_KEY;
+    const payload = new URLSearchParams(&#123;
+      user_id: userId,
+      api_key: apiKey,
+      sender_id: data?.senderId,
+      to: data?.recipient,
+      message: data?.message
+    &#125;);
+
+    const response = await fetch('https://app.notify.lk/api/v1/send', &#123;
+      method: 'POST',
+      headers: &#123;
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json'
+      &#125;,
+      body: payload.toString()
+    &#125;);
+
+    return response.json();
+  &#125;);</code></pre>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-700 mb-2">Test Payload</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-4 overflow-x-auto"><code>&#123;
+  "recipient": "31612345678",
+  "senderId": "YourName",
+  "type": "plain",
+  "message": "This is a test message"
+&#125;</code></pre>
+                </div>
+              {/if}
+            </div>
+          {:else if activeTab === 'doctor-view'}
+            <!-- Doctor View Tab -->
+            <div class="flex justify-between items-center mb-6">
+              <div class="flex items-center gap-3">
+                <button
+                  class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+                  on:click={closeDoctorView}
+                >
+                  <i class="fas fa-arrow-left mr-2"></i>Back to Doctors
+                </button>
+                <h2 class="text-2xl font-bold text-gray-900">
+                  <i class="fas fa-user-md mr-2 text-red-600"></i>Doctor Details
+                </h2>
+              </div>
+            </div>
+            {#if selectedDoctorView}
+              <div class="space-y-4">
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">{selectedDoctorView.name || selectedDoctorView.email}</h5>
+                  </div>
+                  <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                    <div class="space-y-2">
+                      <div><span class="text-gray-500">Email:</span> <span class="text-gray-900">{selectedDoctorView.email}</span></div>
+                      <div><span class="text-gray-500">Doctor ID:</span> <span class="text-gray-900">{formatDoctorId(selectedDoctorView.id)}</span></div>
+                      <div><span class="text-gray-500">Phone:</span> <span class="text-gray-900">{selectedDoctorView.phone || 'N/A'}</span></div>
+                      <div><span class="text-gray-500">Created:</span> <span class="text-gray-900">{formatDate(selectedDoctorView.createdAt)}</span></div>
+                      <div><span class="text-gray-500">Status:</span> <span class="text-gray-900">{getDoctorStatusLabel(selectedDoctorView)}</span></div>
+                      <div><span class="text-gray-500">Trial:</span> <span class="text-gray-900">{selectedDoctorView.accessExpiresAt ? formatDate(selectedDoctorView.accessExpiresAt) : 'N/A'}</span></div>
+                    </div>
+                    <div class="space-y-2">
+                      <div><span class="text-gray-500">Country:</span> <span class="text-gray-900">{selectedDoctorView.country || 'N/A'}</span></div>
+                      <div><span class="text-gray-500">City:</span> <span class="text-gray-900">{selectedDoctorView.city || 'N/A'}</span></div>
+                      <div><span class="text-gray-500">Role:</span> <span class="text-gray-900">{selectedDoctorView.role}</span></div>
+                      <div><span class="text-gray-500">Referral:</span> <span class="text-gray-900">{selectedDoctorView.referredByDoctorId ? formatDoctorId(selectedDoctorView.referredByDoctorId) : 'N/A'}</span></div>
+                      <div><span class="text-gray-500">Referral Bonus:</span> <span class="text-gray-900">{selectedDoctorView.referralBonusAppliedAt ? `Applied ${formatDate(selectedDoctorView.referralBonusAppliedAt)}` : (selectedDoctorView.referralEligibleAt ? `Eligible ${formatDate(selectedDoctorView.referralEligibleAt)}` : 'N/A')}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-percent mr-2 text-cyan-600"></i>Admin Payment Discount
+                    </h5>
+                  </div>
+                  <div class="p-4">
+                    <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+                      <div class="w-full sm:max-w-[220px]">
+                        <label for="doctorAdminDiscountPercent" class="block text-xs text-gray-500 mb-1">
+                          Discount percentage (0 to 100)
+                        </label>
+                        <input
+                          id="doctorAdminDiscountPercent"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:border-cyan-400"
+                          bind:value={doctorAdminDiscountPercentInput}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                        on:click={saveDoctorAdminDiscount}
+                        disabled={doctorAdminDiscountSaving}
+                      >
+                        {#if doctorAdminDiscountSaving}
+                          <i class="fas fa-circle-notch fa-spin mr-2"></i>Saving...
+                        {:else}
+                          <i class="fas fa-save mr-2"></i>Save Discount
+                        {/if}
+                      </button>
+                    </div>
+                    <p class="mt-2 text-xs text-gray-500">
+                      This discount is applied automatically to Stripe checkout for this doctor until you change it.
+                    </p>
+                    {#if doctorAdminDiscountStatus}
+                      <p class="mt-1 text-xs text-gray-600">{doctorAdminDiscountStatus}</p>
+                    {/if}
+                  </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-microchip mr-2 text-teal-600"></i>AI Token Usage
+                    </h5>
+                  </div>
+                  <div class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-amber-700 font-semibold">Total Cost</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">${(selectedDoctorView?.tokenUsage?.total?.cost || 0).toFixed(4)}</p>
+                    </div>
+                    <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-blue-700 font-semibold">Total Tokens</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">{formatCompactNumber(selectedDoctorView?.tokenUsage?.total?.tokens || 0)}</p>
+                    </div>
+                    <div class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-teal-700 font-semibold">Total Requests</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">{selectedDoctorView?.tokenUsage?.total?.requests || 0}</p>
+                    </div>
+                    <div class="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3">
+                      <p class="text-xs uppercase tracking-wide text-cyan-700 font-semibold">Today Requests</p>
+                      <p class="mt-1 text-lg font-semibold text-gray-900">{selectedDoctorView?.tokenUsage?.today?.requests || 0}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h5 class="text-lg font-semibold text-gray-900 mb-0">
+                      <i class="fas fa-wallet mr-2 text-teal-600"></i>Billing Wallet
+                    </h5>
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-50"
+                        on:click={() => {
+                          doctorBillingHistoryCollapsed = !doctorBillingHistoryCollapsed
+                        }}
+                      >
+                        <i class="fas {doctorBillingHistoryCollapsed ? 'fa-expand-alt' : 'fa-compress-alt'} mr-2"></i>
+                        {doctorBillingHistoryCollapsed ? 'Show history' : 'Shrink history'}
+                      </button>
+                      <button
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                        on:click={() => loadDoctorWalletData(selectedDoctorView.id)}
+                        disabled={doctorPaymentRecordsLoading}
+                      >
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                      </button>
+                    </div>
+                  </div>
+                  <div class="p-4 space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                      <div class="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-cyan-700 font-semibold">Wallet Value</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{formatMonthsLabel(displayWalletMonths)}</p>
+                      </div>
+                      <div class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-blue-700 font-semibold">Payment Status</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{displayPaymentStatus}</p>
+                      </div>
+                      <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-amber-700 font-semibold">Referral Free Months Available</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{formatMonthsLabel(doctorReferralWalletStats.referralFreeMonthsAvailable)}</p>
+                      </div>
+                      <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Total Paid</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">
+                          {displayTotalPaidCurrency ? `${displayTotalPaidCurrency} ` : ''}{displayTotalPaidAmount.toFixed(2)}
+                        </p>
+                      </div>
+                      <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                        <p class="text-xs uppercase tracking-wide text-gray-700 font-semibold">Total Referred Doctors</p>
+                        <p class="mt-1 text-lg font-semibold text-gray-900">{doctorReferralWalletStats.totalReferredDoctors}</p>
+                      </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div class="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
+                        <span class="font-semibold text-teal-700">Referral Applied:</span>
+                        <span class="ml-1 text-gray-900">{doctorReferralWalletStats.referralBonusAppliedCount}</span>
+                      </div>
+                      <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <span class="font-semibold text-amber-700">Referral Pending:</span>
+                        <span class="ml-1 text-gray-900">{doctorReferralWalletStats.referralBonusPendingCount}</span>
+                      </div>
+                      <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <span class="font-semibold text-gray-700">Access Until:</span>
+                        <span class="ml-1 text-gray-900">{displayAccessExpiresAt ? formatDate(displayAccessExpiresAt) : 'N/A'}</span>
+                      </div>
+                    </div>
+
+                    {#if doctorPaymentRecordsError}
+                      <p class="text-sm text-red-600">{doctorPaymentRecordsError}</p>
+                    {/if}
+                    {#if doctorBillingHistoryCollapsed}
+                      <p class="text-sm text-gray-500">Billing history is collapsed.</p>
+                    {:else if doctorPaymentRecordsLoading}
+                      <p class="text-sm text-gray-500">Loading billing records...</p>
+                    {:else if dedupedDoctorPaymentRecords.length === 0}
+                      <p class="text-sm text-gray-500">No Stripe-confirmed billing records yet.</p>
+                    {:else}
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                          <thead class="bg-gray-50">
+                            <tr>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody class="bg-white divide-y divide-gray-200">
+                            {#each displayedDoctorPaymentRecords as record (record.id)}
+                              <tr>
+                                <td class="px-3 py-2 text-gray-900">
+                                  {formatDateTime(record.createdAt)}
+                                  <span class="sr-only">{record.type || ''}</span>
+                                  <span class="sr-only">{record.referenceId || ''}</span>
+                                </td>
+                                <td class="px-3 py-2 text-gray-700">
+                                  {formatBillingAmount(record)}
+                                </td>
+                                <td class="px-3 py-2">
+                                  <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full {getStripeOutcome(record) === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}">
+                                    {getStripeOutcome(record) === 'success' ? 'Success' : 'Fail'}
+                                  </span>
+                                </td>
+                              </tr>
+                            {/each}
+                          </tbody>
+                        </table>
+                      </div>
+                      {#if canExpandDoctorBillingHistory}
+                        <div class="flex justify-end">
+                          <button
+                            class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-700 bg-white hover:bg-gray-50"
+                            on:click={() => {
+                              doctorBillingHistoryExpanded = !doctorBillingHistoryExpanded
+                            }}
+                          >
+                            <i class="fas {doctorBillingHistoryExpanded ? 'fa-compress-alt' : 'fa-expand-alt'} mr-2"></i>
+                            {doctorBillingHistoryExpanded ? 'Show less' : 'Expand history'}
+                          </button>
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            {:else}
+              <p class="text-sm text-gray-500">Select a doctor to view details.</p>
+            {/if}
+          {:else if activeTab === 'system'}
+            <!-- System Tab -->
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-cog mr-2 text-red-600"></i>System Settings</h2>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">System Information</h5>
+                  </div>
+                <div class="p-4">
+                    <dl class="grid grid-cols-1 gap-4">
+                      <div class="flex justify-between">
+                        <dt class="text-sm font-medium text-gray-500">Version:</dt>
+                        <dd class="text-sm text-gray-900">1.0.0</dd>
+                      </div>
+                      
+                      <div class="flex justify-between">
+                        <dt class="text-sm font-medium text-gray-500">Last Updated:</dt>
+                        <dd class="text-sm text-gray-900">{new Date().toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        })}</dd>
+                      </div>
+                      
+                      <div class="flex justify-between">
+                        <dt class="text-sm font-medium text-gray-500">Admin Email:</dt>
+                        <dd class="text-sm text-gray-900">senakahks@gmail.com</dd>
+                      </div>
+	                    </dl>
+	                  </div>
+	                </div>
+
+	              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">App URL</h5>
+                </div>
+                <div class="p-4 space-y-3">
+                  <p class="text-sm text-gray-600">
+                    Used in SMS and email templates for &#123;&#123;appUrl&#125;&#125;.
+                  </p>
+                  <div class="flex flex-col sm:flex-row gap-3">
+                    <input
+                      type="text"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      bind:value={appUrl}
+                      placeholder="https://your-domain.com"
+                    />
+                    <button
+                      class="inline-flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 disabled:opacity-50"
+                      on:click={saveAppUrl}
+                      disabled={appUrlSaving}
+                    >
+                      {#if appUrlSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving...
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save App URL
+                      {/if}
+                    </button>
+                  </div>
+                  {#if appUrlStatus}
+                    <span class="text-xs text-gray-500">{appUrlStatus}</span>
+                  {/if}
+                </div>
+              </div>
+              
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Quick Actions</h5>
+                  </div>
+                <div class="p-4">
+                  <div class="space-y-3">
+                    <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-offset-2 dark:bg-white dark:text-blue-700 dark:border-blue-300 dark:hover:bg-blue-50 transition-all duration-200">
+                      <i class="fas fa-download mr-2"></i>Export Data
+                      </button>
+                    <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-yellow-300 text-yellow-700 bg-white hover:bg-yellow-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-yellow-300 focus:ring-offset-2 dark:bg-white dark:text-yellow-700 dark:border-yellow-300 dark:hover:bg-yellow-50 transition-all duration-200">
+                      <i class="fas fa-backup mr-2"></i>Backup System
+                      </button>
+                    <button class="w-full inline-flex items-center justify-center px-4 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-offset-2 dark:bg-white dark:text-blue-700 dark:border-blue-300 dark:hover:bg-blue-50 transition-all duration-200" on:click={refreshData}>
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh Data
+                      </button>
+                    </div>
+                  </div>
+              </div>
+
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">Secrets Setup (CLI)</h5>
+                </div>
+                <div class="p-4 space-y-3">
+                  <p class="text-sm text-gray-600">Run these in your project root to store secrets in Firebase Functions.</p>
+                  <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-3 overflow-x-auto"><code>firebase functions:secrets:set SMTP_PASS
+firebase functions:secrets:set OPENAI_API_KEY</code></pre>
+                </div>
+              </div>
+              
+              <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                  <h5 class="text-lg font-semibold text-gray-900 mb-0">OpenAI Proxy Test</h5>
+                </div>
+                <div class="p-4 space-y-3">
+                  <p class="text-sm text-gray-600">Sends a tiny request through the Functions proxy to confirm the secret is working.</p>
+                  <div class="flex items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={testOpenAIProxy}
+                      disabled={openaiTestRunning}
+                    >
+                      {#if openaiTestRunning}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Testing
+                      {:else}
+                        <i class="fas fa-vial mr-2"></i>Test OpenAI
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50"
+                      on:click={refreshOpenAIDebug}
+                    >
+                      <i class="fas fa-sync-alt mr-2"></i>Refresh Debug
+                    </button>
+                    {#if openaiTestStatus}
+                      <span class="text-sm text-gray-500">{openaiTestStatus}</span>
+                    {/if}
+                  </div>
+                  <div class="border border-gray-200 rounded-lg p-3 bg-gray-50 text-xs text-gray-700 space-y-2">
+                    <div class="flex flex-wrap gap-3">
+                      <span><strong>Project ID:</strong> {openaiDebugProjectId || '—'}</span>
+                      <span><strong>Region:</strong> {openaiDebugRegion || '—'}</span>
+                      <span><strong>Functions Base URL:</strong> {openaiDebugBaseUrl || '—'}</span>
+                      <span><strong>Override Base URL:</strong> {openaiDebugFunctionsBaseUrl || '—'}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-3">
+                      <span><strong>User UID:</strong> {openaiDebugUserId || '—'}</span>
+                      <span><strong>User Email:</strong> {openaiDebugUserEmail || '—'}</span>
+                      <span><strong>Last Test:</strong> {openaiDebugLastTime || '—'}</span>
+                      <span><strong>Last Status:</strong> {openaiDebugLastStatus || '—'}</span>
+                    </div>
+                    {#if openaiDebugLastError}
+                      <div><strong>Last Error:</strong> {openaiDebugLastError}</div>
+                    {/if}
+                    {#if openaiDebugLastBody}
+                      <div>
+                        <div class="font-semibold text-gray-700 mb-1">Last Response Body (truncated)</div>
+                        <pre class="bg-gray-900 text-gray-100 text-xs rounded-lg p-2 overflow-x-auto"><code>{openaiDebugLastBody}</code></pre>
+                      </div>
+	                    {/if}
+	                  </div>
+	                </div>
+	              </div>
+	            </div>
+	          {:else if activeTab === 'email'}
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-envelope mr-2 text-red-600"></i>Email</h2>
+            </div>
+            <div class="flex items-center gap-2 mb-4">
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  emailTab === 'settings'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (emailTab = 'settings')}
+              >
+                Settings
+              </button>
+              <button
+                class={`px-4 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  emailTab === 'templates'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+                on:click={() => (emailTab = 'templates')}
+              >
+                Templates
+              </button>
+            </div>
+            {#if emailTab === 'settings'}
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">SMTP Settings</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if smtpLoading}
+                  <p class="text-sm text-gray-500">Loading settings...</p>
+                {:else}
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="smtpHost">SMTP Host</label>
+                      <input
+                        id="smtpHost"
+                        type="text"
+                        bind:value={smtpHost}
+                        placeholder="smtp.gmail.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="smtpPort">SMTP Port</label>
+                      <input
+                        id="smtpPort"
+                        type="number"
+                        min="1"
+                        bind:value={smtpPort}
+                        placeholder="587"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="smtpUser">SMTP User</label>
+                      <input
+                        id="smtpUser"
+                        type="text"
+                        bind:value={smtpUser}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-3">
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input type="checkbox" bind:checked={smtpSecure} class="rounded border-gray-300 text-red-600 focus:ring-red-200" />
+                      Use SSL/TLS (secure)
+                    </label>
+                  </div>
+
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveSmtpSettings}
+                      disabled={smtpSaving}
+                    >
+                      {#if smtpSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={testSmtpSettings}
+                      disabled={smtpTestRunning}
+                    >
+                      {#if smtpTestRunning}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Testing
+                      {:else}
+                        <i class="fas fa-vial mr-2"></i>Test SMTP
+                      {/if}
+                    </button>
+                    {#if smtpStatus}
+                      <span class="text-sm text-gray-500">{smtpStatus}</span>
+                    {/if}
+                    {#if smtpTestStatus}
+                      <span class="text-sm text-gray-500">{smtpTestStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+          {:else}
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-2xl font-bold text-gray-900"><i class="fas fa-paper-plane mr-2 text-red-600"></i>Email Templates</h2>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Broadcast Email to All Doctors</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if doctorBroadcastLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastSubject">Subject</label>
+                      <input
+                        id="doctorBroadcastSubject"
+                        type="text"
+                        bind:value={doctorBroadcastSubject}
+                        placeholder="Important update from Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastFromName">From Name (optional)</label>
+                      <input
+                        id="doctorBroadcastFromName"
+                        type="text"
+                        bind:value={doctorBroadcastFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastFromEmail">From Email (optional)</label>
+                      <input
+                        id="doctorBroadcastFromEmail"
+                        type="email"
+                        bind:value={doctorBroadcastFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="doctorBroadcastReplyTo"
+                        type="email"
+                        bind:value={doctorBroadcastReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="doctorBroadcastTextOnly"
+                      type="checkbox"
+                      bind:checked={doctorBroadcastTextOnly}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="doctorBroadcastTextOnly" class="text-sm text-gray-700">
+                      Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastText">Plain Text</label>
+                      <textarea
+                        id="doctorBroadcastText"
+                        rows="8"
+                        bind:value={doctorBroadcastText}
+                        placeholder="Hi {{name}},&#10;We have an important update..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="doctorBroadcastHtml">HTML</label>
+                      <textarea
+                        id="doctorBroadcastHtml"
+                        rows="8"
+                        bind:value={doctorBroadcastHtml}
+                        placeholder="<h2>Important update</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveDoctorBroadcastTemplate}
+                      disabled={doctorBroadcastSaving}
+                    >
+                      {#if doctorBroadcastSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendDoctorBroadcast('test')}
+                      disabled={doctorBroadcastSending}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60"
+                      on:click={() => {
+                        pendingAction = () => sendDoctorBroadcast('all')
+                        showConfirmation(
+                          'Send Broadcast',
+                          'Send this email to all doctors?',
+                          'Send',
+                          'Cancel',
+                          'warning'
+                        )
+                      }}
+                      disabled={doctorBroadcastSending}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to all doctors
+                    </button>
+                    {#if doctorBroadcastStatus}
+                      <span class="text-sm text-gray-500">{doctorBroadcastStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Send to a Single Doctor</h5>
+              </div>
+              <div class="p-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1" for="singleDoctorSelect">Select Doctor</label>
+                <select
+                  id="singleDoctorSelect"
+                  bind:value={selectedDoctorForEmail}
+                  data-testid="single-doctor-select"
+                  on:change={(event) => { selectedDoctorForEmail = event.target.value }}
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                >
+                  <option value="">Choose a doctor...</option>
+                  {#each doctors as doctor (doctor.id)}
+                    <option value={doctor.id}>{doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Welcome Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if welcomeEmailLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeSubject">Subject</label>
+                      <input
+                        id="welcomeSubject"
+                        type="text"
+                        bind:value={welcomeSubject}
+                        placeholder="Welcome to Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeFromName">From Name (optional)</label>
+                      <input
+                        id="welcomeFromName"
+                        type="text"
+                        bind:value={welcomeFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeFromEmail">From Email (optional)</label>
+                      <input
+                        id="welcomeFromEmail"
+                        type="email"
+                        bind:value={welcomeFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="welcomeReplyTo"
+                        type="email"
+                        bind:value={welcomeReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="welcomeTextOnly"
+                      type="checkbox"
+                      bind:checked={welcomeTextOnly}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="welcomeTextOnly" class="text-sm text-gray-700">
+                      Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="welcomeEmailEnabled"
+                      type="checkbox"
+                      bind:checked={welcomeEmailEnabled}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="welcomeEmailEnabled" class="text-sm text-gray-700">
+                      Enable automated welcome emails
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeText">Plain Text</label>
+                      <textarea
+                        id="welcomeText"
+                        rows="8"
+                        bind:value={welcomeText}
+                        placeholder="Hi {{name}},&#10;Welcome to Prescribe..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="welcomeHtml">HTML</label>
+                      <textarea
+                        id="welcomeHtml"
+                        rows="8"
+                        bind:value={welcomeHtml}
+                        placeholder="<h2>Welcome to Prescribe</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveWelcomeEmailTemplate}
+                      disabled={welcomeEmailSaving}
+                    >
+                      {#if welcomeEmailSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToTest(
+                        'welcomeEmail',
+                        (msg) => welcomeEmailStatus = msg,
+                        {
+                          subject: welcomeSubject,
+                          text: welcomeText,
+                          html: welcomeHtml,
+                          fromName: welcomeFromName,
+                          fromEmail: welcomeFromEmail,
+                          replyTo: welcomeReplyTo,
+                          textOnly: welcomeTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    {#if welcomeEmailStatus}
+                      <span class="text-sm text-gray-500">{welcomeEmailStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Patient Welcome Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if patientWelcomeLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorName}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeSubject">Subject</label>
+                      <input
+                        id="patientWelcomeSubject"
+                        type="text"
+                        bind:value={patientWelcomeSubject}
+                        placeholder="Welcome to M-Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeFromName">From Name (optional)</label>
+                      <input
+                        id="patientWelcomeFromName"
+                        type="text"
+                        bind:value={patientWelcomeFromName}
+                        placeholder="M-Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeFromEmail">From Email (optional)</label>
+                      <input
+                        id="patientWelcomeFromEmail"
+                        type="email"
+                        bind:value={patientWelcomeFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="patientWelcomeReplyTo"
+                        type="email"
+                        bind:value={patientWelcomeReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="patientWelcomeTextOnly"
+                      type="checkbox"
+                      bind:checked={patientWelcomeTextOnly}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="patientWelcomeTextOnly" class="text-sm text-gray-700">
+                      Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="patientWelcomeEnabled"
+                      type="checkbox"
+                      bind:checked={patientWelcomeEnabled}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="patientWelcomeEnabled" class="text-sm text-gray-700">
+                      Enable automated patient welcome emails
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeText">Plain Text</label>
+                      <textarea
+                        id="patientWelcomeText"
+                        rows="8"
+                        bind:value={patientWelcomeText}
+                        placeholder="Hi {{name}},&#10;Welcome to M-Prescribe..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="patientWelcomeHtml">HTML</label>
+                      <textarea
+                        id="patientWelcomeHtml"
+                        rows="8"
+                        bind:value={patientWelcomeHtml}
+                        placeholder="<h2>Welcome to M-Prescribe</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={savePatientWelcomeTemplate}
+                      disabled={patientWelcomeSaving}
+                    >
+                      {#if patientWelcomeSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendPatientTemplateToTest(
+                        'patientWelcomeEmail',
+                        (msg) => patientWelcomeStatus = msg,
+                        {
+                          subject: patientWelcomeSubject,
+                          text: patientWelcomeText,
+                          html: patientWelcomeHtml,
+                          fromName: patientWelcomeFromName,
+                          fromEmail: patientWelcomeFromEmail,
+                          replyTo: patientWelcomeReplyTo,
+                          textOnly: patientWelcomeTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    {#if patientWelcomeStatus}
+                      <span class="text-sm text-gray-500">{patientWelcomeStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Appointment Reminder Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if appointmentEmailLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientName}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorName}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{date}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailSubject">Subject</label>
+                      <input
+                        id="appointmentEmailSubject"
+                        type="text"
+                        bind:value={appointmentEmailSubject}
+                        placeholder="Appointment reminder"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailFromName">From Name (optional)</label>
+                      <input
+                        id="appointmentEmailFromName"
+                        type="text"
+                        bind:value={appointmentEmailFromName}
+                        placeholder="M-Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailFromEmail">From Email (optional)</label>
+                      <input
+                        id="appointmentEmailFromEmail"
+                        type="email"
+                        bind:value={appointmentEmailFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="appointmentEmailReplyTo"
+                        type="email"
+                        bind:value={appointmentEmailReplyTo}
+                        placeholder="support@yourdomain.com"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="appointmentEmailTextOnly"
+                      type="checkbox"
+                      bind:checked={appointmentEmailTextOnly}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="appointmentEmailTextOnly" class="text-sm text-gray-700">
+                      Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="appointmentEmailEnabled"
+                      type="checkbox"
+                      bind:checked={appointmentEmailEnabled}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="appointmentEmailEnabled" class="text-sm text-gray-700">
+                      Enable automated appointment reminders
+                    </label>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailText">Plain Text</label>
+                      <textarea
+                        id="appointmentEmailText"
+                        rows="8"
+                        bind:value={appointmentEmailText}
+                        placeholder="Hi &#123;&#123;patientName&#125;&#125;,&#10;Reminder: your appointment with &#123;&#123;doctorName&#125;&#125; is on &#123;&#123;date&#125;&#125;."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="appointmentEmailHtml">HTML</label>
+                      <textarea
+                        id="appointmentEmailHtml"
+                        rows="8"
+                        bind:value={appointmentEmailHtml}
+                        placeholder="<h2>Appointment reminder</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="flex items-center justify-between">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveAppointmentReminderTemplate}
+                      disabled={appointmentEmailSaving}
+                    >
+                      {#if appointmentEmailSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendAppointmentTemplateToTest(
+                        'appointmentReminderEmail',
+                        (msg) => appointmentEmailStatus = msg,
+                        {
+                          subject: appointmentEmailSubject,
+                          text: appointmentEmailText,
+                          html: appointmentEmailHtml,
+                          fromName: appointmentEmailFromName,
+                          fromEmail: appointmentEmailFromEmail,
+                          replyTo: appointmentEmailReplyTo,
+                          textOnly: appointmentEmailTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    {#if appointmentEmailStatus}
+                      <span class="text-sm text-gray-500">{appointmentEmailStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Approval Welcome Email</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if approvalWelcomeLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeSubject">Subject</label>
+                      <input
+                        id="approvalWelcomeSubject"
+                        type="text"
+                        bind:value={approvalWelcomeSubject}
+                        placeholder="Your account is approved"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeFromName">From Name (optional)</label>
+                      <input
+                        id="approvalWelcomeFromName"
+                        type="text"
+                        bind:value={approvalWelcomeFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeFromEmail">From Email (optional)</label>
+                      <input
+                        id="approvalWelcomeFromEmail"
+                        type="email"
+                        bind:value={approvalWelcomeFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="approvalWelcomeReplyTo"
+                        type="email"
+                        bind:value={approvalWelcomeReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="approvalWelcomeTextOnly"
+                      type="checkbox"
+                      bind:checked={approvalWelcomeTextOnly}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="approvalWelcomeTextOnly" class="text-sm text-gray-700">
+                      Send plain text only (ignore HTML)
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <input
+                      id="approvalWelcomeEnabled"
+                      type="checkbox"
+                      bind:checked={approvalWelcomeEnabled}
+                      class="h-4 w-4 text-red-600 border-gray-300 rounded"
+                    />
+                    <label for="approvalWelcomeEnabled" class="text-sm text-gray-700">
+                      Enable approval welcome email
+                    </label>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeText">Plain Text</label>
+                      <textarea
+                        id="approvalWelcomeText"
+                        rows="8"
+                        bind:value={approvalWelcomeText}
+                        placeholder="Hi {{name}},&#10;Your account is approved..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="approvalWelcomeHtml">HTML</label>
+                      <textarea
+                        id="approvalWelcomeHtml"
+                        rows="8"
+                        bind:value={approvalWelcomeHtml}
+                        placeholder="<h2>Your account is approved</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveApprovalWelcomeTemplate}
+                      disabled={approvalWelcomeSaving}
+                    >
+                      {#if approvalWelcomeSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToTest(
+                        'approvalWelcomeEmail',
+                        (msg) => approvalWelcomeStatus = msg,
+                        {
+                          subject: approvalWelcomeSubject,
+                          text: approvalWelcomeText,
+                          html: approvalWelcomeHtml,
+                          fromName: approvalWelcomeFromName,
+                          fromEmail: approvalWelcomeFromEmail,
+                          replyTo: approvalWelcomeReplyTo,
+                          textOnly: approvalWelcomeTextOnly
+                        }
+                      )}
+                      disabled={!approvalWelcomeEnabled}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('approvalWelcomeEmail', selectedDoctorForEmail, (msg) => approvalWelcomeStatus = msg)}
+                      disabled={!approvalWelcomeEnabled}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if approvalWelcomeStatus}
+                      <span class="text-sm text-gray-500">{approvalWelcomeStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Payment Reminder</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if paymentReminderLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderSubject">Subject</label>
+                      <input
+                        id="paymentReminderSubject"
+                        type="text"
+                        bind:value={paymentReminderSubject}
+                        placeholder="Payment reminder"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderFromName">From Name (optional)</label>
+                      <input
+                        id="paymentReminderFromName"
+                        type="text"
+                        bind:value={paymentReminderFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderFromEmail">From Email (optional)</label>
+                      <input
+                        id="paymentReminderFromEmail"
+                        type="email"
+                        bind:value={paymentReminderFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="paymentReminderReplyTo"
+                        type="email"
+                        bind:value={paymentReminderReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderText">Plain Text</label>
+                      <textarea
+                        id="paymentReminderText"
+                        rows="8"
+                        bind:value={paymentReminderText}
+                        placeholder="Hi {{name}},&#10;This is a payment reminder..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentReminderHtml">HTML</label>
+                      <textarea
+                        id="paymentReminderHtml"
+                        rows="8"
+                        bind:value={paymentReminderHtml}
+                        placeholder="<h2>Payment reminder</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={savePaymentReminderTemplate}
+                      disabled={paymentReminderSaving}
+                    >
+                      {#if paymentReminderSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToTest(
+                        'paymentReminderEmail',
+                        (msg) => paymentReminderStatus = msg,
+                        {
+                          subject: paymentReminderSubject,
+                          text: paymentReminderText,
+                          html: paymentReminderHtml,
+                          fromName: paymentReminderFromName,
+                          fromEmail: paymentReminderFromEmail,
+                          replyTo: paymentReminderReplyTo,
+                          textOnly: paymentReminderTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('paymentReminderEmail', selectedDoctorForEmail, (msg) => paymentReminderStatus = msg)}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if paymentReminderStatus}
+                      <span class="text-sm text-gray-500">{paymentReminderStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Payment Thank You</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if paymentThanksLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksSubject">Subject</label>
+                      <input
+                        id="paymentThanksSubject"
+                        type="text"
+                        bind:value={paymentThanksSubject}
+                        placeholder="Thank you for your payment"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksFromName">From Name (optional)</label>
+                      <input
+                        id="paymentThanksFromName"
+                        type="text"
+                        bind:value={paymentThanksFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksFromEmail">From Email (optional)</label>
+                      <input
+                        id="paymentThanksFromEmail"
+                        type="email"
+                        bind:value={paymentThanksFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="paymentThanksReplyTo"
+                        type="email"
+                        bind:value={paymentThanksReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksText">Plain Text</label>
+                      <textarea
+                        id="paymentThanksText"
+                        rows="8"
+                        bind:value={paymentThanksText}
+                        placeholder="Hi {{name}},&#10;Thank you for your payment..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="paymentThanksHtml">HTML</label>
+                      <textarea
+                        id="paymentThanksHtml"
+                        rows="8"
+                        bind:value={paymentThanksHtml}
+                        placeholder="<h2>Thank you</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={savePaymentThanksTemplate}
+                      disabled={paymentThanksSaving}
+                    >
+                      {#if paymentThanksSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToTest(
+                        'paymentThanksEmail',
+                        (msg) => paymentThanksStatus = msg,
+                        {
+                          subject: paymentThanksSubject,
+                          text: paymentThanksText,
+                          html: paymentThanksHtml,
+                          fromName: paymentThanksFromName,
+                          fromEmail: paymentThanksFromEmail,
+                          replyTo: paymentThanksReplyTo,
+                          textOnly: paymentThanksTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('paymentThanksEmail', selectedDoctorForEmail, (msg) => paymentThanksStatus = msg)}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if paymentThanksStatus}
+                      <span class="text-sm text-gray-500">{paymentThanksStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <div class="bg-white border border-gray-200 rounded-lg shadow-sm mt-6">
+              <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                <h5 class="text-lg font-semibold text-gray-900 mb-0">Other Message</h5>
+              </div>
+              <div class="p-4 space-y-4">
+                {#if otherMessageLoading}
+                  <p class="text-sm text-gray-500">Loading template...</p>
+                {:else}
+                  <p class="text-xs text-gray-500">
+                    Available variables:
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdBarcode}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{referralQr}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeUrl}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{unsubscribeLink}}'}</code>
+                  </p>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageSubject">Subject</label>
+                      <input
+                        id="otherMessageSubject"
+                        type="text"
+                        bind:value={otherMessageSubject}
+                        placeholder="A message from Prescribe"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageFromName">From Name (optional)</label>
+                      <input
+                        id="otherMessageFromName"
+                        type="text"
+                        bind:value={otherMessageFromName}
+                        placeholder="Prescribe Team"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageFromEmail">From Email (optional)</label>
+                      <input
+                        id="otherMessageFromEmail"
+                        type="email"
+                        bind:value={otherMessageFromEmail}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageReplyTo">Reply-To (optional)</label>
+                      <input
+                        id="otherMessageReplyTo"
+                        type="email"
+                        bind:value={otherMessageReplyTo}
+                        placeholder="support@mprescribe.net"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageText">Plain Text</label>
+                      <textarea
+                        id="otherMessageText"
+                        rows="8"
+                        bind:value={otherMessageText}
+                        placeholder="Hi {{name}},&#10;Here is an update..."
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1" for="otherMessageHtml">HTML</label>
+                      <textarea
+                        id="otherMessageHtml"
+                        rows="8"
+                        bind:value={otherMessageHtml}
+                        placeholder="<h2>Update</h2>"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-red-200 focus:border-red-400"
+                      />
+                    </div>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+                      on:click={saveOtherMessageTemplate}
+                      disabled={otherMessageSaving}
+                    >
+                      {#if otherMessageSaving}
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Saving
+                      {:else}
+                        <i class="fas fa-save mr-2"></i>Save
+                      {/if}
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToTest(
+                        'doctorMessageEmail',
+                        (msg) => otherMessageStatus = msg,
+                        {
+                          subject: otherMessageSubject,
+                          text: otherMessageText,
+                          html: otherMessageHtml,
+                          fromName: otherMessageFromName,
+                          fromEmail: otherMessageFromEmail,
+                          replyTo: otherMessageReplyTo,
+                          textOnly: otherMessageTextOnly
+                        }
+                      )}
+                    >
+                      <i class="fas fa-vial mr-2"></i>Test to senakahks@gmail.com
+                    </button>
+                    <button
+                      class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-60"
+                      on:click={() => sendTemplateToDoctor('doctorMessageEmail', selectedDoctorForEmail, (msg) => otherMessageStatus = msg)}
+                    >
+                      <i class="fas fa-paper-plane mr-2"></i>Send to selected doctor
+                    </button>
+                    {#if otherMessageStatus}
+                      <span class="text-sm text-gray-500">{otherMessageStatus}</span>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          {/if}
           {/if}
         </div>
       </div>
     </div>
-  {/if}
-</div>
 
-<!-- Bootstrap 5 styling handled by utility classes -->
+<!-- Quota Management Modal -->
+{#if showQuotaModal}
+  <div 
+    id="quotaModal" 
+    tabindex="-1" 
+    aria-hidden="true" 
+    class="fixed top-0 left-0 right-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full bg-gray-900 bg-opacity-50"
+    on:click={closeQuotaModal}
+    on:keydown={(e) => { if (e.key === 'Escape') closeQuotaModal() }}
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="quota-modal-title"
+  >
+    <div class="relative w-full max-w-sm max-h-full mx-auto flex items-center justify-center min-h-screen">
+      <div 
+        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
+        on:click|stopPropagation
+      >
+        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
+          <h3 id="quota-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+            <i class="fas fa-user-md mr-2 text-red-600"></i>
+            Set Token Quota
+          </h3>
+          <button 
+            type="button" 
+            class="text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white transition-colors duration-200" 
+            data-modal-hide="quotaModal"
+            on:click={closeQuotaModal}
+          >
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+            </svg>
+            <span class="sr-only">Close modal</span>
+          </button>
+        </div>
+        
+        <!-- Flowbite Modal Body -->
+        <div class="p-4 md:p-5 space-y-4">
+          <div class="space-y-3">
+            <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+              <label class="block text-sm font-medium text-gray-900 dark:text-white mb-1">
+                Doctor: <span class="font-semibold text-red-600">{getDoctorName(selectedDoctorId)}</span>
+              </label>
+              <span class="text-xs text-gray-500 dark:text-gray-400">ID: {formatDoctorId(selectedDoctorId)}</span>
+            </div>
+            
+            <div>
+              <label for="quotaInput" class="block text-sm font-medium text-gray-900 dark:text-white mb-2">
+                Monthly Token Quota:
+              </label>
+              <input
+                type="number"
+                id="quotaInput"
+                bind:value={quotaInput}
+                placeholder="Enter monthly token quota"
+                class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-red-500 focus:border-red-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white transition-colors duration-200"
+                min="0"
+                step="1000"
+              />
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Set the maximum number of tokens this doctor can use per month
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Flowbite Modal Footer -->
+        <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b-lg dark:border-gray-600 space-x-3">
+          <button
+            type="button"
+            class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700 transition-colors duration-200"
+            on:click={closeQuotaModal}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="text-white bg-red-600 hover:bg-red-700 focus:ring-4 focus:outline-none focus:ring-red-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-red-500 dark:hover:bg-red-600 dark:focus:ring-red-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+            on:click={saveQuota}
+            disabled={!quotaInput || quotaInput < 0}
+          >
+            <i class="fas fa-save mr-1"></i>
+            Save Quota
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  visible={showConfirmationModal}
+  title={confirmationConfig.title}
+  message={confirmationConfig.message}
+  confirmText={confirmationConfig.confirmText}
+  cancelText={confirmationConfig.cancelText}
+  type={confirmationConfig.type}
+  on:confirm={handleConfirmationConfirm}
+  on:cancel={handleConfirmationCancel}
+  on:close={handleConfirmationCancel}
+/>
+
+<!-- Flowbite styling -->
+{/if}
+</div>

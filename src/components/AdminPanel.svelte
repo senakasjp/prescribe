@@ -3,6 +3,7 @@
   import adminAuthService from '../services/adminAuthService.js'
   import AdminLogin from './AdminLogin.svelte'
   import AdminDashboard from './AdminDashboard.svelte'
+  import LoadingSpinner from './LoadingSpinner.svelte'
   
   const dispatch = createEventDispatcher()
   export let user = null // Accept current user as prop
@@ -65,23 +66,24 @@
     currentAdmin = null
     console.log('👋 Admin signed out')
   }
+
+  const handleBackToApp = () => {
+    dispatch('back-to-app')
+  }
   
 </script>
 
-<div class="admin-panel">
+<div class="admin-panel sm:text-sm">
   {#if loading}
-    <!-- Loading State -->
-    <div class="d-flex justify-content-center align-items-center vh-100 bg-light">
-      <div class="text-center">
-        <div class="spinner-border text-danger mb-3" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="text-muted">Loading admin panel...</p>
-      </div>
-    </div>
+    <LoadingSpinner 
+      size="large" 
+      color="red" 
+      text="Loading admin panel..." 
+      fullScreen={true}
+    />
   {:else if currentAdmin}
     <!-- Admin Dashboard -->
-    <AdminDashboard {currentAdmin} on:admin-signed-out={handleAdminSignedOut} />
+    <AdminDashboard {currentAdmin} on:admin-signed-out={handleAdminSignedOut} {handleBackToApp} />
   {:else}
     <!-- Admin Login -->
     <AdminLogin on:admin-signed-in={handleAdminSignedIn} />
@@ -89,4 +91,4 @@
   
 </div>
 
-<!-- Bootstrap 5 styling handled by utility classes -->
+<!-- Flowbite styling -->

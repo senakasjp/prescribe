@@ -1,0 +1,2277 @@
+<!-- Settings Page - Full page settings interface -->
+<script>
+  
+  import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte'
+  import Shepherd from 'shepherd.js'
+  import { offset } from '@floating-ui/dom'
+  import 'shepherd.js/dist/css/shepherd.css'
+  import authService from '../services/authService.js'
+  import firebaseAuthService from '../services/firebaseAuth.js'
+  import { countries } from '../data/countries.js'
+  import { cities, getCitiesByCountry } from '../data/cities.js'
+  import ThreeDots from './ThreeDots.svelte'
+  import ConfirmationModal from './ConfirmationModal.svelte'
+  import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import HeaderEditor from './HeaderEditor.svelte'
+  import backupService from '../services/backupService.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
+  import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+  import { resolveInheritedCurrency } from '../utils/currencyInheritance.js'
+  import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
+
+  const dispatch = createEventDispatcher()
+  export let user
+
+  // Profile form data
+  let firstName = ''
+  let lastName = ''
+  let country = ''
+  let city = ''
+  let consultationCharge = ''
+  let hospitalCharge = ''
+  let phoneCountryCode = ''
+  let phoneNumber = ''
+  let currency = 'USD' // New state variable
+  let roundingPreference = 'none'
+  let loading = false
+  let error = ''
+  let backupLoading = false
+  let backupError = ''
+  let backupSuccess = ''
+  let restoreLoading = false
+  let restoreError = ''
+  let restoreSuccess = ''
+  let restoreFile = null
+  let restoreSummary = null
+
+  // External doctor form
+  let externalFirstName = ''
+  let externalLastName = ''
+  let externalUsername = ''
+  let externalPassword = ''
+  let externalPasswordConfirm = ''
+  let externalPhone = ''
+  let externalSpecialization = ''
+  let externalCountry = ''
+  let externalCity = ''
+  let externalLoading = false
+  let externalError = ''
+  let externalSuccess = ''
+  let externalAvailableCities = []
+  let resetExternalDeviceModal = false
+  let resetExternalDeviceLoading = false
+  let resetExternalDeviceMessage = ''
+  let externalDoctors = []
+  let externalDoctorsLoading = false
+  let externalDoctorsError = ''
+  let externalDoctorsLoaded = false
+
+  // Prescription template variables
+  let templateType = '' // Will be set from user.templateSettings
+  let uploadedHeaderFileName = ''
+  let uploadedHeader = null
+  let templatePreview = null
+  let headerSize = 300 // Default header size in pixels
+  let headerText = ''
+  let headerFontSize = 16
+  let isSaving = false
+  let excludePharmacyDrugs = false
+  let procedurePricing = []
+  let deleteCode = ''
+  let renewingDeleteCode = false
+
+  // Tab management
+  let activeTab = 'edit-profile'
+
+  const TOUR_STORAGE_PREFIX = 'settings-tour-seen'
+  let settingsTour = null
+  let lastTourUserKey = ''
+  
+  // Available cities based on selected country
+  let availableCities = []
+
+  const parseHeaderFontSize = (value, fallback = 16) => {
+    const numeric = typeof value === 'number' ? value : parseFloat(String(value || ''))
+    return Number.isFinite(numeric) ? numeric : fallback
+  }
+
+  // Debug: Log initial state
+  const getSettingsTourKey = () => {
+    const userKey = user?.id || user?.uid || user?.email || 'unknown'
+    return `${TOUR_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const hasSeenSettingsTour = () => {
+    if (typeof localStorage === 'undefined') return false
+    return localStorage.getItem(getSettingsTourKey()) === 'true'
+  }
+
+  const markSettingsTourSeen = () => {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(getSettingsTourKey(), 'true')
+  }
+
+  const isNewDoctorForTour = () => {
+    if (!user) return false
+    const missingProfile = !user.firstName || !user.lastName || !user.country || !user.city
+    if (missingProfile) return true
+    if (!user.createdAt) return false
+    const createdAt = new Date(user.createdAt)
+    if (Number.isNaN(createdAt.getTime())) return false
+    const daysSinceCreated = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+    return daysSinceCreated <= 14
+  }
+
+  const buildSettingsTour = () => {
+    const findVisibleTourTarget = (name) => {
+      if (typeof document === 'undefined') return null
+      const nodes = Array.from(document.querySelectorAll(`[data-tour="${name}"]`))
+      const visible = nodes.find((el) => el.offsetParent !== null && el.getClientRects().length > 0)
+      return visible || nodes[0] || null
+    }
+
+    const updateStepTarget = (step, name, fallback) => {
+      const target = findVisibleTourTarget(name) || (fallback ? findVisibleTourTarget(fallback) : null)
+      if (target && step?.updateStepOptions) {
+        step.updateStepOptions({ attachTo: { element: target, on: 'bottom' } })
+      }
+    }
+
+    const tour = new Shepherd.Tour({
+      useModalOverlay: true,
+      defaultStepOptions: {
+        cancelIcon: { enabled: true },
+        scrollTo: { behavior: 'smooth', block: 'center' },
+        modalOverlayOpeningPadding: 12,
+        modalOverlayOpeningRadius: 8,
+        floatingUIOptions: {
+          middleware: [offset(12)]
+        }
+      }
+    })
+
+    tour.addStep({
+      id: 'settings-menu',
+      text: 'Open Settings from the menu anytime.',
+      attachTo: { element: '[data-tour="settings-menu"]', on: 'bottom' },
+      buttons: [
+        { text: 'Skip', action: tour.cancel, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-edit-profile',
+      text: 'Start in Edit Profile to set your details.',
+      attachTo: { element: '[data-tour="settings-tab-edit-profile"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        activeTab = 'edit-profile'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-save-profile',
+      text: 'Save your profile changes.',
+      attachTo: { element: '[data-tour="settings-save-profile"]', on: 'top' },
+      beforeShowPromise: async () => {
+        activeTab = 'edit-profile'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-prescription-template',
+      text: 'Next, configure your prescription template.',
+      attachTo: { element: '[data-tour="settings-tab-prescription-template"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        activeTab = 'prescription-template'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-save-template',
+      text: 'Save your template settings.',
+      attachTo: { element: '[data-tour="settings-save-template"]', on: 'top' },
+      beforeShowPromise: async () => {
+        activeTab = 'prescription-template'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-procedures',
+      text: 'Set your procedures pricing here.',
+      attachTo: { element: '[data-tour="settings-tab-procedures"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        activeTab = 'procedures'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'settings-save-procedures',
+      text: 'Save your procedure prices when you are done.',
+      attachTo: { element: '[data-tour="settings-save-procedures"]', on: 'top' },
+      beforeShowPromise: async () => {
+        activeTab = 'procedures'
+        await tick()
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patients-menu',
+      text: 'Go to Patients to add your first patient.',
+      attachTo: { element: '[data-tour="patients-menu"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patients-add',
+      text: 'Click Add New Patient to create a record.',
+      attachTo: { element: '[data-tour="patients-add"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patient-save',
+      text: 'Save the new patient once the form is complete.',
+      attachTo: { element: '[data-tour="patient-save"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patients-list',
+      text: 'All patients appear here.',
+      attachTo: { element: '[data-tour="patients-list"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const patientsViewStep = tour.addStep({
+      id: 'patients-view',
+      text: 'Use View to open the patient record.',
+      attachTo: { element: '[data-tour="patients-view"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('patients')
+          await tick()
+        }
+        updateStepTarget(patientsViewStep, 'patients-view', 'patients-list')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        {
+          text: 'Next',
+          action: async () => {
+            if (typeof document !== 'undefined') {
+              const viewButton = document.querySelector('[data-tour="patients-view"]')
+              viewButton?.click?.()
+            }
+            if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+              window.__setAppView('prescriptions')
+            }
+            if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+              window.__setPatientDetailsTab('overview')
+            }
+            await tick()
+            tour.next()
+          }
+        }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patient-overview',
+      text: 'This is the patient overview screen.',
+      attachTo: { element: '[data-tour="patient-overview-panel"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+          window.__setPatientDetailsTab('overview')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionsTabStep = tour.addStep({
+      id: 'patient-prescriptions-tab',
+      text: 'Now go to Prescriptions.',
+      attachTo: { element: '[data-tour="patient-prescriptions-tab"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionsTabStep, 'patient-prescriptions-tab', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        {
+          text: 'Next',
+          action: async () => {
+            if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+              window.__setPatientDetailsTab('prescriptions')
+            }
+            await tick()
+            tour.next()
+          }
+        }
+      ]
+    })
+
+    tour.addStep({
+      id: 'patient-prescriptions-panel',
+      text: 'This is the prescriptions area.',
+      attachTo: { element: '[data-tour="patient-prescriptions-panel"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        if (typeof window !== 'undefined' && typeof window.__setPatientDetailsTab === 'function') {
+          window.__setPatientDetailsTab('prescriptions')
+          await tick()
+        }
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionNewStep = tour.addStep({
+      id: 'prescription-new',
+      text: 'Start a new prescription.',
+      attachTo: { element: '[data-tour="prescription-new"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionNewStep, 'prescription-new', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionAddDrugStep = tour.addStep({
+      id: 'prescription-add-drug',
+      text: 'Add drugs to the prescription.',
+      attachTo: { element: '[data-tour="prescription-add-drug"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionAddDrugStep, 'prescription-add-drug', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionAiStep = tour.addStep({
+      id: 'prescription-ai-analysis',
+      text: 'Run AI Analysis.',
+      attachTo: { element: '[data-tour="prescription-ai-analysis"]', on: 'bottom' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionAiStep, 'prescription-ai-analysis', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionFinalizeStep = tour.addStep({
+      id: 'prescription-finalize',
+      text: 'Finalize the prescription.',
+      attachTo: { element: '[data-tour="prescription-finalize"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionFinalizeStep, 'prescription-finalize', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Next', action: tour.next }
+      ]
+    })
+
+    const prescriptionPrintStep = tour.addStep({
+      id: 'prescription-print',
+      text: 'Print the prescription.',
+      attachTo: { element: '[data-tour="prescription-print"]', on: 'top' },
+      beforeShowPromise: async () => {
+        if (typeof window !== 'undefined' && typeof window.__setAppView === 'function') {
+          window.__setAppView('prescriptions')
+          await tick()
+        }
+        updateStepTarget(prescriptionPrintStep, 'prescription-print', 'patient-prescriptions-panel')
+      },
+      buttons: [
+        { text: 'Back', action: tour.back, secondary: true },
+        { text: 'Done', action: tour.complete }
+      ]
+    })
+
+    tour.on('complete', markSettingsTourSeen)
+    tour.on('cancel', markSettingsTourSeen)
+
+    return tour
+  }
+
+  const startSettingsTour = async () => {
+    const userKey = user?.id || user?.uid || user?.email || ''
+    if (!userKey) return
+    if (activeTab !== 'edit-profile') {
+      activeTab = 'edit-profile'
+      await tick()
+    }
+    await tick()
+    if (settingsTour) {
+      settingsTour.cancel()
+      settingsTour = null
+    }
+    settingsTour = buildSettingsTour()
+    settingsTour.start()
+  }
+
+  const startSettingsTourIfNeeded = async () => {
+    const userKey = user?.id || user?.uid || user?.email || ''
+    if (!userKey || userKey === lastTourUserKey) return
+    if (hasSeenSettingsTour()) return
+    if (!isNewDoctorForTour()) return
+    lastTourUserKey = userKey
+    await startSettingsTour()
+  }
+
+  onMount(() => {
+    loadDeleteCode()
+    startSettingsTourIfNeeded()
+    if (typeof window !== 'undefined') {
+      window.__startSettingsTour = startSettingsTour
+    }
+  })
+
+  $: if (user?.email) {
+    startSettingsTourIfNeeded()
+  }
+
+  onDestroy(() => {
+    if (settingsTour) {
+      settingsTour.cancel()
+      settingsTour = null
+    }
+    if (typeof window !== 'undefined' && window.__startSettingsTour === startSettingsTour) {
+      delete window.__startSettingsTour
+    }
+  })
+
+  // Add debugging to template type reactive statement
+  $: {
+    // Template type reactive statement
+  }
+
+  $: if (user?.email) {
+    loadDeleteCode()
+  }
+
+  const handleRenewDeleteCode = async () => {
+    if (renewingDeleteCode) return
+    renewingDeleteCode = true
+    try {
+      if (!user?.email) {
+        throw new Error('Doctor email is not available')
+      }
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor?.id) {
+        throw new Error('Doctor profile not found')
+      }
+      const newDeleteCode = firebaseStorage.generateDeleteCode()
+      await firebaseStorage.updateDoctor({ ...doctor, deleteCode: newDeleteCode })
+      deleteCode = newDeleteCode
+      notifySuccess('Delete code renewed successfully!')
+    } catch (err) {
+      notifyError(err?.message || 'Failed to renew delete code')
+    } finally {
+      renewingDeleteCode = false
+    }
+  }
+
+  // Currency options
+  const currencies = [
+    { code: 'USD', name: 'US Dollar', symbol: '$' },
+    { code: 'EUR', name: 'Euro', symbol: '€' },
+    { code: 'GBP', name: 'British Pound', symbol: '£' },
+    { code: 'LKR', name: 'Sri Lankan Rupee', symbol: '₨' },
+    { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
+    { code: 'CAD', name: 'Canadian Dollar', symbol: 'C$' },
+    { code: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
+    { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
+    { code: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
+    { code: 'KRW', name: 'South Korean Won', symbol: '₩' },
+    { code: 'SGD', name: 'Singapore Dollar', symbol: 'S$' },
+    { code: 'MYR', name: 'Malaysian Ringgit', symbol: 'RM' },
+    { code: 'THB', name: 'Thai Baht', symbol: '฿' },
+    { code: 'PHP', name: 'Philippine Peso', symbol: '₱' },
+    { code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp' },
+    { code: 'VND', name: 'Vietnamese Dong', symbol: '₫' },
+    { code: 'AED', name: 'UAE Dirham', symbol: 'د.إ' },
+    { code: 'SAR', name: 'Saudi Riyal', symbol: '﷼' },
+    { code: 'QAR', name: 'Qatari Riyal', symbol: '﷼' },
+    { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'د.ك' }
+  ]
+
+  const resolvePhoneDialCode = (countryName) => {
+    if (!countryName) return ''
+    const match = phoneCountryCodes.find((entry) => entry.name === countryName)
+    return match?.dialCode || ''
+  }
+
+  const isSriLankaPhone = () => {
+    return country === 'Sri Lanka' || phoneCountryCode === '+94'
+  }
+
+  const isPrimaryDoctor = () => {
+    return !user?.externalDoctor
+  }
+
+  const normalizePhoneInput = (value) => {
+    const digitsOnly = String(value || '').replace(/\D/g, '')
+    if (isSriLankaPhone()) {
+      return digitsOnly.slice(0, 9)
+    }
+    return digitsOnly
+  }
+
+  const procedureOptions = [
+    'C&D- type -A',
+    'C&D-type -B',
+    'C&D-type-C',
+    'C&D-type-D',
+    'Suturing- type-A',
+    'Suturing- type-B',
+    'Suturing- type-C',
+    'Suturing- type-D',
+    'Nebulization - Ipra.0.25ml+N. saline2ml+Oxygen',
+    'Nebulization - sal 0. 5ml+Ipra 0. 5ml+N. Saline 3ml',
+    'Nebulization - sal 0. 5ml+Ipra 0. 5ml+N. Saline 3ml+Oxygen',
+    'Nebulization -sal1ml+Ipra1ml+N. Saline2ml+Oxygen',
+    'Nebulization Ipra1ml+N. Saline3ml',
+    'Nebulization -sal1ml+Ipra1ml+N. Saline2ml',
+    'Nebulization - pulmicort(Budesonide)',
+    'catheterization',
+    'IV drip Saline/Dextrose'
+  ]
+
+  const normalizeProcedurePricing = (savedPricing) => {
+    const pricingMap = {}
+
+    if (Array.isArray(savedPricing)) {
+      savedPricing.forEach((item) => {
+        if (item && item.name) {
+          pricingMap[item.name] = item.price ?? ''
+        }
+      })
+    } else if (savedPricing && typeof savedPricing === 'object') {
+      Object.entries(savedPricing).forEach(([name, price]) => {
+        pricingMap[name] = price
+      })
+    }
+
+    return procedureOptions.map((name) => ({
+      name,
+      price: pricingMap[name] ?? ''
+    }))
+  }
+
+  const normalizeProcedurePricingForSave = (pricingList) => {
+    return (pricingList || []).map((item) => {
+      let priceValue = ''
+      if (item && item.price !== '' && item.price !== null && item.price !== undefined) {
+        const parsed = Number(item.price)
+        priceValue = Number.isFinite(parsed) ? parsed : ''
+      }
+      return {
+        name: item?.name || '',
+        price: priceValue
+      }
+    })
+  }
+
+  // Reactive variable for cities based on selected country
+  $: {
+    try {
+      let nextCities = (country && typeof country === 'string' && country.trim())
+        ? getCitiesByCountry(country.trim())
+        : []
+      if (city && !nextCities.find(c => c.name === city)) {
+        nextCities = [...nextCities, { name: city }]
+      }
+      availableCities = nextCities
+    } catch (error) {
+      console.error('❌ SettingsPage: Error in availableCities reactive statement:', error)
+      availableCities = []
+    }
+  }
+
+  $: {
+    try {
+      let nextExternalCities = (externalCountry && typeof externalCountry === 'string' && externalCountry.trim())
+        ? getCitiesByCountry(externalCountry.trim())
+        : []
+      if (externalCity && !nextExternalCities.find(c => c.name === externalCity)) {
+        nextExternalCities = [...nextExternalCities, { name: externalCity }]
+      }
+      externalAvailableCities = nextExternalCities
+    } catch (error) {
+      console.error('❌ SettingsPage: Error in externalAvailableCities reactive statement:', error)
+      externalAvailableCities = []
+    }
+  }
+
+  $: if (activeTab === 'external-doctor') {
+    loadExternalDoctors()
+  }
+
+  // Keep saved city values even when they are not in the curated list.
+
+  // Initialize form with user data
+  const initializeForm = () => {
+    firstName = user?.firstName || ''
+    lastName = user?.lastName || ''
+    country = user?.country || ''
+    city = user?.city || ''
+    phoneCountryCode = user?.phoneCountryCode || resolvePhoneDialCode(user?.country) || ''
+    if (user?.phone) {
+      const normalizedPhone = String(user.phone)
+      phoneNumber = phoneCountryCode && normalizedPhone.startsWith(phoneCountryCode)
+        ? normalizedPhone.slice(phoneCountryCode.length).trim()
+        : normalizedPhone
+      phoneNumber = normalizePhoneInput(phoneNumber)
+    } else {
+      phoneNumber = ''
+    }
+    consultationCharge = String(user?.consultationCharge || '')
+    hospitalCharge = String(user?.hospitalCharge || '')
+    currency = user?.currency || resolveCurrencyFromCountry(user?.country) || 'USD'
+    roundingPreference = user?.roundingPreference || 'none'
+    deleteCode = user?.deleteCode || ''
+    
+    // Load template settings
+    if (user?.templateSettings && user.templateSettings.templateType) {
+      templateType = user.templateSettings.templateType
+      headerSize = user.templateSettings.headerSize || 300
+      headerText = user.templateSettings.headerText || ''
+      headerFontSize = parseHeaderFontSize(user.templateSettings.headerFontSize, 16)
+      templatePreview = user.templateSettings.templatePreview || null
+      uploadedHeader = user.templateSettings.uploadedHeader || null
+      excludePharmacyDrugs = user.templateSettings.excludePharmacyDrugs ?? false
+    } else {
+      templateType = 'printed'
+      headerFontSize = 16
+      excludePharmacyDrugs = false
+    }
+
+    procedurePricing = normalizeProcedurePricing(user?.templateSettings?.procedurePricing)
+  }
+
+  const handleCountryChange = (event) => {
+    country = event.target.value
+    const resolvedCurrency = resolveCurrencyFromCountry(country)
+    currency = resolvedCurrency || 'USD'
+    if (!phoneCountryCode) {
+      phoneCountryCode = resolvePhoneDialCode(country)
+    }
+  }
+
+  const handleCurrencyChange = (event) => {
+    currency = event.target.value
+  }
+
+  const loadDeleteCode = async () => {
+    try {
+      if (!user?.email) return
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      deleteCode = doctor?.deleteCode || ''
+    } catch (error) {
+      console.error('❌ SettingsPage: Error loading delete code:', error)
+      deleteCode = ''
+    }
+  }
+
+  const downloadJsonFile = (data, filename) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const resolveDoctorId = async () => {
+    if (!user?.email) {
+      return user?.id || user?.uid || null
+    }
+
+    try {
+      const firebaseModule = await import('../services/firebaseStorage.js')
+      const firebaseStorage = firebaseModule.default
+      const doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      return doctor?.id || user?.id || user?.uid || user.email
+    } catch (error) {
+      console.warn('⚠️ Failed to resolve doctor ID for backup:', error)
+      return user?.id || user?.uid || user?.email || null
+    }
+  }
+
+  const getExternalDoctorUsername = (email) => {
+    if (!email) return 'N/A'
+    const [name, domain] = email.split('@')
+    if (domain === 'external.local') {
+      return name || 'N/A'
+    }
+    return email
+  }
+
+  const getExternalDoctorLocation = (doctor) => {
+    if (!doctor) return 'Not set'
+    const cityName = doctor.city || ''
+    const countryName = doctor.country || ''
+    if (cityName && countryName) return `${cityName}, ${countryName}`
+    return cityName || countryName || 'Not set'
+  }
+
+  const getTimestampMs = (value) => {
+    if (!value) return 0
+    if (typeof value === 'number') return value
+    if (value instanceof Date) return value.getTime()
+    if (typeof value === 'string') {
+      const parsed = Date.parse(value)
+      return Number.isNaN(parsed) ? 0 : parsed
+    }
+    if (value?.seconds) return value.seconds * 1000
+    if (value?.toDate) {
+      try {
+        return value.toDate().getTime()
+      } catch (error) {
+        return 0
+      }
+    }
+    return 0
+  }
+
+  const loadExternalDoctors = async ({ force = false } = {}) => {
+    if (externalDoctorsLoading) return
+    if (externalDoctorsLoaded && !force) return
+    externalDoctorsLoading = true
+    externalDoctorsError = ''
+    try {
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Unable to identify the owner doctor.')
+      }
+      const externalDoctorsData = await firebaseStorage.getExternalDoctorsByOwnerId(doctorId)
+      externalDoctors = [...externalDoctorsData].sort(
+        (a, b) => getTimestampMs(b.createdAt) - getTimestampMs(a.createdAt)
+      )
+      externalDoctorsLoaded = true
+    } catch (error) {
+      externalDoctorsError = error?.message || 'Failed to load external doctors.'
+    } finally {
+      externalDoctorsLoading = false
+    }
+  }
+
+  const handleDoctorBackupDownload = async () => {
+    try {
+      backupLoading = true
+      backupError = ''
+      backupSuccess = ''
+
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Doctor ID is not available for backup')
+      }
+
+      const backup = await backupService.exportDoctorBackup(doctorId)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      downloadJsonFile(backup, `doctor-backup-${doctorId}-${timestamp}.json`)
+
+      backupSuccess = 'Backup downloaded successfully.'
+    } catch (error) {
+      backupError = error.message || 'Failed to create backup.'
+      notifyError(backupError)
+    } finally {
+      backupLoading = false
+    }
+  }
+
+  const handleCreateExternalDoctor = async () => {
+    externalError = ''
+    externalSuccess = ''
+
+    if (!externalFirstName.trim() || !externalLastName.trim()) {
+      externalError = 'First name and last name are required.'
+      return
+    }
+
+    if (!externalUsername.trim()) {
+      externalError = 'Username is required.'
+      return
+    }
+
+    if (!externalPassword.trim()) {
+      externalError = 'Password is required.'
+      return
+    }
+
+    if (externalPassword.trim().length < 6) {
+      externalError = 'Password must be at least 6 characters.'
+      return
+    }
+
+    if (externalPassword !== externalPasswordConfirm) {
+      externalError = 'Passwords do not match.'
+      return
+    }
+
+    const username = externalUsername.trim().toLowerCase()
+    if (!/^[a-z0-9._-]{3,30}$/.test(username)) {
+      externalError = 'Username must be 3-30 characters (letters, numbers, dot, underscore, hyphen).'
+      return
+    }
+
+    externalLoading = true
+
+    try {
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Unable to link external doctor to your account.')
+      }
+
+      const syntheticEmail = `${username}@external.local`
+      let ownerDoctor = null
+      try {
+        ownerDoctor = await firebaseStorage.getDoctorById(doctorId)
+      } catch (error) {
+        ownerDoctor = null
+      }
+      const ownerDeviceId = await firebaseAuthService.getOrCreateDeviceIdForDoctor(ownerDoctor || user)
+      const inheritedCurrency = resolveInheritedCurrency({
+        ownerDoctor,
+        fallbackCountry: externalCountry.trim()
+      })
+      const payload = {
+        firstName: externalFirstName.trim(),
+        lastName: externalLastName.trim(),
+        name: `${externalFirstName.trim()} ${externalLastName.trim()}`.trim(),
+        email: syntheticEmail,
+        username: username,
+        phone: externalPhone.trim(),
+        specialization: externalSpecialization.trim(),
+        country: externalCountry.trim(),
+        city: externalCity.trim(),
+        currency: inheritedCurrency,
+        role: 'doctor',
+        isAdmin: false,
+        permissions: ['view_patients', 'write_prescriptions'],
+        accessLevel: 'external_minimal',
+        externalDoctor: true,
+        invitedByDoctorId: doctorId,
+        allowedDeviceId: ownerDeviceId,
+        connectedPharmacists: []
+      }
+
+      const existingDoctor = await firebaseStorage.getDoctorByEmail(payload.email)
+      if (existingDoctor) {
+        throw new Error('This username is already taken.')
+      }
+
+      await firebaseAuthService.createExternalDoctorAccount(payload.email, externalPassword, {
+        ...payload,
+        permissions: ['view_patients', 'write_prescriptions'],
+        accessLevel: 'external_minimal',
+        invitedByDoctorId: doctorId
+      })
+
+      externalSuccess = 'External doctor added. Share the username and password with them for login.'
+      externalFirstName = ''
+      externalLastName = ''
+      externalUsername = ''
+      externalPassword = ''
+      externalPasswordConfirm = ''
+      externalPhone = ''
+      externalSpecialization = ''
+      externalCountry = ''
+      externalCity = ''
+      await loadExternalDoctors({ force: true })
+    } catch (error) {
+      externalError = error.message || 'Failed to add external doctor.'
+      notifyError(externalError)
+    } finally {
+      externalLoading = false
+    }
+  }
+
+  const handleResetExternalDeviceAccess = async () => {
+    resetExternalDeviceLoading = true
+    resetExternalDeviceMessage = ''
+    try {
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Unable to identify the owner doctor.')
+      }
+      let ownerDoctor = null
+      try {
+        ownerDoctor = await firebaseStorage.getDoctorById(doctorId)
+      } catch (error) {
+        ownerDoctor = null
+      }
+      const ownerDeviceId = await firebaseAuthService.getOrCreateDeviceIdForDoctor(ownerDoctor || user)
+      const externalDoctors = await firebaseStorage.getExternalDoctorsByOwnerId(doctorId)
+      if (!externalDoctors.length) {
+        resetExternalDeviceMessage = 'No external doctors found for this account.'
+        notifyError(resetExternalDeviceMessage)
+        resetExternalDeviceModal = false
+        return
+      }
+      await Promise.all(
+        externalDoctors.map((doctor) =>
+          firebaseStorage.updateDoctor({ ...doctor, allowedDeviceId: ownerDeviceId })
+        )
+      )
+      resetExternalDeviceMessage = 'External doctor access was reset to this device.'
+      notifySuccess(resetExternalDeviceMessage)
+    } catch (error) {
+      resetExternalDeviceMessage = error?.message || 'Failed to reset external device access.'
+      notifyError(resetExternalDeviceMessage)
+    } finally {
+      resetExternalDeviceLoading = false
+      resetExternalDeviceModal = false
+    }
+  }
+
+  const handleDoctorRestoreFile = (event) => {
+    restoreFile = event.target.files?.[0] || null
+    restoreError = ''
+    restoreSuccess = ''
+    restoreSummary = null
+  }
+
+  const handleDoctorRestore = async () => {
+    if (!restoreFile) {
+      restoreError = 'Please select a backup file to restore.'
+      notifyError(restoreError)
+      return
+    }
+
+    if (!confirm('Restore backup? This will merge backup data and may overwrite records with the same IDs.')) {
+      return
+    }
+
+    try {
+      restoreLoading = true
+      restoreError = ''
+      restoreSuccess = ''
+      restoreSummary = null
+
+      const doctorId = await resolveDoctorId()
+      if (!doctorId) {
+        throw new Error('Doctor ID is not available for restore')
+      }
+
+      const fileText = await restoreFile.text()
+      const backup = JSON.parse(fileText)
+      if (backup.type !== 'doctor') {
+        throw new Error('Selected backup file is not a doctor backup.')
+      }
+
+      const summary = await backupService.restoreDoctorBackup(doctorId, backup)
+      restoreSummary = summary
+      restoreSuccess = 'Backup restored successfully.'
+      notifySuccess(restoreSuccess)
+    } catch (error) {
+      restoreError = error.message || 'Failed to restore backup.'
+      notifyError(restoreError)
+    } finally {
+      restoreLoading = false
+    }
+  }
+
+  // Initialize form when user changes (but only once per user key)
+  let lastUserKey = null
+  const resolveUserKey = (currentUser) => currentUser?.id || currentUser?.uid || currentUser?.email || null
+  $: if (user && resolveUserKey(user) && resolveUserKey(user) !== lastUserKey && !isSaving) {
+    try {
+      initializeForm()
+      lastUserKey = resolveUserKey(user)
+    } catch (error) {
+      console.error('❌ SettingsPage: Error initializing form:', error)
+      // Set default values to prevent errors
+      firstName = ''
+      lastName = ''
+      email = ''
+      country = ''
+      city = ''
+      consultationCharge = ''
+      hospitalCharge = ''
+      currency = 'USD'
+      roundingPreference = 'none'
+    }
+  }
+
+  // Initialize system template when templateType becomes 'system'
+  $: if (templateType === 'system' && !templatePreview) {
+    generateSystemHeader()
+  }
+
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    error = ''
+    loading = true
+    
+    try {
+      // Validate required fields
+      if (!firstName.trim() || !lastName.trim()) {
+        throw new Error('First name and last name are required')
+      }
+      
+      if (!country.trim()) {
+        throw new Error('Country is required')
+      }
+      
+      if (!city.trim()) {
+        throw new Error('City is required')
+      }
+
+      if (isPrimaryDoctor()) {
+        if (!phoneCountryCode.trim()) {
+          throw new Error('Country code is required')
+        }
+        if (!phoneNumber.trim()) {
+          throw new Error('Mobile number is required')
+        }
+        if (isSriLankaPhone() && normalizePhoneInput(phoneNumber).length !== 9) {
+          throw new Error('Sri Lanka mobile numbers must be 9 digits')
+        }
+      }
+      
+      // Import firebaseStorage service to get correct doctor ID
+      const firebaseModule = await import('../services/firebaseStorage.js')
+      const firebaseStorage = firebaseModule.default
+      
+      // Get the doctor from Firebase using email to ensure we have the correct ID
+      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor) {
+        console.warn('⚠️ Profile update: Doctor not found in Firebase, using user object directly')
+        doctor = user
+      }
+      
+      // Update user data with correct ID
+      const updatedUser = {
+        ...doctor, // Use doctor data from Firebase
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        country: country.trim(),
+        city: city.trim(),
+        phoneCountryCode: phoneCountryCode.trim(),
+        phone: phoneNumber.trim()
+          ? `${phoneCountryCode.trim()} ${phoneNumber.trim()}`.trim()
+          : '',
+        consultationCharge: String(consultationCharge || '').trim(),
+        hospitalCharge: String(hospitalCharge || '').trim(),
+        currency: currency,
+        roundingPreference: roundingPreference || 'none',
+        name: `${firstName.trim()} ${lastName.trim()}`,
+        id: doctor.id // Ensure we use the correct Firebase ID
+      }
+      
+      // Update in auth service
+      await authService.updateDoctor(updatedUser)
+      notifySuccess('Profile updated successfully!')
+      dispatch('profile-updated', updatedUser)
+      
+    } catch (err) {
+      error = err.message
+      notifyError(error)
+    } finally {
+      loading = false
+    }
+  }
+
+  // Handle tab switching
+  const switchTab = (tabName) => {
+    activeTab = tabName
+  }
+
+  // Handle template type selection
+  const selectTemplateType = (type) => {
+    templateType = type
+    uploadedHeader = null
+    uploadedHeaderFileName = ''
+    
+    // Clear conflicting data based on template type
+    if (type === 'system') {
+      uploadedHeader = null
+      // Initialize system template preview
+      generateSystemHeader()
+      
+      // Also initialize headerText with default content if empty
+      if (!headerText || headerText.trim() === '') {
+        headerText = `<h5 style="font-weight: bold; margin: 10px 0; text-align: center;">Dr. ${user?.name || '[Your Name]'}</h5>
+<p style="font-weight: 600; margin: 5px 0; text-align: center;">${user?.firstName || ''} ${user?.lastName || ''} Medical Practice</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">${user?.city || 'City'}, ${user?.country || 'Country'}</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: +1 (555) 123-4567 | Email: ${user?.email || 'doctor@example.com'}</p>
+<hr style="margin: 10px 0; border: 1px solid #ccc;">
+<p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>`
+      }
+    } else if (type === 'upload') {
+      templatePreview = null
+      headerText = ''
+    } else {
+      templatePreview = null
+      headerText = ''
+      uploadedHeader = null
+    }
+  }
+
+  // Handle third option click specifically
+  const handleThirdOptionClick = () => {
+    selectTemplateType('system')
+  }
+
+  // Removed temporary click test
+
+  // Handle header image upload
+  const handleHeaderUpload = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      uploadedHeaderFileName = file.name || ''
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        uploadedHeader = e.target.result
+      }
+      reader.readAsDataURL(file)
+    } else {
+      uploadedHeaderFileName = ''
+    }
+  }
+
+  // Generate system header preview
+  const generateSystemHeader = () => {
+    
+    templatePreview = {
+      type: 'system',
+      doctorName: user?.name || 'Dr. [Your Name]',
+      practiceName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Medical Practice',
+      address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
+      phone: '+1 (555) 123-4567',
+      email: user?.email || 'doctor@example.com',
+      formattedHeader: '',
+      logo: null
+    }
+
+    if (headerText && headerText.trim()) {
+      templatePreview.formattedHeader = headerText
+    } else {
+      // Initialize with default content
+      updateHeaderText()
+      templatePreview.formattedHeader = headerText
+    }
+  }
+  
+  // Update header text from template preview
+  const updateHeaderText = () => {
+    if (templatePreview) {
+      // If there's saved formatted content, use it; otherwise use default
+      if (templatePreview.formattedHeader) {
+        headerText = templatePreview.formattedHeader
+      } else {
+        headerText = `<h5 style="font-weight: bold; margin: 10px 0; text-align: center;">${templatePreview.doctorName}</h5>
+<p style="font-weight: 600; margin: 5px 0; text-align: center;">${templatePreview.practiceName}</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">${templatePreview.address}</p>
+<p style="font-size: 0.875rem; margin: 5px 0; text-align: center;">Tel: ${templatePreview.phone} | Email: ${templatePreview.email}</p>
+<hr style="margin: 10px 0; border: 1px solid #ccc;">
+<p style="font-weight: bold; margin: 5px 0; text-align: center;">PRESCRIPTION</p>`
+      }
+    }
+  }
+  
+  // Legacy functions removed - now using TinyMCE component
+  
+  // TinyMCE Editor handlers
+  const handleHeaderContentChange = (content) => {
+    headerText = content
+    if (templatePreview) {
+      templatePreview.formattedHeader = content
+      // Trigger reactive update
+      templatePreview = { ...templatePreview }
+    }
+  }
+  
+  const handleHeaderSave = (content) => {
+    headerText = content
+    if (templatePreview) {
+      templatePreview.formattedHeader = content
+      // Trigger reactive update
+      templatePreview = { ...templatePreview }
+    }
+  }
+
+  const handleHeaderFontSizeChange = (size) => {
+    headerFontSize = parseHeaderFontSize(size, 16)
+  }
+
+  const stripUndefinedDeep = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => stripUndefinedDeep(item))
+        .filter((item) => item !== undefined)
+    }
+    if (value && typeof value === 'object') {
+      const next = {}
+      Object.entries(value).forEach(([key, entryValue]) => {
+        const sanitized = stripUndefinedDeep(entryValue)
+        if (sanitized !== undefined) {
+          next[key] = sanitized
+        }
+      })
+      return next
+    }
+    return value === undefined ? undefined : value
+  }
+
+  // Generate prescription preview
+  const generatePrescriptionPreview = () => {
+    if (templateType === 'printed') {
+      templatePreview = {
+        type: 'printed',
+        headerSpace: headerSize,
+        doctorName: user?.name || 'Dr. [Your Name]',
+        practiceName: `${user?.firstName || ''} ${user?.lastName || ''} Medical Practice`,
+        address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
+        phone: '+1 (555) 123-4567',
+        email: user?.email || 'doctor@example.com'
+      }
+    } else if (templateType === 'upload' && uploadedHeader) {
+      templatePreview = {
+        type: 'upload',
+        headerImage: uploadedHeader,
+        doctorName: user?.name || 'Dr. [Your Name]',
+        practiceName: `${user?.firstName || ''} ${user?.lastName || ''} Medical Practice`,
+        address: `${user?.city || 'City'}, ${user?.country || 'Country'}`,
+        phone: '+1 (555) 123-4567',
+        email: user?.email || 'doctor@example.com'
+      }
+    } else if (templateType === 'system') {
+      generateSystemHeader()
+    }
+  }
+
+
+  // Watch for template changes to auto-generate preview
+  $: if (templateType && !isSaving) {
+    generatePrescriptionPreview()
+  }
+
+  // Watch for uploaded header changes to update preview
+  $: if (uploadedHeader && templateType === 'upload' && !isSaving) {
+    generatePrescriptionPreview()
+  }
+
+  // Save template settings
+  const saveTemplateSettings = async () => {
+    isSaving = true
+    try {
+      if (!user?.email) {
+        notifyError('User not authenticated')
+        return
+      }
+      
+      // Import firebaseStorage service (default export)
+      const firebaseModule = await import('../services/firebaseStorage.js')
+      const firebaseStorage = firebaseModule.default
+      
+      // Get the doctor from Firebase using email to ensure we have the correct ID
+      let doctor = await firebaseStorage.getDoctorByEmail(user.email)
+      if (!doctor) {
+        console.warn('⚠️ Template settings: Doctor not found in Firebase, using user object directly')
+        if (!user || !user.id) {
+          notifyError('Doctor profile not found. Please try logging in again.')
+          return
+        }
+        doctor = user
+      }
+      
+      const templatePreviewSnapshot = templatePreview
+        ? {
+          ...templatePreview,
+          formattedHeader: templateType === 'system'
+            ? (headerText || templatePreview?.formattedHeader || '')
+            : (templatePreview?.formattedHeader || '')
+        }
+        : templatePreview
+
+      // Prepare template settings object
+      const templateSettings = stripUndefinedDeep({
+        doctorId: doctor.id,
+        templateType: templateType,
+        headerSize: headerSize,
+        headerText: headerText || '',
+        headerFontSize: headerFontSize || 16,
+        templatePreview: templatePreviewSnapshot,
+        uploadedHeader: uploadedHeader || null,
+        excludePharmacyDrugs: excludePharmacyDrugs,
+        procedurePricing: normalizeProcedurePricingForSave(procedurePricing),
+        updatedAt: new Date().toISOString()
+      })
+      
+      // Persist via dedicated API that handles serialization
+      await firebaseStorage.saveDoctorTemplateSettings(doctor.id, templateSettings)
+      
+      // Update the user object in memory to reflect the new template settings
+      if (user) {
+        user.templateSettings = templateSettings
+        
+        // Dispatch event to update App component's user object
+        dispatch('user-updated', { user })
+      }
+      
+      notifySuccess('Template settings saved successfully!')
+      
+    } catch (error) {
+      console.error('Error saving template settings:', error)
+      notifyError(`Failed to save template settings: ${error.message}`)
+    } finally {
+      isSaving = false
+    }
+  }
+
+  // Handle back to main app
+  const handleBack = () => {
+    dispatch('back-to-app')
+  }
+</script>
+
+<!-- Settings Page -->
+<div class="min-h-screen bg-gray-50">
+  <!-- Header -->
+  <div class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center">
+          <button 
+            type="button"
+            class="mr-4 p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors duration-200"
+            on:click={handleBack}
+          >
+            <i class="fas fa-arrow-left text-lg"></i>
+          </button>
+          <div class="flex items-center">
+            <i class="fas fa-cog text-teal-600 text-xl mr-3"></i>
+            <h1 class="text-xl font-semibold text-gray-900">Settings</h1>
+          </div>
+        </div>
+      </div>
+    </div>
+</div>
+
+  <!-- Main Content -->
+  <div class="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+      <!-- Tab Navigation -->
+      <div class="border-b border-gray-200">
+        <nav class="flex space-x-8 px-6" aria-label="Tabs">
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'edit-profile' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('edit-profile')}
+            data-tour="settings-tab-edit-profile"
+          >
+            <i class="fas fa-user-edit mr-2"></i>
+            Edit Profile
+          </button>
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'prescription-template' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('prescription-template')}
+            data-tour="settings-tab-prescription-template"
+          >
+            <i class="fas fa-file-medical mr-2"></i>
+            Prescription Template
+          </button>
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'external-doctor' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('external-doctor')}
+          >
+            <i class="fas fa-user-md mr-2"></i>
+            External Doctor
+          </button>
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'procedures' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('procedures')}
+            data-tour="settings-tab-procedures"
+          >
+            <i class="fas fa-list-check mr-2"></i>
+            Procedures
+          </button>
+          <button 
+            class="py-4 px-1 border-b-2 font-medium text-sm {activeTab === 'backup-restore' ? 'border-teal-500 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+            on:click={() => switchTab('backup-restore')}
+          >
+            <i class="fas fa-database mr-2"></i>
+            Backup
+          </button>
+        </nav>
+      </div>
+
+      <!-- Tab Content -->
+      <div class="p-6">
+        <!-- Edit Profile Tab -->
+        {#if activeTab === 'edit-profile'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-6">Edit Profile</h2>
+          
+          {#if error}
+          <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div class="flex">
+              <i class="fas fa-exclamation-circle text-red-400 mr-2 mt-0.5"></i>
+              <p class="text-sm text-red-700">{error}</p>
+            </div>
+          </div>
+          {/if}
+
+          <form id="edit-profile-form" on:submit={handleSubmit}>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  id="firstName"
+                    value={firstName}
+                    on:input={(e) => firstName = e.target.value}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <input 
+                  type="text" 
+                  id="lastName"
+                  value={lastName}
+                  on:input={(e) => lastName = e.target.value}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <select 
+                  id="country"
+                  value={country}
+                  on:change={handleCountryChange}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  required
+                >
+                  <option value="">Select Country</option>
+                  {#each countries as countryOption}
+                    <option value={countryOption.name}>{countryOption.name}</option>
+                  {/each}
+                </select>
+              </div>
+              
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <select 
+                  id="city"
+                  value={city}
+                  on:change={(e) => city = e.target.value}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  required
+                  disabled={!country}
+                >
+                  <option value="">Select City</option>
+                  {#each availableCities as cityOption}
+                    <option value={cityOption.name}>{cityOption.name}</option>
+                  {/each}
+                </select>
+              </div>
+
+              <div>
+                <label for="phoneNumber" class="block text-sm font-medium text-gray-700 mb-2">
+                  Mobile Number{#if isPrimaryDoctor()} <span class="text-red-500">*</span>{/if}
+                </label>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div class="md:col-span-1">
+                    <select 
+                      id="phoneCountryCode"
+                      value={phoneCountryCode}
+                      on:change={(e) => phoneCountryCode = e.target.value}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      required={isPrimaryDoctor()}
+                      aria-label="Country code"
+                    >
+                      <option value="">Code</option>
+                      {#each phoneCountryCodes as entry}
+                        <option value={entry.dialCode}>{entry.name} ({entry.dialCode})</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <div class="md:col-span-2">
+                    <input 
+                      type="tel" 
+                      id="phoneNumber"
+                      value={phoneNumber}
+                      on:input={(e) => phoneNumber = normalizePhoneInput(e.target.value)}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="Enter mobile number"
+                      inputmode="numeric"
+                      maxlength={isSriLankaPhone() ? 9 : undefined}
+                      required={isPrimaryDoctor()}
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Select country code, then enter number.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label for="deleteCode" class="block text-sm font-medium text-red-600 mb-2">Delete Code</label>
+                <div class="flex items-center gap-2">
+                  <input
+                    type="text"
+                    id="deleteCode"
+                    value={deleteCode || 'Not assigned'}
+                    class="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-red-50 text-red-700"
+                    disabled
+                    readonly
+                  />
+                  <button
+                    type="button"
+                    class="inline-flex items-center px-3 py-2 border border-red-500 text-red-600 hover:bg-red-50 rounded-lg text-xs font-medium transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                    on:click={handleRenewDeleteCode}
+                    disabled={renewingDeleteCode}
+                  >
+                    {#if renewingDeleteCode}
+                      Renewing...
+                    {:else}
+                      Renew
+                    {/if}
+                  </button>
+                </div>
+                <div class="text-xs text-red-600 mt-1">Use this code to confirm deletions.</div>
+              </div>
+              
+              <!-- Currency Selection -->
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <select 
+                  id="currency"
+                  value={currency}
+                  on:change={handleCurrencyChange}
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  required
+                >
+                  {#each currencies as currencyOption}
+                    <option value={currencyOption.code}>{currencyOption.code} - {currencyOption.name}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+            
+            <!-- Charges Section -->
+            <div class="mt-6">
+              <h6 class="text-sm font-semibold text-gray-700 mb-4">
+                <i class="fas fa-dollar-sign mr-2"></i>
+                Consultation & Hospital Charges
+              </h6>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label for="consultationCharge" class="block text-sm font-medium text-gray-700 mb-2">
+                    Consultation Charge
+                  </label>
+                  <div class="flex items-stretch">
+                    <span class="inline-flex items-center px-3 border border-r-0 border-gray-300 rounded-l-lg bg-gray-50 text-gray-600 text-sm">
+                      {currency}
+                    </span>
+                    <input 
+                      type="text" 
+                      id="consultationCharge"
+                      value={consultationCharge}
+                      on:input={(e) => consultationCharge = e.target.value}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Your standard consultation fee
+                  </div>
+                </div>
+                <div>
+                  <label for="hospitalCharge" class="block text-sm font-medium text-gray-700 mb-2">
+                    Hospital Charge
+                  </label>
+                  <div class="flex items-stretch">
+                    <span class="inline-flex items-center px-3 border border-r-0 border-gray-300 rounded-l-lg bg-gray-50 text-gray-600 text-sm">
+                      {currency}
+                    </span>
+                    <input 
+                      type="text" 
+                      id="hospitalCharge"
+                      value={hospitalCharge}
+                      on:input={(e) => hospitalCharge = e.target.value}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-r-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Hospital visit or admission fee
+                  </div>
+                </div>
+                <div>
+                  <label for="roundingPreference" class="block text-sm font-medium text-gray-700 mb-2">
+                    Total Amount Rounding
+                  </label>
+                  <select
+                    id="roundingPreference"
+                    value={roundingPreference}
+                    on:change={(e) => roundingPreference = e.target.value}
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  >
+                    <option value="none">No Rounding</option>
+                    <option value="nearest50">Round to Nearest 50</option>
+                    <option value="nearest100">Round to Nearest 100</option>
+                  </select>
+                  <div class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Applies to final totals for prescriptions.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </form>
+        </div>
+        {/if}
+
+        <!-- Prescription Template Tab -->
+        {#if activeTab === 'prescription-template'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-6">Prescription Template Settings</h2>
+          <p class="text-gray-600 mb-6">Choose how you want your prescription header to appear on printed prescriptions.</p>
+          
+          <!-- Template Type Selection -->
+          <div class="space-y-4">
+            <label class="block text-sm font-semibold text-gray-700">Select Template Type:</label>
+            
+            <!-- Option 1: Printed Letterheads -->
+              <button type="button" class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'printed' ? 'border-teal-500' : 'border-gray-200'}" on:click={() => selectTemplateType('printed')}>
+              <div class="p-4">
+                <div class="flex items-center">
+                  <input 
+                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
+                    type="radio" 
+                    name="templateType" 
+                    id="templatePrinted" 
+                    value="printed"
+                    checked={templateType === 'printed'}
+                    on:change={() => selectTemplateType('printed')}
+                  />
+                  <label class="w-full cursor-pointer" for="templatePrinted">
+                    <div class="flex items-center">
+                      <div class="flex-shrink-0 mr-3">
+                        <i class="fas fa-print text-2xl text-teal-600"></i>
+                      </div>
+                      <div class="flex-1">
+                        <h6 class="text-sm font-semibold text-gray-900 mb-1">I have printed A3 letterheads</h6>
+                        <p class="text-gray-500 text-sm mb-0">Use your existing printed letterhead paper for prescriptions. No header will be added to the PDF.</p>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                
+                {#if templateType === 'printed'}
+                <div class="mt-4">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Header Size Adjustment:</label>
+                  <div class="flex items-center">
+                    <div class="flex-1 mr-4">
+                      <input 
+                        type="range" 
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" 
+                        min="50" 
+                        max="300" 
+                        step="10"
+                        value={headerSize}
+                        on:input={(e) => headerSize = parseInt(e.target.value)}
+                      />
+                    </div>
+                    <div class="flex-shrink-0">
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">{headerSize}px</span>
+                    </div>
+                  </div>
+                  <div class="text-sm text-gray-500 mt-2">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Adjust the header space to match your printed letterhead height.
+                  </div>
+                </div>
+                {/if}
+              </div>
+            </button>
+            
+            <!-- Option 2: Upload Image -->
+              <button type="button" class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'upload' ? 'border-teal-500' : 'border-gray-200'}" on:click={() => selectTemplateType('upload')}>
+              <div class="p-4">
+                <div class="flex items-center">
+                  <input 
+                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2 mr-3" 
+                    type="radio" 
+                    name="templateType" 
+                    id="templateUpload" 
+                    value="upload"
+                    checked={templateType === 'upload'}
+                    on:change={() => selectTemplateType('upload')}
+                  />
+                  <label class="w-full cursor-pointer" for="templateUpload">
+                    <div class="flex items-center">
+                      <div class="flex-shrink-0 mr-3">
+                        <i class="fas fa-image text-2xl text-teal-600"></i>
+                      </div>
+                      <div class="flex-1">
+                        <h6 class="text-sm font-semibold text-gray-900 mb-1">I want to upload an image for header</h6>
+                        <p class="text-gray-500 text-sm mb-0">Upload your custom header image to be used on all prescriptions.</p>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                
+                {#if templateType === 'upload'}
+                <div class="mt-3">
+                  <label for="headerTemplateUploadInput" class="sr-only">Upload header image</label>
+                  <input 
+                    id="headerTemplateUploadInput"
+                    type="file" 
+                    class="hidden"
+                    accept="image/*"
+                    on:change={handleHeaderUpload}
+                  />
+                  <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <button
+                      type="button"
+                      class="inline-flex items-center px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 transition-colors duration-200"
+                      on:click={() => document.getElementById('headerTemplateUploadInput')?.click()}
+                    >
+                      <i class="fas fa-upload mr-2"></i>
+                      Upload Header Image
+                    </button>
+                    <span class="text-sm text-gray-600 truncate">
+                      {uploadedHeaderFileName || 'No file chosen'}
+                    </span>
+                  </div>
+                  <div class="text-sm text-gray-500 mb-3">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Supported formats: JPG, PNG, GIF. Recommended size: 800x200 pixels.
+                  </div>
+                  {#if uploadedHeader}
+                    <div class="mt-2 border border-gray-200 rounded-lg bg-gray-50 p-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <p class="text-sm font-medium text-gray-700">Header Preview</p>
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-2.5 py-1.5 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200"
+                          on:click={() => {
+                            uploadedHeader = null
+                            uploadedHeaderFileName = ''
+                            const input = document.getElementById('headerTemplateUploadInput')
+                            if (input) input.value = ''
+                          }}
+                        >
+                          <i class="fas fa-trash-alt mr-1"></i>
+                          Remove
+                        </button>
+                      </div>
+                      <div class="overflow-hidden rounded-md border border-gray-200 bg-white">
+                        <img
+                          src={uploadedHeader}
+                          alt="Uploaded header preview"
+                          class="w-full h-auto max-h-40 object-contain"
+                        />
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+                {/if}
+              </div>
+            </button>
+            
+            <!-- Option 3: System Header -->
+            <div class="w-full text-left bg-white border-2 rounded-lg shadow-sm {templateType === 'system' ? 'border-teal-500' : 'border-gray-200'} cursor-pointer" style="display: block !important;" on:click={(e) => { handleThirdOptionClick(); }} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleThirdOptionClick()}>
+              <div class="p-4">
+                <div class="flex items-center">
+                  <!-- Visual indicator instead of radio button -->
+                  <div class="w-4 h-4 rounded-full border-2 mr-3 {templateType === 'system' ? 'bg-teal-600 border-teal-600' : 'border-gray-300'}" style="position: relative;">
+                    {#if templateType === 'system'}
+                      <div class="w-2 h-2 bg-white rounded-full" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);"></div>
+                    {/if}
+                  </div>
+                  <div class="w-full">
+                    <div class="flex items-center">
+                      <div class="flex-shrink-0 mr-3">
+                        <i class="fas fa-cog text-2xl text-teal-600"></i>
+                      </div>
+                      <div class="flex-1">
+                        <h6 class="text-sm font-semibold text-gray-900 mb-1">I want system to add header for template</h6>
+                        <p class="text-gray-500 text-sm mb-0">Use a system-generated header with your practice information.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {#if templateType === 'system'}
+                <div class="mt-3">
+                  
+                  
+                  <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-4">
+                      <i class="fas fa-edit mr-2"></i>Professional Header Editor
+                    </label>
+                    
+                    <HeaderEditor 
+                      bind:headerText={headerText}
+                      bind:headerFontSize={headerFontSize}
+                      onContentChange={handleHeaderContentChange}
+                      onSave={handleHeaderSave}
+                      onFontSizeChange={handleHeaderFontSizeChange}
+                    />
+                  </div>
+        </div>
+        {/if}
+
+      </div>
+    </div>
+  </div>
+          
+
+        </div>
+        {/if}
+
+        {#if activeTab === 'backup-restore'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Backup & Restore</h2>
+          <p class="text-sm text-gray-600 mb-6">
+            Download a backup of your patients and prescriptions, then restore it if data is deleted.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
+              <p class="text-xs text-gray-500 mb-3">
+                Exports patients, prescriptions, symptoms, and long-term medications.
+              </p>
+              <button
+                type="button"
+                class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                on:click={handleDoctorBackupDownload}
+                disabled={backupLoading}
+              >
+                <i class="fas fa-download mr-2"></i>
+                {backupLoading ? 'Preparing...' : 'Download Backup'}
+              </button>
+              {#if backupError}
+                <div class="mt-3 text-xs text-red-600">{backupError}</div>
+              {/if}
+              {#if backupSuccess}
+                <div class="mt-3 text-xs text-green-600">{backupSuccess}</div>
+              {/if}
+            </div>
+
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <h6 class="text-sm font-semibold text-gray-800 mb-2">Restore Backup</h6>
+              <p class="text-xs text-gray-500 mb-3">
+                Upload a backup file to restore missing data. Existing records with the same IDs will be updated.
+              </p>
+              <input
+                type="file"
+                accept="application/json"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                on:change={handleDoctorRestoreFile}
+              />
+              <button
+                type="button"
+                class="mt-3 inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                on:click={handleDoctorRestore}
+                disabled={restoreLoading || !restoreFile}
+              >
+                <i class="fas fa-upload mr-2"></i>
+                {restoreLoading ? 'Restoring...' : 'Restore Backup'}
+              </button>
+              {#if restoreError}
+                <div class="mt-3 text-xs text-red-600">{restoreError}</div>
+              {/if}
+              {#if restoreSuccess}
+                <div class="mt-3 text-xs text-green-600">{restoreSuccess}</div>
+              {/if}
+              {#if restoreSummary}
+                <div class="mt-3 text-xs text-gray-600">
+                  Restored: {restoreSummary.patients} patients, {restoreSummary.prescriptions} prescriptions, {restoreSummary.symptoms} symptoms, {restoreSummary.reports || 0} reports.
+                </div>
+              {/if}
+            </div>
+          </div>
+        </div>
+        {/if}
+
+  {#if activeTab === 'external-doctor'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">External Doctor Access</h2>
+          <p class="text-sm text-gray-600">
+            Add an outside doctor for temporary coverage. This profile is created with minimum access and can log in only from the owner doctor's device.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 mt-3 mb-6">
+            <span class="text-xs text-gray-500">Replaced this device?</span>
+            <button
+              type="button"
+              class="inline-flex items-center px-3 py-1.5 border border-teal-500 text-teal-600 hover:bg-teal-50 rounded-lg text-xs font-medium transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              on:click={() => (resetExternalDeviceModal = true)}
+              disabled={resetExternalDeviceLoading}
+            >
+              Reset External Device Access
+            </button>
+          </div>
+
+          <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalFirstName}
+                />
+              </div>
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalLastName}
+                />
+              </div>
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalUsername}
+                  placeholder="e.g., dr.username"
+                />
+              </div>
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <input
+                  type="password"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalPassword}
+                />
+              </div>
+              <div>
+                <label> <span class="text-red-500">*</span></label>
+                <input
+                  type="password"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalPasswordConfirm}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalPhone}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Specialization</label>
+                <input
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalSpecialization}
+                />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                <select
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalCountry}
+                >
+                  <option value="">Select Country</option>
+                  {#each countries as countryOption}
+                    <option value={countryOption.name}>{countryOption.name}</option>
+                  {/each}
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">City</label>
+                <select
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={externalCity}
+                  disabled={!externalCountry}
+                >
+                  <option value="">Select City</option>
+                  {#each externalAvailableCities as cityOption}
+                    <option value={cityOption.name}>{cityOption.name}</option>
+                  {/each}
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-4 text-xs text-gray-500">
+              Access level: <span class="font-medium text-gray-700">Minimal</span> (view patients, write prescriptions).
+            </div>
+
+            <button
+              type="button"
+              class="mt-4 inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              on:click={handleCreateExternalDoctor}
+              disabled={externalLoading}
+            >
+              <i class="fas fa-user-plus mr-2"></i>
+              {externalLoading ? 'Adding...' : 'Add External Doctor'}
+            </button>
+
+            {#if externalError}
+              <div class="mt-3 text-xs text-red-600">{externalError}</div>
+            {/if}
+            {#if externalSuccess}
+              <div class="mt-3 text-xs text-green-600">{externalSuccess}</div>
+            {/if}
+          </div>
+
+          <div class="mt-6">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 class="text-sm font-semibold text-gray-800">External Doctors</h3>
+              <button
+                type="button"
+                class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-gray-600 hover:bg-gray-50 rounded-lg text-xs font-medium transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                on:click={() => loadExternalDoctors({ force: true })}
+                disabled={externalDoctorsLoading}
+              >
+                Refresh List
+              </button>
+            </div>
+
+            {#if externalDoctorsLoading}
+              <div class="text-xs text-gray-500">Loading external doctors...</div>
+            {:else if externalDoctorsError}
+              <div class="text-xs text-red-600">{externalDoctorsError}</div>
+            {:else if !externalDoctors.length}
+              <div class="text-xs text-gray-500">No external doctors found for this account.</div>
+            {:else}
+              <div class="space-y-3">
+                {#each externalDoctors as doctor}
+                  <div class="bg-white border border-gray-200 rounded-lg p-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="text-sm font-semibold text-gray-900">
+                          {doctor.name || `${doctor.firstName || ''} ${doctor.lastName || ''}`.trim() || doctor.email || 'External Doctor'}
+                        </div>
+                        <div class="text-xs text-gray-500">
+                          Username: {getExternalDoctorUsername(doctor.email)}
+                        </div>
+                      </div>
+                      <span class="text-xs px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                        External
+                      </span>
+                    </div>
+                    <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-gray-600">
+                      <div>Specialization: {doctor.specialization || 'Not set'}</div>
+                      <div>Phone: {doctor.phone || 'Not set'}</div>
+                      <div>Location: {getExternalDoctorLocation(doctor)}</div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+  </div>
+  {/if}
+
+  <ConfirmationModal
+    visible={resetExternalDeviceModal}
+    title="Reset External Device Access"
+    message="This will update all external doctors to log in only from this device. Continue?"
+    confirmText="Reset"
+    cancelText="Cancel"
+    type="warning"
+    on:confirm={handleResetExternalDeviceAccess}
+    on:cancel={() => (resetExternalDeviceModal = false)}
+  />
+
+        {#if activeTab === 'procedures'}
+        <div>
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Procedures Pricing</h2>
+          <p class="text-sm text-gray-600 mb-6">
+            Set default prices for procedures. These prices will be available when preparing prescriptions.
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {#each procedurePricing as item}
+              <div class="flex items-center justify-between gap-3 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <div class="text-sm font-medium text-gray-700">{item.name}</div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-500">{currency}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    bind:value={item.price}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+        {/if}
+      </div>
+
+      <!-- Footer Actions -->
+      <div class="bg-gray-50 px-6 py-4 rounded-b-lg flex justify-between">
+        <button 
+          type="button" 
+          class="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors duration-200"
+          on:click={handleBack}
+        >
+          <i class="fas fa-arrow-left mr-1 fa-sm"></i>
+          Back to App
+        </button>
+        
+        <div class="flex gap-3">
+          {#if activeTab === 'edit-profile'}
+            <button 
+              type="submit" 
+              form="edit-profile-form"
+              class="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg flex items-center transition-colors duration-200"
+              style="background-color: #dc2626 !important;"
+              disabled={loading}
+              data-tour="settings-save-profile"
+            >
+              {#if loading}
+                <ThreeDots size="small" color="white" />
+              {/if}
+              <i class="fas fa-save mr-1 fa-sm"></i>
+              Save Profile
+            </button>
+          {:else if activeTab === 'prescription-template'}
+            <button 
+              type="button" 
+              class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center transition-colors duration-200"
+              on:click={saveTemplateSettings}
+              disabled={!templateType}
+              data-tour="settings-save-template"
+            >
+              <i class="fas fa-save mr-1 fa-sm"></i>
+              Save Template Settings
+            </button>
+          {:else if activeTab === 'procedures'}
+            <button 
+              type="button" 
+              class="px-4 py-2 text-sm bg-teal-600 hover:bg-teal-700 text-white rounded-lg flex items-center transition-colors duration-200"
+              on:click={saveTemplateSettings}
+              data-tour="settings-save-procedures"
+            >
+              <i class="fas fa-save mr-1 fa-sm"></i>
+              Save Procedure Prices
+            </button>
+          {/if}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

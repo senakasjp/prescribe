@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles for the application */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 text-sm;
+  }
+
+  html.dark body {
+    @apply bg-gray-900 text-gray-100;
+  }
+
+  /* Global small-theme baseline aligned with Flowbite form controls */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    @apply w-full rounded-lg border-gray-300 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:ring-cyan-500;
+  }
+
+  button {
+    @apply text-sm;
+  }
+}
+
+/* Dark-mode compatibility overrides for legacy light-only utility usage */
+@layer utilities {
+  html.dark .bg-white {
+    @apply bg-gray-800 !important;
+  }
+
+  html.dark .bg-gray-50 {
+    @apply bg-gray-900 !important;
+  }
+
+  html.dark .bg-gray-100 {
+    @apply bg-gray-800 !important;
+  }
+
+  html.dark .text-gray-900 {
+    @apply text-gray-100 !important;
+  }
+
+  html.dark .text-gray-800 {
+    @apply text-gray-100 !important;
+  }
+
+  html.dark .text-gray-700 {
+    @apply text-gray-200 !important;
+  }
+
+  html.dark .text-gray-600 {
+    @apply text-gray-300 !important;
+  }
+
+  html.dark .text-gray-500 {
+    @apply text-gray-400 !important;
+  }
+
+  html.dark .border-gray-200 {
+    @apply border-gray-700 !important;
+  }
+
+  html.dark .border-gray-300 {
+    @apply border-gray-600 !important;
+  }
+
+  html.dark .shadow-sm,
+  html.dark .shadow,
+  html.dark .shadow-md,
+  html.dark .shadow-lg,
+  html.dark .shadow-xl {
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  }
+
+  html.dark input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  html.dark select,
+  html.dark textarea {
+    @apply bg-gray-800 border-gray-600 text-gray-100 placeholder-gray-400;
+  }
+
+  html.dark table thead {
+    @apply bg-gray-800;
+  }
+
+  html.dark table tbody {
+    @apply bg-gray-900;
+  }
+}
+
+@layer components {
+  /* Custom component styles */
+  .btn-primary {
+    @apply bg-cyan-600 hover:bg-cyan-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200;
+  }
+  
+  .form-input {
+    @apply block w-full rounded-lg border-gray-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm;
+  }
+  
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+
+  .action-buttons {
+    @apply flex flex-col sm:flex-row items-center justify-center gap-3;
+  }
+
+  .action-button {
+    @apply inline-flex items-center justify-center px-5 py-2 text-sm font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200 min-w-[160px];
+  }
+
+  .action-button-primary {
+    @apply bg-cyan-600 text-white hover:bg-cyan-700 focus:ring-cyan-500;
+  }
+
+  .action-button-secondary {
+    @apply bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 focus:ring-blue-500;
+  }
+}

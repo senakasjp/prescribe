@@ -1,361 +1,423 @@
-# 🤖 AI-Powered Patient Management System
+# Prescribe - Medical Prescription Management System
 
-A comprehensive patient management system built with Svelte 4, Bootstrap 5, and Firebase, featuring advanced AI capabilities for medical recommendations and drug interaction analysis. Designed for doctors and pharmacists to manage patient records, track medical history, and coordinate prescription management with intelligent safety features.
+A comprehensive medical prescription management system built with Svelte, Firebase, and Flowbite UI components. The system provides separate portals for doctors, pharmacists, and administrators to manage patient data, prescriptions, and medication tracking with AI-powered drug suggestions.
 
-## 🆕 Recent Updates (January 16, 2025)
+## 🚀 Features
 
-### **🟠 Dynamic Stock Availability System**
-- **Smart Badge Colors**: Availability badges now show orange for normal stock, red for low stock (≤10% of initial)
-- **Initial Quantity Tracking**: System tracks initial stock quantities for accurate low-stock detection
-- **Real-time Stock Monitoring**: Automatic color changes based on current vs. initial stock levels
-- **Visual Stock Alerts**: Immediate visual feedback for critical stock levels
-- **Pharmacy Integration**: Connected pharmacists' stock levels displayed in doctor prescriptions
+### Doctor Portal
+- **Patient Management**: Create, view, and manage patient records ✅ **FULLY FUNCTIONAL**
+- **Prescription Creation**: Build prescriptions with AI-powered drug suggestions
+- **Medical History**: Track patient symptoms, reports, and diagnoses
+- **AI Integration**: Get intelligent drug recommendations based on patient context
+- **Token Management**: Monitor AI usage with quota tracking
+- **Add New Patient**: Seamless patient addition workflow (Fixed December 28, 2024)
 
-### **🔒 Critical Security Implementation - Doctor Data Isolation**
-- **Doctor Isolation**: Each doctor can ONLY see their own patients (CRITICAL SECURITY FIX)
-- **Data Privacy**: No cross-doctor data access possible
-- **HIPAA Compliance**: Patient data is properly isolated between doctors
-- **Authentication Required**: Doctor ID must be provided to access patients
-- **Secure Queries**: All patient queries filtered by doctor ID
-- **Firebase Index Optimization**: Removed composite index requirements for better performance
+### Pharmacist Portal
+- **Prescription Management**: View and manage prescriptions from doctors
+- **Inventory Tracking**: Monitor medication stock levels with Brand Name + Strength + Strength Unit + Expiry Date as composite primary key
+- **Doctor Connections**: Connect with doctors for prescription delivery
+- **Status Updates**: Update prescription fulfillment status
 
-### **👑 Super Admin System Implementation**
-- **Super Admin Access**: `senakahks@gmail.com` automatically lands on doctor app with admin privileges
-- **Direct Admin Panel**: Super admin can access admin panel without login form
-- **Doctor Deletion Capability**: Super admin can delete any doctor account with complete data cleanup
-- **Protected Account**: Super admin account cannot be deleted by anyone
-- **Seamless Authentication**: Auto-login for super admin with proper role assignment
+### Admin Portal
+- **User Management**: Manage doctors and pharmacists
+- **Analytics Dashboard**: Monitor system usage and performance
+- **Token Quota Management**: Set and monitor AI token quotas
+- **System Configuration**: Configure global settings
 
-### **🔥 Firebase-Only Implementation**
-- **Complete Migration**: All data operations now use Firebase Firestore exclusively
-- **Cloud Data Persistence**: Patient data, prescriptions, and medical records stored in Firebase
-- **Real-time Synchronization**: Data automatically syncs across devices and sessions
-- **Scalable Architecture**: Cloud-based storage supports multiple doctors and patients
+### AI-Powered Features
+- **Drug Suggestions**: AI-generated medication recommendations
+- **Medical Analysis**: Comprehensive medical analysis and insights
+- **Drug Interactions**: Check for potential drug interactions
+- **Context Awareness**: Personalized suggestions based on patient data
 
-### **🔧 Critical Fixes**
-- **Prescription Data Persistence**: Fixed issue where medications disappeared on page refresh
-- **Firebase Index Issues**: Resolved Firebase compound query index errors by removing orderBy clauses
-- **Prescription Structure**: Implemented proper prescription-medication hierarchy
-- **Data Loading**: Enhanced data initialization for existing prescriptions
-- **Doctor-Patient Isolation**: Doctors only see patients they created
-- **MedicalSummary Data Display**: Fixed "Unknown prescription" and "No dosage" issues by properly extracting medications from prescriptions
+## 🛠️ Technology Stack
 
-### **🧠 Smart Prescription History Logic**
-- **Conditional History Management**: Prescriptions only move to history when saved or printed
-- **Status-Based Workflow**: Clear distinction between saved (finalized), printed (sent), and draft prescriptions
-- **Intelligent Data Cleanup**: Unsaved/unprinted prescriptions are discarded when new prescription starts
-- **Enhanced Status Tracking**: Comprehensive status definitions for prescription lifecycle management
-- **Clean History Records**: Only completed work appears in prescription history and summary
-- **Automatic Workflow**: New prescription creation automatically handles previous prescription status
+- **Frontend**: Svelte 5.x, Tailwind CSS, Flowbite UI
+- **Backend**: Firebase Firestore, Firebase Auth, Firebase Hosting
+- **AI**: OpenAI API for drug suggestions and medical analysis
+- **Charts**: ApexCharts for data visualization
+- **PDF**: jsPDF for prescription generation
+- **Icons**: Font Awesome (free icons)
 
-### **🎯 Simplified Prescription Logic**
-- **New Prescription Button**: Always creates a new prescription when clicked
-- **Clear Workflow**: Simple and intuitive prescription creation process
-- **User-Friendly**: Helpful error messages and button states
-- **Consistent Behavior**: Predictable prescription management workflow
+## 📚 Documentation
 
-### **🎨 UI/UX Improvements**
-- **Responsive Header**: Fixed mobile responsiveness with proper Bootstrap 5 layout
-- **Prescription Card**: Professional card design for prescription management
-- **Optional Start Date**: Medication start date now optional with smart defaults
-- **Enhanced Patient Editing**: Comprehensive patient data editing with validation
-- **Profile Management**: Real-time profile editing with immediate UI updates
-- **City Field**: Added compulsory city field to doctor profiles with country-based dropdown
-- **Enhanced Card Borders**: Applied consistent light blue borders to all card components for better visual separation
-- **Colored Navigation Tabs**: Converted patient tabs to colored buttons with black border container for enhanced visibility
-- **Dashboard Card Styling**: Neutralized dashboard statistics card borders for cleaner appearance
+Canonical docs for maintenance:
+- **[DOCS.md](./DOCS.md)** - Documentation map and maintenance rules
+- **[PRODUCT_MANUAL.md](./PRODUCT_MANUAL.md)** - Product workflows (doctor/pharmacist/admin)
+- **[ENGINEERING_MANUAL.md](./ENGINEERING_MANUAL.md)** - Technical architecture/setup/deployment
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Automated + manual testing guidance
+- **[CHANGELOG.md](./CHANGELOG.md)** - Release history
 
-### **📊 Data Model Enhancements**
-- **Hierarchical Structure**: Proper prescription containers with multiple medications
-- **Firebase Integration**: All CRUD operations use Firebase Firestore
-- **Storage Optimization**: Improved data persistence and loading mechanisms
-- **Pharmacist Integration**: Complete Firebase-based pharmacist-doctor connection system
-- **Sri Lanka Districts**: Added all 25 districts of Sri Lanka to city selection
-- **Prescription History Display**: Enhanced prescription history with grouped display showing "Prescription #X on date" with Bootstrap 5 styling
+Legacy docs remain available as historical references.
 
-## 🏥 Features
+## 📋 Prerequisites
 
-### 👑 Super Admin System
-- **Super Admin Account** - `senakahks@gmail.com` has elevated privileges and system-wide access
-- **Automatic Authentication** - Super admin automatically logs in and lands on doctor app
-- **Admin Panel Access** - Direct access to admin panel without additional login
-- **Doctor Management** - Can view, monitor, and delete any doctor account
-- **Complete Data Cleanup** - When deleting doctors, removes all associated patients, prescriptions, and medical data
-- **Protected Status** - Super admin account cannot be deleted by anyone
-- **System Monitoring** - Access to system-wide statistics and analytics
-- **AI Usage Tracking** - Monitor OpenAI API usage and costs across all users
+- Node.js 18.x or higher
+- npm 8.x or higher
+- Firebase CLI
+- OpenAI API key (stored in Firebase Functions secrets)
 
-### User Authentication
-- **Doctor Authentication** - Secure login and registration for medical professionals
-- **Google Authentication** - Sign in with Google for seamless access
-- **Super Admin Recognition** - System automatically recognizes and elevates super admin privileges
-- **Local Authentication** - Email/password authentication with Firebase sync
-- **Pharmacist Authentication** - Separate authentication system for pharmacists
-- **Role-Based Access** - Different interfaces and permissions based on user role
-- **Secure Sessions** - Persistent login sessions with proper logout functionality
-- **Firebase Integration** - All authentication data stored in Firebase
+## 🚀 Quick Start
 
-### Pharmacist System
-- **Pharmacist Registration** - Create pharmacist accounts with business name and email
-- **Unique Pharmacist Numbers** - Auto-generated 6-digit identification numbers
-- **Doctor-Pharmacist Connection** - Doctors can connect with pharmacists using their unique numbers
-- **Prescription Sharing** - Connected pharmacists can view prescriptions from doctors
-- **Pharmacist Dashboard** - Dedicated interface for viewing and managing prescriptions
-- **Business Information** - Track pharmacy business names and contact information
-- **Drug Stock Management** - Add, edit, and track medication inventory with quantity, strength, and expiry dates
-- **Stock Availability Tracking** - Monitor stock levels with visual status indicators (In Stock, Low Stock, Out of Stock)
-- **Initial Quantity Recording** - Track initial stock quantities for low-stock alert calculations
-- **Firebase Storage** - All pharmacist data stored in Firebase Firestore
-- **Real-time Updates** - Prescriptions appear instantly in pharmacist dashboard
+### 1. Clone the Repository
+```bash
+git clone <repository-url>
+cd Prescribe
+```
 
-### Patient Management
-- **Patient Registration** - Add new patients with simplified mandatory fields (First Name and Age only)
-- **Patient Search** - Search by name, ID, DOB, phone number (limited to 20 results)
-- **Patient Details** - Comprehensive view with medical history including blood group and allergies
-- **Patient Editing** - Update patient information with inline editing capabilities
-- **Clickable Overview Cards** - Quick navigation between sections
-- **Blood Group Tracking** - Essential medical information for procedures and emergencies
-- **🔒 Doctor Isolation** - Each doctor can ONLY see their own patients (CRITICAL SECURITY)
-- **Firebase Storage** - All patient data stored in Firebase Firestore with secure isolation
-- **Gender Selection** - Patient gender field with multiple options
-- **HIPAA Compliance** - Patient data properly isolated between medical professionals
-
-### Medical Data Management
-- **Symptoms Tracking** - Record patient symptoms with severity and duration
-- **Illness History** - Track diagnosed illnesses and their status
-- **Prescription Management** - M-Prescribe and track prescriptions with edit/delete functionality
-- **Medical Summary** - Always-visible overview in prescriptions tab
-- **Drug Database** - Personal drug database with autocomplete for each doctor
-- **Stock Availability Integration** - Real-time display of medication availability from connected pharmacies
-- **Dynamic Stock Badges** - Visual indicators showing medication stock levels (orange for normal, red for low stock)
-- **Pharmacy Stock Monitoring** - Automatic checking of connected pharmacists' inventory
-- **Smart Notifications** - Real-time feedback for all actions
-- **Firebase Storage** - All medical data stored in Firebase Firestore
-- **AI Drug Interaction Analysis** - Automatic drug interaction checking on prescription completion
-
-### 🤖 AI-Powered Features
-- **🤖 AI-Powered Medical Intelligence** - Generate medical recommendations based on symptoms
-- **AI Medication Suggestions** - Get AI-powered medication recommendations
-- **🤖 AI-Powered Safety Analysis** - Advanced drug interaction detection and analysis
-- **Critical Interaction Alerts** - Real-time warnings for dangerous drug combinations
-- **Local Safety Database** - Pre-configured database of critical interactions (MAOI+SSRI, Warfarin+NSAID, etc.)
-- **Automatic Interaction Checking** - AI analysis triggered on prescription completion
-- **Severity Classification** - Interactions classified as Low, Moderate, High, or Critical
-- **Yes/No Response Format** - Clear AI responses for interaction detection
-
-### User Interface
-- **Responsive Design** - Works on all screen sizes
-- **Bootstrap 5 Styling** - Clean, professional appearance
-- **Font Awesome Icons** - Visual clarity throughout
-- **Expandable Sections** - Detailed views when needed
-- **Color-Coded Themes** - Easy to distinguish different data types
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v16 or higher)
-- npm or yarn
-- Firebase project setup
-- OpenAI API key (for AI features)
-
-### Installation
-1. Clone the repository
-2. Install dependencies:
+### 2. Install Dependencies
    ```bash
    npm install
    ```
-3. Set up Firebase configuration (see Firebase Setup section)
-4. Configure OpenAI API key (see AI Features Setup section)
 
-### Running the Application
+### 3. Environment Setup
+Create `.env.local` file:
+```env
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+```
+
+Set OpenAI key in Functions secrets:
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
+```
+
+### 4. Firebase Setup
+```bash
+firebase login
+firebase init
+```
+
+### 5. Run Development Server
 ```bash
  npm run dev
  ```
 
-The application will be available at `http://localhost:5173`
+### 6. Build for Production
+```bash
+npm run build
+```
 
-### Firebase Setup
-1. Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
-2. Enable Firestore Database
-3. Enable Authentication with Google provider
-4. Copy your Firebase configuration to `src/firebase-config.js`
-5. Set up Firestore security rules for your collections
+### 7. Deploy to Firebase
+```bash
+firebase deploy
+```
 
-## 🤖 AI Features Setup
+## 🔄 Recent Updates
 
-### OpenAI Integration
-To enable AI features, you'll need an OpenAI API key:
+### Version 2.3.14 - Admin Payment Pricing Controls + Scope Rules (February 17, 2026)
+- Admin Payments now supports configurable plan pricing:
+  - USD monthly / annual
+  - LKR monthly / annual
+- Scope control for pricing rules:
+  - `new_customers`
+  - `all_customers`
+- Stripe checkout now enforces pricing rules server-side from `systemSettings/paymentPricing`.
+- Added test coverage:
+  - `src/tests/components/AdminDashboard.test.js`
+  - `src/tests/unit/firebaseStorage.paymentPricingSettings.test.js`
+  - `src/tests/unit/stripePricingConfig.test.js`
 
-1. Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Create a `.env` file in the project root:
-   ```env
-   VITE_OPENAI_API_KEY=your_openai_api_key_here
-   ```
-3. Restart the development server
+### Version 2.3.6 - Security Hardening + Security Test Expansion (February 13, 2026)
+- Firestore rules hardened for tenant ownership enforcement.
+- Added explicit secure rules for `pharmacistInventory` and `drugStock`.
+- Added update-time ownership lock to block non-admin reassignment of `doctorId`/`pharmacistId`.
 
-### AI Capabilities
-- **🤖 AI-Powered Medical Intelligence**: Get AI recommendations based on patient symptoms
-- **AI Medication Suggestions**: Receive medication recommendations with interaction warnings
-- **🤖 AI-Powered Safety Analysis**: Advanced drug interaction detection with severity classification
-- **Critical Interaction Alerts**: Real-time warnings for dangerous combinations like MAOI+SSRI
+### Version 2.3.1 - Add New Patient Button Fix (December 28, 2024)
+- **Critical Bug Fix**: Resolved "+ Add New Patient" button functionality
+- **Root Cause**: Fixed PatientForm conditional rendering location in component architecture
+- **Impact**: Restored core patient addition workflow
+- **Status**: ✅ **FULLY RESOLVED AND DEPLOYED**
+
+### Version 2.3.0 - Dispensed Status Integration
+- Real-time dispensed status tracking between doctors and pharmacists
+- Enhanced prescription management with status indicators
+- Improved doctor-pharmacy communication
+- Maintained strict decoupling between portals
+
+## 🧪 Testing
+
+### Run Tests
+```bash
+# Watch mode (recommended for development)
+npm test
+
+# Run once (CI/CD mode)
+npm run test:run
+
+# Firestore rules security integration tests only
+npm run test:security:rules
+
+# Generate coverage report
+npm run test:coverage
+
+# Run with UI dashboard
+npm run test:ui
+
+# E2E (Playwright)
+npm run test:e2e
+```
+
+### Implemented Tests (as of Feb 13, 2026)
+
+**E2E (Playwright)**
+- `tests/e2e/auth-toggle.spec.js` - Landing page toggle for Doctor/Pharmacy login.
+- `tests/e2e/core-flows.spec.js` - Team member registrations access, doctor add patient modal, pharmacy owner tabs.
+
+**Integration (Vitest)**
+- `src/tests/integration/backupRestore.test.js` - Pharmacy backup/export + restore flow.
+- `src/tests/integration/doctorPharmacyDataFlow.test.js` - Doctor → pharmacy data handoff persistence.
+- `src/tests/integration/firestoreRules.security.test.js` - Firestore tenant isolation and authorization enforcement.
+- `src/tests/integration/patientManagement.test.js` - End-to-end patient workflow coverage.
+- `src/tests/integration/priceConsistency.test.js` - Doctor expected price matches pharmacy total within delta.
+- `src/tests/integration/pharmacyTeamMemberAccess.test.js` - Team member login + registration integration.
+- `src/tests/integration/pharmacyOwnerRegistrationFlow.test.js` - Owner registration flow.
+
+**Component (Vitest + Testing Library)**
+- `src/tests/components/AdminLogin.test.js`
+- `src/tests/components/AdminDashboard.test.js`
+- `src/tests/components/ConfirmationModal.test.js`
+- `src/tests/components/DoctorAuth.test.js`
+- `src/tests/components/EditProfile.test.js`
+- `src/tests/components/MedicalSummary.test.js`
+- `src/tests/components/PatientForm.test.js`
+- `src/tests/components/PatientPrescriptions.test.js`
+- `src/tests/components/PharmacistDashboard.test.js`
+- `src/tests/components/PharmacistSettings.test.js`
+- `src/tests/components/PrescriptionPDF.test.js`
+- `src/tests/components/PrescriptionsTab.test.js`
+
+**Unit (Vitest)**
+- `src/tests/unit/aiTokenTracker.test.js`
+- `src/tests/unit/authService.test.js`
+- `src/tests/unit/backupService.test.js`
+- `src/tests/unit/chargeCalculationService.test.js`
+- `src/tests/unit/dataProcessing.test.js`
+- `src/tests/unit/doctorNotificationSmsTriggers.test.js`
+- `src/tests/unit/firebaseAuth.referral.test.js`
+- `src/tests/unit/firebaseStorage.reports.test.js`
+- `src/tests/unit/firebaseStorage.test.js`
+- `src/tests/unit/firebaseStorage.regression.test.js`
+- `src/tests/unit/formatting.test.js`
+- `src/tests/unit/inventoryConcurrency.test.js`
+- `src/tests/unit/inventoryDispense.test.js`
+- `src/tests/unit/inventoryService.test.js`
+- `src/tests/unit/openaiProxy.security.test.js`
+- `src/tests/unit/optimizedOpenaiService.security.test.js`
+- `src/tests/unit/pharmacySend.test.js`
+- `src/tests/unit/pharmacistAuthService.test.js`
+- `src/tests/unit/securityInputSanitization.test.js`
+- `src/tests/unit/securityRoleAccess.test.js`
+- `src/tests/unit/securityTenantIsolation.test.js`
+
+### Testing Documentation
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Canonical testing documentation
+- Legacy testing docs remain in `docs/legacy/`
 
 ## 📁 Project Structure
 
 ```
 src/
 ├── components/
-│   ├── App.svelte              # Main application component
-│   ├── DoctorAuth.svelte       # Doctor authentication
-│   ├── PharmacistAuth.svelte   # Pharmacist authentication
-│   ├── PharmacistDashboard.svelte # Pharmacist interface
-│   ├── PharmacistManagement.svelte # Doctor-pharmacist connection
-│   ├── PatientManagement.svelte # Patient list and management
-│   ├── PatientDetails.svelte   # Detailed patient view
-│   ├── PatientForm.svelte      # Add/edit patient form
-│   ├── IllnessForm.svelte       # Add illness form
-│   ├── MedicationForm.svelte   # Add/edit medication form with drug autocomplete
-│   ├── SymptomsForm.svelte     # Add symptoms form
-│   ├── PrescriptionPDF.svelte  # PDF generation
-│   ├── DrugAutocomplete.svelte # Drug name autocomplete component
-│   ├── Notification.svelte     # Individual notification component
-│   ├── NotificationContainer.svelte # Notification display container
-│   ├── PatientList.svelte      # Patient list component
-│   ├── PatientTabs.svelte      # Patient tab navigation
-│   ├── PatientForms.svelte     # Patient form management
-│   ├── PrescriptionList.svelte # Prescription list component
-│   ├── MedicalSummary.svelte   # Medical summary sidebar
-│   ├── EditProfile.svelte      # Profile editing component
-│   └── AdminDashboard.svelte   # Admin panel dashboard
+│   ├── AdminDashboard.svelte      # Admin portal
+│   ├── PatientDetails.svelte      # Patient management
+│   ├── PatientManagement.svelte   # Patient list and overview
+│   ├── PharmacistDashboard.svelte # Pharmacist portal
+│   ├── PharmacistManagement.svelte # Pharmacist management
+│   ├── AIRecommendations.svelte   # AI drug suggestions
+│   ├── PrescriptionsTab.svelte    # Prescription management
+│   ├── ConfirmationModal.svelte   # Flowbite confirmation dialogs
+│   ├── LoadingSpinner.svelte      # Loading indicator
+│   └── ThreeDots.svelte          # Inline loading indicator
 ├── services/
-│   ├── firebaseStorage.js      # Firebase Firestore operations
-│   ├── firebaseAuth.js         # Firebase authentication
-│   ├── authService.js          # Authentication service
-│   ├── openaiService.js        # AI/OpenAI integration
-│   ├── drugDatabase.js         # Doctor-specific drug database
-│   └── notifications.js        # Notification management
-├── stores/                     # State management
-│   └── notifications.js        # Global notification store
-├── firebase-config.js          # Firebase configuration
-└── main.js                     # Application entry point
+│   ├── firebaseStorage.js         # Firebase operations
+│   ├── openaiService.js          # AI integration
+│   ├── aiTokenTracker.js         # Token management
+│   └── authService.js            # Authentication
+├── stores/
+│   └── notifications.js          # Notification system
+├── tests/
+│   ├── setup.js                  # Global test configuration
+│   ├── mocks/
+│   │   └── firebase.mock.js      # Firebase mocks
+│   ├── unit/                     # Unit tests
+│   │   ├── firebaseStorage.test.js
+│   │   └── authService.test.js
+│   ├── integration/              # Integration tests
+│   │   └── patientManagement.test.js
+│   └── components/               # Component tests
+│       ├── PatientForm.test.js
+│       └── ConfirmationModal.test.js
+└── firebase-config.js            # Firebase configuration
 ```
 
-## 🔧 Technology Stack
+## 🔧 Configuration
 
-- **Frontend**: Svelte 4
-- **Styling**: Bootstrap 5
-- **Icons**: Font Awesome
-- **PDF Generation**: jsPDF
-- **Build Tool**: Vite
-- **Data Storage**: Firebase Firestore
-- **Authentication**: Firebase Auth + Google OAuth
-- **AI Integration**: OpenAI API
-- **State Management**: Svelte stores
-- **Notifications**: Toast-style notifications
-- **Charts**: Chart.js
+### Firebase Configuration
+The system uses Firebase for:
+- **Authentication**: User login and session management
+- **Firestore**: NoSQL database for data storage
+- **Hosting**: Static site hosting
+- **Storage**: File storage for documents
 
-## 📋 Usage
+### OpenAI Configuration
+AI features require the OpenAI API key in Firebase Functions secrets for:
+- Drug suggestion generation
+- Medical analysis
+- Drug interaction checking
+- Context-aware recommendations
 
-### Doctor Authentication
-1. Register a new doctor account
-2. Sign in with credentials
-3. Access patient management dashboard
+### Security Features
+- **Doctor Isolation**: Each doctor can only access their own patients
+- **Role-based Access**: Different permissions for doctors, pharmacists, and admins
+- **Data Validation**: Input sanitization and validation
+- **HIPAA Compliance**: Patient data protection and privacy
 
-### Managing Patients
-1. **Add Patient**: Click "Add Patient" button
-2. **Search Patients**: Use search box to find specific patients
-3. **View Details**: Click on patient to see detailed information
-4. **Add Medical Data**: Use tabs to add symptoms, illnesses, or prescriptions
+## 📊 Key Features
 
-### Medical Data Entry
-- **Symptoms**: Record description, severity, duration, onset date
-- **Illnesses**: Track name, description, status, diagnosis date
-- **Prescriptions**: M-Prescribe name, dosage, instructions, duration with drug autocomplete
-- **Drug Database**: Personal drug database with autocomplete suggestions
-- **Edit Functionality**: Edit existing prescriptions with pre-filled forms
+### Patient Management
+- Create and manage patient records
+- Track medical history and symptoms
+- Manage prescriptions and medications
+- View current and long-term medications
 
-## 🎨 UI Components
+### AI Integration
+- Intelligent drug suggestions based on symptoms
+- Medical analysis and insights
+- Drug interaction checking
+- Context-aware recommendations
 
-### Overview Cards
-- **Symptoms Card** (Yellow) - Navigate to symptoms tab
-- **Illnesses Card** (Blue) - Navigate to illnesses tab
-- **Prescriptions Card** (Green) - Navigate to prescriptions tab
+### Prescription Workflow
+- Create new prescriptions
+- Add medications manually or via AI suggestions
+- Generate professional PDF prescriptions
+- Send prescriptions to connected pharmacies
 
-### Expandable Sections
-- **Symptoms History** - Expandable with severity badges
-- **Illness History** - Expandable with status information
-- **Prescription History** - Expandable with dosage details
+### Analytics and Monitoring
+- AI token usage tracking
+- Prescription analytics
+- User activity monitoring
+- System performance metrics
 
-### Medical Summary
-- **Always Visible** - Shows in prescriptions tab
-- **Three-Panel Layout** - Symptoms, illnesses, prescriptions
-- **Recent Items** - Displays up to 2 most recent items per category
-- **Quick Stats** - Counts and status information
+## 🎨 UI/UX Features
 
-## 🔍 Search Functionality
+### Modern Design
+- **Flowbite UI**: Consistent, modern component library
+- **Responsive Design**: Mobile-first approach
+- **Teal Theme**: Professional medical color scheme
+- **Accessibility**: WCAG compliant design
 
-Search patients by:
-- Full name or partial name
-- Patient ID number
-- Date of birth (various formats)
-- Phone number
-- Email address
+### User Experience
+- **Intuitive Navigation**: Easy-to-use interface
+- **Real-time Updates**: Live data synchronization
+- **Loading States**: Clear feedback during operations
+- **Error Handling**: Graceful error management
 
-Results are limited to 20 for performance.
+## 🔒 Security
 
-## 💊 Drug Database System
+### Data Protection
+- Patient data encryption in transit
+- Secure API key management
+- Role-based access control
+- Audit logging capabilities
 
-### Personal Drug Database
-- **Doctor-Specific**: Each doctor has their own drug database
-- **Autocomplete**: Smart suggestions as you type medication names
-- **Quick Add**: Add new drugs to your database instantly
-- **Auto-Fill**: Select from database to auto-fill form fields
-- **Persistent Storage**: Drugs saved locally for future use
+### Privacy Compliance
+- HIPAA-compliant data handling
+- Doctor-patient data isolation
+- Secure authentication
+- Data retention policies
 
-### Drug Management Features
-- **Search Drugs**: Type to find existing drugs in your database
-- **Add New Drugs**: Click "To database" to add new medications
-- **Edit Prescriptions**: Modify existing prescriptions with pre-filled forms
-- **Smart Notifications**: Real-time feedback for all drug operations
+## 📈 Performance
 
-## 📱 Responsive Design
+### Optimization Features
+- **Code Splitting**: Lazy loading of components
+- **Bundle Optimization**: Minimized JavaScript and CSS
+- **Caching**: Efficient data caching strategies
+- **Responsive Images**: Optimized image loading
 
-- **Mobile First** - Optimized for mobile devices
-- **Bootstrap Grid** - Responsive layout system
-- **Flexible Components** - Adapt to different screen sizes
-- **Touch Friendly** - Large buttons and touch targets
+### Monitoring
+- Performance metrics tracking
+- Error monitoring and logging
+- User engagement analytics
+- API usage monitoring
 
-## 🛠️ Development
+## 🧪 Testing
 
-### Available Scripts
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
+### Test Coverage
+- Unit tests for components
+- Integration tests for services
+- End-to-end tests for workflows
+- Performance testing
 
-### Code Style
-- Follows Svelte best practices
-- Bootstrap 5 for styling
-- Font Awesome for icons
-- Minimal code changes approach
-- Modular and well-commented code
-
-## 📄 License
-
-This project is for medical practice management and patient care.
-
-## 🤝 Contributing
-
-This is a medical application. Please ensure all changes maintain data integrity and follow medical software best practices.
+### Quality Assurance
+- Code linting and formatting
+- Accessibility testing
+- Cross-browser compatibility
+- Mobile responsiveness testing
 
 ## 📚 Documentation
 
-- **[CHANGELOG.md](CHANGELOG.md)** - Detailed changelog with technical implementation details
-- **[FEATURES.md](FEATURES.md)** - Comprehensive features overview
-- **[USER_GUIDE.md](USER_GUIDE.md)** - Complete user guide for doctors and pharmacists
-- **[PRESCRIPTION_HISTORY_LOGIC.md](PRESCRIPTION_HISTORY_LOGIC.md)** - Detailed documentation of smart prescription history logic
-- **[FIREBASE_SETUP.md](FIREBASE_SETUP.md)** - Firebase configuration guide
-- **[AI_FEATURES.md](AI_FEATURES.md)** - AI features setup and usage
-- **[TESTING_GUIDE.md](TESTING_GUIDE.md)** - Testing and quality assurance guide
+- [Docs Hub](DOCS.md)
+- [Product Manual](PRODUCT_MANUAL.md)
+- [Engineering Manual](ENGINEERING_MANUAL.md)
+- [Testing Guide](TESTING_GUIDE.md)
+- [Changelog](CHANGELOG.md)
+- Legacy docs: `docs/legacy/`
 
-## 📞 Support
+## 🤝 Contributing
 
-For technical support or questions about the patient management system, please refer to the documentation or contact the development team.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For support and questions:
+- Check the documentation
+- Review the troubleshooting guide
+- Create an issue in the repository
+- Contact the development team
+
+## 🔄 Version History
+
+### Version 2.3.14 (Current)
+- Admin payment pricing controls + checkout scope enforcement
+- Ongoing doctor/pharmacist/admin workflow enhancements
+- Expanded component, integration, and unit test coverage
+
+### Version 1.0.0
+- Initial release
+- Core functionality
+- Basic UI components
+- Firebase integration
+
+## 🚀 Roadmap
+
+### Planned Features
+- Advanced analytics dashboard
+- Mobile app development
+- Integration with pharmacy systems
+- Enhanced AI capabilities
+- Multi-language support
+- Offline functionality
+
+### Technical Improvements
+- Enhanced testing suite
+- Performance optimizations
+- Security enhancements
+- Accessibility improvements
+- Code quality improvements
+
+---
+
+**Built with ❤️ for the medical community**

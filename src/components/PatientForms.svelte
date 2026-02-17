@@ -9,22 +9,32 @@
   export let selectedPatient = null
   export let editingMedication = null
   export let doctorId = null
+  export let allowNonPharmacyDrugs = true
+  export let excludePharmacyDrugs = false
   export let onIllnessAdded
   export let onSymptomsAdded
   export let onMedicationAdded
   export let onCancelIllness
   export let onCancelSymptoms
   export let onCancelMedication
+  export let savingMedication = false
 </script>
 
 {#if showIllnessForm}
-  <div class="card mb-3">
-    <div class="card-header">
-      <h6 class="mb-0">
-        <i class="fas fa-heartbeat me-2"></i>Add Illness
-      </h6>
-    </div>
-    <div class="card-body">
+  <div
+    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto sm:text-sm"
+    on:click={onCancelIllness}
+    role="button"
+    tabindex="0"
+    on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && onCancelIllness?.()}
+  >
+    <div
+      class="w-full max-w-3xl"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="presentation"
+      tabindex="-1"
+    >
       <IllnessForm 
         {selectedPatient}
         visible={showIllnessForm}
@@ -36,13 +46,20 @@
 {/if}
 
 {#if showSymptomsForm}
-  <div class="card mb-3">
-    <div class="card-header">
-      <h6 class="mb-0">
-        <i class="fas fa-thermometer-half me-2"></i>Add Symptoms
-      </h6>
-    </div>
-    <div class="card-body">
+  <div
+    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+    on:click={onCancelSymptoms}
+    role="button"
+    tabindex="0"
+    on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && onCancelSymptoms?.()}
+  >
+    <div
+      class="w-full max-w-3xl"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="presentation"
+      tabindex="-1"
+    >
       <SymptomsForm 
         {selectedPatient}
         visible={showSymptomsForm}
@@ -54,12 +71,31 @@
 {/if}
 
 {#if showMedicationForm}
-  <MedicationForm 
-    {selectedPatient}
-    {editingMedication}
-    {doctorId}
-    visible={showMedicationForm}
-    on:medication-added={onMedicationAdded}
-    on:cancel={onCancelMedication}
-  />
+  <div
+    class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4 overflow-y-auto"
+    on:click={onCancelMedication}
+    role="button"
+    tabindex="0"
+    on:keydown={(event) => (event.key === 'Enter' || event.key === ' ') && onCancelMedication?.()}
+  >
+    <div
+      class="w-full max-w-3xl"
+      on:click|stopPropagation
+      on:keydown|stopPropagation
+      role="presentation"
+      tabindex="-1"
+    >
+      <MedicationForm 
+        {selectedPatient}
+        {editingMedication}
+        {doctorId}
+        {allowNonPharmacyDrugs}
+        {excludePharmacyDrugs}
+        {savingMedication}
+        visible={showMedicationForm}
+        on:medication-added={onMedicationAdded}
+        on:cancel={onCancelMedication}
+      />
+    </div>
+  </div>
 {/if}

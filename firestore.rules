@@ -1,0 +1,309 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'senakahks@gmail.com';
+    }
+
+    function doctorUid(doctorId) {
+      return get(/databases/$(database)/documents/doctors/$(doctorId)).data.uid;
+    }
+
+    function isDoctorOwnerByDoctorId(doctorId) {
+      return isSignedIn() && doctorId is string && doctorUid(doctorId) == request.auth.uid;
+    }
+
+    function isDoctorOwnerByResourceDoctorId() {
+      return resource.data.doctorId is string && isDoctorOwnerByDoctorId(resource.data.doctorId);
+    }
+
+    function isDoctorOwnerByRequestDoctorId() {
+      return request.resource.data.doctorId is string &&
+        isDoctorOwnerByDoctorId(request.resource.data.doctorId);
+    }
+
+    function isDoctorOwnedUpdateWithoutReassignment() {
+      return resource.data.doctorId is string &&
+        request.resource.data.doctorId is string &&
+        request.resource.data.doctorId == resource.data.doctorId &&
+        isDoctorOwnerByDoctorId(resource.data.doctorId);
+    }
+
+    function isPharmacistOwnerByPharmacistId(pharmacistId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/pharmacists/$(pharmacistId)).data.email == request.auth.token.email;
+    }
+
+    function hasNoPrivilegeEscalationFields() {
+      return !request.resource.data.keys().hasAny(['isAdmin', 'role']);
+    }
+
+    function hasNoDoctorOwnedCrossTenantInjection() {
+      return !request.resource.data.keys().hasAny(['pharmacistId']);
+    }
+
+    function hasNoPharmacistOwnedCrossTenantInjection() {
+      return !request.resource.data.keys().hasAny(['doctorId']);
+    }
+
+    function isSensitiveDoctorFieldsUnchanged() {
+      return !request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasAny(['uid', 'email', 'isAdmin', 'isApproved', 'isDisabled', 'accessExpiresAt']);
+    }
+
+    function isSensitivePharmacistFieldsUnchanged() {
+      return !request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasAny(['email', 'role', 'isApproved', 'isDisabled', 'accessExpiresAt']);
+    }
+
+    match /doctors/{doctorId} {
+      allow create: if isAdmin() || (isSignedIn() && request.resource.data.uid == request.auth.uid);
+      allow read, delete: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.uid == request.auth.uid &&
+        isSensitiveDoctorFieldsUnchanged()
+      );
+    }
+
+    // Doctor-owned clinical data
+    match /patients/{patientId} {
+      allow create: if isAdmin() || (
+        isDoctorOwnerByRequestDoctorId() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || (
+        isDoctorOwnedUpdateWithoutReassignment() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+    }
+
+    match /medications/{medicationId} {
+      allow create: if isAdmin() || (
+        isDoctorOwnerByRequestDoctorId() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || (
+        isDoctorOwnedUpdateWithoutReassignment() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+    }
+
+    match /illnesses/{illnessId} {
+      allow create: if isAdmin() || (
+        isDoctorOwnerByRequestDoctorId() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || (
+        isDoctorOwnedUpdateWithoutReassignment() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+    }
+
+    match /symptoms/{symptomId} {
+      allow create: if isAdmin() || (
+        isDoctorOwnerByRequestDoctorId() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || (
+        isDoctorOwnedUpdateWithoutReassignment() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+    }
+
+    match /longTermMedications/{recordId} {
+      allow create: if isAdmin() || (
+        isDoctorOwnerByRequestDoctorId() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || (
+        isDoctorOwnedUpdateWithoutReassignment() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+    }
+
+    match /drugDatabase/{drugId} {
+      allow create: if isAdmin() || (
+        isDoctorOwnerByRequestDoctorId() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || (
+        isDoctorOwnedUpdateWithoutReassignment() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+    }
+
+    match /doctorReports/{doctorId} {
+      allow read, write: if isAdmin() || isDoctorOwnerByDoctorId(doctorId);
+    }
+
+    match /reports/{reportId} {
+      allow create: if isAdmin() || (
+        isDoctorOwnerByRequestDoctorId() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || isDoctorOwnerByResourceDoctorId();
+      allow update: if isAdmin() || (
+        isDoctorOwnedUpdateWithoutReassignment() &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoDoctorOwnedCrossTenantInjection()
+      );
+    }
+
+    match /pharmacists/{pharmacistId} {
+      allow create: if isAdmin() || (isSignedIn() && request.resource.data.email == request.auth.token.email);
+      allow read, delete: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.email == request.auth.token.email &&
+        isSensitivePharmacistFieldsUnchanged()
+      );
+      match /{subCollection}/{documentId} {
+        allow read, write: if isAdmin() || isPharmacistOwnerByPharmacistId(pharmacistId);
+        match /{nested=**} {
+          allow read, write: if isAdmin() || isPharmacistOwnerByPharmacistId(pharmacistId);
+        }
+      }
+    }
+
+    match /pharmacyUsers/{pharmacyUserId} {
+      allow create: if isAdmin() || (isSignedIn() && request.resource.data.email == request.auth.token.email);
+      allow read, delete: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.email == request.auth.token.email &&
+        request.resource.data.email == resource.data.email
+      );
+    }
+
+    match /pharmacistInventory/{itemId} {
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.pharmacistId is string &&
+        isPharmacistOwnerByPharmacistId(request.resource.data.pharmacistId) &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoPharmacistOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.pharmacistId is string &&
+        isPharmacistOwnerByPharmacistId(resource.data.pharmacistId)
+      );
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.pharmacistId is string &&
+        request.resource.data.pharmacistId is string &&
+        request.resource.data.pharmacistId == resource.data.pharmacistId &&
+        isPharmacistOwnerByPharmacistId(resource.data.pharmacistId) &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoPharmacistOwnedCrossTenantInjection()
+      );
+    }
+
+    match /drugStock/{itemId} {
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.pharmacistId is string &&
+        isPharmacistOwnerByPharmacistId(request.resource.data.pharmacistId) &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoPharmacistOwnedCrossTenantInjection()
+      );
+      allow read, delete: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.pharmacistId is string &&
+        isPharmacistOwnerByPharmacistId(resource.data.pharmacistId)
+      );
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.pharmacistId is string &&
+        request.resource.data.pharmacistId is string &&
+        request.resource.data.pharmacistId == resource.data.pharmacistId &&
+        isPharmacistOwnerByPharmacistId(resource.data.pharmacistId) &&
+        hasNoPrivilegeEscalationFields() &&
+        hasNoPharmacistOwnedCrossTenantInjection()
+      );
+    }
+
+    match /mobileCaptureSessions/{sessionCode} {
+      allow create: if isSignedIn() &&
+        request.resource.data.doctorId is string &&
+        isDoctorOwnerByDoctorId(request.resource.data.doctorId) &&
+        request.resource.data.code == sessionCode &&
+        request.resource.data.keys().hasOnly([
+          'code',
+          'doctorId',
+          'status',
+          'createdAt',
+          'expiresAt',
+          'openedAt',
+          'photoUploadedAt',
+          'imageDataUrl',
+          'updatedAt'
+        ]);
+
+      allow read, delete: if isSignedIn() &&
+        resource.data.doctorId is string &&
+        isDoctorOwnerByDoctorId(resource.data.doctorId);
+
+      allow update: if (
+        isSignedIn() &&
+        resource.data.doctorId is string &&
+        isDoctorOwnerByDoctorId(resource.data.doctorId)
+      ) || (
+        !isSignedIn() &&
+        resource.data.doctorId is string &&
+        request.resource.data.doctorId == resource.data.doctorId &&
+        request.resource.data.code == resource.data.code &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.expiresAt == resource.data.expiresAt &&
+        request.resource.data.keys().hasOnly([
+          'code',
+          'doctorId',
+          'status',
+          'createdAt',
+          'expiresAt',
+          'openedAt',
+          'photoUploadedAt',
+          'imageDataUrl',
+          'updatedAt'
+        ]) &&
+        request.resource.data.status in ['opened', 'photo_ready'] &&
+        (
+          !request.resource.data.keys().hasAny(['imageDataUrl']) ||
+          request.resource.data.imageDataUrl is string
+        )
+      );
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

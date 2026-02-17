@@ -4,6 +4,7 @@
   import openaiService from '../services/openaiService.js'
   import { collection, query, orderBy, limit, onSnapshot, getDocs, addDoc } from 'firebase/firestore'
   import { db } from '../firebase-config.js'
+  import LoadingSpinner from './LoadingSpinner.svelte'
 
   let aiPrompts = []
   let loading = true
@@ -11,6 +12,40 @@
   let selectedPrompt = null
   let showPromptDetails = false
   let unsubscribe = null
+  
+  // Pagination for AI prompts
+  let currentPage = 1
+  let itemsPerPage = 25
+  
+  // Pagination calculations
+  $: totalPages = Math.ceil(aiPrompts.length / itemsPerPage)
+  $: startIndex = (currentPage - 1) * itemsPerPage
+  $: endIndex = startIndex + itemsPerPage
+  $: paginatedPrompts = aiPrompts.slice(startIndex, endIndex)
+  
+  // Reset to first page when prompts change
+  $: if (aiPrompts.length > 0) {
+    currentPage = 1
+  }
+  
+  // Pagination functions
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      currentPage = page
+    }
+  }
+  
+  const goToPreviousPage = () => {
+    if (currentPage > 1) {
+      currentPage--
+    }
+  }
+  
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      currentPage++
+    }
+  }
 
   onMount(async () => {
     await loadAIPrompts()
@@ -163,20 +198,27 @@
   }
 
   const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleString()
+    return new Date(timestamp).toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
   }
 
   const getPromptTypeColor = (type) => {
     switch (type) {
-      case 'drugSuggestions': return 'info'
-      case 'drugInteractions': return 'warning'
-      case 'comprehensiveAnalysis': return 'success'
-      default: return 'secondary'
+      case 'drugSuggestions': return 'teal'
+      case 'drugInteractions': return 'yellow'
+      case 'comprehensiveAnalysis': return 'green'
+      default: return 'gray'
     }
   }
 
   const getSuccessIcon = (success) => {
-    return success ? 'fas fa-check-circle text-success' : 'fas fa-times-circle text-danger'
+    return success ? 'fas fa-check-circle text-teal-600' : 'fas fa-times-circle text-red-600'
   }
 
   // Extract prompt content from raw prompt data for older log entries
@@ -264,104 +306,104 @@
 
 </script>
 
-<div class="card">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <div>
-      <h5 class="mb-0">
-        <i class="fas fa-brain me-2 text-danger"></i>
-        AI Prompt Logs (Last 50)
-      </h5>
-      {#if unsubscribe}
-        <small class="text-success">
-          <i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>
-          Real-time updates active
-        </small>
-      {:else}
-        <small class="text-muted">
-          <i class="fas fa-circle me-1" style="font-size: 0.5rem;"></i>
-          Real-time updates inactive
-        </small>
-      {/if}
-    </div>
-    <div class="d-flex gap-2">
-      <button 
-        class="btn btn-outline-secondary btn-sm" 
-        on:click={cleanupMalformedEntries}
-        disabled={loading || aiPrompts.length === 0}
-      >
-        <i class="fas fa-broom me-1"></i>
-        Cleanup
-      </button>
-      <button 
-        class="btn btn-outline-primary btn-sm" 
-        on:click={refreshData}
-        disabled={loading}
-      >
-        <i class="fas fa-sync-alt me-1"></i>
-        Refresh
-      </button>
+<div class="bg-white border-2 border-teal-200 rounded-lg shadow-sm sm:text-sm">
+  <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+    <div class="flex justify-between items-center">
+      <div>
+        <h5 class="text-lg font-semibold text-gray-900 mb-0">
+          <i class="fas fa-brain mr-2 text-red-600"></i>
+          AI Prompt Logs (Last 50)
+        </h5>
+        {#if unsubscribe}
+          <small class="text-teal-600">
+            <i class="fas fa-circle mr-1" style="font-size: 0.5rem;"></i>
+            Real-time updates active
+          </small>
+        {:else}
+          <small class="text-gray-500">
+            <i class="fas fa-circle mr-1" style="font-size: 0.5rem;"></i>
+            Real-time updates inactive
+          </small>
+        {/if}
+      </div>
+      <div class="flex gap-2">
+        <button 
+          class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          on:click={cleanupMalformedEntries}
+          disabled={loading || aiPrompts.length === 0}
+        >
+          <i class="fas fa-broom mr-1"></i>
+          Cleanup
+        </button>
+        <button 
+          class="inline-flex items-center px-3 py-2 border border-blue-300 text-blue-700 bg-white hover:bg-blue-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+          on:click={refreshData}
+          disabled={loading}
+        >
+          <i class="fas fa-sync-alt mr-1"></i>
+          Refresh
+        </button>
+      </div>
     </div>
   </div>
   
-  <div class="card-body">
+  <div class="p-4">
     {#if loading}
-      <div class="text-center py-4">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="mt-2 text-muted">Loading AI prompt logs...</p>
-      </div>
+      <LoadingSpinner text="Loading AI prompt logs..." size="medium" color="teal" />
     {:else if error}
-      <div class="alert alert-danger">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        {error}
+      <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+        <i class="fas fa-exclamation-triangle mr-2 text-red-600"></i>
+        <span class="text-red-800">{error}</span>
       </div>
     {:else if aiPrompts.length === 0}
-      <div class="text-center py-4">
-        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-        <p class="text-muted">No AI prompts found</p>
+      <div class="text-center py-8">
+        <i class="fas fa-inbox text-4xl text-gray-400 mb-3"></i>
+        <p class="text-gray-500">No AI prompts found</p>
       </div>
     {:else}
-      <div class="table-responsive">
-        <table class="table table-hover">
-          <thead>
+      <!-- Desktop Table View -->
+      <div class="hidden md:block overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
             <tr>
-              <th>Timestamp</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Tokens</th>
-              <th>Actions</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tokens</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {#each aiPrompts as prompt}
-              <tr>
-                <td class="text-muted small">
+          <tbody class="bg-white divide-y divide-gray-200">
+            {#each paginatedPrompts as prompt}
+              <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {formatTimestamp(prompt.timestamp)}
                 </td>
-                <td>
-                  <span class="badge bg-{getPromptTypeColor(prompt.promptType)}">
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-blue-800">
                     {prompt.promptType || 'Unknown'}
                   </span>
                 </td>
-                <td>
-                  <i class="{getSuccessIcon(prompt.success)}"></i>
-                  {prompt.success ? 'Success' : 'Error'}
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <div class="flex items-center">
+                    <i class="{getSuccessIcon(prompt.success)}"></i>
+                    <span class="ml-2">{prompt.success ? 'Success' : 'Error'}</span>
+                  </div>
                 </td>
-                <td class="text-muted">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {prompt.tokensUsed || 0}
                 </td>
-                <td>
-                  <div class="btn-group" role="group">
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <div class="flex space-x-2">
                     <button 
-                      class="btn btn-outline-primary btn-sm"
+                      class="text-teal-600 hover:text-blue-900 bg-blue-50 hover:bg-teal-100 px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
                       on:click={() => viewPromptDetails(prompt)}
                       title="View details"
                     >
                       <i class="fas fa-eye"></i>
                     </button>
                     <button 
-                      class="btn btn-outline-info btn-sm"
+                      class="text-teal-600 hover:text-blue-900 bg-blue-50 hover:bg-teal-100 px-3 py-1 rounded text-sm font-medium transition-colors duration-200"
                       on:click={() => viewPromptDetails(prompt)}
                       title="View full prompt"
                     >
@@ -374,141 +416,244 @@
           </tbody>
         </table>
       </div>
+
+      <!-- Mobile Card View -->
+      <div class="md:hidden space-y-3 p-4">
+        {#each paginatedPrompts as prompt}
+          <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div class="flex justify-between items-start mb-3">
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900 text-sm">{formatTimestamp(prompt.timestamp)}</h3>
+                <p class="text-xs text-gray-500">{prompt.promptType || 'Unknown'}</p>
+              </div>
+              <div class="flex flex-col items-end space-y-1">
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-teal-100 text-blue-800">
+                  {prompt.promptType || 'Unknown'}
+                </span>
+                <div class="flex items-center text-xs">
+                  <i class="{getSuccessIcon(prompt.success)}"></i>
+                  <span class="ml-1">{prompt.success ? 'Success' : 'Error'}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="space-y-2 mb-3">
+              <div class="flex items-center text-xs">
+                <i class="fas fa-coins text-yellow-600 mr-2 w-3"></i>
+                <span class="text-gray-600 font-medium">{prompt.tokensUsed || 0} tokens</span>
+              </div>
+            </div>
+            
+            <div class="flex space-x-2">
+              <button 
+                class="flex-1 text-teal-600 hover:text-blue-900 bg-blue-50 hover:bg-teal-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                on:click={() => viewPromptDetails(prompt)}
+                title="View details"
+              >
+                <i class="fas fa-eye mr-1"></i>
+                View
+              </button>
+              <button 
+                class="flex-1 text-teal-600 hover:text-blue-900 bg-blue-50 hover:bg-teal-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
+                on:click={() => viewPromptDetails(prompt)}
+                title="View full prompt"
+              >
+                <i class="fas fa-file-text mr-1"></i>
+                Full
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+      
+      <!-- Pagination Controls -->
+      {#if totalPages > 1}
+        <div class="flex items-center justify-between mt-4 px-4 py-3 bg-gray-50 rounded-lg">
+          <div class="flex items-center text-sm text-gray-700">
+            <span>Showing {startIndex + 1} to {Math.min(endIndex, aiPrompts.length)} of {aiPrompts.length} prompts</span>
+          </div>
+          
+          <div class="flex items-center space-x-2">
+            <!-- Previous Button -->
+            <button 
+              class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              on:click={goToPreviousPage}
+              disabled={currentPage === 1}
+            >
+              <i class="fas fa-chevron-left mr-1"></i>
+              Previous
+            </button>
+            
+            <!-- Page Numbers -->
+            <div class="flex items-center space-x-1">
+              {#each Array.from({length: Math.min(5, totalPages)}, (_, i) => {
+                const startPage = Math.max(1, currentPage - 2)
+                const endPage = Math.min(totalPages, startPage + 4)
+                const page = startPage + i
+                return page <= endPage ? page : null
+              }).filter(Boolean) as page}
+                <button 
+                  class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg {currentPage === page ? 'text-white bg-teal-600 border-teal-600' : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700'}"
+                  on:click={() => goToPage(page)}
+                >
+                  {page}
+                </button>
+              {/each}
+            </div>
+            
+            <!-- Next Button -->
+            <button 
+              class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              on:click={goToNextPage}
+              disabled={currentPage === totalPages}
+            >
+              Next
+              <i class="fas fa-chevron-right ml-1"></i>
+            </button>
+          </div>
+        </div>
+      {/if}
     {/if}
   </div>
 </div>
 
 <!-- Prompt Details Modal -->
 {#if showPromptDetails && selectedPrompt}
-  <div class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-    <div class="modal-dialog modal-xl">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">
-            <i class="fas fa-brain me-2 text-danger"></i>
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" tabindex="-1">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-6xl shadow-lg rounded-md bg-white">
+      <div class="bg-teal-600 text-white px-4 py-3 rounded-t-lg">
+        <div class="flex justify-between items-center">
+          <h5 class="text-lg font-semibold">
+            <i class="fas fa-brain mr-2"></i>
             AI Prompt Details - {selectedPrompt.promptType || 'Unknown Type'}
           </h5>
           <button 
             type="button" 
-            class="btn-close" 
+            class="text-white hover:text-gray-200 text-xl font-bold" 
             on:click={closePromptDetails}
-          ></button>
+          >
+            ×
+          </button>
         </div>
-        <div class="modal-body">
+      </div>
+      <div class="p-6">
           <!-- Full Prompt Content -->
           {#if selectedPrompt.fullPrompt || (selectedPrompt.promptData && JSON.parse(selectedPrompt.promptData).requestBody?.messages)}
-            <div class="mb-4">
-              <h6 class="text-primary">
-                <i class="fas fa-file-text me-2"></i>
+            <div class="mb-6">
+              <h6 class="text-teal-600 font-semibold mb-3">
+                <i class="fas fa-file-text mr-2"></i>
                 Complete Prompt Sent to OpenAI
               </h6>
-              <div class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">
-                <pre class="mb-0 small text-wrap" style="white-space: pre-wrap;">{selectedPrompt.fullPrompt || extractPromptFromData(selectedPrompt.promptData)}</pre>
+              <div class="bg-gray-50 p-4 rounded-lg border border-gray-200" style="max-height: 300px; overflow-y: auto;">
+                <pre class="text-sm text-gray-800 whitespace-pre-wrap">{selectedPrompt.fullPrompt || extractPromptFromData(selectedPrompt.promptData)}</pre>
               </div>
             </div>
           {/if}
 
           <!-- System and User Messages Separately -->
           {#if selectedPrompt.systemMessage || selectedPrompt.userMessage || (selectedPrompt.promptData && JSON.parse(selectedPrompt.promptData).requestBody?.messages)}
-            <div class="row mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               {#if selectedPrompt.systemMessage || extractSystemMessage(selectedPrompt.promptData)}
-                <div class="col-md-6">
-                  <h6 class="text-info">
-                    <i class="fas fa-cog me-2"></i>
+                <div>
+                  <h6 class="text-teal-600 font-semibold mb-3">
+                    <i class="fas fa-cog mr-2"></i>
                     System Message
                   </h6>
-                  <div class="bg-info bg-opacity-10 p-3 rounded" style="max-height: 200px; overflow-y: auto;">
-                    <pre class="mb-0 small text-wrap" style="white-space: pre-wrap;">{selectedPrompt.systemMessage || extractSystemMessage(selectedPrompt.promptData)}</pre>
+                  <div class="bg-blue-50 p-4 rounded-lg border border-teal-200" style="max-height: 200px; overflow-y: auto;">
+                    <pre class="text-sm text-blue-800 whitespace-pre-wrap">{selectedPrompt.systemMessage || extractSystemMessage(selectedPrompt.promptData)}</pre>
                   </div>
                 </div>
               {/if}
               {#if selectedPrompt.userMessage || extractUserMessage(selectedPrompt.promptData)}
-                <div class="col-md-6">
-                  <h6 class="text-warning">
-                    <i class="fas fa-user me-2"></i>
+                <div>
+                  <h6 class="text-yellow-600 font-semibold mb-3">
+                    <i class="fas fa-user mr-2"></i>
                     User Message
                   </h6>
-                  <div class="bg-warning bg-opacity-10 p-3 rounded" style="max-height: 200px; overflow-y: auto;">
-                    <pre class="mb-0 small text-wrap" style="white-space: pre-wrap;">{selectedPrompt.userMessage || extractUserMessage(selectedPrompt.promptData)}</pre>
+                  <div class="bg-yellow-50 p-4 rounded-lg border border-yellow-200" style="max-height: 200px; overflow-y: auto;">
+                    <pre class="text-sm text-yellow-800 whitespace-pre-wrap">{selectedPrompt.userMessage || extractUserMessage(selectedPrompt.promptData)}</pre>
                   </div>
                 </div>
               {/if}
             </div>
           {/if}
 
-          <div class="row">
-            <div class="col-md-6">
-              <h6 class="text-primary">
-                <i class="fas fa-info-circle me-2"></i>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h6 class="text-teal-600 font-semibold mb-3">
+                <i class="fas fa-info-circle mr-2"></i>
                 Raw Request Data
               </h6>
-              <div class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">
+              <div class="bg-gray-50 p-4 rounded-lg border border-gray-200" style="max-height: 200px; overflow-y: auto;">
                 {#if selectedPrompt.promptData}
-                  <pre class="mb-0 small">{selectedPrompt.promptData}</pre>
+                  <pre class="text-sm text-gray-800">{selectedPrompt.promptData}</pre>
                 {:else}
-                  <p class="text-muted mb-0">No request data available</p>
+                  <p class="text-gray-500">No request data available</p>
                 {/if}
               </div>
             </div>
-            <div class="col-md-6">
-              <h6 class="text-success">
-                <i class="fas fa-brain me-2 text-danger"></i>
+            <div>
+              <h6 class="text-teal-600 font-semibold mb-3">
+                <i class="fas fa-brain mr-2 text-red-600"></i>
                 AI Response
               </h6>
-              <div class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">
+              <div class="bg-gray-50 p-4 rounded-lg border border-gray-200" style="max-height: 200px; overflow-y: auto;">
                 {#if selectedPrompt.response}
-                  <pre class="mb-0 small text-wrap" style="white-space: pre-wrap;">{selectedPrompt.response}</pre>
+                  <pre class="text-sm text-gray-800 whitespace-pre-wrap">{selectedPrompt.response}</pre>
                 {:else}
-                  <p class="text-muted mb-0">No response data</p>
+                  <p class="text-gray-500">No response data</p>
                 {/if}
               </div>
             </div>
           </div>
           
           {#if selectedPrompt.error}
-            <div class="mt-3">
-              <h6 class="text-danger">
-                <i class="fas fa-exclamation-triangle me-2"></i>
+            <div class="mt-6">
+              <h6 class="text-red-600 font-semibold mb-3">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
                 Error Details
               </h6>
-              <div class="bg-danger bg-opacity-10 p-3 rounded">
-                <p class="text-danger mb-0">{selectedPrompt.error}</p>
+              <div class="bg-red-50 p-4 rounded-lg border border-red-200">
+                <p class="text-red-800">{selectedPrompt.error}</p>
               </div>
             </div>
           {/if}
           
-          <div class="mt-3">
-            <h6 class="text-info">
-              <i class="fas fa-chart-bar me-2"></i>
+          <div class="mt-6">
+            <h6 class="text-teal-600 font-semibold mb-4">
+              <i class="fas fa-chart-bar mr-2"></i>
               Metadata
             </h6>
-            <div class="row">
-              <div class="col-md-3">
-                <strong>Timestamp:</strong><br>
-                <span class="text-muted">{formatTimestamp(selectedPrompt.timestamp)}</span>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <strong class="text-gray-700">Timestamp:</strong><br>
+                <span class="text-gray-500">{formatTimestamp(selectedPrompt.timestamp)}</span>
               </div>
-              <div class="col-md-3">
-                <strong>Type:</strong><br>
-                <span class="badge bg-{getPromptTypeColor(selectedPrompt.promptType)}">
+              <div>
+                <strong class="text-gray-700">Type:</strong><br>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-blue-800">
                   {selectedPrompt.promptType || 'Unknown'}
                 </span>
               </div>
-              <div class="col-md-3">
-                <strong>Status:</strong><br>
-                <i class="{getSuccessIcon(selectedPrompt.success)}"></i>
-                {selectedPrompt.success ? 'Success' : 'Error'}
+              <div>
+                <strong class="text-gray-700">Status:</strong><br>
+                <div class="flex items-center">
+                  <i class="{getSuccessIcon(selectedPrompt.success)}"></i>
+                  <span class="ml-2">{selectedPrompt.success ? 'Success' : 'Error'}</span>
+                </div>
               </div>
-              <div class="col-md-3">
-                <strong>Tokens Used:</strong><br>
-                <span class="text-muted">{selectedPrompt.tokensUsed || 0}</span>
+              <div>
+                <strong class="text-gray-700">Tokens Used:</strong><br>
+                <span class="text-gray-500">{selectedPrompt.tokensUsed || 0}</span>
               </div>
             </div>
           </div>
-        </div>
-        <div class="modal-footer">
+      </div>
+      <div class="bg-gray-50 px-6 py-3 rounded-b-lg">
+        <div class="flex justify-end">
           <button 
             type="button" 
-            class="btn btn-secondary btn-sm" 
+            class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200" 
             on:click={closePromptDetails}
           >
             Close

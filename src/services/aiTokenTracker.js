@@ -1,10 +1,58 @@
 // AI Token Usage Tracking Service
 // Tracks OpenAI API token usage for cost monitoring and analytics
+import firebaseStorage from './firebaseStorage.js'
 
 class AITokenTracker {
   constructor() {
     this.storageKey = 'prescribe-ai-token-usage'
     this.usageData = this.loadUsageData()
+    
+    // Run migration to fix any requests with missing doctorId
+    this.migrateRequestsWithMissingDoctorId()
+    this.migrateLegacyMisorderedTrackUsage()
+  }
+
+  sanitizeNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+    if (typeof value === 'string') {
+      const cleaned = value.replace(/[^0-9.-]+/g, '')
+      const parsed = Number(cleaned)
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+    return 0
+  }
+
+  normalizeUsageData() {
+    this.usageData.totalTokens = this.sanitizeNumber(this.usageData.totalTokens)
+    this.usageData.totalCost = this.sanitizeNumber(this.usageData.totalCost)
+
+    Object.keys(this.usageData.dailyUsage || {}).forEach((date) => {
+      const entry = this.usageData.dailyUsage[date]
+      if (!entry) return
+      entry.tokens = this.sanitizeNumber(entry.tokens)
+      entry.cost = this.sanitizeNumber(entry.cost)
+      entry.requests = this.sanitizeNumber(entry.requests)
+    })
+
+    Object.keys(this.usageData.monthlyUsage || {}).forEach((month) => {
+      const entry = this.usageData.monthlyUsage[month]
+      if (!entry) return
+      entry.tokens = this.sanitizeNumber(entry.tokens)
+      entry.cost = this.sanitizeNumber(entry.cost)
+      entry.requests = this.sanitizeNumber(entry.requests)
+    })
+
+    if (Array.isArray(this.usageData.requests)) {
+      this.usageData.requests = this.usageData.requests.map((req) => ({
+        ...req,
+        promptTokens: this.sanitizeNumber(req?.promptTokens),
+        completionTokens: this.sanitizeNumber(req?.completionTokens),
+        totalTokens: this.sanitizeNumber(req?.totalTokens),
+        cost: this.sanitizeNumber(req?.cost)
+      }))
+    }
   }
 
   // Load usage data from localStorage
@@ -17,6 +65,11 @@ class AITokenTracker {
         dailyUsage: {},
         monthlyUsage: {},
         requests: [],
+        doctorQuotas: {}, // New: Store doctor token quotas
+        defaultQuota: 50000, // Default monthly quota for new doctors
+        tokenPricePerMillion: 0.50, // Legacy generic price per 1 million tokens (in USD)
+        modelPricing: {}, // Per-model pricing: { [model]: { prompt, completion } } per 1K tokens
+        enforceModelPricingGuard: false,
         lastUpdated: null
       }
     } catch (error) {
@@ -27,6 +80,11 @@ class AITokenTracker {
         dailyUsage: {},
         monthlyUsage: {},
         requests: [],
+        doctorQuotas: {}, // New: Store doctor token quotas
+        defaultQuota: 50000, // Default monthly quota for new doctors
+        tokenPricePerMillion: 0.50, // Legacy generic price per 1 million tokens (in USD)
+        modelPricing: {}, // Per-model pricing: { [model]: { prompt, completion } } per 1K tokens
+        enforceModelPricingGuard: false,
         lastUpdated: null
       }
     }
@@ -44,11 +102,25 @@ class AITokenTracker {
 
   // Track token usage for a request
   trackUsage(requestType, promptTokens, completionTokens, model = 'gpt-3.5-turbo', doctorId = null) {
-    const totalTokens = promptTokens + completionTokens
-    const cost = this.calculateCost(promptTokens, completionTokens, model)
+    if (this.shouldEnforceModelPricingGuard() && !this.isModelPricingConfigured(model)) {
+      throw new Error(`Missing model pricing for "${model}". Configure prompt/completion pricing before tracking usage.`)
+    }
+
+    const safePromptTokens = this.sanitizeNumber(promptTokens)
+    const safeCompletionTokens = this.sanitizeNumber(completionTokens)
+    const totalTokens = safePromptTokens + safeCompletionTokens
+    const cost = this.calculateRequestCost(safePromptTokens, safeCompletionTokens, model)
     const timestamp = new Date().toISOString()
     const date = new Date().toISOString().split('T')[0]
     const month = new Date().toISOString().substring(0, 7) // YYYY-MM
+
+    // Ensure we have a valid doctorId - use fallback if null/undefined
+    const validDoctorId = doctorId || 'unknown-doctor'
+    
+    console.log(`📊 Tracking AI usage for doctor: ${validDoctorId}`)
+    console.log(`📊 Original doctorId parameter: ${doctorId}`)
+    console.log(`📊 Request type: ${requestType}`)
+    console.log(`📊 Tokens: ${safePromptTokens} + ${safeCompletionTokens} = ${totalTokens}`)
 
     // Add to requests history
     const request = {
@@ -56,11 +128,11 @@ class AITokenTracker {
       type: requestType,
       timestamp,
       model,
-      promptTokens,
-      completionTokens,
+      promptTokens: safePromptTokens,
+      completionTokens: safeCompletionTokens,
       totalTokens,
       cost,
-      doctorId
+      doctorId: validDoctorId
     }
 
     this.usageData.requests.push(request)
@@ -97,41 +169,43 @@ class AITokenTracker {
     }
 
     this.saveUsageData()
+    // Fire-and-forget server persistence so admin analytics are centralized.
+    this.persistUsageToServer(request)
     console.log(`📊 AI Token Usage Tracked: ${totalTokens} tokens, $${cost.toFixed(4)}`)
     
     return request
   }
 
-  // Calculate cost based on OpenAI pricing (updated for accuracy)
-  calculateCost(promptTokens, completionTokens, model) {
-    // Updated pricing based on OpenAI's current rates (2024)
-    // Note: These are approximate and may not include taxes/fees
-    const pricing = {
-      'gpt-3.5-turbo': { 
-        prompt: 0.0005,      // $0.0005 per 1K tokens (input)
-        completion: 0.0015   // $0.0015 per 1K tokens (output)
-      },
-      'gpt-4': { 
-        prompt: 0.03,        // $0.03 per 1K tokens (input)
-        completion: 0.06     // $0.06 per 1K tokens (output)
-      },
-      'gpt-4-turbo': { 
-        prompt: 0.01,        // $0.01 per 1K tokens (input)
-        completion: 0.03     // $0.03 per 1K tokens (output)
-      },
-      'gpt-4o': {
-        prompt: 0.005,       // $0.005 per 1K tokens (input)
-        completion: 0.015    // $0.015 per 1K tokens (output)
-      },
-      'gpt-4o-mini': {
-        prompt: 0.00015,     // $0.00015 per 1K tokens (input)
-        completion: 0.0006   // $0.0006 per 1K tokens (output)
+  async persistUsageToServer(request) {
+    try {
+      const normalizedDoctorId = String(request?.doctorId || '').trim()
+      if (!normalizedDoctorId || normalizedDoctorId === 'unknown-doctor') {
+        return
       }
+      await firebaseStorage.addDoctorAIUsageRecord({
+        doctorId: normalizedDoctorId,
+        requestType: request?.type || '',
+        promptTokens: this.sanitizeNumber(request?.promptTokens),
+        completionTokens: this.sanitizeNumber(request?.completionTokens),
+        totalTokens: this.sanitizeNumber(request?.totalTokens),
+        cost: this.sanitizeNumber(request?.cost),
+        model: request?.model || 'gpt-3.5-turbo',
+        createdAt: request?.timestamp || new Date().toISOString()
+      })
+    } catch (error) {
+      console.error('❌ Error persisting AI usage to server:', error)
     }
+  }
 
-    const modelPricing = pricing[model] || pricing['gpt-3.5-turbo']
-    const promptCost = (promptTokens / 1000) * modelPricing.prompt
-    const completionCost = (completionTokens / 1000) * modelPricing.completion
+  // Calculate request cost based on configured per-model pricing.
+  // Pricing values are USD per 1K tokens for prompt/completion.
+  calculateRequestCost(promptTokens, completionTokens, model) {
+    const safeModel = String(model || '').trim()
+    const modelPricing = this.getModelPricing(safeModel)
+    const promptRate = this.sanitizeNumber(modelPricing?.prompt)
+    const completionRate = this.sanitizeNumber(modelPricing?.completion)
+    const promptCost = (promptTokens / 1000) * promptRate
+    const completionCost = (completionTokens / 1000) * completionRate
 
     const baseCost = promptCost + completionCost
     
@@ -145,17 +219,35 @@ class AITokenTracker {
 
   // Get usage statistics
   getUsageStats() {
+    this.normalizeUsageData()
     const today = new Date().toISOString().split('T')[0]
     const thisMonth = new Date().toISOString().substring(0, 7)
+    const requests = Array.isArray(this.usageData.requests) ? this.usageData.requests : []
+    const totalTokens = requests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const totalCost = requests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
+    const todayStats = requests.reduce((acc, req) => {
+      if (!String(req?.timestamp || '').startsWith(today)) return acc
+      acc.tokens += this.sanitizeNumber(req.totalTokens)
+      acc.cost += this.sanitizeNumber(req.cost)
+      acc.requests += 1
+      return acc
+    }, { tokens: 0, cost: 0, requests: 0 })
+    const monthStats = requests.reduce((acc, req) => {
+      if (!String(req?.timestamp || '').startsWith(thisMonth)) return acc
+      acc.tokens += this.sanitizeNumber(req.totalTokens)
+      acc.cost += this.sanitizeNumber(req.cost)
+      acc.requests += 1
+      return acc
+    }, { tokens: 0, cost: 0, requests: 0 })
     
     return {
       total: {
-        tokens: this.usageData.totalTokens,
-        cost: this.usageData.totalCost,
-        requests: this.usageData.requests.length
+        tokens: totalTokens,
+        cost: totalCost,
+        requests: requests.length
       },
-      today: this.usageData.dailyUsage[today] || { tokens: 0, cost: 0, requests: 0 },
-      thisMonth: this.usageData.monthlyUsage[thisMonth] || { tokens: 0, cost: 0, requests: 0 },
+      today: todayStats,
+      thisMonth: monthStats,
       lastUpdated: this.usageData.lastUpdated
     }
   }
@@ -212,15 +304,12 @@ class AITokenTracker {
 
   // Get current pricing information
   getCurrentPricing() {
+    const configuredPricing = this.getAllModelPricing()
     return {
-      'gpt-3.5-turbo': { prompt: 0.0005, completion: 0.0015 },
-      'gpt-4': { prompt: 0.03, completion: 0.06 },
-      'gpt-4-turbo': { prompt: 0.01, completion: 0.03 },
-      'gpt-4o': { prompt: 0.005, completion: 0.015 },
-      'gpt-4o-mini': { prompt: 0.00015, completion: 0.0006 },
+      ...configuredPricing,
       bufferFactor: 1.2,
-      lastUpdated: '2024-12-19',
-      note: 'Estimated costs with 20% buffer. Actual OpenAI billing may vary.'
+      lastUpdated: this.usageData.lastUpdated || null,
+      note: 'Costs are based on your manually configured per-model pricing with a 20% buffer.'
     }
   }
 
@@ -240,22 +329,30 @@ class AITokenTracker {
 
   // Get doctor-specific usage statistics
   getDoctorUsageStats(doctorId) {
-    if (!doctorId) return null
+    if (!doctorId) {
+      console.log('❌ getDoctorUsageStats: No doctorId provided')
+      return null
+    }
+    
+    console.log(`📊 getDoctorUsageStats: Looking for doctorId: ${doctorId}`)
+    console.log(`📊 Total requests in storage: ${this.usageData.requests.length}`)
     
     const doctorRequests = this.usageData.requests.filter(req => req.doctorId === doctorId)
+    console.log(`📊 Found ${doctorRequests.length} requests for doctor ${doctorId}`)
+    
     const today = new Date().toISOString().split('T')[0]
     
-    const totalTokens = doctorRequests.reduce((sum, req) => sum + req.totalTokens, 0)
-    const totalCost = doctorRequests.reduce((sum, req) => sum + req.cost, 0)
+    const totalTokens = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const totalCost = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
     const totalRequests = doctorRequests.length
     
     // Today's usage for this doctor
     const todayRequests = doctorRequests.filter(req => req.timestamp.startsWith(today))
-    const todayTokens = todayRequests.reduce((sum, req) => sum + req.totalTokens, 0)
-    const todayCost = todayRequests.reduce((sum, req) => sum + req.cost, 0)
+    const todayTokens = todayRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const todayCost = todayRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
     const todayRequestCount = todayRequests.length
     
-    return {
+    const stats = {
       total: {
         tokens: totalTokens,
         cost: totalCost,
@@ -267,6 +364,9 @@ class AITokenTracker {
         requests: todayRequestCount
       }
     }
+    
+    console.log(`📊 getDoctorUsageStats result for ${doctorId}:`, stats)
+    return stats
   }
 
   // Get all doctors with their usage stats
@@ -277,6 +377,297 @@ class AITokenTracker {
       doctorId,
       stats: this.getDoctorUsageStats(doctorId)
     }))
+  }
+
+  // Quota Management Methods
+  
+  // Set monthly token quota for a doctor
+  setDoctorQuota(doctorId, monthlyQuota) {
+    if (!this.usageData.doctorQuotas) {
+      this.usageData.doctorQuotas = {}
+    }
+    
+    this.usageData.doctorQuotas[doctorId] = {
+      monthlyTokens: monthlyQuota,
+      setDate: new Date().toISOString(),
+      setBy: 'admin' // Could be enhanced to track who set the quota
+    }
+    
+    this.saveUsageData()
+    console.log(`✅ Set monthly quota for doctor ${doctorId}: ${monthlyQuota} tokens`)
+  }
+  
+  // Get doctor quota
+  getDoctorQuota(doctorId) {
+    return this.usageData.doctorQuotas?.[doctorId] || null
+  }
+  
+  // Get doctor's monthly usage for current month
+  getDoctorMonthlyUsage(doctorId) {
+    if (!doctorId) return null
+    
+    const currentMonth = new Date().toISOString().substring(0, 7) // YYYY-MM format
+    const doctorRequests = this.usageData.requests.filter(req => 
+      req.doctorId === doctorId && req.timestamp.startsWith(currentMonth)
+    )
+    
+    const monthlyTokens = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.totalTokens), 0)
+    const monthlyCost = doctorRequests.reduce((sum, req) => sum + this.sanitizeNumber(req.cost), 0)
+    const monthlyRequests = doctorRequests.length
+    
+    return {
+      tokens: monthlyTokens,
+      cost: monthlyCost,
+      requests: monthlyRequests
+    }
+  }
+  
+  // Check if doctor has exceeded quota
+  isQuotaExceeded(doctorId) {
+    const quota = this.getDoctorQuota(doctorId)
+    if (!quota) return false
+    
+    const monthlyUsage = this.getDoctorMonthlyUsage(doctorId)
+    return monthlyUsage.tokens > quota.monthlyTokens
+  }
+  
+  // Get quota status for a doctor
+  getDoctorQuotaStatus(doctorId) {
+    const quota = this.getDoctorQuota(doctorId)
+    const monthlyUsage = this.getDoctorMonthlyUsage(doctorId)
+    
+    if (!quota) {
+      return {
+        hasQuota: false,
+        quotaTokens: 0,
+        usedTokens: monthlyUsage.tokens,
+        remainingTokens: null,
+        percentageUsed: null,
+        isExceeded: false
+      }
+    }
+    
+    const remainingTokens = Math.max(0, quota.monthlyTokens - monthlyUsage.tokens)
+    const percentageUsed = quota.monthlyTokens > 0 ? (monthlyUsage.tokens / quota.monthlyTokens) * 100 : 0
+    
+    return {
+      hasQuota: true,
+      quotaTokens: quota.monthlyTokens,
+      usedTokens: monthlyUsage.tokens,
+      remainingTokens: remainingTokens,
+      percentageUsed: percentageUsed,
+      isExceeded: monthlyUsage.tokens > quota.monthlyTokens
+    }
+  }
+  
+  // Get all doctors with quota information
+  getAllDoctorsWithQuotas() {
+    const doctorIds = [...new Set(this.usageData.requests.map(req => req.doctorId).filter(id => id))]
+    
+    return doctorIds.map(doctorId => ({
+      doctorId,
+      stats: this.getDoctorUsageStats(doctorId),
+      quota: this.getDoctorQuota(doctorId),
+      quotaStatus: this.getDoctorQuotaStatus(doctorId),
+      monthlyUsage: this.getDoctorMonthlyUsage(doctorId)
+    }))
+  }
+
+  // Migration function to fix requests with null/undefined doctorId
+  migrateRequestsWithMissingDoctorId() {
+    let migratedCount = 0
+    
+    this.usageData.requests.forEach(request => {
+      if (!request.doctorId || request.doctorId === null || request.doctorId === undefined) {
+        request.doctorId = 'unknown-doctor'
+        migratedCount++
+      }
+    })
+    
+    if (migratedCount > 0) {
+      console.log(`🔄 Migrated ${migratedCount} requests with missing doctorId`)
+      this.saveUsageData()
+    }
+    
+    return migratedCount
+  }
+
+  // Migration for legacy calls where trackUsage args were passed as:
+  // trackUsage(doctorId, totalTokens, requestType)
+  migrateLegacyMisorderedTrackUsage() {
+    const knownRequestTypes = new Set([
+      'patientSummary',
+      'reportImageOcr',
+      'improveText',
+      'generateComprehensivePrescriptionAnalysis',
+      'generateAIDrugSuggestions',
+      'generateCombinedAnalysis',
+      'generateRecommendationsOptimized',
+      'generateMedicationSuggestionsOptimized',
+      'checkDrugInteractionsOptimized',
+      'generateCombinedAnalysisOptimized'
+    ])
+
+    let migratedCount = 0
+
+    this.usageData.requests.forEach((request) => {
+      if (!request || typeof request !== 'object') return
+
+      const looksLikeLegacyOrder = (
+        request.doctorId === 'unknown-doctor'
+        && typeof request.type === 'string'
+        && typeof request.completionTokens === 'string'
+        && knownRequestTypes.has(request.completionTokens)
+        && !knownRequestTypes.has(request.type)
+      )
+
+      if (!looksLikeLegacyOrder) return
+
+      const legacyDoctorId = request.type
+      const legacyRequestType = request.completionTokens
+      const promptTokens = this.sanitizeNumber(request.promptTokens)
+      const completionTokens = 0
+      const inferredModel = (
+        legacyRequestType === 'patientSummary'
+        || legacyRequestType === 'reportImageOcr'
+        || legacyRequestType === 'improveText'
+      ) ? 'gpt-4o-mini' : (request.model || 'gpt-3.5-turbo')
+
+      request.doctorId = legacyDoctorId
+      request.type = legacyRequestType
+      request.promptTokens = promptTokens
+      request.completionTokens = completionTokens
+      request.totalTokens = this.sanitizeNumber(request.totalTokens) || promptTokens
+      request.model = inferredModel
+      request.cost = this.calculateRequestCost(promptTokens, completionTokens, inferredModel)
+      migratedCount += 1
+    })
+
+    if (migratedCount > 0) {
+      console.log(`🔄 Migrated ${migratedCount} legacy AI usage records with misordered trackUsage args`)
+      this.saveUsageData()
+    }
+
+    return migratedCount
+  }
+
+  // Configuration Management Methods
+  setModelPricing(model, promptRatePer1k, completionRatePer1k) {
+    const normalizedModel = String(model || '').trim()
+    if (!normalizedModel) return
+    if (!this.usageData.modelPricing || typeof this.usageData.modelPricing !== 'object') {
+      this.usageData.modelPricing = {}
+    }
+    this.usageData.modelPricing[normalizedModel] = {
+      prompt: Math.max(0, this.sanitizeNumber(promptRatePer1k)),
+      completion: Math.max(0, this.sanitizeNumber(completionRatePer1k))
+    }
+    this.saveUsageData()
+  }
+
+  isModelPricingConfigured(model) {
+    const pricing = this.getModelPricing(model)
+    return this.sanitizeNumber(pricing.prompt) > 0 || this.sanitizeNumber(pricing.completion) > 0
+  }
+
+  setModelPricingGuardEnabled(enabled) {
+    this.usageData.enforceModelPricingGuard = Boolean(enabled)
+    this.saveUsageData()
+  }
+
+  shouldEnforceModelPricingGuard() {
+    return this.usageData.enforceModelPricingGuard === true
+  }
+
+  getModelPricing(model) {
+    const normalizedModel = String(model || '').trim()
+    if (!normalizedModel) return { prompt: 0, completion: 0 }
+    const configured = this.usageData?.modelPricing?.[normalizedModel]
+    if (!configured) return { prompt: 0, completion: 0 }
+    return {
+      prompt: Math.max(0, this.sanitizeNumber(configured.prompt)),
+      completion: Math.max(0, this.sanitizeNumber(configured.completion))
+    }
+  }
+
+  getAllModelPricing() {
+    const source = this.usageData?.modelPricing || {}
+    const result = {}
+    Object.keys(source).forEach((modelName) => {
+      const normalizedModel = String(modelName || '').trim()
+      if (!normalizedModel) return
+      result[normalizedModel] = this.getModelPricing(normalizedModel)
+    })
+    return result
+  }
+
+  removeModelPricing(model) {
+    const normalizedModel = String(model || '').trim()
+    if (!normalizedModel || !this.usageData?.modelPricing) return
+    delete this.usageData.modelPricing[normalizedModel]
+    this.saveUsageData()
+  }
+  
+  // Set default quota for all doctors
+  setDefaultQuota(defaultQuota) {
+    this.usageData.defaultQuota = parseInt(defaultQuota)
+    this.saveUsageData()
+    console.log(`✅ Default quota set to: ${defaultQuota} tokens`)
+  }
+  
+  // Get default quota
+  getDefaultQuota() {
+    return this.usageData.defaultQuota || 50000
+  }
+  
+  // Set token price per million
+  setTokenPricePerMillion(price) {
+    this.usageData.tokenPricePerMillion = parseFloat(price)
+    this.saveUsageData()
+    console.log(`✅ Token price set to: $${price} per 1M tokens`)
+  }
+  
+  // Get token price per million
+  getTokenPricePerMillion() {
+    return this.usageData.tokenPricePerMillion || 0.50
+  }
+  
+  // Apply default quota to all doctors who don't have a quota set
+  applyDefaultQuotaToAllDoctors() {
+    const doctorIds = [...new Set(this.usageData.requests.map(req => req.doctorId).filter(id => id))]
+    const defaultQuota = this.getDefaultQuota()
+    let appliedCount = 0
+    
+    doctorIds.forEach(doctorId => {
+      const existingQuota = this.getDoctorQuota(doctorId)
+      if (!existingQuota) {
+        this.setDoctorQuota(doctorId, defaultQuota)
+        appliedCount++
+      }
+    })
+    
+    console.log(`✅ Applied default quota (${defaultQuota} tokens) to ${appliedCount} doctors`)
+    return appliedCount
+  }
+  
+  // Apply default quota to specific doctors
+  applyDefaultQuotaToDoctors(doctorIds) {
+    const defaultQuota = this.getDefaultQuota()
+    let appliedCount = 0
+    
+    doctorIds.forEach(doctorId => {
+      this.setDoctorQuota(doctorId, defaultQuota)
+      appliedCount++
+    })
+    
+    console.log(`✅ Applied default quota (${defaultQuota} tokens) to ${appliedCount} doctors`)
+    return appliedCount
+  }
+  
+  // Calculate cost based on current pricing
+  calculateCost(tokens) {
+    const pricePerMillion = this.getTokenPricePerMillion()
+    return (tokens / 1000000) * pricePerMillion
   }
 }
 

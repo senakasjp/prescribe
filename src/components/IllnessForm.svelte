@@ -1,5 +1,8 @@
 <script>
   import { createEventDispatcher } from 'svelte'
+  import openaiService from '../services/openaiService.js'
+  import authService from '../services/doctor/doctorAuthService.js'
+  import DateInput from './DateInput.svelte'
   
   export let visible = true
   
@@ -12,10 +15,30 @@
   let notes = ''
   let error = ''
   let loading = false
+  let improvingFields = {
+    description: false,
+    notes: false
+  }
+  let improvedFields = {
+    description: false,
+    notes: false
+  }
+  let lastImprovedValues = {
+    description: '',
+    notes: ''
+  }
   
   // Reset loading state when form is hidden
   $: if (!visible) {
     loading = false
+  }
+
+  $: if (!improvingFields.description && improvedFields.description && description !== lastImprovedValues.description) {
+    improvedFields = { ...improvedFields, description: false }
+  }
+
+  $: if (!improvingFields.notes && improvedFields.notes && notes !== lastImprovedValues.notes) {
+    improvedFields = { ...improvedFields, notes: false }
   }
   
   // Handle form submission
@@ -53,6 +76,8 @@
       status = 'active'
       diagnosisDate = ''
       notes = ''
+      improvedFields = { description: false, notes: false }
+      lastImprovedValues = { description: '', notes: '' }
       
     } catch (err) {
       error = err.message
@@ -66,111 +91,198 @@
   const handleCancel = () => {
     dispatch('cancel')
   }
+
+  const getDoctorIdForImprove = () => {
+    const currentDoctor = authService.getCurrentDoctor()
+    return currentDoctor?.id || currentDoctor?.uid || 'default-user'
+  }
+
+  const handleFieldEdit = (fieldKey, value) => {
+    if (lastImprovedValues[fieldKey] && value !== lastImprovedValues[fieldKey]) {
+      lastImprovedValues = { ...lastImprovedValues, [fieldKey]: '' }
+      improvedFields = { ...improvedFields, [fieldKey]: false }
+    }
+  }
+
+  const handleImproveField = async (fieldKey, currentValue, setter) => {
+    if (!currentValue || !currentValue.trim()) {
+      error = 'Please enter some text to improve'
+      return
+    }
+
+    try {
+      improvingFields = { ...improvingFields, [fieldKey]: true }
+      error = ''
+      const doctorId = getDoctorIdForImprove()
+      const result = await openaiService.improveText(currentValue, doctorId)
+      setter(result.improvedText)
+
+      const normalizedImproved = String(result.improvedText ?? '').trim()
+      improvedFields = { ...improvedFields, [fieldKey]: normalizedImproved !== '' }
+      lastImprovedValues = { ...lastImprovedValues, [fieldKey]: normalizedImproved }
+
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+    } catch (err) {
+      console.error('❌ Error improving text:', err)
+      error = err.message || 'Failed to improve text. Please try again.'
+    } finally {
+      improvingFields = { ...improvingFields, [fieldKey]: false }
+    }
+  }
 </script>
 
-<div class="card border-2 border-info shadow-sm">
-  <div class="card-header">
-    <h6 class="mb-0">
-      <i class="fas fa-heartbeat me-2"></i>Add New Illness
-    </h6>
-  </div>
-  <div class="card-body">
-    <form on:submit={handleSubmit}>
-      <div class="mb-3">
-        <label for="illnessName" class="form-label">Illness Name *</label>
+<form on:submit={handleSubmit}>
+      <div class="mb-4">
+        <label for="illnessName" class="block text-sm font-medium text-gray-700 mb-1">Illness Name <span class="text-red-500">*</span></label>
         <input 
           type="text" 
-          class="form-control" 
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
           id="illnessName" 
           bind:value={name}
           required
           disabled={loading}
           placeholder="e.g., Diabetes, Hypertension"
-        >
+        />
       </div>
       
-      <div class="mb-3">
-        <label for="illnessDescription" class="form-label">Description</label>
+      <div class="mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="illnessDescription" class="text-sm font-medium text-gray-700">
+            Description
+            {#if improvedFields.description}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={() => handleImproveField('description', description, (value) => description = value)}
+            disabled={loading || improvingFields.description || improvedFields.description || !description}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingFields.description}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English
+            {/if}
+          </button>
+        </div>
         <textarea 
-          class="form-control" 
+          class="w-full px-3 py-2 border rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {improvedFields.description ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingFields.description ? 'bg-gray-100' : ''}"
           id="illnessDescription" 
           rows="3" 
           bind:value={description}
-          disabled={loading}
+          on:input={(e) => handleFieldEdit('description', e.target.value)}
+          disabled={loading || improvingFields.description}
           placeholder="Describe the illness, symptoms, or condition"
         ></textarea>
       </div>
       
-      <div class="row">
-        <div class="col-md-6">
-          <div class="mb-3">
-            <label for="illnessStatus" class="form-label">Status</label>
-            <select 
-              class="form-select" 
-              id="illnessStatus" 
-              bind:value={status}
-              disabled={loading}
-            >
-              <option value="active">Active</option>
-              <option value="chronic">Chronic</option>
-              <option value="resolved">Resolved</option>
-              <option value="monitoring">Under Monitoring</option>
-            </select>
-          </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label for="illnessStatus" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <select 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="illnessStatus" 
+            bind:value={status}
+            disabled={loading}
+          >
+            <option value="active">Active</option>
+            <option value="chronic">Chronic</option>
+            <option value="resolved">Resolved</option>
+            <option value="monitoring">Under Monitoring</option>
+          </select>
         </div>
-        <div class="col-md-6">
-          <div class="mb-3">
-            <label for="diagnosisDate" class="form-label">Diagnosis Date *</label>
-            <input 
-              type="date" 
-              class="form-control" 
-              id="diagnosisDate" 
-              bind:value={diagnosisDate}
-              required
-              disabled={loading}
-            >
-          </div>
+        <div>
+          <label for="diagnosisDate" class="block text-sm font-medium text-gray-700 mb-1">Diagnosis Date <span class="text-red-500">*</span></label>
+          <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="diagnosisDate" 
+            bind:value={diagnosisDate}
+            required
+            disabled={loading} />
         </div>
       </div>
       
-      <div class="mb-3">
-        <label for="illnessNotes" class="form-label">Additional Notes</label>
+      <div class="mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="illnessNotes" class="text-sm font-medium text-gray-700">
+            Additional Notes
+            {#if improvedFields.notes}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm"
+            on:click={() => handleImproveField('notes', notes, (value) => notes = value)}
+            disabled={loading || improvingFields.notes || improvedFields.notes || !notes}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingFields.notes}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English
+            {/if}
+          </button>
+        </div>
         <textarea 
-          class="form-control" 
+          class="w-full px-3 py-2 border rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {improvedFields.notes ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-teal-500 focus:border-teal-500'} {loading || improvingFields.notes ? 'bg-gray-100' : ''}"
           id="illnessNotes" 
           rows="2" 
           bind:value={notes}
-          disabled={loading}
+          on:input={(e) => handleFieldEdit('notes', e.target.value)}
+          disabled={loading || improvingFields.notes}
           placeholder="Any additional notes about the illness"
         ></textarea>
       </div>
       
       {#if error}
-        <div class="alert alert-danger" role="alert">
-          <i class="fas fa-exclamation-triangle me-2"></i>{error}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4" role="alert">
+          <i class="fas fa-exclamation-triangle mr-2 text-red-600"></i><span class="text-red-700">{error}</span>
         </div>
       {/if}
       
-      <div class="d-flex gap-2">
+      <div class="action-buttons">
         <button 
           type="submit" 
-          class="btn btn-primary" 
+          class="action-button action-button-primary disabled:bg-gray-400 disabled:cursor-not-allowed" 
           disabled={loading}
         >
           {#if loading}
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
           {/if}
-          <i class="fas fa-save me-1"></i>Save Illness
+          <i class="fas fa-save mr-1"></i>Save Illness
         </button>
         <button 
           type="button" 
-          class="btn btn-secondary" 
+          class="action-button action-button-secondary disabled:bg-gray-100 disabled:cursor-not-allowed" 
           on:click={handleCancel}
           disabled={loading}
         >
-          <i class="fas fa-times me-1"></i>Cancel
+          <i class="fas fa-times mr-1"></i>Cancel
         </button>
       </div>
     </form>
-  </div>
-</div>

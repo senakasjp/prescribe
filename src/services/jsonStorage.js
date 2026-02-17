@@ -1,6 +1,8 @@
 // JSON Storage Service - Temporary replacement for Firebase
 // This can be easily converted to Firebase later
 
+import { capitalizePatientNames } from '../utils/nameUtils.js'
+
 class JSONStorage {
   constructor() {
     this.storageKey = 'prescribe-data'
@@ -190,8 +192,11 @@ class JSONStorage {
     return this.data.pharmacists
   }
 
-  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier) {
-    const pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+  async connectPharmacistToDoctor(pharmacistNumber, doctorIdentifier, options = {}) {
+    let pharmacist = await this.getPharmacistByNumber(pharmacistNumber)
+    if (!pharmacist && options?.isOwnPharmacy && doctorIdentifier) {
+      pharmacist = await this.getPharmacistByEmail(doctorIdentifier)
+    }
     if (!pharmacist) {
       throw new Error('Pharmacist not found')
     }
@@ -253,22 +258,25 @@ class JSONStorage {
       throw new Error('Age is required')
     }
     
+    // Capitalize names before saving
+    const capitalizedPatientData = capitalizePatientNames(patientData)
+    
     const patient = {
       id: this.generateId(),
-      firstName: patientData.firstName.trim(),
-      lastName: patientData.lastName.trim(),
-      email: patientData.email.trim(),
-      phone: patientData.phone?.trim() || '',
-      dateOfBirth: patientData.dateOfBirth,
-      age: patientData.age?.trim() || '',
-      weight: patientData.weight?.trim() || '',
-      bloodGroup: patientData.bloodGroup?.trim() || '',
-      idNumber: patientData.idNumber.trim(),
-      address: patientData.address?.trim() || '',
-      allergies: patientData.allergies?.trim() || '',
-      emergencyContact: patientData.emergencyContact?.trim() || '',
-      emergencyPhone: patientData.emergencyPhone?.trim() || '',
-      doctorId: patientData.doctorId,
+      firstName: capitalizedPatientData.firstName.trim(),
+      lastName: capitalizedPatientData.lastName.trim(),
+      email: capitalizedPatientData.email.trim(),
+      phone: capitalizedPatientData.phone?.trim() || '',
+      dateOfBirth: capitalizedPatientData.dateOfBirth,
+      age: capitalizedPatientData.age?.toString().trim() || '',
+      weight: capitalizedPatientData.weight?.toString().trim() || '',
+      bloodGroup: capitalizedPatientData.bloodGroup?.trim() || '',
+      idNumber: capitalizedPatientData.idNumber.trim(),
+      address: capitalizedPatientData.address?.trim() || '',
+      allergies: capitalizedPatientData.allergies?.trim() || '',
+      emergencyContact: capitalizedPatientData.emergencyContact?.trim() || '',
+      emergencyPhone: capitalizedPatientData.emergencyPhone?.trim() || '',
+      doctorId: capitalizedPatientData.doctorId,
       createdAt: new Date().toISOString()
     }
     
@@ -308,22 +316,25 @@ class JSONStorage {
       throw new Error('Age is required')
     }
 
+    // Capitalize names before updating
+    const capitalizedUpdateData = capitalizePatientNames(updatedData)
+    
     // Update patient data
     const updatedPatient = {
       ...this.data.patients[patientIndex],
-      firstName: updatedData.firstName.trim(),
-      lastName: updatedData.lastName.trim(),
-      email: updatedData.email.trim(),
-      phone: updatedData.phone?.trim() || '',
-      dateOfBirth: updatedData.dateOfBirth,
-      age: updatedData.age?.trim() || '',
-      weight: updatedData.weight?.trim() || '',
-      bloodGroup: updatedData.bloodGroup?.trim() || '',
-      idNumber: updatedData.idNumber.trim(),
-      address: updatedData.address?.trim() || '',
-      allergies: updatedData.allergies?.trim() || '',
-      emergencyContact: updatedData.emergencyContact?.trim() || '',
-      emergencyPhone: updatedData.emergencyPhone?.trim() || '',
+      firstName: capitalizedUpdateData.firstName.trim(),
+      lastName: capitalizedUpdateData.lastName.trim(),
+      email: capitalizedUpdateData.email.trim(),
+      phone: capitalizedUpdateData.phone?.trim() || '',
+      dateOfBirth: capitalizedUpdateData.dateOfBirth,
+      age: capitalizedUpdateData.age?.toString().trim() || '',
+      weight: capitalizedUpdateData.weight?.toString().trim() || '',
+      bloodGroup: capitalizedUpdateData.bloodGroup?.trim() || '',
+      idNumber: capitalizedUpdateData.idNumber.trim(),
+      address: capitalizedUpdateData.address?.trim() || '',
+      allergies: capitalizedUpdateData.allergies?.trim() || '',
+      emergencyContact: capitalizedUpdateData.emergencyContact?.trim() || '',
+      emergencyPhone: capitalizedUpdateData.emergencyPhone?.trim() || '',
       updatedAt: new Date().toISOString()
     }
 

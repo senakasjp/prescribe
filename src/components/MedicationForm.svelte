@@ -1,30 +1,190 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte'
-  import DrugAutocomplete from './DrugAutocomplete.svelte'
-  import drugDatabase from '../services/drugDatabase.js'
-  import { notifySuccess, notifyInfo } from '../stores/notifications.js'
-  
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
+  import { MEDICATION_FREQUENCIES } from '../utils/constants.js'
+  import {
+    STRENGTH_UNITS,
+    DOSAGE_FORM_OPTIONS,
+    normalizeDosageFormValue
+  } from '../utils/medicationOptions.js'
+  import openaiService from '../services/openaiService.js'
+  import authService from '../services/doctor/doctorAuthService.js'
+  import DateInput from './DateInput.svelte'
+
   export let visible = true
   export let editingMedication = null
   export let doctorId = null
-  
+  export let allowNonPharmacyDrugs = true
+  export let excludePharmacyDrugs = false
+  export let savingMedication = false
+
   const dispatch = createEventDispatcher()
-  
+
   let name = ''
-  let dosage = ''
-  let dosageUnit = 'mg'
+  let genericName = '' // Generic name for display
+  let dosage = '1'
+  let dosageUnit = ''
+  const DOSAGE_OPTIONS = ['1/4', '1/3', '1/2', '3/4', '1', '1 1/4', '1 1/2', '2', '3', '4']
+  let dosageForm = ''
+  let strength = ''
+  let strengthUnit = ''
+  let route = 'PO'
   let instructions = ''
   let frequency = ''
+  let prnAmount = '' // Amount for PRN medications
+  let qts = ''
+  let liquidDosePerFrequencyMl = ''
+  let inventoryStrengthText = ''
+  let timing = ''
+  const TIMING_OPTIONS = [
+    'Before meals (AC)',
+    'After meals (PC)',
+    'At bedtime (HS)',
+    'Mane',
+    'Vesper'
+  ]
+  const TIMING_EXCLUSIONS = [
+    'Before meals (AC)',
+    'After meals (PC)',
+    'At bedtime (HS)'
+  ]
+  $: frequencyOptions = MEDICATION_FREQUENCIES.filter(
+    (freq) => !TIMING_EXCLUSIONS.includes(freq),
+  )
   let duration = ''
   let startDate = ''
   let endDate = ''
   let notes = ''
   let error = ''
   let loading = false
+  let improvingBrandName = false
+  let brandNameImproved = false
+  let lastImprovedName = ''
+  let improvingInstructions = false
+  let instructionsImproved = false
+  let lastImprovedInstructions = ''
+  let improvingNotes = false
+  let notesImproved = false
+  let lastImprovedNotes = ''
+
+  const focusField = (id) => {
+    const el = document.getElementById(id)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.focus()
+    }
+  }
+
+  // Mapping for routes to their full display names
+  const routeDisplayMap = {
+    'IM': 'Intramuscular (IM)',
+    'IV': 'Intravenous (IV)',
+    'SC': 'Subcutaneous (SC)',
+    'PO': 'Oral (PO)',
+    'Topical': 'Topical',
+    'Inhalation': 'Inhalation',
+    'Rectal': 'Rectal',
+    'Vaginal': 'Vaginal',
+    'Otic': 'Ear (Otic)',
+    'Ophthalmic': 'Eye (Ophthalmic)',
+    'Nasal': 'Nasal',
+    'Transdermal': 'Transdermal'
+  }
+
+  // Reactive statement to get the display value for the right input
+  $: routeDisplay = route ? routeDisplayMap[route] || route : ''
+
+  // Autofill suggestions state (inventory + local database)
+  let nameSuggestions = []
+  let showNameSuggestions = false
+  let nameSelectedIndex = -1
+  let nameSearchTimeout = null
+  let isInventoryDrug = false
+  const resolveLiquidUnitFromStrength = (value) => {
+    const raw = String(value || '').trim().toLowerCase()
+    if (!raw) return ''
+    const match = raw.match(/(\d+(?:\.\d+)?)\s*(ml|l)\b/)
+    return match ? match[2] : ''
+  }
+
+  $: isLiquidStrengthUnit = ['ml', 'l'].includes(String(strengthUnit || '').trim().toLowerCase()) ||
+    Boolean(resolveLiquidUnitFromStrength(strength))
+  const isQtsExcludedDosageForm = (value) => {
+    const form = String(value || '').trim().toLowerCase()
+    if (!form) return false
+    return (
+      form.includes('tablet') ||
+      form.includes('tab') ||
+      form.includes('capsule') ||
+      form.includes('cap') ||
+      form.includes('syrup')
+    )
+  }
+  const isLiquidDispenseForm = (value) => {
+    const form = String(value || '').trim().toLowerCase()
+    return form === 'liquid (bottles)' || form === 'liquid (measured)'
+  }
+  const isLiquidBottleDispenseForm = (value) => String(value || '').trim().toLowerCase() === 'liquid (bottles)'
+  const isMeasuredLiquidDispenseForm = (value) => String(value || '').trim().toLowerCase() === 'liquid (measured)'
+  $: requiresQts = Boolean(String(dosageForm || '').trim()) && (
+    isLiquidBottleDispenseForm(dosageForm) ||
+    (!isMeasuredLiquidDispenseForm(dosageForm) && !isLiquidStrengthUnit && !isQtsExcludedDosageForm(dosageForm))
+  )
+  $: qtsDisplayUnit = isInventoryDrug && requiresQts
+    ? (String(dosageForm || '').trim() || 'ml')
+    : 'ml'
+  const getCountExampleUnit = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return 'units'
+    const lower = raw.toLowerCase()
+    if (lower === 'liquid (measured)') return 'ml'
+    const match = raw.match(/\(([^)]+)\)/)
+    if (match?.[1]) return match[1].trim().toLowerCase()
+    return lower
+  }
+  $: countPlaceholder = requiresQts
+    ? `e.g., 2 ${getCountExampleUnit(dosageForm)}`
+    : (isLiquidDispenseForm(dosageForm) ? 'Amount' : 'Qunatity')
+  const parsePositiveInteger = (value) => {
+    const raw = String(value ?? '').trim()
+    if (!/^\d+$/.test(raw)) return null
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed <= 0) return null
+    return parsed
+  }
+  $: if (isLiquidStrengthUnit && dosage !== '1') {
+    dosage = '1'
+  }
+  $: if (requiresQts && dosage !== '1') {
+    dosage = '1'
+  }
+  $: if (!requiresQts && qts) {
+    qts = ''
+    liquidDosePerFrequencyMl = ''
+  }
   
   // Reset loading state when form is hidden
   $: if (!visible) {
     loading = false
+    improvingBrandName = false
+    brandNameImproved = false
+    improvingInstructions = false
+    instructionsImproved = false
+    improvingNotes = false
+    notesImproved = false
+  }
+
+  // Reset improved state only when the user edits after a successful correction
+  $: if (!improvingBrandName && brandNameImproved && name !== lastImprovedName) {
+    brandNameImproved = false
+  }
+
+  $: if (!improvingInstructions && instructionsImproved && instructions !== lastImprovedInstructions) {
+    instructionsImproved = false
+  }
+
+  $: if (!improvingNotes && notesImproved && notes !== lastImprovedNotes) {
+    notesImproved = false
   }
   
   // Track if form has been initialized for editing
@@ -34,16 +194,28 @@
   // Function to reset form to empty state
   const resetForm = () => {
     console.log('🔄 Resetting MedicationForm to empty state')
-    // Force reset all variables
+    // Force reset all variables to empty strings
     name = ''
-    dosage = ''
-    dosageUnit = 'mg'
+    genericName = ''
+    dosage = '1'
+    dosageUnit = ''
+    dosageForm = ''
+    strength = ''
+    strengthUnit = ''
+    isInventoryDrug = false
+    route = 'PO' // Set default route
     instructions = ''
     frequency = ''
+    prnAmount = ''
+    qts = ''
+    liquidDosePerFrequencyMl = ''
+    inventoryStrengthText = ''
+    timing = ''
     duration = ''
     startDate = ''
     endDate = ''
     notes = ''
+    timing = ''
     error = ''
     formInitialized = false
     formKey++ // Increment key to force DrugAutocomplete reset
@@ -51,7 +223,7 @@
     // Force a small delay to ensure state updates
     setTimeout(() => {
       console.log('✅ MedicationForm reset complete - final state:', {
-        name, dosage, instructions, frequency, duration, startDate, endDate, notes
+        name, genericName, dosage, dosageForm, instructions, frequency, duration, startDate, endDate, notes
       })
     }, 10)
   }
@@ -59,33 +231,168 @@
   // Populate form when editing (only once)
   $: if (editingMedication && !formInitialized) {
     name = editingMedication.name || ''
+    genericName = editingMedication.genericName || ''
+    dosageForm = normalizeDosageFormValue(
+      editingMedication.dosageForm ||
+      editingMedication.form ||
+      editingMedication.packUnit ||
+      editingMedication.unit ||
+      ''
+    )
+    strength = editingMedication.strength || ''
+    strengthUnit = editingMedication.strengthUnit || ''
     
     // Parse dosage if it exists
     if (editingMedication.dosage) {
-      // Try to extract number and unit from dosage string
-      const dosageMatch = editingMedication.dosage.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
-      if (dosageMatch) {
-        dosage = dosageMatch[1]
-        dosageUnit = dosageMatch[2]
-      } else {
-        dosage = editingMedication.dosage
-        dosageUnit = editingMedication.dosageUnit || 'mg'
-      }
+      const rawDosage = String(editingMedication.dosage || '').trim()
+      dosage = rawDosage.replace(/[a-zA-Z]+/g, '').trim() || rawDosage
+      dosageUnit = ''
     } else {
-      dosage = ''
-      dosageUnit = 'mg'
+      dosage = '1'
+      dosageUnit = ''
     }
     
+    route = editingMedication.route || ''
     instructions = editingMedication.instructions || ''
+    timing = editingMedication.timing || ''
     frequency = editingMedication.frequency || ''
-    duration = editingMedication.duration || ''
+    prnAmount = editingMedication.prnAmount || ''
+    qts = editingMedication.qts || ''
+    if (isLiquidDispenseForm(dosageForm) && !qts) {
+      qts = editingMedication.liquidAmountMl || editingMedication.amountMl || ''
+    }
+    liquidDosePerFrequencyMl = editingMedication.liquidDosePerFrequencyMl || editingMedication.perFrequencyMl || ''
+    inventoryStrengthText = editingMedication.inventoryStrengthText || [editingMedication.strength || '', editingMedication.strengthUnit || ''].filter(Boolean).join(' ')
+    // Remove 'days' suffix if present for editing
+    duration = editingMedication.duration ? editingMedication.duration.replace(/\s*days?$/i, '') : ''
     startDate = editingMedication.startDate || ''
     endDate = editingMedication.endDate || ''
     notes = editingMedication.notes || ''
+    isInventoryDrug = editingMedication?.source === 'inventory'
     formInitialized = true
   }
   
   // No reactive reset - only reset on mount to avoid conflicts
+
+  // Debounced search for brand name suggestions (local + connected pharmacies)
+  const searchNameSuggestions = async () => {
+    const query = String(name ?? '').trim()
+    if (!doctorId || !query || query.length < 2) {
+      nameSuggestions = []
+      showNameSuggestions = false
+      nameSelectedIndex = -1
+      return
+    }
+
+    console.log('🔎 Drug search:', { doctorId, query })
+
+    // Inventory drugs
+    const inventory = await pharmacyMedicationService.searchMedicationsFromPharmacies(doctorId, query, 20)
+    const inventoryMapped = inventory.map(d => ({
+      displayName: d.brandName || d.drugName || d.displayName || d.genericName,
+      brandName: d.brandName || '',
+      genericName: d.genericName || '',
+      strength: d.strength || '',
+      strengthUnit: d.strengthUnit || d.unit || '',
+      containerSize: d.containerSize ?? '',
+      containerUnit: d.containerUnit || '',
+      source: 'inventory',
+      currentStock: d.currentStock || 0,
+      packUnit: d.packUnit || '',
+      dosageForm: d.dosageForm || d.packUnit || d.unit || '',
+      expiryDate: d.expiryDate || ''
+    }))
+    console.log('🔎 Drug search inventory results:', inventoryMapped.length)
+
+    if (inventoryMapped.length === 0) {
+      console.warn('⚠️ Drug search returned 0 results', { doctorId, query })
+    }
+
+    // Sort: exact startsWith first, then alpha
+    const q = query.toLowerCase()
+    inventoryMapped.sort((a, b) => {
+      const aExact = (a.brandName || '').toLowerCase().startsWith(q) || (a.genericName || '').toLowerCase().startsWith(q) ? 1 : 0
+      const bExact = (b.brandName || '').toLowerCase().startsWith(q) || (b.genericName || '').toLowerCase().startsWith(q) ? 1 : 0
+      if (aExact !== bExact) return bExact - aExact
+      return (a.displayName || '').localeCompare(b.displayName || '')
+    })
+
+    nameSuggestions = inventoryMapped.slice(0, 20)
+    showNameSuggestions = nameSuggestions.length > 0
+    nameSelectedIndex = -1
+  }
+
+  const handleNameInput = () => {
+    isInventoryDrug = false
+    inventoryStrengthText = ''
+    clearTimeout(nameSearchTimeout)
+    nameSearchTimeout = setTimeout(searchNameSuggestions, 250)
+  }
+
+  const handleNameKeydown = (event) => {
+    if (!showNameSuggestions || nameSuggestions.length === 0) return
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault()
+        nameSelectedIndex = Math.min(nameSelectedIndex + 1, nameSuggestions.length - 1)
+        break
+      case 'ArrowUp':
+        event.preventDefault()
+        nameSelectedIndex = Math.max(nameSelectedIndex - 1, -1)
+        break
+      case 'Enter':
+        if (nameSelectedIndex >= 0) {
+          event.preventDefault()
+          selectNameSuggestion(nameSuggestions[nameSelectedIndex])
+        }
+        break
+      case 'Escape':
+        showNameSuggestions = false
+        nameSelectedIndex = -1
+        break
+    }
+  }
+
+  const selectNameSuggestion = (s) => {
+    // Always use brandName if available, otherwise extract from displayName
+    if (s.brandName) {
+      name = s.brandName
+    } else if (s.displayName) {
+      // Extract brand name from displayName format "BrandName (GenericName)"
+      const match = s.displayName.match(/^([^(]+)\s*\(/)
+      name = match ? match[1].trim() : s.displayName
+    } else {
+      name = ''
+    }
+    
+    // Set generic name, dosage form, and strength from selected drug
+    genericName = s.genericName || ''
+    dosageForm = normalizeDosageFormValue(s.dosageForm || s.form || s.packUnit || s.unit || '')
+    strength = s.strength || ''
+    strengthUnit = s.strengthUnit || ''
+    isInventoryDrug = s.source === 'inventory'
+    inventoryStrengthText = isInventoryDrug
+      ? [String(s.strength || '').trim(), String(s.strengthUnit || '').trim()].filter(Boolean).join(' ')
+      : ''
+
+    if ((!strength || !strengthUnit) && s.strength) {
+      const strengthMatch = String(s.strength).trim().match(/^(\d+(?:\.\d+)?)([a-zA-Z%]+)?$/)
+      if (strengthMatch) {
+        strength = strengthMatch[1]
+        strengthUnit = strengthMatch[2] || strengthUnit || ''
+      }
+    }
+
+    // If the suggestion has a numeric strength like "500 mg", try to prefill dosage
+    if (s.strength && !dosage) {
+      const m = String(s.strength).match(/(\d+(?:\.\d+)?)/)
+      if (m) {
+        dosage = m[1]
+      }
+    }
+    showNameSuggestions = false
+    nameSelectedIndex = -1
+  }
   
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -95,8 +402,99 @@
     
     try {
       // Validate required fields
-      if (!name || !dosage || !instructions || !frequency || !duration) {
+      if (!name || (!requiresQts && !dosage) || (!requiresQts && !frequency) || (!requiresQts && !duration)) {
+        if (!name) focusField('brandName')
+        else if (!requiresQts && !dosage) focusField('medicationDosage')
+        else if (!requiresQts && !frequency) focusField('medicationFrequency')
+        else if (!requiresQts && !duration) focusField('medicationDuration')
         throw new Error('Please fill in all required fields')
+      }
+      if (!isInventoryDrug && !String(strength || '').trim()) {
+        focusField('medicationStrength')
+        throw new Error('Please enter the strength for this medication')
+      }
+      if (!requiresQts && frequency && frequency.includes('PRN') && !String(prnAmount || '').trim()) {
+        focusField('prnAmount')
+        throw new Error('Please enter the PRN amount')
+      }
+      const parsedQts = requiresQts ? parsePositiveInteger(qts) : null
+      if (requiresQts && !parsedQts) {
+        focusField('medicationQts')
+        throw new Error(isLiquidDispenseForm(dosageForm)
+          ? 'Please enter Amount in ml as a positive integer'
+          : 'Please enter Qts as a positive integer')
+      }
+      const parsedLiquidDosePerFrequencyMl = isLiquidDispenseForm(dosageForm) && String(liquidDosePerFrequencyMl || '').trim()
+        ? parsePositiveInteger(liquidDosePerFrequencyMl)
+        : null
+      if (isLiquidDispenseForm(dosageForm) && String(liquidDosePerFrequencyMl || '').trim() && !parsedLiquidDosePerFrequencyMl) {
+        focusField('liquidDosePerFrequencyMl')
+        throw new Error('Please enter ml value as a positive integer')
+      }
+      const parsedDurationDays = !requiresQts ? parsePositiveInteger(duration) : null
+      if (!requiresQts && !parsedDurationDays) {
+        focusField('medicationDuration')
+        throw new Error('Please enter duration as a positive integer')
+      }
+      if (!requiresQts && !timing) {
+        focusField('medicationTiming')
+        throw new Error('Please select when to take')
+      }
+
+      const enforcePharmacyOnly = !allowNonPharmacyDrugs
+      const enforceNonPharmacyOnly = excludePharmacyDrugs
+
+      if (enforcePharmacyOnly || enforceNonPharmacyOnly) {
+        if (!doctorId) {
+          throw new Error('Doctor information is missing. Update prescription settings to continue.')
+        }
+
+        const pharmacyStock = await pharmacyMedicationService.getPharmacyStock(doctorId)
+        if (!pharmacyStock || pharmacyStock.length === 0) {
+          throw new Error('No connected pharmacy inventory found. Update prescription settings to continue.')
+        }
+
+        const normalizedMedName = String(name ?? '').toLowerCase().trim()
+        const normalizedMedNames = Array.from(new Set([
+          normalizedMedName,
+          normalizedMedName.split('(')[0]?.trim() || '',
+          normalizedMedName.replace(/\(.*\)/, '').trim()
+        ])).filter(Boolean)
+
+        const dosageText = String(dosage ?? '').trim() + String(dosageUnit ?? '').trim()
+        const dosageMatch = dosageText.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
+
+        const matchingStock = pharmacyStock.find(stock => {
+          const stockName = stock.drugName?.toLowerCase().trim() || ''
+          const stockGeneric = stock.genericName?.toLowerCase().trim() || ''
+          const stockNames = [stockName, stockGeneric].filter(Boolean)
+
+          const nameMatch = normalizedMedNames.some(medName =>
+            stockNames.some(stockValue => stockValue && (stockValue.includes(medName) || medName.includes(stockValue)))
+          )
+
+          if (!dosageMatch) {
+            return nameMatch
+          }
+
+          const [, strength, unit] = dosageMatch
+          const stockStrength = String(stock.strength || '')
+          const stockUnit = String(stock.strengthUnit || '')
+          const strengthMatch = stockStrength === strength || stockStrength.includes(strength)
+          const unitMatch = !stockUnit || stockUnit === unit || stockUnit.includes(unit)
+
+          return nameMatch && strengthMatch && unitMatch
+        })
+
+        const isAvailable = !!(matchingStock && (parseInt(matchingStock.quantity || 0, 10) > 0))
+
+        if (enforcePharmacyOnly && !isAvailable) {
+          throw new Error('This drug is not available in connected pharmacy inventory. Update prescription settings to continue.')
+        }
+
+        if (enforceNonPharmacyOnly && isAvailable) {
+          throw new Error('This drug is available in connected pharmacy inventory. Uncheck "Exclude own pharmacy drugs" to continue.')
+        }
       }
       
       // Validate dates
@@ -110,15 +508,42 @@
       }
       
       const medicationData = {
-        name: name.trim(),
-        dosage: dosage.trim() + dosageUnit,
-        dosageUnit: dosageUnit,
-        instructions: instructions.trim(),
+        source: isInventoryDrug ? 'inventory' : 'manual',
+        name: String(name ?? '').trim(),
+        genericName: String(genericName ?? '').trim(),
+        dosage: String(dosage ?? '').trim(),
+        dosageUnit: '',
+        dosageForm: String(dosageForm ?? '').trim(),
+        strength: (() => {
+          const normalizedStrength = String(strength ?? '').trim()
+          if (normalizedStrength) return normalizedStrength
+          if (!isInventoryDrug || !inventoryStrengthText) return normalizedStrength
+          const match = inventoryStrengthText.match(/^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)?\s*$/)
+          return match?.[1] || normalizedStrength
+        })(),
+        strengthUnit: (() => {
+          const normalizedUnit = String(strengthUnit ?? '').trim()
+          if (normalizedUnit) return normalizedUnit
+          if (!isInventoryDrug || !inventoryStrengthText) return normalizedUnit
+          const match = inventoryStrengthText.match(/^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)?\s*$/)
+          return match?.[2] || normalizedUnit
+        })(),
+        inventoryStrengthText: isInventoryDrug ? String(inventoryStrengthText || '').trim() : '',
+        route: String(route ?? '').trim(),
+        instructions: String(instructions ?? '').trim(),
         frequency,
-        duration: duration.trim(),
+        timing,
+        prnAmount: !requiresQts && frequency.includes('PRN') ? String(prnAmount ?? '').trim() : '', // Include PRN amount if frequency is PRN
+        qts: requiresQts ? String(parsedQts) : '',
+        liquidAmountMl: isLiquidDispenseForm(dosageForm) && parsedQts ? String(parsedQts) : '',
+        liquidDosePerFrequencyMl: isLiquidDispenseForm(dosageForm) && parsedLiquidDosePerFrequencyMl
+          ? String(parsedLiquidDosePerFrequencyMl)
+          : '',
+        liquidDoseUnit: isLiquidDispenseForm(dosageForm) ? qtsDisplayUnit : '',
+        duration: !requiresQts ? `${parsedDurationDays} days` : String(duration ?? '').trim() + ' days',
         startDate: startDate || new Date().toISOString().split('T')[0], // Default to today if not provided
         endDate: endDate || null,
-        notes: notes.trim()
+        notes: String(notes ?? '').trim()
       }
       
       // Add editing information if in edit mode
@@ -127,38 +552,24 @@
         medicationData.isEdit = true
       }
       
-      // Save to drug database for future autocomplete
-      if (doctorId) {
-        const existingDrug = drugDatabase.getDoctorDrugs(doctorId).find(drug => 
-          drug.name === name.trim().toLowerCase()
-        )
-        
-        drugDatabase.addDrug(doctorId, {
-          name: name.trim(),
-          dosage: dosage.trim() + dosageUnit,
-          dosageUnit: dosageUnit,
-          instructions: instructions.trim(),
-          frequency,
-          duration: duration.trim(),
-          notes: notes.trim()
-        })
-        
-        // Show notification
-        if (existingDrug) {
-          notifyInfo(`"${name.trim()}" updated in your drug database`)
-        } else {
-          notifySuccess(`"${name.trim()}" added to your drug database`)
-        }
-      }
+      // No local drug database persistence (inventory-only)
       
       dispatch('medication-added', medicationData)
       
       // Reset form
       name = ''
-      dosage = ''
-      dosageUnit = 'mg'
+      genericName = ''
+      dosage = '1'
+      dosageUnit = ''
+      dosageForm = ''
+      strength = ''
+      strengthUnit = ''
+      route = 'PO' // Set default route
       instructions = ''
       frequency = ''
+      prnAmount = ''
+      qts = ''
+      liquidDosePerFrequencyMl = ''
       duration = ''
       startDate = ''
       endDate = ''
@@ -172,39 +583,124 @@
     }
   }
   
-  // Handle drug selection from autocomplete
-  const handleDrugSelect = (drug) => {
-    name = drug.displayName
-    // Only auto-fill other fields when editing an existing prescription
-    // For new prescriptions, only fill the name field
-    if (editingMedication) {
-      // Parse dosage if it exists
-      if (drug.dosage) {
-        // Try to extract number and unit from dosage string
-        const dosageMatch = drug.dosage.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)$/)
-        if (dosageMatch) {
-          dosage = dosageMatch[1]
-          dosageUnit = dosageMatch[2]
-        } else {
-          dosage = drug.dosage
-          dosageUnit = 'mg' // default
-        }
-      }
-      instructions = drug.instructions || instructions
-      frequency = drug.frequency || frequency
-      duration = drug.duration || duration
-      notes = drug.notes || notes
-    }
-    
-    // Show notification
-    notifyInfo(`"${drug.displayName}" selected`)
-  }
   
   // Handle cancel
   const handleCancel = () => {
     dispatch('cancel')
   }
-  
+
+  const getDoctorIdForImprove = () => {
+    const currentDoctor = authService.getCurrentDoctor()
+    return doctorId || currentDoctor?.id || currentDoctor?.uid || 'default-user'
+  }
+
+  // Improve brand name with AI
+  const improveBrandName = async () => {
+    if (!name || !name.trim()) {
+      error = 'Please enter a brand name to improve'
+      return
+    }
+
+    try {
+      improvingBrandName = true
+      error = ''
+      const originalName = name
+
+      // Get doctor information for token tracking
+      const resolvedDoctorId = getDoctorIdForImprove()
+
+      // Call OpenAI service to improve text
+      const result = await openaiService.improveText(name, resolvedDoctorId, { context: 'medication-name' })
+
+      // Update the brand name with improved text
+      name = result.improvedText
+
+      // Mark as improved to show visual feedback
+      const normalizedOriginal = String(originalName ?? '').trim()
+      const normalizedImproved = String(name ?? '').trim()
+      brandNameImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedName = brandNameImproved ? normalizedImproved : ''
+
+      // Dispatch event for token tracking
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+
+      console.log('✅ Brand name improved successfully')
+
+    } catch (err) {
+      console.error('❌ Error improving brand name:', err)
+      error = err.message || 'Failed to improve brand name. Please try again.'
+    } finally {
+      improvingBrandName = false
+    }
+  }
+
+  const improveInstructions = async () => {
+    if (!instructions || !instructions.trim()) {
+      error = 'Please enter instructions to improve'
+      return
+    }
+
+    try {
+      improvingInstructions = true
+      error = ''
+      const originalInstructions = instructions
+      const resolvedDoctorId = getDoctorIdForImprove()
+
+      const result = await openaiService.improveText(instructions, resolvedDoctorId, { context: 'medication-instructions' })
+      instructions = result.improvedText
+
+      const normalizedOriginal = String(originalInstructions ?? '').trim()
+      const normalizedImproved = String(instructions ?? '').trim()
+      instructionsImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedInstructions = instructionsImproved ? normalizedImproved : ''
+
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+    } catch (err) {
+      console.error('❌ Error improving instructions:', err)
+      error = err.message || 'Failed to improve text. Please try again.'
+    } finally {
+      improvingInstructions = false
+    }
+  }
+
+  const improveNotes = async () => {
+    if (!notes || !notes.trim()) {
+      error = 'Please enter notes to improve'
+      return
+    }
+
+    try {
+      improvingNotes = true
+      error = ''
+      const originalNotes = notes
+      const resolvedDoctorId = getDoctorIdForImprove()
+
+      const result = await openaiService.improveText(notes, resolvedDoctorId, { context: 'medication-notes' })
+      notes = result.improvedText
+
+      const normalizedOriginal = String(originalNotes ?? '').trim()
+      const normalizedImproved = String(notes ?? '').trim()
+      notesImproved = normalizedImproved !== '' && normalizedImproved !== normalizedOriginal
+      lastImprovedNotes = notesImproved ? normalizedImproved : ''
+
+      dispatch('ai-usage-updated', {
+        tokensUsed: result.tokensUsed,
+        type: 'improveText'
+      })
+    } catch (err) {
+      console.error('❌ Error improving notes:', err)
+      error = err.message || 'Failed to improve text. Please try again.'
+    } finally {
+      improvingNotes = false
+    }
+  }
+
   // Reset form when component mounts if not editing
   onMount(() => {
     console.log('🚀 MedicationForm mounted - checking if reset needed')
@@ -217,174 +713,469 @@
   })
 </script>
 
-<div class="card border-2 border-info shadow-sm medication-form-card">
-  <div class="card-header">
-    <h6 class="mb-0">
-      <i class="fas fa-pills me-2"></i>Add New Medication
+<div class="bg-white border-2 border-cyan-200 rounded-lg shadow-sm mx-2 sm:mx-0">
+  <div class="bg-cyan-700 text-white px-3 sm:px-4 py-3 rounded-t-lg">
+    <h6 class="text-base sm:text-lg font-semibold mb-0">
+      <i class="fas fa-pills mr-2"></i>{editingMedication ? 'Edit Medication' : 'Add New Medication'}
     </h6>
   </div>
-  <div class="card-body">
-    <form on:submit={handleSubmit}>
-      <div class="mb-3">
-        <label for="medicationName" class="form-label">Medication Name <span class="text-danger">*</span></label>
-        <DrugAutocomplete 
-          bind:value={name}
-          placeholder="e.g., Metformin, Lisinopril"
-          {doctorId}
-          onDrugSelect={handleDrugSelect}
-          disabled={loading}
-        />
-      </div>
-      
-      <div class="row">
-        <div class="col-12 col-sm-6">
-          <div class="mb-3">
-            <label for="medicationDosage" class="form-label">Dosage <span class="text-danger">*</span></label>
-            <div class="input-group">
-              <input 
-                type="text" 
-                class="form-control form-control-sm" 
-                id="medicationDosage" 
-                bind:value={dosage}
-                required
-                disabled={loading}
-                placeholder="500"
-              >
-              <select 
-                class="form-select form-select-sm" 
-                id="dosageUnit" 
-                bind:value={dosageUnit}
-                disabled={loading}
-              >
-                <option value="mg">mg</option>
-                <option value="g">g</option>
-                <option value="ml">ml</option>
-                <option value="l">l</option>
-                <option value="units">units</option>
-                <option value="mcg">mcg</option>
-                <option value="tablets">tablets</option>
-                <option value="pills">pills</option>
-                <option value="capsules">capsules</option>
-                <option value="drops">drops</option>
-                <option value="patches">patches</option>
-                <option value="injections">injections</option>
-                <option value="sachets">sachets</option>
-              </select>
+  <div class="p-3 sm:p-4">
+    <form on:submit={handleSubmit} class="space-y-3 sm:space-y-4">
+      <div>
+        <label for="brandName" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          Brand Name <span class="text-red-500">*</span>
+          {#if brandNameImproved}
+            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+              <i class="fas fa-check-circle mr-1"></i>
+              AI Corrected
+            </span>
+          {/if}
+        </label>
+        <div class="relative">
+          <input
+            type="text"
+            class="w-full px-2 sm:px-3 py-2 pr-28 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:cursor-not-allowed transition-all duration-300 {brandNameImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'border-gray-300 focus:ring-cyan-500 focus:border-cyan-500'} {loading || improvingBrandName ? 'bg-gray-100' : ''}"
+            id="brandName"
+            bind:value={name}
+            required
+            disabled={loading || improvingBrandName}
+            placeholder="e.g., Glucophage, Prinivil"
+            on:input={handleNameInput}
+            on:keydown={handleNameKeydown}
+            on:focus={searchNameSuggestions}
+          />
+          <button
+            type="button"
+            class="absolute top-1.5 right-1.5 inline-flex items-center px-2 py-1 text-xs font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
+            on:click={improveBrandName}
+            disabled={loading || improvingBrandName || !name}
+            title="Correct spelling with AI"
+          >
+            {#if improvingBrandName}
+              <svg class="animate-spin h-3 w-3 mr-1 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Fixing...
+            {:else}
+              <i class="fas fa-sparkles mr-1"></i>
+              Fix Spelling
+            {/if}
+          </button>
+        </div>
+        {#if showNameSuggestions && nameSuggestions.length > 0}
+          <div class="relative">
+            <div class="absolute top-1 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-56 overflow-y-auto">
+              {#each nameSuggestions as s, idx}
+                <button
+                  type="button"
+                  class="w-full px-3 py-2 text-left text-xs sm:text-sm hover:bg-cyan-50 focus:bg-cyan-50 border-b last:border-b-0 {nameSelectedIndex === idx ? 'bg-cyan-50' : ''}"
+                  on:click={() => selectNameSuggestion(s)}
+                  on:mouseenter={() => nameSelectedIndex = idx}
+                >
+                  <div class="flex items-center justify-between">
+                    <div class="text-gray-900 font-medium truncate">
+                      {s.displayName}
+                      {#if String(s.containerSize ?? '').trim() !== ''}
+                        <span class="text-gray-600"> {s.containerSize}{#if s.containerUnit} {s.containerUnit}{/if}</span>
+                      {/if}
+                    </div>
+                    <span class="ml-3 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-800">
+                      <i class="fas fa-store mr-1"></i>Inventory
+                    </span>
+                  </div>
+                  {#if s.strength}
+                    <div class="text-[11px] text-gray-500 mt-1">
+                      Strength: {s.strength}{#if s.strengthUnit} {s.strengthUnit}{/if}{#if s.dosageForm} • Form: {s.dosageForm}{/if}
+                      {#if s.source === 'inventory' && s.currentStock !== undefined}
+                        <span class="ml-1 text-blue-600 font-medium">({s.currentStock} {s.packUnit || 'units'})</span>
+                      {/if}
+                    </div>
+                  {/if}
+                </button>
+              {/each}
             </div>
           </div>
+        {/if}
+      </div>
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+        <div>
+          <label for={requiresQts ? 'medicationStrength' : 'medicationDosage'} class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            Dosage Strength
+            {#if !requiresQts}
+              <span class="text-red-500">*</span>
+            {/if}
+          </label>
+          <div class="space-y-2">
+            <div class="flex flex-col sm:flex-row gap-2">
+              {#if !requiresQts}
+                {#if isLiquidStrengthUnit}
+                  <div
+                    class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center justify-between"
+                    id="medicationDosage"
+                  >
+                    <span>1</span>
+                    <span class="text-[10px] uppercase tracking-wide text-gray-500">fixed</span>
+                  </div>
+                {:else}
+                  <select
+                    class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    id="medicationDosage"
+                    bind:value={dosage}
+                    required
+                    disabled={loading}
+                  >
+                    <option value="">Select dosage</option>
+                    {#each DOSAGE_OPTIONS as option}
+                      <option value={option}>{option}</option>
+                    {/each}
+                  </select>
+                {/if}
+              {/if}
+
+              {#if !isInventoryDrug || (isInventoryDrug && isLiquidStrengthUnit)}
+                <input
+                  id="medicationStrength"
+                  type="number"
+                  class="w-full sm:flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  bind:value={strength}
+                  placeholder="Strength"
+                  disabled={loading}
+                  required={!isInventoryDrug}
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
+                />
+                <select
+                  id="medicationStrengthUnit"
+                  class="w-full sm:w-24 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  bind:value={strengthUnit}
+                  disabled={loading}
+                >
+                  <option value="">Unit</option>
+                  {#each STRENGTH_UNITS as unit}
+                    <option value={unit}>{unit}</option>
+                  {/each}
+                </select>
+              {:else if strength}
+                <div class="flex items-center text-xs sm:text-sm text-gray-700 px-2">
+                  <span class="font-medium">Strength:</span>
+                  <span class="ml-1">{strength}{#if strengthUnit} {strengthUnit}{/if}</span>
+                </div>
+              {/if}
+            </div>
+
+            {#if requiresQts}
+              <p class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Count</p>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <div class="w-full sm:w-24">
+                  <input
+                    type="text"
+                    class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    id="medicationQts"
+                    bind:value={qts}
+                    required={requiresQts}
+                    aria-required={requiresQts}
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    disabled={loading}
+                    placeholder={countPlaceholder}
+                    aria-label={isLiquidDispenseForm(dosageForm) ? 'Amount (ml)' : 'Qunatity'}
+                  >
+                </div>
+                {#if isLiquidDispenseForm(dosageForm)}
+                  {#if isInventoryDrug}
+                    <div class="w-full sm:w-36 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center">
+                      {qtsDisplayUnit}
+                    </div>
+                  {:else}
+                    <div class="w-full sm:w-36">
+                      <input
+                        type="text"
+                        id="liquidDosePerFrequencyMl"
+                        class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        bind:value={liquidDosePerFrequencyMl}
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        disabled={loading}
+                        placeholder={qtsDisplayUnit}
+                        aria-label={`${qtsDisplayUnit} (PDF only)`}
+                      >
+                    </div>
+                  {/if}
+                {/if}
+              </div>
+            {/if}
+          </div>
+          {#if requiresQts && isLiquidDispenseForm(dosageForm)}
+            <p class="mt-1 text-xs text-gray-500">For PDF only: this {qtsDisplayUnit} value prints near the drug name and does not affect calculations.</p>
+          {/if}
         </div>
-        <div class="col-12 col-sm-6">
-          <div class="mb-3">
-            <label for="medicationFrequency" class="form-label">Frequency <span class="text-danger">*</span></label>
+        <div>
+          <label for="medicationRoute" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Route of Administration</label>
+          <div class="flex w-full min-w-0">
             <select 
-              class="form-select form-select-sm" 
+              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-l-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              id="medicationRoute" 
+              on:change={(e) => {
+                if (e.target.value) {
+                  route = e.target.value;
+                }
+              }}
+              disabled={loading}
+            >
+              <option value="">Select route</option>
+              <option value="IM">Intramuscular (IM)</option>
+              <option value="IV">Intravenous (IV)</option>
+              <option value="SC">Subcutaneous (SC)</option>
+              <option value="PO">Oral (PO)</option>
+              <option value="Topical">Topical</option>
+              <option value="Inhalation">Inhalation</option>
+              <option value="Rectal">Rectal</option>
+              <option value="Vaginal">Vaginal</option>
+              <option value="Otic">Ear (Otic)</option>
+              <option value="Ophthalmic">Eye (Ophthalmic)</option>
+              <option value="Nasal">Nasal</option>
+              <option value="Transdermal">Transdermal</option>
+            </select>
+            <input 
+              type="text" 
+              class="w-0 min-w-0 flex-1 px-2 sm:px-3 py-2 border border-gray-300 border-l-0 rounded-r-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+              placeholder="Or enter custom route"
+              bind:value={routeDisplay}
+              disabled={loading}
+            >
+          </div>
+        </div>
+        <div>
+          <label for="medicationDosageForm" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Dispense Form</label>
+          <select
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+            id="medicationDosageForm"
+            bind:value={dosageForm}
+            disabled={loading || isInventoryDrug}
+          >
+            <option value="">Select dispense form</option>
+            {#each DOSAGE_FORM_OPTIONS as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
+          {#if isInventoryDrug}
+            <p class="mt-1 text-xs text-gray-500">Dispense Form is locked from inventory record.</p>
+          {/if}
+        </div>
+        <div>
+        <label for="medicationFrequency" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          Frequency
+          {#if !requiresQts}
+            <span class="text-red-500">*</span>
+          {/if}
+        </label>
+        <div class="flex gap-2">
+            <select 
+              class="flex-1 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
               id="medicationFrequency" 
               bind:value={frequency}
-              required
+              required={!requiresQts}
               disabled={loading}
             >
               <option value="">Select frequency</option>
-              <option value="once daily">Once daily</option>
-              <option value="twice daily">Twice daily</option>
-              <option value="three times daily">Three times daily</option>
-              <option value="four times daily">Four times daily</option>
-              <option value="as needed">As needed</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
+              {#each frequencyOptions as freq}
+                <option value={freq}>{freq}</option>
+              {/each}
             </select>
+            {#if !requiresQts && frequency && frequency.includes('PRN')}
+              <div class="w-24">
+                <label for="prnAmount" class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-1">
+                  Amount <span class="text-red-500">*</span>
+                </label>
+                <input 
+                  id="prnAmount"
+                  type="number" 
+                  class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                  placeholder="Amount"
+                  bind:value={prnAmount}
+                  required
+                  aria-required="true"
+                  disabled={loading}
+                  min="0"
+                  step="0.01"
+                  inputmode="decimal"
+                >
+              </div>
+            {/if}
           </div>
         </div>
       </div>
       
-      <div class="mb-3">
-        <label for="medicationInstructions" class="form-label">Instructions <span class="text-danger">*</span></label>
+      {#if !requiresQts}
+        <div>
+          <label for="medicationTiming" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            When to take <span class="text-red-500">*</span>
+          </label>
+          <select
+            id="medicationTiming"
+            bind:value={timing}
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            required
+            disabled={loading}
+          >
+            <option value="">Select timing</option>
+            {#each TIMING_OPTIONS as option}
+              <option value={option}>{option}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+
+      <div>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="medicationInstructions" class="text-xs sm:text-sm font-medium text-gray-700">
+            Instructions
+            {#if instructionsImproved}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
+            on:click={improveInstructions}
+            disabled={loading || improvingInstructions || instructionsImproved || !instructions}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingInstructions}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English
+            {/if}
+          </button>
+        </div>
         <textarea 
-          class="form-control form-control-sm" 
+          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {instructionsImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-cyan-500 focus:border-cyan-500'} {loading || improvingInstructions ? 'bg-gray-100' : ''}"
           id="medicationInstructions" 
           rows="2" 
           bind:value={instructions}
-          required
-          disabled={loading}
+          disabled={loading || improvingInstructions}
           placeholder="e.g., Take with food, Take before bedtime"
         ></textarea>
       </div>
       
-      <div class="row">
-        <div class="col-12 col-sm-6 col-lg-4">
-          <div class="mb-3">
-            <label for="medicationDuration" class="form-label">Duration <span class="text-danger">*</span></label>
-            <input 
-              type="text" 
-              class="form-control form-control-sm" 
-              id="medicationDuration" 
-              bind:value={duration}
-              disabled={loading}
-              placeholder="e.g., 30 days, 3 months"
-            >
-          </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div>
+          <label for="medicationDuration" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            Duration in days
+            {#if !requiresQts}
+              <span class="text-red-500">*</span>
+            {/if}
+          </label>
+          <input 
+            type="number" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="medicationDuration" 
+            bind:value={duration}
+            min="1"
+            required={!requiresQts}
+            disabled={loading}
+            placeholder="e.g., 30"
+          >
         </div>
-        <div class="col-12 col-sm-6 col-lg-4">
-          <div class="mb-3">
-            <label for="medicationStartDate" class="form-label">Start Date <small class="text-muted">(Optional)</small></label>
-            <input 
-              type="date" 
-              class="form-control form-control-sm" 
-              id="medicationStartDate" 
-              bind:value={startDate}
-              disabled={loading}
-            >
-          </div>
+        <div>
+          <label for="medicationStartDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Start Date <span class="text-gray-500 text-xs">(Optional)</span></label>
+          <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="medicationStartDate" 
+            bind:value={startDate}
+            disabled={loading} />
         </div>
-        <div class="col-12 col-sm-12 col-lg-4">
-          <div class="mb-3">
-            <label for="medicationEndDate" class="form-label">End Date</label>
-            <input 
-              type="date" 
-              class="form-control form-control-sm" 
-              id="medicationEndDate" 
-              bind:value={endDate}
-              disabled={loading}
-            >
-          </div>
+        <div>
+          <label for="medicationEndDate" class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">End Date</label>
+          <DateInput type="date" lang="en-GB" placeholder="dd/mm/yyyy" 
+            class="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 disabled:bg-gray-100 disabled:cursor-not-allowed" 
+            id="medicationEndDate" 
+            bind:value={endDate}
+            disabled={loading} />
         </div>
       </div>
       
-      <div class="mb-3">
-        <label for="medicationNotes" class="form-label">Additional Notes</label>
+      <div>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+          <label for="medicationNotes" class="text-xs sm:text-sm font-medium text-gray-700">
+            Additional Notes
+            {#if notesImproved}
+              <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i>
+                AI Improved
+              </span>
+            {/if}
+          </label>
+          <button
+            type="button"
+            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
+            on:click={improveNotes}
+            disabled={loading || improvingNotes || notesImproved || !notes}
+            title="Fix spelling and grammar with AI"
+          >
+            {#if improvingNotes}
+              <svg class="animate-spin h-3 w-3 mr-1.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Improving...
+            {:else}
+              <i class="fas fa-sparkles mr-1.5"></i>
+              Improve English
+            {/if}
+          </button>
+        </div>
         <textarea 
-          class="form-control form-control-sm" 
+          class="w-full px-2 sm:px-3 py-2 border rounded-lg text-xs sm:text-sm placeholder-gray-500 focus:outline-none focus:ring-2 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 {notesImproved ? 'bg-green-50 border-green-300 text-green-700 focus:ring-green-500 focus:border-green-500' : 'bg-white border-gray-300 focus:ring-cyan-500 focus:border-cyan-500'} {loading || improvingNotes ? 'bg-gray-100' : ''}"
           id="medicationNotes" 
           rows="2" 
           bind:value={notes}
-          disabled={loading}
+          disabled={loading || improvingNotes}
           placeholder="Any additional notes about the medication"
         ></textarea>
       </div>
       
       {#if error}
-        <div class="alert alert-danger" role="alert">
-          <i class="fas fa-exclamation-triangle me-2"></i>{error}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-2 sm:p-3" role="alert">
+          <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+          <span class="text-xs sm:text-sm text-red-700">{error}</span>
         </div>
       {/if}
       
-      <div class="d-flex flex-column flex-sm-row gap-2">
+      <div class="action-buttons">
         <button 
           type="submit" 
-          class="btn btn-primary btn-sm flex-fill" 
-          disabled={loading}
+          class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium text-white bg-cyan-700 border border-transparent rounded-lg hover:bg-cyan-800 focus:ring-4 focus:outline-none focus:ring-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed" 
+          disabled={loading || savingMedication}
         >
-          {#if loading}
-            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+          {#if loading || savingMedication}
+            <svg class="animate-spin -ml-1 mr-2 h-3 w-3 sm:h-4 sm:w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Saving...
+          {:else}
+            <i class="fas fa-save mr-1"></i>Save Medication
           {/if}
-          <i class="fas fa-save me-1"></i>Save Medication
         </button>
         <button 
           type="button" 
-          class="btn btn-secondary btn-sm flex-fill" 
+          class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 focus:ring-4 focus:outline-none focus:ring-gray-200 disabled:opacity-50 disabled:cursor-not-allowed" 
           on:click={handleCancel}
           disabled={loading}
         >
-          <i class="fas fa-times me-1"></i>Cancel
+          <i class="fas fa-times mr-1"></i>Cancel
         </button>
       </div>
     </form>
@@ -392,101 +1183,6 @@
 </div>
 
 <style>
-  /* Responsive medication form styling */
-  .medication-form-card {
-    margin-bottom: 1rem;
-  }
-  
-  .medication-form-card .card-body {
-    padding: 1rem;
-  }
-  
-  .medication-form-card .form-label {
-    font-size: 0.9rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-  }
-  
-  .medication-form-card .form-control,
-  .medication-form-card .form-select {
-    font-size: 0.9rem;
-  }
-  
-  .medication-form-card .btn {
-    font-size: 0.85rem;
-    padding: 0.5rem 1rem;
-  }
-  
-  /* Mobile-first responsive adjustments */
-  @media (max-width: 576px) {
-    .medication-form-card .card-body {
-      padding: 0.75rem;
-    }
-    
-    .medication-form-card .form-label {
-      font-size: 0.85rem;
-    }
-    
-    .medication-form-card .form-control,
-    .medication-form-card .form-select {
-      font-size: 0.85rem;
-      padding: 0.5rem 0.75rem;
-    }
-    
-    .medication-form-card .btn {
-      font-size: 0.8rem;
-      padding: 0.45rem 0.8rem;
-    }
-    
-    .medication-form-card .d-flex.gap-2 {
-      flex-direction: column;
-    }
-    
-    .medication-form-card .d-flex.gap-2 .btn {
-      width: 100%;
-      margin-bottom: 0.5rem;
-    }
-    
-    .medication-form-card .d-flex.gap-2 .btn:last-child {
-      margin-bottom: 0;
-    }
-  }
-  
-  /* Tablet adjustments */
-  @media (min-width: 577px) and (max-width: 768px) {
-    .medication-form-card .card-body {
-      padding: 0.9rem;
-    }
-    
-    .medication-form-card .form-label {
-      font-size: 0.88rem;
-    }
-    
-    .medication-form-card .form-control,
-    .medication-form-card .form-select {
-      font-size: 0.88rem;
-    }
-  }
-  
-  /* Ensure proper spacing on all screen sizes */
-  .medication-form-card .row {
-    margin-left: -0.5rem;
-    margin-right: -0.5rem;
-  }
-  
-  .medication-form-card .row > [class*="col-"] {
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-  }
-  
-  /* Better spacing for form elements */
-  .medication-form-card .mb-3 {
-    margin-bottom: 1rem;
-  }
-  
-  @media (max-width: 576px) {
-    .medication-form-card .mb-3 {
-      margin-bottom: 0.75rem;
-    }
-  }
+  /* Minimal custom styles for MedicationForm component */
+  /* All styling is now handled by Tailwind CSS utility classes */
 </style>

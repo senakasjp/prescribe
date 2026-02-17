@@ -1,5 +1,7 @@
 <script>
   import { createEventDispatcher } from 'svelte'
+  import openaiService from '../services/openaiService.js'
+  import firebaseStorage from '../services/firebaseStorage.js'
   
   const dispatch = createEventDispatcher()
   
@@ -7,6 +9,7 @@
   export let illnesses = []
   export let prescriptions = []
   export let symptoms = []
+  export let reports = []
   export let activeMedicalTab = 'prescriptions'
   export let showSymptomsNotes = false
   export let showIllnessesNotes = false
@@ -17,14 +20,267 @@
   export let toggleIllnessesNotes
   export let togglePrescriptionsNotes
   export let groupByDate
+  export let doctorId = null
+
+  let aiSummary = ''
+  let isLoadingSummary = false
+  let summaryError = ''
+  let summaryCacheKey = ''
+  let lastSummarySignature = ''
+  let storedSummary = ''
+  let storedSummarySignature = ''
+  let isLoadingStoredSummary = false
+  let summaryLoadRequestId = 0
+  let savedReports = []
+
+  const CACHE_TTL_MS = 6 * 60 * 60 * 1000
+
+  const getLatestTimestamp = (items = []) => {
+    if (!items || items.length === 0) return 0
+    return items.reduce((latest, item) => {
+      const candidate = item?.updatedAt || item?.createdAt || item?.date || item?.lastUpdated
+      const timestamp = candidate ? new Date(candidate).getTime() : 0
+      return timestamp > latest ? timestamp : latest
+    }, 0)
+  }
+
+  const hashString = (value) => {
+    let hash = 5381
+    for (let i = 0; i < value.length; i += 1) {
+      hash = ((hash << 5) + hash) + value.charCodeAt(i)
+      hash &= 0xffffffff
+    }
+    return Math.abs(hash).toString(36)
+  }
+
+  const getSummaryPrescriptions = () => {
+    if (!Array.isArray(prescriptions)) return []
+    return prescriptions
+      .filter((prescription) => {
+        if (!Array.isArray(prescription?.medications) || prescription.medications.length === 0) return false
+        const status = String(prescription?.status || '').toLowerCase()
+        if (['deleted', 'cancelled', 'canceled', 'void'].includes(status)) return false
+        if (prescription?.deleted === true || prescription?.isDeleted === true) return false
+        return true
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime()
+        const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime()
+        return bTime - aTime
+      })
+  }
+
+  const buildMedicationsSignature = () => {
+    const summaryPrescriptions = getSummaryPrescriptions()
+    if (summaryPrescriptions.length === 0) return ''
+    const parts = summaryPrescriptions.flatMap(prescription => (
+      (prescription?.medications || []).map(medication => (
+        `${medication?.id || medication?.name || ''}:${medication?.updatedAt || medication?.createdAt || ''}:${medication?.duration || ''}:${medication?.frequency || ''}`
+      ))
+    ))
+    return hashString(parts.join('|'))
+  }
+
+  const buildSummarySignature = () => {
+    const base = {
+      patientId: selectedPatient?.id || '',
+      patientUpdatedAt: selectedPatient?.updatedAt || selectedPatient?.createdAt || '',
+      patientAllergies: selectedPatient?.allergies || '',
+      patientLongTermMedications: selectedPatient?.longTermMedications || '',
+      symptomsCount,
+      illnessesCount,
+      prescriptionsCount,
+      medicationsCount,
+      reportsCount: summaryReports?.length || 0,
+      medicationsSignature: buildMedicationsSignature(),
+      symptomsLatest: getLatestTimestamp(symptoms),
+      illnessesLatest: getLatestTimestamp(illnesses),
+      prescriptionsLatest: getLatestTimestamp(getSummaryPrescriptions()),
+      reportsLatest: getLatestTimestamp(summaryReports)
+    }
+    return JSON.stringify(base)
+  }
+
+  const mergeReports = (primary = [], secondary = []) => {
+    const map = new Map()
+    const allReports = [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])]
+    allReports.forEach((report, index) => {
+      if (!report) return
+      const fallbackKey = `${report?.title || 'untitled'}|${report?.date || report?.createdAt || ''}|${report?.type || ''}|${index}`
+      const key = report?.id || fallbackKey
+      if (!map.has(key)) {
+        map.set(key, report)
+      }
+    })
+    return Array.from(map.values())
+  }
+
+  const stripRiskFactorsSection = (html) => {
+    if (!html) return ''
+    return html.replace(/<h[34][^>]*>\s*Risk Factors\s*<\/h[34]>\s*([\s\S]*?)(?=<h[34][^>]*>|$)/gi, '').trim()
+  }
+
+  const getCachedSummary = (key) => {
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (!parsed?.summary || !parsed?.timestamp) return null
+      if (Date.now() - parsed.timestamp > CACHE_TTL_MS) {
+        localStorage.removeItem(key)
+        return null
+      }
+      return parsed.summary
+    } catch (error) {
+      console.warn('Failed to read summary cache', error)
+      return null
+    }
+  }
+
+  const setCachedSummary = (key, summary) => {
+    try {
+      localStorage.setItem(key, JSON.stringify({
+        summary,
+        timestamp: Date.now()
+      }))
+    } catch (error) {
+      console.warn('Failed to write summary cache', error)
+    }
+  }
+
+  const loadStoredSummary = async () => {
+    if (!selectedPatient?.id) return
+    const requestId = ++summaryLoadRequestId
+    isLoadingStoredSummary = true
+    try {
+      const persistedReportsPromise = firebaseStorage.getReportsByPatientId(selectedPatient.id)
+        .catch(() => [])
+
+      if (selectedPatient?.medicalSummary?.content) {
+        storedSummary = selectedPatient.medicalSummary.content || ''
+        storedSummarySignature = selectedPatient.medicalSummary.signature || ''
+        const persistedReports = await persistedReportsPromise
+        if (requestId === summaryLoadRequestId) {
+          savedReports = Array.isArray(persistedReports) ? persistedReports : []
+        }
+        return
+      }
+      const [patientRecord, persistedReports] = await Promise.all([
+        firebaseStorage.getPatientById(selectedPatient.id),
+        persistedReportsPromise
+      ])
+      if (requestId !== summaryLoadRequestId) return
+      storedSummary = patientRecord?.medicalSummary?.content || ''
+      storedSummarySignature = patientRecord?.medicalSummary?.signature || ''
+      savedReports = Array.isArray(persistedReports) ? persistedReports : []
+    } catch (error) {
+      console.warn('Failed to load stored medical summary', error)
+      if (requestId === summaryLoadRequestId) {
+        savedReports = []
+      }
+    } finally {
+      if (requestId === summaryLoadRequestId) {
+        isLoadingStoredSummary = false
+      }
+    }
+  }
+
+  const saveMedicalSummary = async (signature, summary) => {
+    if (!selectedPatient?.id) return
+    try {
+      const payload = {
+        medicalSummary: {
+          content: summary,
+          signature,
+          updatedAt: new Date().toISOString(),
+          source: 'ai'
+        }
+      }
+      await firebaseStorage.updatePatient(selectedPatient.id, payload)
+      storedSummary = summary
+      storedSummarySignature = signature
+    } catch (error) {
+      console.warn('Failed to save medical summary', error)
+    }
+  }
+
+  const generateMedicalSummary = async (signature) => {
+    if (!selectedPatient) return
+    if (!openaiService.isConfigured()) {
+      if (storedSummary) {
+        aiSummary = storedSummary
+        summaryError = ''
+      } else {
+        summaryError = 'AI summary is unavailable because OpenAI is not configured.'
+        aiSummary = ''
+      }
+      isLoadingSummary = false
+      return
+    }
+
+    isLoadingSummary = true
+    summaryError = ''
+
+    try {
+      const summaryPrescriptions = getSummaryPrescriptions()
+      const patientData = {
+        name: `${selectedPatient.firstName || ''} ${selectedPatient.lastName || ''}`.trim(),
+        firstName: selectedPatient.firstName,
+        lastName: selectedPatient.lastName,
+        age: selectedPatient.age,
+        weight: selectedPatient.weight,
+        bloodGroup: selectedPatient.bloodGroup,
+        gender: selectedPatient.gender,
+        dateOfBirth: selectedPatient.dateOfBirth,
+        allergies: selectedPatient.allergies,
+        longTermMedications: selectedPatient.longTermMedications,
+        medicalHistory: selectedPatient.medicalHistory,
+        symptoms: symptoms || [],
+        illnesses: illnesses || [],
+        prescriptions: summaryPrescriptions,
+        recentReports: summaryReports || [],
+        reportAnalyses: []
+      }
+
+      const result = await openaiService.generatePatientSummary(patientData, doctorId)
+      aiSummary = stripRiskFactorsSection(result.summary)
+      if (signature) {
+        await saveMedicalSummary(signature, aiSummary)
+      }
+      if (summaryCacheKey) {
+        setCachedSummary(summaryCacheKey, aiSummary)
+      }
+    } catch (error) {
+      summaryError = error?.message || 'Failed to generate AI summary.'
+      aiSummary = ''
+    } finally {
+      isLoadingSummary = false
+    }
+  }
 
   // Reactive tab counts
   $: symptomsCount = symptoms?.length || 0
   $: illnessesCount = illnesses?.length || 0
-  $: prescriptionsCount = prescriptions?.length || 0
+  $: summaryReports = mergeReports(reports, savedReports)
+  $: summaryPrescriptions = getSummaryPrescriptions()
+  $: prescriptionsCount = summaryPrescriptions?.length || 0
+  $: medicationsCount = summaryPrescriptions?.reduce((total, prescription) => {
+    const meds = Array.isArray(prescription?.medications) ? prescription.medications.length : 0
+    return total + meds
+  }, 0) || 0
+
+  
+  // Track if prescription medications are expanded
+  let showAllMedications = false
+  
+  // Reset expanded state when selected patient changes
+  $: if (selectedPatient) {
+    showAllMedications = false
+  }
+
   
   // Extract all medications from prescriptions and group by drug name
-  $: groupedMedications = prescriptions?.flatMap(prescription => 
+  $: groupedMedications = summaryPrescriptions?.flatMap(prescription => 
     prescription.medications?.map(medication => ({
       ...medication,
       prescriptionId: prescription.id,
@@ -45,313 +301,79 @@
     drugName,
     doses: doses.sort((a, b) => new Date(b.createdAt || b.prescriptionDate || 0) - new Date(a.createdAt || a.prescriptionDate || 0))
   })).sort((a, b) => new Date(b.doses[0].createdAt || b.doses[0].prescriptionDate || 0) - new Date(a.doses[0].createdAt || a.doses[0].prescriptionDate || 0))
+
+  // Check dispensed status for prescriptions
   
   // Handle tab change
   const handleTabChange = (tab) => {
     dispatch('tabChange', { tab })
   }
+
+  $: if (selectedPatient) {
+    loadStoredSummary()
+    const signature = buildSummarySignature()
+    if (signature !== lastSummarySignature) {
+      lastSummarySignature = signature
+      summaryCacheKey = `medicalSummary:${selectedPatient.id || 'unknown'}:${hashString(signature)}`
+      const cached = getCachedSummary(summaryCacheKey)
+      if (cached) {
+        aiSummary = stripRiskFactorsSection(cached)
+        summaryError = ''
+        isLoadingSummary = false
+      } else if (storedSummary && storedSummarySignature === signature) {
+        aiSummary = stripRiskFactorsSection(storedSummary)
+        summaryError = ''
+        isLoadingSummary = false
+      } else {
+        aiSummary = ''
+        generateMedicalSummary(signature)
+      }
+    }
+  }
 </script>
 
 {#if selectedPatient}
-  <div class="card border-2 border-info mt-3 shadow-sm">
-    <div class="card-header bg-light">
-      <div class="d-flex justify-content-between align-items-center">
-        <h6 class="mb-0">
-          <i class="fas fa-chart-pie me-2"></i>Medical Summary
+  <div class="bg-white border-2 border-blue-200 rounded-lg shadow-sm mt-3 sm:text-sm dark:bg-slate-900 dark:border-blue-400">
+    <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 dark:bg-slate-950 dark:border-slate-700">
+      <div class="flex justify-between items-center">
+        <h6 class="text-lg font-semibold text-gray-900 mb-0 dark:text-slate-100">
+          <i class="fas fa-chart-pie mr-2 text-blue-600"></i>Medical Summary
         </h6>
         <button 
-          class="btn btn-outline-secondary btn-sm" 
-          on:click={() => selectedPatient = null}
-          title="Back to patient list"
+          class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-lg transition-colors duration-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600 dark:hover:bg-slate-700" 
+          on:click={() => generateMedicalSummary(lastSummarySignature || buildSummarySignature())}
+          title="Refresh summary"
+          disabled={isLoadingSummary}
         >
-          <i class="fas fa-arrow-left me-1"></i>Back
+          {#if isLoadingSummary}
+            <i class="fas fa-spinner fa-spin mr-1"></i>Refreshing...
+          {:else}
+            <i class="fas fa-rotate mr-1"></i>Refresh
+          {/if}
         </button>
       </div>
     </div>
-    <div class="card-body p-0">
-      <!-- Medical Summary Tabs -->
-      <ul class="nav nav-tabs nav-fill" role="tablist">
-        <li class="nav-item" role="presentation">
-          <button 
-            class="nav-link {activeMedicalTab === 'symptoms' ? 'active' : ''}" 
-            on:click={() => handleTabChange('symptoms')}
-            role="tab"
-          >
-            <i class="fas fa-thermometer-half me-1"></i>Symptoms
-            <span class="badge bg-warning text-dark ms-1 small">{symptomsCount}</span>
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button 
-            class="nav-link {activeMedicalTab === 'illnesses' ? 'active' : ''}" 
-            on:click={() => handleTabChange('illnesses')}
-            role="tab"
-          >
-            <i class="fas fa-heartbeat me-1"></i>Illnesses
-            <span class="badge bg-danger ms-1 small">{illnessesCount}</span>
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button 
-            class="nav-link {activeMedicalTab === 'prescriptions' ? 'active' : ''}" 
-            on:click={() => handleTabChange('prescriptions')}
-            role="tab"
-          >
-            <i class="fas fa-pills me-1"></i>Prescriptions
-            <span class="badge bg-success ms-1 small">{prescriptionsCount}</span>
-          </button>
-        </li>
-      </ul>
-      
-      <!-- Tab Content -->
-      <div class="tab-content p-3">
-        <!-- Symptoms Tab -->
-        {#if activeMedicalTab === 'symptoms'}
-          <div class="tab-pane active">
-            {#if symptoms && symptoms.length > 0}
-              <div class="mb-2">
-                <small class="text-muted">Recent:</small>
-                <div class="mt-2">
-                  {#each groupByDate(symptoms).slice(0, 2) as group}
-                    <div class="mb-2">
-                      <small class="text-muted fw-bold small">
-                        <i class="fas fa-calendar me-1"></i>{group.date}
-                      </small>
-                      {#each group.items.slice(0, 3) as symptom}
-                        <div class="d-flex justify-content-between align-items-center mb-1 mt-1">
-                          <div class="flex-grow-1">
-                            <span class="small">
-                              {#if symptom.description}
-                                {symptom.description.length > 20 ? symptom.description.substring(0, 20) + '...' : symptom.description}
-                              {:else}
-                                <small class="text-muted">No description</small>
-                              {/if}
-                            </span>
-                          </div>
-                          <span class="badge bg-{symptom.severity === 'mild' ? 'success' : symptom.severity === 'moderate' ? 'warning' : symptom.severity === 'severe' ? 'danger' : 'dark'} text-capitalize small">
-                            {symptom.severity || 'unknown'}
-                          </span>
-                        </div>
-                      {/each}
-                      {#if group.items.length > 3}
-                        <small class="text-muted small">+{group.items.length - 3} more on this date</small>
-                      {/if}
-                    </div>
-                  {/each}
-                  {#if groupByDate(symptoms).length > 2}
-                    <small class="text-muted small">+{groupByDate(symptoms).length - 2} more days</small>
-                  {/if}
-                </div>
-              </div>
-              
-              <!-- Show Notes Button -->
-              {#if hasNotes(symptoms, 'notes')}
-                <div class="mt-2">
-                  <button 
-                    class="btn btn-outline-warning btn-sm small"
-                    on:click={toggleSymptomsNotes}
-                  >
-                    <i class="fas fa-sticky-note me-1"></i>
-                    {showSymptomsNotes ? 'Hide Notes' : 'Show Notes'}
-                  </button>
-                </div>
-              {/if}
-              
-              <!-- Notes Display -->
-              {#if showSymptomsNotes && hasNotes(symptoms, 'notes')}
-                <div class="mt-2">
-                  <small class="text-muted fw-bold">Notes:</small>
-                  <div class="mt-1">
-                    {#each symptoms.filter(s => s.notes && s.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as symptom}
-                      <div class="mb-1 p-2 bg-warning bg-opacity-10 rounded small">
-                        <div class="fw-bold">{symptom.description || 'Symptom'}</div>
-                        <div class="text-muted">{symptom.notes}</div>
-                        <small class="text-muted">
-                          <i class="fas fa-calendar me-1"></i>{symptom.createdAt ? new Date(symptom.createdAt).toLocaleDateString() : 'No date'}
-                        </small>
-                      </div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            {:else}
-              <p class="text-muted mb-0 small">
-                <i class="fas fa-info-circle me-1"></i>No symptoms
-              </p>
-            {/if}
+    <div class="p-4 dark:bg-slate-900">
+      {#if isLoadingSummary}
+        <div class="text-sm text-gray-500 dark:text-slate-300">
+          <i class="fas fa-spinner fa-spin mr-2"></i>Generating AI summary...
+        </div>
+      {:else if summaryError}
+        <div class="text-sm text-red-600">
+          <i class="fas fa-exclamation-circle mr-2"></i>{summaryError}
+        </div>
+      {:else if aiSummary}
+        <div class="rounded-lg border border-blue-200 bg-blue-50/80 p-4 dark:bg-slate-800 dark:border-blue-400">
+          <div class="prose max-w-none text-sm text-slate-800 prose-headings:text-slate-900 prose-strong:text-slate-900 prose-li:marker:text-blue-500 dark:prose-invert dark:text-slate-100 dark:prose-headings:text-slate-50 dark:prose-strong:text-slate-100 dark:prose-li:marker:text-blue-300">
+            {@html aiSummary}
           </div>
-        {/if}
+        </div>
+      {:else}
+        <div class="text-sm text-gray-500 dark:text-slate-300">
+          <i class="fas fa-info-circle mr-2"></i>No summary available.
+        </div>
+      {/if}
 
-        <!-- Illnesses Tab -->
-        {#if activeMedicalTab === 'illnesses'}
-          <div class="tab-pane active">
-            {#if illnesses && illnesses.length > 0}
-              <div class="mb-2">
-                <small class="text-muted">Recent:</small>
-                <div class="mt-2">
-                  {#each groupByDate(illnesses).slice(0, 2) as group}
-                    <div class="mb-2">
-                      <small class="text-muted fw-bold small">
-                        <i class="fas fa-calendar me-1"></i>{group.date}
-                      </small>
-                      {#each group.items.slice(0, 3) as illness}
-                        <div class="d-flex justify-content-between align-items-center mb-1 mt-1">
-                          <div class="flex-grow-1">
-                            <span class="small fw-bold small">
-                              {#if illness.name}
-                                {illness.name.length > 20 ? illness.name.substring(0, 20) + '...' : illness.name}
-                              {:else}
-                                <small class="text-muted">Unknown illness</small>
-                              {/if}
-                            </span>
-                          </div>
-                          <span class="badge bg-{illness.status === 'active' ? 'danger' : illness.status === 'chronic' ? 'warning' : illness.status === 'resolved' ? 'success' : 'secondary'} text-capitalize small">
-                            {illness.status || 'unknown'}
-                          </span>
-                        </div>
-                      {/each}
-                      {#if group.items.length > 3}
-                        <small class="text-muted small">+{group.items.length - 3} more on this date</small>
-                      {/if}
-                    </div>
-                  {/each}
-                  {#if groupByDate(illnesses).length > 2}
-                    <small class="text-muted small">+{groupByDate(illnesses).length - 2} more days</small>
-                  {/if}
-                </div>
-              </div>
-              
-              <!-- Show Notes Button -->
-              {#if hasNotes(illnesses, 'notes')}
-                <div class="mt-2">
-                  <button 
-                    class="btn btn-outline-danger btn-sm small"
-                    on:click={toggleIllnessesNotes}
-                  >
-                    <i class="fas fa-sticky-note me-1"></i>
-                    {showIllnessesNotes ? 'Hide Notes' : 'Show Notes'}
-                  </button>
-                </div>
-              {/if}
-              
-              <!-- Notes Display -->
-              {#if showIllnessesNotes && hasNotes(illnesses, 'notes')}
-                <div class="mt-2">
-                  <small class="text-muted fw-bold">Notes:</small>
-                  <div class="mt-1">
-                    {#each illnesses.filter(i => i.notes && i.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as illness}
-                      <div class="mb-1 p-2 bg-danger bg-opacity-10 rounded small">
-                        <div class="fw-bold">{illness.name || 'Illness'}</div>
-                        <div class="text-muted">{illness.notes}</div>
-                        <small class="text-muted">
-                          <i class="fas fa-calendar me-1"></i>{illness.createdAt ? new Date(illness.createdAt).toLocaleDateString() : 'No date'}
-                        </small>
-                      </div>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            {:else}
-              <p class="text-muted mb-0 small">
-                <i class="fas fa-info-circle me-1"></i>No illnesses
-              </p>
-            {/if}
-          </div>
-        {/if}
-
-        <!-- Prescriptions Tab -->
-        {#if activeMedicalTab === 'prescriptions'}
-          <div class="tab-pane active">
-            {#if allMedications && allMedications.length > 0}
-              <div class="mb-2">
-                <small class="text-muted">Medications by drug name (latest first):</small>
-                <div class="mt-2">
-                  {#each allMedications.slice(0, 10) as drugGroup}
-                    <div class="mb-3 p-2 border rounded">
-                      <div class="d-flex align-items-center mb-2">
-                        <h6 class="mb-0 fw-bold text-primary me-2">
-                          {drugGroup.drugName}
-                        </h6>
-                        <span class="badge bg-secondary small">{drugGroup.doses.length} dose{drugGroup.doses.length !== 1 ? 's' : ''}</span>
-                      </div>
-                     <div class="ms-3">
-                       {#each drugGroup.doses as dose}
-                         <div class="d-flex justify-content-between align-items-center mb-1 p-1 border-bottom">
-                           <div class="flex-grow-1">
-                             <div class="d-flex align-items-center">
-                               <span class="badge bg-primary small me-2">{dose.dosage || 'No dosage'}</span>
-                               <small class="text-muted me-3">
-                                 <i class="fas fa-clock me-1"></i>{dose.duration || 'No duration'}
-                               </small>
-                               <small class="text-muted">
-                                 <i class="fas fa-calendar me-1"></i>
-                                 {#if dose.daysAgo !== null}
-                                   {dose.daysAgo === 0 ? 'Today' : dose.daysAgo === 1 ? '1 day ago' : `${dose.daysAgo} days ago`}
-                                 {:else}
-                                   {dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
-                                 {/if}
-                               </small>
-                             </div>
-                           </div>
-                           <button 
-                             class="btn btn-outline-success btn-sm"
-                             on:click={() => addToPrescription(dose)}
-                             title="Add to today's prescription"
-                           >
-                             <i class="fas fa-plus me-1"></i>
-                             Add
-                           </button>
-                         </div>
-                       {/each}
-                     </div>
-                    </div>
-                  {/each}
-                  {#if allMedications.length > 10}
-                    <small class="text-muted small">+{allMedications.length - 10} more drug groups</small>
-                  {/if}
-                </div>
-              </div>
-              
-              <!-- Show Notes Button -->
-              {#if allMedications.some(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim()))}
-                <div class="mt-2">
-                  <button 
-                    class="btn btn-outline-success btn-sm small"
-                    on:click={togglePrescriptionsNotes}
-                  >
-                    <i class="fas fa-sticky-note me-1"></i>
-                    {showPrescriptionsNotes ? 'Hide Notes' : 'Show Notes'}
-                  </button>
-                </div>
-              {/if}
-              
-              <!-- Notes Display -->
-              {#if showPrescriptionsNotes && allMedications.some(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim()))}
-                <div class="mt-2">
-                  <small class="text-muted fw-bold">Notes:</small>
-                  <div class="mt-1">
-                    {#each allMedications.filter(drugGroup => drugGroup.doses.some(dose => dose.notes && dose.notes.trim())) as drugGroup}
-                      {#each drugGroup.doses.filter(dose => dose.notes && dose.notes.trim()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) as dose}
-                        <div class="mb-1 p-2 bg-success bg-opacity-10 rounded small">
-                          <div class="fw-bold fs-5">{drugGroup.drugName}</div>
-                          <div class="text-muted">{dose.notes}</div>
-                          <small class="text-muted">
-                            <i class="fas fa-calendar me-1"></i>{dose.createdAt ? new Date(dose.createdAt).toLocaleDateString() : 'No date'}
-                          </small>
-                        </div>
-                      {/each}
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            {:else}
-              <p class="text-muted mb-0 small">
-                <i class="fas fa-info-circle me-1"></i>No prescriptions
-              </p>
-            {/if}
-          </div>
-        {/if}
-      </div>
     </div>
   </div>
 {/if}

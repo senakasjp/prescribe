@@ -2,16 +2,48 @@
 // This service implements various strategies to minimize token consumption
 
 import aiTokenTracker from './aiTokenTracker.js'
+import { auth } from '../firebase-config.js'
 
 class OptimizedOpenAIService {
   constructor() {
-    this.apiKey = import.meta.env.VITE_OPENAI_API_KEY
-    this.baseURL = 'https://api.openai.com/v1'
+    this.baseURL = null
   }
 
   // Check if API key is configured
   isConfigured() {
-    return this.apiKey && this.apiKey !== 'undefined' && this.apiKey !== ''
+    return !!this.getFunctionsBaseUrl()
+  }
+
+  getFunctionsBaseUrl() {
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
+    const region = import.meta.env.VITE_FUNCTIONS_REGION || 'us-central1'
+    if (!projectId) return null
+    return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`
+  }
+
+  async callProxy(requestBody) {
+    const baseUrl = this.getFunctionsBaseUrl()
+    if (!baseUrl) {
+      throw new Error('OpenAI is not configured.')
+    }
+    const currentUser = auth?.currentUser
+    if (!currentUser) {
+      throw new Error('Not authenticated')
+    }
+    const token = await currentUser.getIdToken()
+    const response = await fetch(`${baseUrl}/openaiProxy`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ endpoint: 'chat/completions', requestBody })
+    })
+    const responseText = await response.text()
+    if (!response.ok) {
+      throw new Error(responseText || 'OpenAI proxy error')
+    }
+    return responseText ? JSON.parse(responseText) : {}
   }
 
   // Optimized symptom text formatting - removes unnecessary details
@@ -27,7 +59,7 @@ class OptimizedOpenAIService {
   // Generate optimized AI recommendations with minimal token usage
   async generateRecommendationsOptimized(symptoms, patientAge = null, doctorId = null) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -47,35 +79,21 @@ Provide:
 
 Be concise. Medical info only.`
 
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Be concise. Format: numbered lists only.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 400,  // Reduced from 1000
-          temperature: 0.1   // Lower for consistency
-        })
+      const data = await this.callProxy({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Be concise. Format: numbered lists only.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 400,  // Reduced from 1000
+        temperature: 0.1   // Lower for consistency
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
-      }
-
-      const data = await response.json()
       const recommendations = data.choices[0]?.message?.content || 'No recommendations available.'
 
       // Track token usage
@@ -101,7 +119,7 @@ Be concise. Medical info only.`
   // Optimized medication suggestions
   async generateMedicationSuggestionsOptimized(symptoms, currentMedications = [], doctorId = null) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -123,35 +141,21 @@ Suggest medications:
 
 Be brief. Medical info only.`
 
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Be concise. Format: numbered lists only.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 300,  // Reduced from 800
-          temperature: 0.1   // Lower for consistency
-        })
+      const data = await this.callProxy({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Be concise. Format: numbered lists only.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 300,  // Reduced from 800
+        temperature: 0.1   // Lower for consistency
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
-      }
-
-      const data = await response.json()
       const suggestions = data.choices[0]?.message?.content || 'No medication suggestions available.'
 
       // Track token usage
@@ -177,7 +181,7 @@ Be brief. Medical info only.`
   // Optimized drug interaction checking
   async checkDrugInteractionsOptimized(prescriptions, doctorId = null) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -210,35 +214,21 @@ Report only:
 
 Be brief. Critical info only.`
 
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Report only critical interactions. Be concise.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 200,  // Reduced from 1000
-          temperature: 0.05 // Very low for consistency
-        })
+      const data = await this.callProxy({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Report only critical interactions. Be concise.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 200,  // Reduced from 1000
+        temperature: 0.05 // Very low for consistency
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
-      }
-
-      const data = await response.json()
       const analysis = data.choices[0]?.message?.content || 'Unable to analyze drug interactions.'
 
       // Track token usage
@@ -345,7 +335,7 @@ Be brief. Critical info only.`
   // Combined optimized analysis - single request instead of multiple
   async generateCombinedAnalysisOptimized(symptoms, currentMedications = [], patientAge = null, doctorId = null, patientGender = null, longTermMedications = null) {
     if (!this.isConfigured()) {
-      throw new Error('OpenAI API key not configured.')
+      throw new Error('OpenAI is not configured.')
     }
 
     try {
@@ -368,35 +358,21 @@ Provide brief analysis:
 
 Be concise. Medical info only.`
 
-      const response = await fetch(`${this.baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Provide concise analysis in numbered format. Consider patient gender and long-term medications when providing medically relevant recommendations. Check for drug interactions with long-term medications.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 500,  // Single request instead of multiple
-          temperature: 0.1
-        })
+      const data = await this.callProxy({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'Medical assistant for qualified medical doctors. The reader is a qualified medical doctor. Provide concise analysis in numbered format. Consider patient gender and long-term medications when providing medically relevant recommendations. Check for drug interactions with long-term medications.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: 500,  // Single request instead of multiple
+        temperature: 0.1
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`)
-      }
-
-      const data = await response.json()
       const analysis = data.choices[0]?.message?.content || 'No analysis available.'
 
       // Track token usage
