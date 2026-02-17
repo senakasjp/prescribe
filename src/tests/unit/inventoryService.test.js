@@ -9,6 +9,7 @@ describe('inventoryService', () => {
     const validItem = {
       brandName: 'Test Brand',
       genericName: 'Test Generic',
+      dosageForm: 'Tablet',
       strength: '500',
       strengthUnit: 'mg',
       initialStock: '10',

@@ -77,9 +77,12 @@ src/tests/
 - Onboarding dummy-data lifecycle:
 - seed/check/delete behavior for new-doctor sample data in Firebase storage.
 - auth-path assertions that new doctor creation triggers dummy-data seeding.
+- Medication form dosage constraints:
+- dosage selector appears only for `Tablet`/`Capsule`.
+- non-tablet/capsule payloads save `dosage: ''` even when legacy records contain `1`.
 
 ## Current Baseline
-- Full suite status at last run: `528` passed, `0` failed (`npm run test:run`).
+- Full suite status at last run: `786` passed, `0` failed (`npm run test:run`).
 
 ## Emulator Notes
 `npm run test:run` uses Firebase emulators for Firestore + Auth.

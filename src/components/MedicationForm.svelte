@@ -22,7 +22,7 @@
 
   let name = ''
   let genericName = '' // Generic name for display
-  let dosage = '1'
+  let dosage = ''
   let dosageUnit = ''
   const DOSAGE_OPTIONS = ['1/4', '1/3', '1/2', '3/4', '1', '1 1/4', '1 1/2', '2', '3', '4']
   let dosageForm = ''
@@ -35,6 +35,7 @@
   let qts = ''
   let liquidDosePerFrequencyMl = ''
   let inventoryStrengthText = ''
+  let requiresDosageInput = false
   let timing = ''
   const TIMING_OPTIONS = [
     'Before meals (AC)',
@@ -100,6 +101,14 @@
   let nameSelectedIndex = -1
   let nameSearchTimeout = null
   let isInventoryDrug = false
+  let lastClearedDoctorId = ''
+  const clearPharmacyMedicationCache = (resolvedDoctorId) => {
+    if (!resolvedDoctorId) return
+    const clearCacheFn = pharmacyMedicationService?.clearCache
+    if (typeof clearCacheFn === 'function') {
+      clearCacheFn.call(pharmacyMedicationService, resolvedDoctorId)
+    }
+  }
   const resolveLiquidUnitFromStrength = (value) => {
     const raw = String(value || '').trim().toLowerCase()
     if (!raw) return ''
@@ -124,8 +133,13 @@
     const form = String(value || '').trim().toLowerCase()
     return form === 'liquid (bottles)' || form === 'liquid (measured)'
   }
+  const isDosageRequiredDispenseForm = (value) => {
+    const form = String(value || '').trim().toLowerCase()
+    return form.includes('tablet') || form.includes('capsule')
+  }
   const isLiquidBottleDispenseForm = (value) => String(value || '').trim().toLowerCase() === 'liquid (bottles)'
   const isMeasuredLiquidDispenseForm = (value) => String(value || '').trim().toLowerCase() === 'liquid (measured)'
+  $: requiresDosageInput = isDosageRequiredDispenseForm(dosageForm)
   $: requiresQts = Boolean(String(dosageForm || '').trim()) && (
     isLiquidBottleDispenseForm(dosageForm) ||
     (!isMeasuredLiquidDispenseForm(dosageForm) && !isLiquidStrengthUnit && !isQtsExcludedDosageForm(dosageForm))
@@ -152,10 +166,10 @@
     if (!Number.isFinite(parsed) || parsed <= 0) return null
     return parsed
   }
-  $: if (isLiquidStrengthUnit && dosage !== '1') {
-    dosage = '1'
+  $: if (!requiresDosageInput && dosage) {
+    dosage = ''
   }
-  $: if (requiresQts && dosage !== '1') {
+  $: if (requiresDosageInput && !dosage) {
     dosage = '1'
   }
   $: if (!requiresQts && qts) {
@@ -197,7 +211,7 @@
     // Force reset all variables to empty strings
     name = ''
     genericName = ''
-    dosage = '1'
+    dosage = ''
     dosageUnit = ''
     dosageForm = ''
     strength = ''
@@ -243,12 +257,12 @@
     strengthUnit = editingMedication.strengthUnit || ''
     
     // Parse dosage if it exists
-    if (editingMedication.dosage) {
+    if (isDosageRequiredDispenseForm(dosageForm) && editingMedication.dosage) {
       const rawDosage = String(editingMedication.dosage || '').trim()
       dosage = rawDosage.replace(/[a-zA-Z]+/g, '').trim() || rawDosage
       dosageUnit = ''
     } else {
-      dosage = '1'
+      dosage = isDosageRequiredDispenseForm(dosageForm) ? '1' : ''
       dosageUnit = ''
     }
     
@@ -367,7 +381,8 @@
     
     // Set generic name, dosage form, and strength from selected drug
     genericName = s.genericName || ''
-    dosageForm = normalizeDosageFormValue(s.dosageForm || s.form || s.packUnit || s.unit || '')
+    const selectedDosageForm = normalizeDosageFormValue(s.dosageForm || s.form || s.packUnit || s.unit || '')
+    dosageForm = selectedDosageForm
     strength = s.strength || ''
     strengthUnit = s.strengthUnit || ''
     isInventoryDrug = s.source === 'inventory'
@@ -384,7 +399,7 @@
     }
 
     // If the suggestion has a numeric strength like "500 mg", try to prefill dosage
-    if (s.strength && !dosage) {
+    if (s.strength && !dosage && isDosageRequiredDispenseForm(selectedDosageForm)) {
       const m = String(s.strength).match(/(\d+(?:\.\d+)?)/)
       if (m) {
         dosage = m[1]
@@ -402,9 +417,9 @@
     
     try {
       // Validate required fields
-      if (!name || (!requiresQts && !dosage) || (!requiresQts && !frequency) || (!requiresQts && !duration)) {
+      if (!name || (requiresDosageInput && !dosage) || (!requiresQts && !frequency) || (!requiresQts && !duration)) {
         if (!name) focusField('brandName')
-        else if (!requiresQts && !dosage) focusField('medicationDosage')
+        else if (requiresDosageInput && !dosage) focusField('medicationDosage')
         else if (!requiresQts && !frequency) focusField('medicationFrequency')
         else if (!requiresQts && !duration) focusField('medicationDuration')
         throw new Error('Please fill in all required fields')
@@ -511,7 +526,7 @@
         source: isInventoryDrug ? 'inventory' : 'manual',
         name: String(name ?? '').trim(),
         genericName: String(genericName ?? '').trim(),
-        dosage: String(dosage ?? '').trim(),
+        dosage: requiresDosageInput ? String(dosage ?? '').trim() : '',
         dosageUnit: '',
         dosageForm: String(dosageForm ?? '').trim(),
         strength: (() => {
@@ -559,7 +574,7 @@
       // Reset form
       name = ''
       genericName = ''
-      dosage = '1'
+      dosage = ''
       dosageUnit = ''
       dosageForm = ''
       strength = ''
@@ -704,6 +719,10 @@
   // Reset form when component mounts if not editing
   onMount(() => {
     console.log('🚀 MedicationForm mounted - checking if reset needed')
+    if (doctorId) {
+      clearPharmacyMedicationCache(doctorId)
+      lastClearedDoctorId = String(doctorId)
+    }
     if (!editingMedication) {
       console.log('🔄 New prescription - resetting to empty state')
       resetForm()
@@ -711,6 +730,12 @@
       console.log('📝 Editing existing prescription - keeping data')
     }
   })
+
+  // Ensure inventory suggestions are refreshed when Add Drug becomes visible.
+  $: if (visible && doctorId && String(doctorId) !== lastClearedDoctorId) {
+    clearPharmacyMedicationCache(doctorId)
+    lastClearedDoctorId = String(doctorId)
+  }
 </script>
 
 <div class="bg-white border-2 border-cyan-200 rounded-lg shadow-sm mx-2 sm:mx-0">
@@ -801,15 +826,15 @@
       
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         <div>
-          <label for={requiresQts ? 'medicationStrength' : 'medicationDosage'} class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+          <label for={requiresDosageInput ? 'medicationDosage' : 'medicationStrength'} class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
             Dosage Strength
-            {#if !requiresQts}
+            {#if requiresDosageInput}
               <span class="text-red-500">*</span>
             {/if}
           </label>
           <div class="space-y-2">
             <div class="flex flex-col sm:flex-row gap-2">
-              {#if !requiresQts}
+              {#if requiresDosageInput}
                 {#if isLiquidStrengthUnit}
                   <div
                     class="w-full sm:w-32 px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm bg-gray-100 text-gray-700 flex items-center justify-between"

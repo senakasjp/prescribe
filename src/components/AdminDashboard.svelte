@@ -4778,25 +4778,27 @@ firebase functions:secrets:set NOTIFY_API_KEY</code></pre>
                           bind:value={doctorAdminDiscountPercentInput}
                         />
                       </div>
-                      <button
-                        type="button"
-                        class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
-                        on:click={saveDoctorAdminDiscount}
-                        disabled={doctorAdminDiscountSaving}
-                      >
-                        {#if doctorAdminDiscountSaving}
-                          <i class="fas fa-circle-notch fa-spin mr-2"></i>Saving...
-                        {:else}
-                          <i class="fas fa-save mr-2"></i>Save Discount
+                      <div class="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60"
+                          on:click={saveDoctorAdminDiscount}
+                          disabled={doctorAdminDiscountSaving}
+                        >
+                          {#if doctorAdminDiscountSaving}
+                            <i class="fas fa-circle-notch fa-spin mr-2"></i>Saving...
+                          {:else}
+                            <i class="fas fa-save mr-2"></i>Save Discount
+                          {/if}
+                        </button>
+                        {#if doctorAdminDiscountStatus}
+                          <p class="text-xs text-gray-600">{doctorAdminDiscountStatus}</p>
                         {/if}
-                      </button>
+                      </div>
                     </div>
                     <p class="mt-2 text-xs text-gray-500">
                       This discount is applied automatically to Stripe checkout for this doctor until you change it.
                     </p>
-                    {#if doctorAdminDiscountStatus}
-                      <p class="mt-1 text-xs text-gray-600">{doctorAdminDiscountStatus}</p>
-                    {/if}
                   </div>
                 </div>
 

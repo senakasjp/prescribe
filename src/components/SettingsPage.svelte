@@ -82,6 +82,16 @@
 
   // Tab management
   let activeTab = 'edit-profile'
+  let hasRestoredSettingsTab = false
+  let restoredSettingsTabUserKey = ''
+  const SETTINGS_TAB_STORAGE_PREFIX = 'prescribe-settings-active-tab'
+  const SETTINGS_ALLOWED_TABS = new Set([
+    'edit-profile',
+    'prescription-template',
+    'external-doctor',
+    'procedures',
+    'backup-restore'
+  ])
 
   const TOUR_STORAGE_PREFIX = 'settings-tour-seen'
   let settingsTour = null
@@ -99,6 +109,42 @@
   const getSettingsTourKey = () => {
     const userKey = user?.id || user?.uid || user?.email || 'unknown'
     return `${TOUR_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const getSettingsTabStorageKey = () => {
+    const userKey = String(user?.id || user?.uid || user?.email || '').trim().toLowerCase()
+    if (!userKey) return ''
+    return `${SETTINGS_TAB_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const normalizeSettingsTab = (value) => {
+    const normalized = String(value || '').trim()
+    return SETTINGS_ALLOWED_TABS.has(normalized) ? normalized : 'edit-profile'
+  }
+
+  const restoreActiveSettingsTab = () => {
+    if (typeof localStorage === 'undefined') return
+    const storageKey = getSettingsTabStorageKey()
+    if (!storageKey) return
+    const storedTab = localStorage.getItem(storageKey)
+    if (!storedTab) return
+    activeTab = normalizeSettingsTab(storedTab)
+  }
+
+  const persistActiveSettingsTab = () => {
+    if (typeof localStorage === 'undefined') return
+    const storageKey = getSettingsTabStorageKey()
+    if (!storageKey) return
+    localStorage.setItem(storageKey, normalizeSettingsTab(activeTab))
+  }
+
+  $: {
+    const userKey = String(user?.id || user?.uid || user?.email || '').trim().toLowerCase()
+    if (typeof localStorage !== 'undefined' && userKey && userKey !== restoredSettingsTabUserKey) {
+      restoredSettingsTabUserKey = userKey
+      restoreActiveSettingsTab()
+      hasRestoredSettingsTab = true
+    }
   }
 
   const hasSeenSettingsTour = () => {
@@ -524,12 +570,20 @@
   }
 
   onMount(() => {
+    if (!hasRestoredSettingsTab) {
+      restoreActiveSettingsTab()
+      hasRestoredSettingsTab = true
+    }
     loadDeleteCode()
     startSettingsTourIfNeeded()
     if (typeof window !== 'undefined') {
       window.__startSettingsTour = startSettingsTour
     }
   })
+
+  $: if (typeof localStorage !== 'undefined' && hasRestoredSettingsTab) {
+    persistActiveSettingsTab()
+  }
 
   $: if (user?.email) {
     startSettingsTourIfNeeded()
@@ -1185,7 +1239,10 @@
 
   // Handle tab switching
   const switchTab = (tabName) => {
-    activeTab = tabName
+    activeTab = normalizeSettingsTab(tabName)
+    if (hasRestoredSettingsTab) {
+      persistActiveSettingsTab()
+    }
   }
 
   // Handle template type selection

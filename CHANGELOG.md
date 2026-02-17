@@ -1,5 +1,18 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.15 - Dosage Scope Restriction for Non-Tablet Forms (February 17, 2026)
+
+### 💊 MedicationForm Dosage Rule
+- Restricted prescription dosage value/fraction usage to `Tablet` and `Capsule` only.
+- Non-tablet/capsule forms no longer show dosage selector and no longer persist fallback dosage values (such as `1`).
+- This prevents legacy non-tablet records from showing misleading dosage values in prescription views.
+
+### 🧪 Tests
+- Updated and expanded `src/tests/components/MedicationForm.test.js`:
+  - Added matrix assertions for dosage-input visibility by dispense form.
+  - Added payload assertions to ensure non-tablet/capsule forms save `dosage: ''`.
+  - Kept tablet/capsule payload behavior covered (`dosage` remains persisted).
+
 ## Version 2.3.14 - Admin Payment Pricing Controls + Scope Rules (February 17, 2026)
 
 ### 💳 Admin Payment Pricing Module

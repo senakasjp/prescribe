@@ -46,6 +46,11 @@ npm run test:run
 npm run test:e2e
 ```
 
+## Prescription Data Rule
+- `MedicationForm` persists `dosage` only when `dosageForm` is `Tablet` or `Capsule`.
+- Non-tablet/capsule forms must submit `dosage: ''` to avoid legacy fallback values like `1` appearing in prescription displays.
+- Keep count-based quantity logic (`qts`) unchanged for forms that require count entry.
+
 ## Deployment
 Build + deploy:
 ```bash

@@ -480,6 +480,7 @@ describe('MedicationForm qty behavior', () => {
 
     const payload = onAdded.mock.calls[0][0].detail
     expect(payload.qts).toBe('')
+    expect(payload.dosage).toBe('1')
     expect(payload.prnAmount).toBe('')
     expect(payload.frequency).toBe('Twice daily (BD)')
     expect(payload.timing).toBe('After meals (PC)')
@@ -635,10 +636,90 @@ describe('MedicationForm qty behavior', () => {
     })
 
     const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosage).toBe('')
     expect(payload.qts).toBe('')
     expect(payload.liquidAmountMl).toBe('')
     expect(payload.liquidDosePerFrequencyMl).toBe('')
     expect(payload.frequency).toBe('Three times daily (TDS)')
+  })
+
+  it('hides dosage fraction selector for liquid measured even when strength unit is empty', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Liquid (measured)',
+          strength: '10',
+          strengthUnit: '',
+          dosage: '1/2',
+          qts: '',
+          frequency: 'Three times daily (TDS)',
+          duration: '3 days',
+          timing: 'After meals (PC)'
+        })
+      }
+    })
+
+    expect(container.querySelector('#medicationDosage')).toBeNull()
+  })
+
+  it('does not persist legacy dosage value for non-tablet/capsule forms', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Cream',
+          dosage: '1',
+          qts: '4',
+          frequency: '',
+          duration: ''
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosage).toBe('')
+    expect(payload.qts).toBe('4')
+  })
+
+  it('does not persist dosage for syrup even in non-qts flow', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Syrup',
+          strength: '5',
+          strengthUnit: 'ml',
+          dosage: '1',
+          frequency: 'Once daily (OD)',
+          duration: '5 days',
+          timing: 'After meals (PC)'
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosage).toBe('')
+    expect(payload.frequency).toBe('Once daily (OD)')
   })
 
   it('captures liquid bottle ml print value in payload while keeping amount', async () => {
@@ -675,26 +756,26 @@ describe('MedicationForm qty behavior', () => {
 
   describe('dosage form matrix', () => {
     const DOSAGE_FORM_MATRIX = [
-      { form: 'Tablet', expectsQts: false },
-      { form: 'Capsule', expectsQts: false },
-      { form: 'Syrup', expectsQts: false },
-      { form: 'Liquid (bottles)', expectsQts: true },
-      { form: 'Liquid (measured)', expectsQts: false },
-      { form: 'Injection', expectsQts: true },
-      { form: 'Cream', expectsQts: true },
-      { form: 'Ointment', expectsQts: true },
-      { form: 'Gel', expectsQts: true },
-      { form: 'Suppository', expectsQts: true },
-      { form: 'Inhaler', expectsQts: true },
-      { form: 'Spray', expectsQts: true },
-      { form: 'Shampoo', expectsQts: true },
-      { form: 'Packet', expectsQts: true },
-      { form: 'Roll', expectsQts: true }
+      { form: 'Tablet', expectsQts: false, expectsDosageInput: true },
+      { form: 'Capsule', expectsQts: false, expectsDosageInput: true },
+      { form: 'Syrup', expectsQts: false, expectsDosageInput: false },
+      { form: 'Liquid (bottles)', expectsQts: true, expectsDosageInput: false },
+      { form: 'Liquid (measured)', expectsQts: false, expectsDosageInput: false },
+      { form: 'Injection', expectsQts: true, expectsDosageInput: false },
+      { form: 'Cream', expectsQts: true, expectsDosageInput: false },
+      { form: 'Ointment', expectsQts: true, expectsDosageInput: false },
+      { form: 'Gel', expectsQts: true, expectsDosageInput: false },
+      { form: 'Suppository', expectsQts: true, expectsDosageInput: false },
+      { form: 'Inhaler', expectsQts: true, expectsDosageInput: false },
+      { form: 'Spray', expectsQts: true, expectsDosageInput: false },
+      { form: 'Shampoo', expectsQts: true, expectsDosageInput: false },
+      { form: 'Packet', expectsQts: true, expectsDosageInput: false },
+      { form: 'Roll', expectsQts: true, expectsDosageInput: false }
     ]
 
     it.each(DOSAGE_FORM_MATRIX)(
       'applies qts/timing visibility rules for $form',
-      async ({ form, expectsQts }) => {
+      async ({ form, expectsQts, expectsDosageInput }) => {
         const { container } = render(MedicationForm, {
           props: {
             visible: true,
@@ -722,6 +803,12 @@ describe('MedicationForm qty behavior', () => {
           expect(container.querySelector('#medicationTiming')?.required).toBe(true)
           expect(container.querySelector('#medicationFrequency')?.required).toBe(true)
           expect(container.querySelector('#medicationDuration')?.required).toBe(true)
+        }
+
+        if (expectsDosageInput) {
+          expect(container.querySelector('#medicationDosage')).toBeTruthy()
+        } else {
+          expect(container.querySelector('#medicationDosage')).toBeNull()
         }
       }
     )

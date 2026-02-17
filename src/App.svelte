@@ -38,6 +38,8 @@
   let loading = true
   let showAdminPanel = false
   const ADMIN_PANEL_STORAGE_KEY = 'prescribe-admin-panel-active'
+  const CURRENT_VIEW_STORAGE_PREFIX = 'prescribe-current-view'
+  const DOCTOR_ALLOWED_VIEWS = new Set(['home', 'patients', 'pharmacies', 'reports', 'payments', 'settings', 'help', 'notifications'])
   let doctorUsageStats = null
   let doctorQuotaStatus = null
   let refreshInterval = null
@@ -79,6 +81,7 @@
   const THEME_MODE_STORAGE_KEY = 'prescribe-theme-mode'
   let themeMediaQuery = null
   let themeMediaChangeHandler = null
+  let lastRestoredDoctorViewUserKey = ''
 
   $: effectiveCurrency = settingsDoctor?.currency
     || user?.currency
@@ -202,6 +205,35 @@
       window.Tawk_API.hideWidget()
     }
   }
+
+  const getDoctorViewUserKey = (currentUser) => {
+    if (!currentUser || currentUser.role !== 'doctor') return ''
+    return String(currentUser.id || currentUser.email || currentUser.uid || '').trim()
+  }
+
+  const getCurrentViewStorageKey = (currentUser) => {
+    const userKey = getDoctorViewUserKey(currentUser)
+    if (!userKey) return ''
+    return `${CURRENT_VIEW_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const normalizeDoctorView = (value, externalDoctor = false) => {
+    const normalized = String(value || '').trim()
+    if (!DOCTOR_ALLOWED_VIEWS.has(normalized)) return 'home'
+    if (externalDoctor && ['settings', 'reports', 'notifications', 'payments'].includes(normalized)) {
+      return 'home'
+    }
+    return normalized
+  }
+
+  const restoreCurrentViewForDoctor = (currentUser, externalDoctor = false) => {
+    if (typeof window === 'undefined') return
+    const storageKey = getCurrentViewStorageKey(currentUser)
+    if (!storageKey) return
+    const storedView = localStorage.getItem(storageKey)
+    if (!storedView) return
+    currentView = normalizeDoctorView(storedView, externalDoctor)
+  }
   
   $: isExternalDoctor = user?.role === 'doctor' && user?.externalDoctor && user?.invitedByDoctorId
   $: effectiveUser = isExternalDoctor && settingsDoctor
@@ -267,6 +299,34 @@
     } else if (!canAccessAdminPanel(user) && showAdminPanel) {
       showAdminPanel = false
       localStorage.removeItem(ADMIN_PANEL_STORAGE_KEY)
+    }
+  }
+
+  $: {
+    const doctorViewUserKey = getDoctorViewUserKey(user)
+    if (!doctorViewUserKey) {
+      lastRestoredDoctorViewUserKey = ''
+    } else if (doctorViewUserKey !== lastRestoredDoctorViewUserKey) {
+      lastRestoredDoctorViewUserKey = doctorViewUserKey
+      restoreCurrentViewForDoctor(user, isExternalDoctor)
+    }
+  }
+
+  $: if (
+    typeof window !== 'undefined' &&
+    user?.role === 'doctor' &&
+    !mobileCaptureOnly &&
+    !authOnly &&
+    !privacyOnly &&
+    !contactOnly &&
+    !helpOnly &&
+    !faqOnly &&
+    !pricingOnly &&
+    !showAdminPanel
+  ) {
+    const storageKey = getCurrentViewStorageKey(user)
+    if (storageKey) {
+      localStorage.setItem(storageKey, normalizeDoctorView(currentView, isExternalDoctor))
     }
   }
   

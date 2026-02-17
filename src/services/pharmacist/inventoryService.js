@@ -1055,7 +1055,7 @@ class InventoryService {
       // Pharmaceutical Details
       strength: itemData.strength,
       strengthUnit: itemData.strengthUnit,
-      dosageForm: itemData.dosageForm || 'tablet',
+      dosageForm: itemData.dosageForm,
       containerSize: this.toInteger(itemData.containerSize),
       containerUnit: itemData.containerUnit || '',
       route: itemData.route || 'oral',
@@ -1139,6 +1139,7 @@ class InventoryService {
     const required = [
       'brandName',
       'genericName',
+      'dosageForm',
       ...(requiresStrength ? ['strength', 'strengthUnit'] : []),
       'initialStock',
       'minimumStock',

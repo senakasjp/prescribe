@@ -34,6 +34,7 @@ describe("PaymentsPage.svelte", () => {
   }
 
   beforeEach(() => {
+    window.localStorage.clear()
     firebaseStorage.getDoctorById.mockResolvedValue(null)
     firebaseStorage.getDoctorByEmail.mockResolvedValue(null)
     firebaseStorage.getDoctorPaymentRecords.mockResolvedValue([])
@@ -118,6 +119,23 @@ describe("PaymentsPage.svelte", () => {
     expect(whatsappShareLink).toHaveAttribute("target", "_blank")
     expect(whatsappShareLink).toHaveAttribute("href", expect.stringContaining("https://wa.me/?text="))
     expect(whatsappShareLink).toHaveAttribute("href", expect.stringContaining(encodeURIComponent("register=1&ref=DR12345#signin")))
+  })
+
+  it("restores the saved active tab for the same doctor on load", async () => {
+    window.localStorage.setItem("prescribe-payments-active-tab:doctor-1", "referral")
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD",
+          doctorIdShort: "DR12345"
+        }
+      }
+    })
+
+    expect(await screen.findByText("Referral Link")).toBeInTheDocument()
   })
 
   it("shows an auth error when token is unavailable", async () => {
@@ -249,7 +267,7 @@ describe("PaymentsPage.svelte", () => {
 
     expect(screen.getByLabelText("Promo code (optional)")).toHaveValue("MPRESC26")
     expect(
-      screen.getByText(/promo code applied\. plan prices updated below/i)
+      screen.getByText(/promo code applied\..*plan prices updated below/i)
     ).toBeInTheDocument()
     expect(fetch).toHaveBeenCalledTimes(2)
     const previewBodyOne = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body || "{}"))
@@ -387,8 +405,8 @@ describe("PaymentsPage.svelte", () => {
       }
     })
 
-    expect(await screen.findByText(/Admin discount active:/i)).toBeInTheDocument()
-    expect(screen.getByText(/25%/)).toBeInTheDocument()
+    const discountStatusBanner = await screen.findByRole("status")
+    expect(discountStatusBanner).toHaveTextContent(/Admin discount active:\s*25%/i)
     expect(screen.getAllByRole("button", { name: /Pay with Stripe/i }).length).toBeGreaterThan(0)
   })
 
@@ -422,8 +440,8 @@ describe("PaymentsPage.svelte", () => {
       }
     })
 
-    expect(await screen.findByText(/Admin discount active:/i)).toBeInTheDocument()
-    expect(screen.getByText(/100%/)).toBeInTheDocument()
+    const discountStatusBanner = await screen.findByRole("status")
+    expect(discountStatusBanner).toHaveTextContent(/Admin discount active:\s*100%/i)
     expect(screen.getAllByText("FREE").length).toBeGreaterThan(0)
     expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
   })
@@ -441,8 +459,32 @@ describe("PaymentsPage.svelte", () => {
       }
     })
 
-    expect(await screen.findByText(/Admin discount active:/i)).toBeInTheDocument()
-    expect(screen.getByText(/100%/)).toBeInTheDocument()
+    const discountStatusBanner = await screen.findByRole("status")
+    expect(discountStatusBanner).toHaveTextContent(/Admin discount active:\s*100%/i)
+    expect(screen.getAllByText("FREE").length).toBeGreaterThan(0)
+    expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
+  })
+
+  it("keeps 100% discount when local profile has it even if server profile is stale", async () => {
+    firebaseStorage.getDoctorById.mockResolvedValueOnce({
+      id: "doctor-1",
+      adminStripeDiscountPercent: 0
+    })
+
+    render(PaymentsPage, {
+      props: {
+        user: {
+          id: "doctor-1",
+          email: "doctor@test.com",
+          country: "United States",
+          currency: "USD",
+          adminStripeDiscountPercent: 100
+        }
+      }
+    })
+
+    const discountStatusBanner = await screen.findByRole("status")
+    expect(discountStatusBanner).toHaveTextContent(/Admin discount active:\s*100%/i)
     expect(screen.getAllByText("FREE").length).toBeGreaterThan(0)
     expect(screen.queryByRole("button", { name: /Pay with Stripe/i })).not.toBeInTheDocument()
   })

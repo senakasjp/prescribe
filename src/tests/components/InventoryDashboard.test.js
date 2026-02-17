@@ -78,14 +78,22 @@ const renderDashboard = async () => {
 const fillRequiredAddFields = async () => {
   await fireEvent.input(document.getElementById('newItemBrandName'), { target: { value: 'Amoxil' } })
   await fireEvent.input(document.getElementById('newItemGenericName'), { target: { value: 'Amoxicillin' } })
-  const dosageSelect = document.getElementById('newItemDosageForm')
-  await fireEvent.change(dosageSelect, { target: { value: 'Tablet' } })
   await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '250' } })
   await fireEvent.input(document.getElementById('newItemInitialStock'), { target: { value: '100' } })
   await fireEvent.input(document.getElementById('newItemSellingPrice'), { target: { value: '75' } })
   await fireEvent.input(document.getElementById('newItemExpiryDate'), {
     target: { value: '2028-01-15' }
   })
+  const dosageSelect = screen.getByLabelText(/Dispense Form/i)
+  const options = Array.from(dosageSelect.options)
+  const tabletIndex = options.findIndex((option) => {
+    return String(option?.value || '').toLowerCase() === 'tablet'
+      || String(option?.textContent || '').trim().toLowerCase() === 'tablet'
+      || String(option?.__value || '').toLowerCase() === 'tablet'
+  })
+  expect(tabletIndex).toBeGreaterThan(-1)
+  options[tabletIndex].selected = true
+  dosageSelect.selectedIndex = tabletIndex
 }
 
 const ADD_FIELD_IDS = [
@@ -242,7 +250,10 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
     const dosageSelect = document.getElementById('newItemDosageForm')
-    await fireEvent.change(dosageSelect, { target: { value: 'Tablet' } })
+    const firstSelectableIndex = Array.from(dosageSelect.options).findIndex((option) => !option.disabled && option.value)
+    expect(firstSelectableIndex).toBeGreaterThan(-1)
+    dosageSelect.selectedIndex = firstSelectableIndex
+    await fireEvent.change(dosageSelect)
     const addForm = container.querySelector('form')
     expect(addForm).toBeTruthy()
     const addLabels = Array.from(addForm.querySelectorAll('label'))
@@ -365,6 +376,47 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     expect(getLabelTextByFor('editItemStrengthUnit')).toMatch(/Volume unit/i)
   })
 
+  it('prefills total volume from legacy container fields in edit and saves mapped strength values', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        id: 'item-container-1',
+        dosageForm: 'Packet',
+        strength: '',
+        strengthUnit: '',
+        containerSize: '25',
+        containerUnit: 'packets'
+      }
+    ])
+    const { container } = await renderDashboard()
+    await userEvent.click(screen.getByText('Inventory Items'))
+    await userEvent.click(screen.getAllByRole('button', { name: /^Edit$/i })[0])
+
+    const strengthField = document.getElementById('editItemStrength')
+    const strengthUnitField = document.getElementById('editItemStrengthUnit')
+    expect(strengthField).toBeTruthy()
+    expect(strengthUnitField).toBeTruthy()
+    expect(String(strengthField.value)).toBe('25')
+    expect(String(strengthUnitField.value)).toBe('packets')
+
+    const editForm = container.querySelector('form')
+    expect(editForm).toBeTruthy()
+    await fireEvent.submit(editForm)
+
+    await waitFor(() => {
+      expect(inventoryService.updateInventoryItem).toHaveBeenCalled()
+    })
+
+    const [, , payload] = inventoryService.updateInventoryItem.mock.calls.at(-1)
+    expect(payload).toEqual(expect.objectContaining({
+      dosageForm: 'Packet',
+      strength: '25',
+      strengthUnit: 'packets',
+      containerSize: '25',
+      containerUnit: 'packets'
+    }))
+  })
+
   it('renders a single currency label format without Rs + currency duplication', async () => {
     const { container } = await renderDashboard()
     expect(container.textContent || '').toMatch(/\b(?:USD|LKR|GBP|EUR)\b/)
@@ -414,6 +466,25 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     await userEvent.click(screen.getByText('Inventory Items'))
 
     expect(screen.getAllByText(/8 packs/i).length).toBeGreaterThan(0)
+  })
+
+  it('uses dispense form label when legacy non-tablet item still has packUnit tablets', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        id: 'item-legacy-cream',
+        brandName: 'LegacyCream',
+        dosageForm: 'Cream',
+        currentStock: 20,
+        packUnit: 'tablets'
+      }
+    ])
+
+    await renderDashboard()
+    await userEvent.click(screen.getByText('Inventory Items'))
+
+    expect(screen.getAllByText(/20 Cream/i).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/20 tablets/i)).not.toBeInTheDocument()
   })
 
   it('updates an inventory item and maps current stock to initialStock', async () => {

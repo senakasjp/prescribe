@@ -73,7 +73,7 @@
     strengthUnit: normalizeStrengthUnitValue('mg'),
     containerSize: '',
     containerUnit: 'ml',
-    dosageForm: normalizeDosageFormValue('tablet'),
+    dosageForm: '',
     packSize: '',
     packUnit: 'tablets',
     initialStock: '',
@@ -359,6 +359,30 @@
     return !isStrengthRequiredDispenseForm(normalized)
   }
 
+  const normalizeItemStrengthForEdit = (item) => {
+    if (!item || typeof item !== 'object') return item
+    const strength = String(item.strength ?? '').trim()
+    const strengthUnit = String(item.strengthUnit ?? '').trim()
+    const containerSize = String(item.containerSize ?? '').trim()
+    const containerUnit = String(item.containerUnit ?? '').trim()
+    const useContainerFallback = !strength && !!containerSize
+
+    return {
+      ...item,
+      dosageForm: normalizeDosageFormValue(item.dosageForm),
+      strength: useContainerFallback ? containerSize : item.strength,
+      strengthUnit: useContainerFallback
+        ? containerUnit
+        : (strengthUnit ? normalizeStrengthUnitValue(strengthUnit) : containerUnit)
+    }
+  }
+
+  const getEditStrengthUnitOptions = (value) => {
+    const normalized = normalizeStrengthUnitValue(value)
+    if (!normalized || STRENGTH_UNITS.includes(normalized)) return STRENGTH_UNITS
+    return [normalized, ...STRENGTH_UNITS]
+  }
+
   const getContainerUnitsForDispenseForm = (value) => {
     const normalized = normalizeDosageFormValue(value)
     return CONTAINER_SIZE_UNIT_OPTIONS[normalized] || ['ml', 'g', 'pcs']
@@ -392,15 +416,40 @@
           newItemForm.expiryDate = coerceDateToIso(expiryInput.value) || expiryInput.value
         }
       }
+
+      if (!isFilled(newItemForm.dosageForm)) {
+        const dosageSelect = typeof document !== 'undefined'
+          ? document.getElementById('newItemDosageForm')
+          : null
+        if (dosageSelect?.options?.length) {
+          const selectedOption = dosageSelect.options[dosageSelect.selectedIndex]
+          const domDosageValue = normalizeDosageFormValue(
+            selectedOption?.__value || selectedOption?.value || selectedOption?.textContent || ''
+          )
+          if (domDosageValue) {
+            newItemForm.dosageForm = domDosageValue
+          }
+        }
+      }
       
       const addPayload = {
         ...newItemForm,
-        dosageForm: normalizeDosageFormValue(newItemForm.dosageForm) || normalizeDosageFormValue('tablet')
+        dosageForm: normalizeDosageFormValue(newItemForm.dosageForm)
       }
 
       if (!isContainerSizeDispenseForm(addPayload.dosageForm)) {
         addPayload.containerSize = ''
         addPayload.containerUnit = ''
+      } else {
+        const containerSize = String(addPayload.containerSize ?? '').trim()
+        const containerUnit = String(addPayload.containerUnit ?? '').trim()
+        if (containerSize) {
+          addPayload.strength = containerSize
+          addPayload.strengthUnit = containerUnit || ''
+        } else {
+          addPayload.strength = ''
+          addPayload.strengthUnit = ''
+        }
       }
 
       const requiredFieldsForPayload = isStrengthRequiredDispenseForm(addPayload.dosageForm)
@@ -445,7 +494,7 @@
         strengthUnit: normalizeStrengthUnitValue('mg'),
         containerSize: '',
         containerUnit: 'ml',
-        dosageForm: normalizeDosageFormValue('tablet'),
+        dosageForm: '',
         packSize: '',
         packUnit: 'tablets',
         initialStock: '',
@@ -569,9 +618,20 @@
 
   const getStockUnitLabel = (item) => {
     const dosageForm = normalizeDosageFormValue(item?.dosageForm)
+    const packUnit = String(item?.packUnit || '').trim()
+    const normalizedPackUnit = packUnit.toLowerCase()
     if (dosageForm === 'Liquid (measured)') return 'ml'
     if (dosageForm === 'Liquid (bottles)') return 'Liquid (bottles)'
-    return item?.packUnit || 'units'
+    // Legacy records can carry a stale "tablets" packUnit for non-tablet/capsule forms.
+    if (
+      dosageForm
+      && dosageForm !== 'Tablet'
+      && dosageForm !== 'Capsule'
+      && (normalizedPackUnit === 'tablet' || normalizedPackUnit === 'tablets')
+    ) {
+      return dosageForm
+    }
+    return packUnit || 'units'
   }
 
   const escapeHtml = (value) => String(value ?? '')
@@ -693,12 +753,14 @@
         return
       }
 
-      if (isStrengthRequiredDispenseForm(selectedItem?.dosageForm) && (!selectedItem.strength || !selectedItem.strengthUnit)) {
+      const normalizedSelectedItem = normalizeItemStrengthForEdit(selectedItem)
+
+      if (isStrengthRequiredDispenseForm(normalizedSelectedItem?.dosageForm) && (!normalizedSelectedItem.strength || !normalizedSelectedItem.strengthUnit)) {
         notifyError('Strength and strength unit are required')
         return
       }
 
-      if (!String(selectedItem.dosageForm || '').trim()) {
+      if (!String(normalizedSelectedItem.dosageForm || '').trim()) {
         notifyError('Dispense Form is required')
         await focusFieldById('editItemDosageForm')
         return
@@ -709,7 +771,7 @@
         { key: 'minimumStock', id: 'editItemMinimumStock', label: 'Minimum Stock', required: true }
       ]
       for (const rule of editIntegerValidationRules) {
-        const raw = String(selectedItem[rule.key] ?? '').trim()
+        const raw = String(normalizedSelectedItem[rule.key] ?? '').trim()
         if (!rule.required && raw === '') continue
         if (!isIntegerString(raw)) {
           notifyError(`${rule.label} must be an integer`)
@@ -720,12 +782,26 @@
 
       // Map selectedItem data to the format expected by validation
       const itemDataForUpdate = {
-        ...selectedItem,
+        ...normalizedSelectedItem,
         // Map currentStock to initialStock for validation
-        initialStock: selectedItem.currentStock,
-        category: selectedItem.category || 'prescription',
+        initialStock: normalizedSelectedItem.currentStock,
+        category: normalizedSelectedItem.category || 'prescription',
         // Ensure brandName is present (it should be readonly in the form)
-        brandName: selectedItem.brandName || selectedItem.drugName
+        brandName: normalizedSelectedItem.brandName || normalizedSelectedItem.drugName
+      }
+      if (!isFilled(itemDataForUpdate.strength) && isFilled(itemDataForUpdate.containerSize)) {
+        itemDataForUpdate.strength = String(itemDataForUpdate.containerSize).trim()
+      }
+      if (!isFilled(itemDataForUpdate.strengthUnit) && isFilled(itemDataForUpdate.containerUnit)) {
+        itemDataForUpdate.strengthUnit = String(itemDataForUpdate.containerUnit).trim()
+      }
+      if (isContainerSizeDispenseForm(itemDataForUpdate.dosageForm)) {
+        if (!isFilled(itemDataForUpdate.containerSize) && isFilled(itemDataForUpdate.strength)) {
+          itemDataForUpdate.containerSize = String(itemDataForUpdate.strength).trim()
+        }
+        if (!isFilled(itemDataForUpdate.containerUnit) && isFilled(itemDataForUpdate.strengthUnit)) {
+          itemDataForUpdate.containerUnit = String(itemDataForUpdate.strengthUnit).trim()
+        }
       }
 
       // Update the item using the inventory service
@@ -1128,11 +1204,7 @@
                           <button 
                             class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-xs font-medium transition-colors duration-200"
                             on:click={() => {
-                              selectedItem = {
-                                ...item,
-                                strengthUnit: normalizeStrengthUnitValue(item?.strengthUnit),
-                                dosageForm: normalizeDosageFormValue(item?.dosageForm)
-                              }
+                              selectedItem = normalizeItemStrengthForEdit(item)
                               showEditItemModal = true
                             }}
                           >
@@ -1203,11 +1275,7 @@
                   <button 
                     class="flex-1 text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
                     on:click={() => {
-                      selectedItem = {
-                        ...item,
-                        strengthUnit: normalizeStrengthUnitValue(item?.strengthUnit),
-                        dosageForm: normalizeDosageFormValue(item?.dosageForm)
-                      }
+                      selectedItem = normalizeItemStrengthForEdit(item)
                       showEditItemModal = true
                     }}
                   >
@@ -1456,6 +1524,7 @@
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">Select dispense form</option>
                   {#each DOSAGE_FORM_OPTIONS as option}
                     <option value={option}>{option}</option>
                   {/each}
@@ -1835,7 +1904,7 @@
                   disabled
                   title={shouldUseVolumeLabels(selectedItem?.dosageForm) ? 'Volume unit cannot be changed' : 'Strength Unit cannot be changed'}
                 >
-                  {#each STRENGTH_UNITS as unit}
+                  {#each getEditStrengthUnitOptions(selectedItem?.strengthUnit) as unit}
                     <option value={unit}>{unit}</option>
                   {/each}
                 </select>
