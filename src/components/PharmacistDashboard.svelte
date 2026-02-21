@@ -717,6 +717,27 @@
     return names
   }
 
+  const normalizeDispenseForm = (value) => String(value || '').trim().toLowerCase()
+  const isMeasuredLiquidForm = (value) => {
+    const form = normalizeDispenseForm(value)
+    return form === 'liquid (measured)' || form.includes('syrup')
+  }
+  const isBottleLiquidForm = (value) => {
+    const form = normalizeDispenseForm(value)
+    return form === 'liquid (bottles)' || form === 'liquid' || form.includes('bottle')
+  }
+  const isLiquidFormCompatible = (medicationForm, inventoryForm) => {
+    const medicationMeasured = isMeasuredLiquidForm(medicationForm)
+    const medicationBottle = isBottleLiquidForm(medicationForm)
+    const inventoryMeasured = isMeasuredLiquidForm(inventoryForm)
+    const inventoryBottle = isBottleLiquidForm(inventoryForm)
+
+    // Prevent mixing measured-liquid and bottle-liquid stock rows.
+    if (medicationMeasured && inventoryBottle) return false
+    if (medicationBottle && inventoryMeasured) return false
+    return true
+  }
+
   // Find matching inventory items for a medication using flexible name matching
   const findMatchingInventoryItems = (medication, inventoryItems) => {
     if (!medication || !inventoryItems || inventoryItems.length === 0) {
@@ -726,11 +747,16 @@
 
     const medicationNames = buildMedicationNameSet(medication)
     const medicationKey = medication.medicationKey || buildMedicationKey(medication)
+    const medicationForm = medication?.dosageForm || medication?.form || ''
     console.log('🔍 Matching medication using names:', Array.from(medicationNames))
 
     const matches = []
 
     for (const item of inventoryItems) {
+      const inventoryForm = item?.dosageForm || item?.packUnit || item?.unit || ''
+      if (!isLiquidFormCompatible(medicationForm, inventoryForm)) {
+        continue
+      }
       const itemNames = buildInventoryNameSet(item)
       const itemKey = buildInventoryKey(item)
       const keyMatch = medicationKey && itemKey && medicationKey === itemKey

@@ -449,6 +449,8 @@
       strengthUnit: d.strengthUnit || d.unit || '',
       containerSize: d.containerSize ?? '',
       containerUnit: d.containerUnit || '',
+      totalVolume: d.totalVolume ?? d.containerSize ?? '',
+      volumeUnit: d.volumeUnit || d.containerUnit || '',
       source: 'inventory',
       currentStock: d.currentStock || 0,
       packUnit: d.packUnit || '',
@@ -527,10 +529,13 @@
     totalVolume = String(s.totalVolume ?? s.containerSize ?? '').trim()
     volumeUnit = String(s.volumeUnit || s.containerUnit || volumeUnit || 'ml').trim() || 'ml'
     isInventoryDrug = s.source === 'inventory'
+    const suggestionVolumeText = [String(s.totalVolume ?? s.containerSize ?? '').trim(), String(s.volumeUnit || s.containerUnit || '').trim()]
+      .filter(Boolean)
+      .join(' ')
     inventoryStrengthText = isInventoryDrug
       ? (
-        [String(s.strength || '').trim(), String(s.strengthUnit || '').trim()].filter(Boolean).join(' ')
-        || [String(s.containerSize ?? '').trim(), String(s.containerUnit || '').trim()].filter(Boolean).join(' ')
+        suggestionVolumeText
+        || [String(s.strength || '').trim(), String(s.strengthUnit || '').trim()].filter(Boolean).join(' ')
       )
       : ''
 

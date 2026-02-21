@@ -88,6 +88,30 @@ class ChargeCalculationService {
     return dosageForm === 'liquid (measured)' || dosageForm.includes('syrup')
   }
 
+  normalizeDispenseForm(value) {
+    return String(value || '').trim().toLowerCase()
+  }
+
+  isMeasuredLiquidForm(value) {
+    const form = this.normalizeDispenseForm(value)
+    return form === 'liquid (measured)' || form.includes('syrup')
+  }
+
+  isBottleLiquidForm(value) {
+    const form = this.normalizeDispenseForm(value)
+    return form === 'liquid (bottles)' || form === 'liquid' || form.includes('bottle')
+  }
+
+  isLiquidFormCompatible(medicationForm, inventoryForm) {
+    const medicationMeasured = this.isMeasuredLiquidForm(medicationForm)
+    const medicationBottle = this.isBottleLiquidForm(medicationForm)
+    const inventoryMeasured = this.isMeasuredLiquidForm(inventoryForm)
+    const inventoryBottle = this.isBottleLiquidForm(inventoryForm)
+    if (medicationMeasured && inventoryBottle) return false
+    if (medicationBottle && inventoryMeasured) return false
+    return true
+  }
+
   resolveStrengthToMl(value, unitHint = '') {
     if (value === null || value === undefined || value === '') return null
     const normalized = String(value).trim().toLowerCase()
@@ -585,9 +609,14 @@ class ChargeCalculationService {
     const medicationNames = this.buildMedicationNameSet(medication)
     const medicationKey = this.buildMedicationKey(medication)
     const medicationCapacity = this.resolveMedicationCapacity(medication)
+    const medicationForm = medication?.dosageForm || medication?.form || ''
     const matches = []
 
     for (const item of inventoryItems) {
+      const inventoryForm = item?.dosageForm || item?.packUnit || item?.unit || ''
+      if (!this.isLiquidFormCompatible(medicationForm, inventoryForm)) {
+        continue
+      }
       const itemNames = this.buildInventoryNameSet(item)
       const itemKey = this.buildInventoryKey(item)
       const itemCapacity = this.resolveInventoryCapacity(item)
@@ -635,6 +664,7 @@ class ChargeCalculationService {
   buildInventoryPricingSources(medication, inventoryItems, inventoryContext) {
     const isMeasuredLiquid = this.isMeasuredLiquidMedication(medication)
     const medicationCapacity = this.resolveMedicationCapacity(medication)
+    const medicationForm = medication?.dosageForm || medication?.form || ''
     const sources = []
     const inventoryById = new Map()
     inventoryItems.forEach(item => inventoryById.set(item.id, item))
@@ -643,6 +673,11 @@ class ChargeCalculationService {
       if (!medicationCapacity) return true
       const entryCapacity = this.resolveInventoryCapacity(entry)
       return !entryCapacity || entryCapacity === medicationCapacity
+    }
+    const isFormCompatible = (entry) => {
+      if (!entry) return false
+      const inventoryForm = entry?.dosageForm || entry?.packUnit || entry?.unit || ''
+      return this.isLiquidFormCompatible(medicationForm, inventoryForm)
     }
 
     const addSource = (entry) => {
@@ -701,10 +736,10 @@ class ChargeCalculationService {
     if (inventoryContext && Array.isArray(inventoryContext.matches) && inventoryContext.matches.length > 0) {
       inventoryContext.matches.forEach(match => {
         const resolved = match.inventoryItemId ? inventoryById.get(match.inventoryItemId) : null
-        if (resolved && isCapacityCompatible(resolved) && (!resolved.batches || resolved.batches.length === 0)) {
+        if (resolved && isCapacityCompatible(resolved) && isFormCompatible(resolved) && (!resolved.batches || resolved.batches.length === 0)) {
           addSource(resolved)
         }
-        if (!isCapacityCompatible(match) && !isCapacityCompatible(resolved)) {
+        if ((!isCapacityCompatible(match) && !isCapacityCompatible(resolved)) || (!isFormCompatible(match) && !isFormCompatible(resolved))) {
           return
         }
         addSource({
@@ -723,7 +758,7 @@ class ChargeCalculationService {
 
     if (sources.length === 0 && inventoryContext?.inventoryItemId) {
       const resolved = inventoryById.get(inventoryContext.inventoryItemId)
-      if (resolved && isCapacityCompatible(resolved)) {
+      if (resolved && isCapacityCompatible(resolved) && isFormCompatible(resolved)) {
         addSource(resolved)
       }
     }

@@ -489,6 +489,53 @@ describe('chargeCalculationService', () => {
       expect(result.medicationBreakdown[0].unitCost).toBe(50)
     })
 
+    it('does not mix measured-liquid inventory into liquid-bottle pricing for same drug name', () => {
+      const prescription = {
+        id: 'rx-liquid-bottle-vs-measured',
+        medications: [
+          {
+            name: 'Dompi Suspension 5mg/5ml',
+            dosageForm: 'Liquid (bottles)',
+            amount: '2',
+            qts: '2',
+            strength: '10',
+            strengthUnit: 'ml'
+          }
+        ]
+      }
+
+      const inventoryItems = [
+        {
+          id: 'dompi-measured',
+          brandName: 'Dompi Suspension 5mg/5ml',
+          dosageForm: 'Liquid (measured)',
+          unit: 'ml',
+          currentStock: 1000,
+          sellingPrice: 4, // per-ml price
+          expiryDate: '2027-01-01'
+        },
+        {
+          id: 'dompi-bottle',
+          brandName: 'Dompi Suspension 5mg/5ml',
+          dosageForm: 'Liquid (bottles)',
+          currentStock: 20,
+          sellingPrice: 120, // per-bottle price
+          expiryDate: '2027-01-02'
+        }
+      ]
+
+      const result = chargeCalculationService.calculateExpectedDrugChargesFromInventory(
+        prescription,
+        inventoryItems
+      )
+
+      expect(result.medicationBreakdown).toHaveLength(1)
+      expect(result.medicationBreakdown[0].quantity).toBe(2)
+      expect(result.medicationBreakdown[0].unitCost).toBe(120)
+      expect(result.medicationBreakdown[0].totalCost).toBe(240)
+      expect(result.medicationBreakdown[0].allocationDetails[0].inventoryItemId).toBe('dompi-bottle')
+    })
+
     it('matches non-strength forms by capacity so 15 g is not priced as 10 g', () => {
       const prescription = {
         id: 'rx-cream-capacity',

@@ -250,4 +250,16 @@ describe('PharmacistDashboard', () => {
     expect(source).toContain('qts: qtsValue')
   })
 
+  it('prevents measured-liquid and bottle-liquid rows from mixing in Remaining', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const isLiquidFormCompatible = (medicationForm, inventoryForm) => {')
+    expect(source).toContain('if (medicationMeasured && inventoryBottle) return false')
+    expect(source).toContain('if (medicationBottle && inventoryMeasured) return false')
+    expect(source).toContain('if (!isLiquidFormCompatible(medicationForm, inventoryForm)) {')
+  })
+
 })

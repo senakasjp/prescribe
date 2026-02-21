@@ -403,6 +403,51 @@ describe('MedicationForm qty behavior', () => {
     expect(volumeUnitSelect?.value).toBe('ml')
   })
 
+  it('prefers inventory total volume over strength text when selecting liquid-bottle suggestion', async () => {
+    vi.useFakeTimers()
+    try {
+      pharmacyMedicationService.searchMedicationsFromPharmacies.mockResolvedValueOnce([
+        {
+          brandName: 'Dompi Suspension 5mg/5ml',
+          genericName: 'Domperidone',
+          dosageForm: 'Liquid (bottles)',
+          strength: '10',
+          strengthUnit: 'ml',
+          totalVolume: '30',
+          volumeUnit: 'ml',
+          currentStock: 50
+        }
+      ])
+
+      const { container, getByText } = render(MedicationForm, {
+        props: {
+          visible: true,
+          doctorId: 'doc-1',
+          editingMedication: null
+        }
+      })
+
+      const brandInput = container.querySelector('#brandName')
+      await fireEvent.input(brandInput, { target: { value: 'Dompi' } })
+      vi.advanceTimersByTime(300)
+
+      await waitFor(() => {
+        expect(getByText('Dompi Suspension 5mg/5ml (Domperidone)')).toBeTruthy()
+      })
+
+      await fireEvent.click(getByText('Dompi Suspension 5mg/5ml (Domperidone)'))
+
+      const totalVolumeInput = container.querySelector('#medicationTotalVolume')
+      const volumeUnitSelect = container.querySelector('#medicationVolumeUnit')
+      expect(totalVolumeInput?.value).toBe('30')
+      expect(volumeUnitSelect?.value).toBe('ml')
+      expect(totalVolumeInput?.disabled).toBe(true)
+      expect(volumeUnitSelect?.disabled).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('uses manual numeric entry fields for Count and PDF liquid value in liquid bottles', async () => {
     const { container } = render(MedicationForm, {
       props: {
