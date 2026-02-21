@@ -83,6 +83,95 @@ describe('inventoryService', () => {
         strengthUnit: ''
       })).toThrow('Missing required fields: strength, strengthUnit')
     })
+
+    it('accepts decimal strength values', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Tablet',
+        strength: '2.5',
+        strengthUnit: 'mg'
+      })).not.toThrow()
+    })
+
+    it('accepts strength values up to 3 decimal places', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Tablet',
+        strength: '2.123',
+        strengthUnit: 'mg'
+      })).not.toThrow()
+    })
+
+    it('rejects textual strength values', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Tablet',
+        strength: '2.5mg',
+        strengthUnit: 'mg'
+      })).toThrow('Strength must be a valid positive number')
+    })
+
+    it('rejects scientific notation strength values', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Tablet',
+        strength: '1e3',
+        strengthUnit: 'mg'
+      })).toThrow('Strength must be a valid positive number')
+    })
+
+    it('rejects strength values with more than 3 decimal places', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Tablet',
+        strength: '2.1234',
+        strengthUnit: 'mg'
+      })).toThrow('Strength must be a valid positive number')
+    })
+
+    it('accepts decimal total volume values', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Cream',
+        strength: '',
+        strengthUnit: '',
+        containerSize: '10.5',
+        containerUnit: 'g'
+      })).not.toThrow()
+    })
+
+    it('accepts total volume values up to 3 decimal places', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Cream',
+        strength: '',
+        strengthUnit: '',
+        containerSize: '10.125',
+        containerUnit: 'g'
+      })).not.toThrow()
+    })
+
+    it('rejects textual total volume values', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Cream',
+        strength: '',
+        strengthUnit: '',
+        containerSize: '10g',
+        containerUnit: 'g'
+      })).toThrow('Total volume must be a valid positive number')
+    })
+
+    it('rejects total volume values with more than 3 decimal places', () => {
+      expect(() => inventoryService.validateInventoryItem({
+        ...validItem,
+        dosageForm: 'Cream',
+        strength: '',
+        strengthUnit: '',
+        containerSize: '10.1234',
+        containerUnit: 'g'
+      })).toThrow('Total volume must be a valid positive number')
+    })
   })
 
   describe('calculateStockTurnover', () => {

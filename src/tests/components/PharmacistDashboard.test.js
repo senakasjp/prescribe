@@ -240,4 +240,14 @@ describe('PharmacistDashboard', () => {
     expect(source).toContain('{getAmountUnitLabel(prescription.id, medication)}')
   })
 
+  it('mirrors edited amount into qts for count-based pricing forms', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const shouldMirrorAmountToQts = chargeCalculationService.isQtsMedication(medication)')
+    expect(source).toContain('qts: qtsValue')
+  })
+
 })

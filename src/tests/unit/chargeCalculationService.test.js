@@ -489,6 +489,57 @@ describe('chargeCalculationService', () => {
       expect(result.medicationBreakdown[0].unitCost).toBe(50)
     })
 
+    it('matches non-strength forms by capacity so 15 g is not priced as 10 g', () => {
+      const prescription = {
+        id: 'rx-cream-capacity',
+        medications: [
+          {
+            name: 'Dermketa',
+            dosageForm: 'Cream',
+            qts: '2',
+            totalVolume: '15',
+            volumeUnit: 'g',
+            strength: '15',
+            strengthUnit: 'g'
+          }
+        ]
+      }
+
+      const inventoryItems = [
+        {
+          id: 'cream-10g',
+          brandName: 'Dermketa',
+          dosageForm: 'Cream',
+          containerSize: 10,
+          containerUnit: 'g',
+          currentStock: 20,
+          sellingPrice: 171,
+          expiryDate: '2027-06-01'
+        },
+        {
+          id: 'cream-15g',
+          brandName: 'Dermketa',
+          dosageForm: 'Cream',
+          containerSize: 15,
+          containerUnit: 'g',
+          currentStock: 20,
+          sellingPrice: 420,
+          expiryDate: '2027-06-02'
+        }
+      ]
+
+      const result = chargeCalculationService.calculateExpectedDrugChargesFromInventory(
+        prescription,
+        inventoryItems
+      )
+
+      expect(result.medicationBreakdown).toHaveLength(1)
+      expect(result.medicationBreakdown[0].quantity).toBe(2)
+      expect(result.medicationBreakdown[0].unitCost).toBe(420)
+      expect(result.medicationBreakdown[0].totalCost).toBe(840)
+      expect(result.medicationBreakdown[0].allocationDetails[0].inventoryItemId).toBe('cream-15g')
+    })
+
     it('returns explicit pricing reason when inventory match has stock but missing selling price', async () => {
       inventoryService.getInventoryItems.mockResolvedValue([
         {

@@ -199,6 +199,11 @@
     if (!match) return { value: '', unit: '' }
     return { value: match[1], unit: match[2].toLowerCase() }
   }
+  const parseAmountWithUnit = (value) => {
+    const match = String(value || '').trim().match(/(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)\b/i)
+    if (!match) return { value: '', unit: '' }
+    return { value: match[1], unit: match[2] }
+  }
   const moveVolumeFromStrengthForInventoryLiquidBottles = () => {
     if (!isInventoryDrug || !isLiquidBottlesDispenseForm(dosageForm)) return
     if (String(totalVolume || '').trim()) return
@@ -283,7 +288,7 @@
     qts = ''
     liquidDosePerFrequencyMl = ''
   }
-  $: if (!isLiquidBottlesDispenseForm(dosageForm)) {
+  $: if (!isLiquidBottlesDispenseForm(dosageForm) && supportsStrengthInput) {
     totalVolume = ''
   }
   
@@ -523,7 +528,10 @@
     volumeUnit = String(s.volumeUnit || s.containerUnit || volumeUnit || 'ml').trim() || 'ml'
     isInventoryDrug = s.source === 'inventory'
     inventoryStrengthText = isInventoryDrug
-      ? [String(s.strength || '').trim(), String(s.strengthUnit || '').trim()].filter(Boolean).join(' ')
+      ? (
+        [String(s.strength || '').trim(), String(s.strengthUnit || '').trim()].filter(Boolean).join(' ')
+        || [String(s.containerSize ?? '').trim(), String(s.containerUnit || '').trim()].filter(Boolean).join(' ')
+      )
       : ''
 
     if ((!strength || !strengthUnit) && s.strength) {
@@ -538,6 +546,13 @@
       if (parsedVolume.value) {
         totalVolume = parsedVolume.value
         volumeUnit = parsedVolume.unit || volumeUnit || 'ml'
+      }
+    }
+    if (!supportsStrengthForDosageForm(selectedDosageForm) && !totalVolume) {
+      const parsedAmount = parseAmountWithUnit(`${s.strength || ''} ${s.strengthUnit || ''}`)
+      if (parsedAmount.value) {
+        totalVolume = parsedAmount.value
+        volumeUnit = parsedAmount.unit || volumeUnit
       }
     }
     moveVolumeFromStrengthForInventoryLiquidBottles()
@@ -679,6 +694,13 @@
         }
       }
       
+      const storesVolumeInLineTwo = shouldUseTotalVolumeLabel(dosageForm, strengthUnit)
+      const enteredVolumeValue = String(totalVolume ?? '').trim() || String(strength ?? '').trim()
+      const enteredVolumeUnit = String(volumeUnit ?? '').trim() || String(strengthUnit ?? '').trim()
+      const parsedVolumeFromInventoryText = parseAmountWithUnit(inventoryStrengthText)
+      const resolvedVolumeValue = enteredVolumeValue || parsedVolumeFromInventoryText.value
+      const resolvedVolumeUnit = enteredVolumeUnit || parsedVolumeFromInventoryText.unit
+
       const medicationData = {
         source: isInventoryDrug ? 'inventory' : 'manual',
         name: String(name ?? '').trim(),
@@ -691,6 +713,7 @@
         dosageUnit: '',
         dosageForm: String(dosageForm ?? '').trim(),
         strength: (() => {
+          if (storesVolumeInLineTwo) return ''
           const normalizedStrength = String(strength ?? '').trim()
           if (normalizedStrength) return normalizedStrength
           if (!supportsStrengthInput) return ''
@@ -700,6 +723,7 @@
           return match?.[1] || normalizedStrength
         })(),
         strengthUnit: (() => {
+          if (storesVolumeInLineTwo) return ''
           const normalizedUnit = String(strengthUnit ?? '').trim()
           if (!supportsStrengthInput) return ''
           if (normalizedUnit) return normalizedUnit
@@ -708,10 +732,10 @@
           const match = inventoryStrengthText.match(/^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)?\s*$/)
           return match?.[2] || normalizedUnit
         })(),
-        totalVolume: isLiquidBottlesDispenseForm(dosageForm) ? String(totalVolume ?? '').trim() : '',
-        volumeUnit: isLiquidBottlesDispenseForm(dosageForm) ? String(volumeUnit ?? '').trim() : '',
-        containerSize: isLiquidBottlesDispenseForm(dosageForm) ? String(totalVolume ?? '').trim() : '',
-        containerUnit: isLiquidBottlesDispenseForm(dosageForm) ? String(volumeUnit ?? '').trim() : '',
+        totalVolume: storesVolumeInLineTwo ? resolvedVolumeValue : '',
+        volumeUnit: storesVolumeInLineTwo ? resolvedVolumeUnit : '',
+        containerSize: storesVolumeInLineTwo ? resolvedVolumeValue : '',
+        containerUnit: storesVolumeInLineTwo ? resolvedVolumeUnit : '',
         inventoryStrengthText: isInventoryDrug ? String(inventoryStrengthText || '').trim() : '',
         route: String(route ?? '').trim(),
         instructions: String(instructions ?? '').trim(),

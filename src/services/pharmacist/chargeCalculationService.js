@@ -584,13 +584,24 @@ class ChargeCalculationService {
 
     const medicationNames = this.buildMedicationNameSet(medication)
     const medicationKey = this.buildMedicationKey(medication)
+    const medicationCapacity = this.resolveMedicationCapacity(medication)
     const matches = []
 
     for (const item of inventoryItems) {
       const itemNames = this.buildInventoryNameSet(item)
       const itemKey = this.buildInventoryKey(item)
+      const itemCapacity = this.resolveInventoryCapacity(item)
 
       const keyMatch = medicationKey && itemKey && itemKey === medicationKey
+      const hasCapacityMismatch = Boolean(
+        medicationCapacity &&
+        itemCapacity &&
+        medicationCapacity !== itemCapacity
+      )
+      if (hasCapacityMismatch) {
+        continue
+      }
+      const capacityMatch = Boolean(medicationCapacity && itemCapacity && medicationCapacity === itemCapacity)
 
       const hasMatch = Array.from(medicationNames).some(medName =>
         Array.from(itemNames).some(invName =>
@@ -604,22 +615,35 @@ class ChargeCalculationService {
       )
 
       if (keyMatch || hasMatch) {
-        matches.push(item)
+        matches.push({
+          item,
+          score: (keyMatch ? 2 : 0) + (capacityMatch ? 1 : 0)
+        })
       }
     }
 
     return matches.sort((a, b) => {
-      const aTime = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity
-      const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity
+      if (b.score !== a.score) return b.score - a.score
+      const aItem = a.item
+      const bItem = b.item
+      const aTime = aItem.expiryDate ? new Date(aItem.expiryDate).getTime() : Infinity
+      const bTime = bItem.expiryDate ? new Date(bItem.expiryDate).getTime() : Infinity
       return aTime - bTime
-    })
+    }).map((entry) => entry.item)
   }
 
   buildInventoryPricingSources(medication, inventoryItems, inventoryContext) {
     const isMeasuredLiquid = this.isMeasuredLiquidMedication(medication)
+    const medicationCapacity = this.resolveMedicationCapacity(medication)
     const sources = []
     const inventoryById = new Map()
     inventoryItems.forEach(item => inventoryById.set(item.id, item))
+    const isCapacityCompatible = (entry) => {
+      if (!entry) return false
+      if (!medicationCapacity) return true
+      const entryCapacity = this.resolveInventoryCapacity(entry)
+      return !entryCapacity || entryCapacity === medicationCapacity
+    }
 
     const addSource = (entry) => {
       if (!entry) return
@@ -677,8 +701,11 @@ class ChargeCalculationService {
     if (inventoryContext && Array.isArray(inventoryContext.matches) && inventoryContext.matches.length > 0) {
       inventoryContext.matches.forEach(match => {
         const resolved = match.inventoryItemId ? inventoryById.get(match.inventoryItemId) : null
-        if (resolved && (!resolved.batches || resolved.batches.length === 0)) {
+        if (resolved && isCapacityCompatible(resolved) && (!resolved.batches || resolved.batches.length === 0)) {
           addSource(resolved)
+        }
+        if (!isCapacityCompatible(match) && !isCapacityCompatible(resolved)) {
+          return
         }
         addSource({
           inventoryItemId: match.inventoryItemId || resolved?.id || null,
@@ -696,7 +723,7 @@ class ChargeCalculationService {
 
     if (sources.length === 0 && inventoryContext?.inventoryItemId) {
       const resolved = inventoryById.get(inventoryContext.inventoryItemId)
-      if (resolved) {
+      if (resolved && isCapacityCompatible(resolved)) {
         addSource(resolved)
       }
     }
@@ -852,6 +879,57 @@ class ChargeCalculationService {
     return { strength: normalized, unit: fallbackUnit || '' }
   }
 
+  normalizeNumericText(value) {
+    const raw = String(value ?? '').trim()
+    if (!raw) return ''
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return raw
+    return String(parsed)
+  }
+
+  normalizeAmountWithUnit(amount, unit = '') {
+    const normalizedAmount = this.normalizeNumericText(amount)
+    const normalizedUnit = String(unit ?? '').trim().toLowerCase()
+    if (!normalizedAmount) return ''
+    return [normalizedAmount, normalizedUnit].filter(Boolean).join(' ').trim()
+  }
+
+  parseAmountWithUnit(value) {
+    const raw = String(value ?? '').trim().toLowerCase()
+    if (!raw) return ''
+    const match = raw.match(/^(\d+(?:\.\d+)?)\s*([a-z%]+)?$/i)
+    if (!match) return ''
+    return this.normalizeAmountWithUnit(match[1], match[2] || '')
+  }
+
+  resolveMedicationCapacity(medication) {
+    if (!medication) return ''
+    if (this.isMeasuredLiquidMedication(medication)) return ''
+    const candidates = [
+      this.normalizeAmountWithUnit(medication?.containerSize, medication?.containerUnit),
+      this.normalizeAmountWithUnit(medication?.totalVolume ?? medication?.volume, medication?.volumeUnit),
+      this.parseAmountWithUnit(medication?.inventoryStrengthText)
+    ]
+    if (!this.isLiquidMedication(medication)) {
+      candidates.push(
+        this.normalizeAmountWithUnit(medication?.strength, medication?.strengthUnit),
+        this.parseAmountWithUnit(medication?.strength)
+      )
+    }
+    return candidates.find(Boolean) || ''
+  }
+
+  resolveInventoryCapacity(item) {
+    if (!item) return ''
+    const candidates = [
+      this.normalizeAmountWithUnit(item?.containerSize, item?.containerUnit),
+      this.normalizeAmountWithUnit(item?.totalVolume ?? item?.volume, item?.volumeUnit),
+      this.normalizeAmountWithUnit(item?.strength, item?.strengthUnit),
+      this.parseAmountWithUnit(item?.strength)
+    ]
+    return candidates.find(Boolean) || ''
+  }
+
   buildMedicationKey(medication) {
     if (!medication) return ''
 
@@ -861,13 +939,15 @@ class ChargeCalculationService {
     const strengthValue = medication.strength ?? medication.dosage
     const strengthUnit = (medication.strengthUnit ?? medication.dosageUnit) || ''
     const { strength, unit } = this.parseStrength(strengthValue, strengthUnit)
+    const capacity = this.resolveMedicationCapacity(medication)
 
     const parts = [
       this.normalizeKeyPart(name),
       this.normalizeKeyPart(genericName),
       this.normalizeKeyPart(strength),
       this.normalizeKeyPart(unit),
-      this.normalizeKeyPart(dosageForm)
+      this.normalizeKeyPart(dosageForm),
+      this.normalizeKeyPart(capacity)
     ].filter(Boolean)
 
     return parts.join('|')
@@ -877,12 +957,14 @@ class ChargeCalculationService {
     if (!item) return ''
 
     const dosageForm = item.dosageForm || item.packUnit || item.unit || ''
+    const capacity = this.resolveInventoryCapacity(item)
     const parts = [
       this.normalizeKeyPart(item.brandName || item.drugName || ''),
       this.normalizeKeyPart(item.genericName || ''),
       this.normalizeKeyPart(item.strength || ''),
       this.normalizeKeyPart(item.strengthUnit || ''),
-      this.normalizeKeyPart(dosageForm)
+      this.normalizeKeyPart(dosageForm),
+      this.normalizeKeyPart(capacity)
     ].filter(Boolean)
 
     return parts.join('|')

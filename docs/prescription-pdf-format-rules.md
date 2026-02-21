@@ -6,9 +6,12 @@ These rules are mandatory for medication rows in the generated prescription PDF.
 - Left side: medication name.
 - Right side: `Strength` (only when it is a true strength value, e.g. `500 mg`).
 - `Liquid (measured)` and `Liquid (bottles)` must show `Strength` on the right side when strength exists.
+- Non-strength dispense forms must never show right-side strength:
+  - `Cream`, `Ointment`, `Gel`, `Suppository`, `Inhaler`, `Spray`, `Shampoo`, `Packet`, `Roll`.
 
 ## Line 2 (meta row)
 - `Vol:` must appear here for volume values (e.g. `Vol: 1000 ml`).
+- `Vol:` must appear at most once per medication row (no duplicate `Vol` segment).
 - `Count/Quantity` must appear here when available (e.g. `Packet | Quantity: 03`).
 - If both are available, both must remain on line 2 (example: `Vol: 1000 ml | Packet | Quantity: 03`).
 - For `Liquid (bottles)`, line 2 may contain both volume and quantity.

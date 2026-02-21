@@ -1522,4 +1522,59 @@ describe('MedicationForm qty behavior', () => {
     expect(container.textContent).not.toContain('Strength: 200 ml')
     expect(container.textContent).not.toContain('(20 tablets)')
   })
+
+  it('persists non-strength inventory pack size as volume metadata for cream', async () => {
+    pharmacyMedicationService.searchMedicationsFromPharmacies.mockResolvedValue([
+      {
+        brandName: 'Derm Keta cream-SPC',
+        genericName: 'Ketoconazole Cream 2%',
+        dosageForm: 'Cream',
+        strength: '10',
+        strengthUnit: 'g',
+        containerSize: '',
+        containerUnit: '',
+        currentStock: 8
+      }
+    ])
+
+    const { component, container, getByText } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1'
+      }
+    })
+
+    await fireEvent.input(container.querySelector('#brandName'), {
+      target: { value: 'derm' }
+    })
+    await fireEvent.focus(container.querySelector('#brandName'))
+
+    await waitFor(() => {
+      expect(pharmacyMedicationService.searchMedicationsFromPharmacies).toHaveBeenCalledWith('doc-1', 'derm', 20)
+      expect(getByText(/Derm Keta cream-SPC/i)).toBeTruthy()
+    })
+
+    await fireEvent.click(getByText(/Derm Keta cream-SPC/i))
+    await fireEvent.input(container.querySelector('#medicationQts'), { target: { value: '1' } })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosageForm).toBe('Cream')
+    expect(payload.strength).toBe('')
+    expect(payload.strengthUnit).toBe('')
+    expect(payload.totalVolume).toBe('10')
+    expect(payload.volumeUnit).toBe('g')
+    expect(payload.containerSize).toBe('10')
+    expect(payload.containerUnit).toBe('g')
+    expect(payload.inventoryStrengthText).toBe('10 g')
+    expect(payload.qts).toBe('1')
+  })
 })

@@ -155,18 +155,29 @@
     return `${base}s`
   }
 
+  const getMedicationFormValue = (medication) => {
+    const candidates = [
+      medication?.dosageForm,
+      medication?.form,
+      medication?.packUnit,
+      medication?.unit
+    ]
+    const firstFilled = candidates.find((value) => String(value || '').trim())
+    return firstFilled ? String(firstFilled).trim() : ''
+  }
+
   const getDoseLabel = (medication) => {
     const dosage = String(medication?.dosage ?? '').trim()
     if (!dosage) return ''
     const parsedValue = parseDosageValue(dosage)
     const isPlural = parsedValue !== null ? parsedValue > 1 : !/^1(?:\s|$)/.test(dosage)
-    const form = medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? ''
+    const form = getMedicationFormValue(medication)
     const formLabel = formatDosageFormLabel(form || 'Tablet', isPlural)
     return `${dosage} ${formLabel}`.trim()
   }
 
   const supportsRightHeaderStrength = (medication) => {
-    const dosageForm = medication?.dosageForm ?? medication?.form ?? ''
+    const dosageForm = getMedicationFormValue(medication)
     if (!String(dosageForm || '').trim()) return true
     return supportsStrengthForDosageForm(dosageForm)
   }
@@ -174,7 +185,7 @@
   const isLiquidMedication = (medication) => {
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     const strengthTextLower = strengthText.toLowerCase()
     return Boolean(
       strengthUnit &&
@@ -183,12 +194,12 @@
   }
 
   const isMeasuredLiquidMedication = (medication) => {
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     return dosageForm === 'liquid (measured)'
   }
 
   const isBottledLiquidMedication = (medication) => {
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     return dosageForm === 'liquid (bottles)'
   }
 
@@ -213,13 +224,13 @@
   }
 
   const requiresQtsPricing = (medication) => {
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim()
+    const dosageForm = String(getMedicationFormValue(medication)).trim()
     return requiresCountForDosageForm(dosageForm)
   }
 
   const getQtsMetaLine = (medication) => {
     if (!requiresQtsPricing(medication)) return ''
-    const formRaw = String(medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? '').trim()
+    const formRaw = String(getMedicationFormValue(medication)).trim()
     if (!formRaw) return ''
     const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
     const qtsRaw = String(medication?.qts ?? '').trim()
@@ -251,6 +262,15 @@
   const getMedicationMetaLine = (medication, headerLabel = '') => {
     const qtsMetaLine = getQtsMetaLine(medication)
     const parts = []
+    const normalizedParts = new Set()
+    const pushUniquePart = (value) => {
+      const normalized = String(value || '').replace(/\s+/g, ' ').trim()
+      if (!normalized) return
+      const key = normalized.toLowerCase()
+      if (normalizedParts.has(key)) return
+      normalizedParts.add(key)
+      parts.push(normalized)
+    }
     const medicationSource = String(medication?.source || '').trim().toLowerCase()
     const inventoryStrengthText = String(
       medication?.inventoryStrengthText
@@ -262,7 +282,7 @@
       isLiquidMedication(medication) || !requiresQtsPricing(medication)
     )
     if (shouldIncludeInventoryStrength && !isMeasuredLiquidMedication(medication)) {
-      const inventoryForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+      const inventoryForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
       const volumeForms = new Set([
         'liquid (measured)',
         'liquid (bottles)',
@@ -286,7 +306,7 @@
       if (usesVolumeLabel) {
         const resolvedVolumeText = getResolvedVolumeText(medication, inventoryStrengthText)
         if (resolvedVolumeText) {
-          parts.push(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
+          pushUniquePart(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
         }
       } else if (!alreadyShownInHeader) {
         // Strength belongs on the right side of the first line, never as second-line "Strength:".
@@ -295,11 +315,11 @@
     if (!supportsRightHeaderStrength(medication)) {
       const resolvedVolumeText = getResolvedVolumeText(medication, inventoryStrengthText)
       if (resolvedVolumeText) {
-        parts.push(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
+        pushUniquePart(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
       }
     }
     if (qtsMetaLine) {
-      parts.push(qtsMetaLine)
+      pushUniquePart(qtsMetaLine)
     }
     if (isLiquidMedication(medication)) {
       const liquidDoseUnit = String(
@@ -311,21 +331,21 @@
       ).trim()
       const perFrequencyMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
       if (Number.isFinite(perFrequencyMl) && perFrequencyMl > 0) {
-        parts.push(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
+        pushUniquePart(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
       }
       if (isMeasuredLiquidMedication(medication) && perFrequencyMl) {
         const dailyFrequency = resolveDailyFrequency(medication?.frequency)
         const durationDays = resolveDurationDays(medication?.duration)
         const totalMl = perFrequencyMl * dailyFrequency * durationDays
         if (Number.isFinite(totalMl) && totalMl > 0) {
-          parts.push(`Total: ${totalMl} ${liquidDoseUnit}`)
+          pushUniquePart(`Total: ${totalMl} ${liquidDoseUnit}`)
         }
       }
       // Quantity line is sufficient for count-based liquids; avoid redundant "Amount".
     }
     if (!isLiquidMedication(medication) && !requiresQtsPricing(medication)) {
       const doseLabel = getDoseLabel(medication)
-      if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
+      if (doseLabel && doseLabel !== headerLabel) pushUniquePart(doseLabel)
     }
     return parts.join(' | ')
   }

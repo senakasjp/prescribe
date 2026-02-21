@@ -306,6 +306,13 @@
 
   const isFilled = (value) => String(value ?? '').trim().length > 0
   const isIntegerString = (value) => /^\d+$/.test(String(value ?? '').trim())
+  const isPositiveDecimalString = (value) => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return false
+    if (!/^(?:\d+|\d+\.\d{1,3}|\.\d{1,3})$/.test(raw)) return false
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed > 0
+  }
 
   const coerceDateToIso = (raw) => {
     const value = String(raw || '').trim()
@@ -474,12 +481,22 @@
         return
       }
 
+      if (isFilled(addPayload.strength) && !isPositiveDecimalString(addPayload.strength)) {
+        if (shouldUseVolumeLabels(addPayload.dosageForm)) {
+          notifyError('Total volume must be a valid positive number')
+          await focusFieldById('newItemStrength')
+        } else {
+          notifyError('Strength must be a valid positive number')
+          await focusFieldById('newItemStrength')
+        }
+        return
+      }
+
       const integerValidationRules = [
         { key: 'initialStock', id: 'newItemInitialStock', label: 'Initial Stock', required: true },
         { key: 'minimumStock', id: 'newItemMinimumStock', label: 'Minimum Stock', required: true },
         { key: 'maximumStock', id: 'newItemMaximumStock', label: 'Maximum Stock', required: false },
-        { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false },
-        { key: 'containerSize', id: 'newItemContainerSize', label: 'Total volume', required: false }
+        { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false }
       ]
       for (const rule of integerValidationRules) {
         const raw = String(addPayload[rule.key] ?? '').trim()
@@ -794,6 +811,12 @@
 
       if (isStrengthRequiredDispenseForm(normalizedSelectedItem?.dosageForm) && (!normalizedSelectedItem.strength || !normalizedSelectedItem.strengthUnit)) {
         notifyError('Strength and strength unit are required')
+        return
+      }
+
+      if (isFilled(normalizedSelectedItem?.strength) && !isPositiveDecimalString(normalizedSelectedItem.strength)) {
+        notifyError('Strength must be a valid positive number')
+        await focusFieldById('editItemStrength')
         return
       }
 
@@ -1591,7 +1614,7 @@
                   bind:value={newItemForm.strength}
                   required={isStrengthRequiredDispenseForm(newItemForm.dosageForm)}
                   min="0"
-                  step="0.01"
+                  step="0.001"
                   inputmode="decimal"
                   placeholder={shouldUseVolumeLabels(newItemForm.dosageForm) ? 'e.g., 100' : 'e.g., 500'}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1632,8 +1655,8 @@
                   type="number"
                   bind:value={newItemForm.containerSize}
                   min="0"
-                  step="1"
-                  inputmode="numeric"
+                  step="0.001"
+                  inputmode="decimal"
                   placeholder="e.g., 100"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1709,7 +1732,7 @@
                   type="number" 
                   bind:value={newItemForm.costPrice}
                   min="0"
-                  step="0.01"
+                  step="0.001"
                   inputmode="decimal"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />

@@ -96,6 +96,28 @@ const fillRequiredAddFields = async () => {
   dosageSelect.selectedIndex = tabletIndex
 }
 
+const fillRequiredAddFieldsForVolumeLabelForm = async (formValue = 'Liquid (bottles)') => {
+  await fireEvent.input(document.getElementById('newItemBrandName'), { target: { value: 'ContainerDrug' } })
+  await fireEvent.input(document.getElementById('newItemGenericName'), { target: { value: 'ContainerGeneric' } })
+  await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '100' } })
+  await fireEvent.input(document.getElementById('newItemInitialStock'), { target: { value: '100' } })
+  await fireEvent.input(document.getElementById('newItemSellingPrice'), { target: { value: '75' } })
+  await fireEvent.input(document.getElementById('newItemExpiryDate'), {
+    target: { value: '2028-01-15' }
+  })
+
+  const dosageSelect = screen.getByLabelText(/Dispense Form/i)
+  const options = Array.from(dosageSelect.options)
+  const index = options.findIndex((option) => {
+    return String(option?.value || '').toLowerCase() === String(formValue).toLowerCase()
+      || String(option?.textContent || '').trim().toLowerCase() === String(formValue).toLowerCase()
+      || String(option?.__value || '').toLowerCase() === String(formValue).toLowerCase()
+  })
+  expect(index).toBeGreaterThan(-1)
+  options[index].selected = true
+  dosageSelect.selectedIndex = index
+}
+
 const ADD_FIELD_IDS = [
   'newItemBrandName',
   'newItemGenericName',
@@ -220,6 +242,110 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     await fireEvent.submit(addForm)
 
     expect(notifyError).toHaveBeenCalledWith('Initial Stock must be an integer')
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('accepts decimal strength values when adding an item', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFields()
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '2.5' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    await waitFor(() => {
+      expect(inventoryService.createInventoryItem).toHaveBeenCalled()
+    })
+
+    const [, payload] = inventoryService.createInventoryItem.mock.calls.at(-1)
+    expect(payload).toEqual(expect.objectContaining({
+      strength: 2.5
+    }))
+  })
+
+  it('rejects strength values with more than 3 decimal places', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFields()
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '2.1234' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    const errorMessage = notifyError.mock.calls[0]?.[0] || ''
+    expect([
+      'Strength must be a valid positive number',
+      'Total volume must be a valid positive number'
+    ]).toContain(errorMessage)
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('rejects non-positive strength values', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFields()
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '0' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    const errorMessage = notifyError.mock.calls[0]?.[0] || ''
+    expect([
+      'Strength must be a valid positive number',
+      'Total volume must be a valid positive number'
+    ]).toContain(errorMessage)
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('accepts decimal total volume values', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFieldsForVolumeLabelForm('Liquid (bottles)')
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '10.5' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    await waitFor(() => {
+      expect(inventoryService.createInventoryItem).toHaveBeenCalled()
+    })
+
+    const [, payload] = inventoryService.createInventoryItem.mock.calls.at(-1)
+    expect(payload).toEqual(expect.objectContaining({
+      strength: 10.5
+    }))
+  })
+
+  it('rejects total volume values with more than 3 decimal places', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFieldsForVolumeLabelForm('Liquid (bottles)')
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '10.1234' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    expect(notifyError).toHaveBeenCalledWith('Total volume must be a valid positive number')
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('rejects non-positive total volume values', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFieldsForVolumeLabelForm('Liquid (bottles)')
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '0' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    expect(notifyError).toHaveBeenCalledWith('Total volume must be a valid positive number')
     expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
   })
 

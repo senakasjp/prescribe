@@ -1106,6 +1106,7 @@ describe('PrescriptionPDF', () => {
     expect(payloads.some((value) => /Packet\s*\|\s*Quantity:\s*03/i.test(value))).toBe(true)
     expect(payloads.some((value) => /Vol:\s*1000\s*ml/i.test(value))).toBe(true)
     expect(payloads.some((value) => /Vol:\s*1000\s*ml\s*\|\s*Packet\s*\|\s*Quantity:\s*03/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Vol:\s*1000\s*ml\s*\|\s*Vol:\s*1000\s*ml/i.test(value))).toBe(false)
   })
 
   it('keeps non-strength dispense forms off right header and moves inventory amount to second line', async () => {
@@ -1145,6 +1146,56 @@ describe('PrescriptionPDF', () => {
     expect(payloads.some((value) => /Shampoo\s*\|\s*Quantity:\s*01/i.test(value))).toBe(true)
     expect(payloads.some((value) => /Vol:\s*500\s*mg/i.test(value))).toBe(true)
     expect(payloads.some((value) => /Strength:\s*500\s*mg/i.test(value))).toBe(false)
+  })
+
+  it.each([
+    'Cream',
+    'Ointment',
+    'Gel',
+    'Suppository',
+    'Inhaler',
+    'Spray',
+    'Shampoo',
+    'Packet',
+    'Roll'
+  ])('treats unit-only %s rows as non-strength forms and keeps 15 g off right header', async (dispenseUnit) => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'UnitOnly',
+      lastName: dispenseUnit,
+      idNumber: 'ID915',
+      dateOfBirth: '1992-05-21'
+    }
+    const prescriptions = [{
+      id: `med-unit-only-${dispenseUnit.toLowerCase()}-1`,
+      source: 'inventory',
+      name: `UnitOnly ${dispenseUnit}`,
+      dosageForm: '',
+      form: '',
+      unit: dispenseUnit,
+      strength: '15',
+      strengthUnit: 'g',
+      qts: '1',
+      frequency: 'Twice daily (BD)',
+      duration: '7 days'
+    }]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const textCalls = lastPdfProxy?._fns?.text?.mock?.calls || []
+    expect(
+      textCalls.some((call) => call[0] === '15 g' && call[3]?.align === 'right')
+    ).toBe(false)
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Vol:\s*15\s*g/i.test(value))).toBe(true)
+    const quantityPattern = new RegExp(`${dispenseUnit}\\s*\\|\\s*Quantity:\\s*01`, 'i')
+    expect(payloads.some((value) => quantityPattern.test(value))).toBe(true)
   })
 
   it('does not print count + dispense-form in right header label', async () => {

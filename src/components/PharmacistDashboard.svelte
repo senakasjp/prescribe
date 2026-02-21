@@ -1831,6 +1831,10 @@
         const amountValue = (override !== undefined && override !== null && override !== '')
           ? override
           : medication.amount
+        const shouldMirrorAmountToQts = chargeCalculationService.isQtsMedication(medication)
+        const qtsValue = shouldMirrorAmountToQts
+          ? ((override !== undefined && override !== null && override !== '') ? override : medication.qts)
+          : medication.qts
 
         const inventoryData = medicationInventoryData[key]
 
@@ -1840,6 +1844,7 @@
         return {
           ...medication,
           amount: amountValue,
+          qts: qtsValue,
           isDispensed: isDispensed, // Add dispensed status
           inventoryMatch: inventoryData ? {
             found: inventoryData.found,

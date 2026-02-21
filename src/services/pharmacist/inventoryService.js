@@ -84,6 +84,17 @@ class InventoryService {
     return parsed === null ? fallback : parsed
   }
 
+  parsePositiveDecimal(value) {
+    if (value === undefined || value === null || value === '') return null
+    if (typeof value === 'number') {
+      return Number.isFinite(value) && value > 0 ? value : null
+    }
+    const raw = String(value).trim()
+    if (!/^(?:\d+|\d+\.\d{1,3}|\.\d{1,3})$/.test(raw)) return null
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }
+
   // ==================== MIGRATIONS ====================
 
   /**
@@ -1044,6 +1055,7 @@ class InventoryService {
    * Prepare inventory item data for database storage
    */
   prepareInventoryItemData(pharmacistId, itemData) {
+    const containerSizeDecimal = this.parsePositiveDecimal(itemData.containerSize)
     return {
       // Basic Information
       brandName: itemData.brandName,
@@ -1056,7 +1068,7 @@ class InventoryService {
       strength: itemData.strength,
       strengthUnit: itemData.strengthUnit,
       dosageForm: itemData.dosageForm,
-      containerSize: this.toInteger(itemData.containerSize),
+      containerSize: containerSizeDecimal === null ? this.toInteger(itemData.containerSize) : containerSizeDecimal,
       containerUnit: itemData.containerUnit || '',
       route: itemData.route || 'oral',
       packSize: this.toInteger(itemData.packSize),
@@ -1155,6 +1167,17 @@ class InventoryService {
     
     if (missing.length > 0) {
       throw new Error(`Missing required fields: ${missing.join(', ')}`)
+    }
+
+    if (itemData.strength !== undefined && itemData.strength !== null && itemData.strength !== '') {
+      if (this.parsePositiveDecimal(itemData.strength) === null) {
+        throw new Error('Strength must be a valid positive number')
+      }
+    }
+    if (itemData.containerSize !== undefined && itemData.containerSize !== null && itemData.containerSize !== '') {
+      if (this.parsePositiveDecimal(itemData.containerSize) === null) {
+        throw new Error('Total volume must be a valid positive number')
+      }
     }
     
     const integerFieldRules = [
