@@ -19,6 +19,7 @@ import { db } from '../firebase-config.js'
 import { formatPharmacyId } from '../utils/idFormat.js'
 import { capitalizePatientNames } from '../utils/nameUtils.js'
 import { resolveCurrencyFromCountry } from '../utils/currencyByCountry.js'
+import { normalizeLegacyPrescription } from '../utils/prescriptionMedicationSemantics.js'
 
 const MAX_REPORT_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const IMAGE_FILE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
@@ -356,6 +357,46 @@ class FirebaseStorageService {
       return { id: doc.id, ...data }
     } catch (error) {
       console.error('Error getting doctor by email:', error)
+      throw error
+    }
+  }
+
+  async getDoctorByUid(uid) {
+    try {
+      const normalizedUid = String(uid || '').trim()
+      if (!normalizedUid) {
+        return null
+      }
+      const querySnapshot = await getDocs(
+        query(
+          collection(db, this.collections.doctors),
+          where('uid', '==', normalizedUid),
+          limit(1)
+        )
+      )
+      if (querySnapshot.empty) {
+        return null
+      }
+      const doc = querySnapshot.docs[0]
+      const data = doc.data()
+      if (!data.doctorIdShort) {
+        data.doctorIdShort = this.formatDoctorId(doc.id)
+        await updateDoc(doc.ref, { doctorIdShort: data.doctorIdShort })
+      }
+      if (!data.deleteCode) {
+        const deleteCode = this.generateDeleteCode()
+        await updateDoc(doc.ref, { deleteCode })
+        data.deleteCode = deleteCode
+      }
+      if (!data.currency) {
+        const resolvedCurrency = resolveCurrencyFromCountry(data.country)
+        if (resolvedCurrency) {
+          data.currency = resolvedCurrency
+        }
+      }
+      return { id: doc.id, ...data }
+    } catch (error) {
+      console.error('Error getting doctor by UID:', error)
       throw error
     }
   }
@@ -775,6 +816,40 @@ class FirebaseStorageService {
       return { id: doc.id, ...data }
     } catch (error) {
       console.error('Error getting pharmacist by email:', error)
+      throw error
+    }
+  }
+
+  async getPharmacistByUid(uid) {
+    try {
+      const normalizedUid = String(uid || '').trim()
+      if (!normalizedUid) {
+        return null
+      }
+      const q = query(
+        collection(db, this.collections.pharmacists),
+        where('uid', '==', normalizedUid),
+        limit(1)
+      )
+      const querySnapshot = await getDocs(q)
+      if (querySnapshot.empty) {
+        return null
+      }
+      const pharmacistDoc = querySnapshot.docs[0]
+      const data = pharmacistDoc.data()
+      if (!data.deleteCode) {
+        const deleteCode = this.generateDeleteCode()
+        await updateDoc(pharmacistDoc.ref, { deleteCode })
+        data.deleteCode = deleteCode
+      }
+      if (!data.pharmacyIdShort) {
+        const pharmacyIdShort = formatPharmacyId(pharmacistDoc.id)
+        await updateDoc(pharmacistDoc.ref, { pharmacyIdShort })
+        data.pharmacyIdShort = pharmacyIdShort
+      }
+      return { id: pharmacistDoc.id, ...data }
+    } catch (error) {
+      console.error('Error getting pharmacist by UID:', error)
       throw error
     }
   }
@@ -1387,6 +1462,75 @@ class FirebaseStorageService {
     }
   }
 
+  async getPatientsByDoctorIdentity({ doctorId, doctorEmail } = {}) {
+    try {
+      const normalizedDoctorId = String(doctorId || '').trim()
+      const normalizedDoctorEmail = this.normalizeEmail(doctorEmail)
+      console.log('🔍 FirebaseStorage: getPatientsByDoctorIdentity called with:', {
+        doctorId: normalizedDoctorId,
+        doctorEmail: normalizedDoctorEmail
+      })
+
+      const doctorIds = new Set()
+      if (normalizedDoctorId) {
+        doctorIds.add(normalizedDoctorId)
+      }
+
+      if (normalizedDoctorEmail) {
+        let doctorQuery = await getDocs(
+          query(
+            collection(db, this.collections.doctors),
+            where('emailLower', '==', normalizedDoctorEmail)
+          )
+        )
+        if (doctorQuery.empty) {
+          doctorQuery = await getDocs(
+            query(
+              collection(db, this.collections.doctors),
+              where('email', '==', normalizedDoctorEmail)
+            )
+          )
+        }
+        doctorQuery.docs.forEach((doctorDoc) => {
+          doctorIds.add(String(doctorDoc.id || '').trim())
+        })
+      }
+
+      if (doctorIds.size === 0) {
+        throw new Error('Doctor ID or doctor email is required to access patients')
+      }
+
+      const resolvedDoctorIds = Array.from(doctorIds).filter(Boolean)
+      const allPatients = []
+      const chunkSize = 10
+      for (let i = 0; i < resolvedDoctorIds.length; i += chunkSize) {
+        const chunk = resolvedDoctorIds.slice(i, i + chunkSize)
+        const patientSnapshot = await getDocs(
+          query(
+            collection(db, this.collections.patients),
+            where('doctorId', 'in', chunk)
+          )
+        )
+        patientSnapshot.docs.forEach((patientDoc) => {
+          allPatients.push({
+            id: patientDoc.id,
+            ...patientDoc.data()
+          })
+        })
+      }
+
+      const deduped = Array.from(new Map(allPatients.map((patient) => [patient.id, patient])).values())
+      deduped.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      console.log('✅ FirebaseStorage: Returning patients by identity:', deduped.length, {
+        resolvedDoctorIds
+      })
+      return deduped
+    } catch (error) {
+      console.error('❌ FirebaseStorage: Error getting patients by identity:', error)
+      throw error
+    }
+  }
+
   async getPatientsByDoctorId(doctorId) {
     try {
       const q = query(
@@ -1494,7 +1638,7 @@ class FirebaseStorageService {
       )
       const querySnapshot = await getDocs(q)
       
-      const prescriptions = querySnapshot.docs.map(doc => ({
+      const prescriptions = querySnapshot.docs.map(doc => normalizeLegacyPrescription({
         id: doc.id,
         ...doc.data()
       }))
@@ -1526,10 +1670,10 @@ class FirebaseStorageService {
       const prescriptions = querySnapshot.docs.map(doc => {
         const data = doc.data()
         console.log('🔥 Firebase: Prescription doc:', doc.id, data)
-        return {
+        return normalizeLegacyPrescription({
           id: doc.id,
           ...data
-        }
+        })
       })
       
       // Deduplicate prescriptions by ID, keeping the most recent one
@@ -2007,7 +2151,7 @@ class FirebaseStorageService {
     )
     
     return onSnapshot(q, (querySnapshot) => {
-      const prescriptions = querySnapshot.docs.map(doc => ({
+      const prescriptions = querySnapshot.docs.map(doc => normalizeLegacyPrescription({
         id: doc.id,
         ...doc.data()
       }))
@@ -2047,10 +2191,10 @@ class FirebaseStorageService {
       const prescriptions = querySnapshot.docs.map(doc => {
         const data = doc.data()
         console.log('🔍 Prescription doc data:', data)
-        return {
+        return normalizeLegacyPrescription({
           id: doc.id,
           ...data
-        }
+        })
       })
       
       console.log('📋 Found prescriptions for pharmacist:', prescriptions.length)
@@ -2077,7 +2221,7 @@ class FirebaseStorageService {
     const prescriptionsRef = collection(pharmacistRef, 'receivedPrescriptions')
 
     return onSnapshot(prescriptionsRef, (querySnapshot) => {
-      const prescriptions = querySnapshot.docs.map(doc => ({
+      const prescriptions = querySnapshot.docs.map(doc => normalizeLegacyPrescription({
         id: doc.id,
         ...doc.data()
       }))
@@ -2098,7 +2242,7 @@ class FirebaseStorageService {
       const q = query(collection(db, this.collections.medications))
       const querySnapshot = await getDocs(q)
       
-      const prescriptions = querySnapshot.docs.map(doc => ({
+      const prescriptions = querySnapshot.docs.map(doc => normalizeLegacyPrescription({
         id: doc.id,
         ...doc.data()
       }))

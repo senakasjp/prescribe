@@ -19,6 +19,10 @@
   import { formatDate } from '../utils/dataProcessing.js'
   import { detectDocumentCornersFromDataUrl, createSelectedAreaDataUrl } from '../utils/documentCornerDetection.js'
   import { isUnreadableText } from '../utils/unreadableText.js'
+  import {
+    PRESCRIPTION_DISPLAY_LABELS,
+    requiresCountForDosageForm
+  } from '../utils/prescriptionMedicationSemantics.js'
   import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
@@ -338,32 +342,43 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
 
   const requiresQtsPricing = (medication) => {
-    if (isLiquidMedication(medication)) return false
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
-    if (!dosageForm) return false
-    return !(
-      dosageForm.includes('tablet') ||
-      dosageForm.includes('tab') ||
-      dosageForm.includes('capsule') ||
-      dosageForm.includes('cap') ||
-      dosageForm.includes('syrup') ||
-      dosageForm.includes('liquid')
-    )
+    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim()
+    return requiresCountForDosageForm(dosageForm)
   }
 
   const getMedicationMetaLine = (medication, headerLabel = '') => {
-    if (requiresQtsPricing(medication)) {
+    const getQtsMetaLine = () => {
+      if (!requiresQtsPricing(medication)) return ''
       const formRaw = String(medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? '').trim()
-      if (formRaw) {
-        const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
-        const qtsRaw = String(medication?.qts ?? '').trim()
-        const parsedQts = Number.parseInt(qtsRaw, 10)
-        if (Number.isFinite(parsedQts) && parsedQts > 0) {
-          return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
-        }
-        return formLabel
+      if (!formRaw) return ''
+      const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
+      const qtsRaw = String(medication?.qts ?? '').trim()
+      const parsedQts = Number.parseInt(qtsRaw, 10)
+      if (Number.isFinite(parsedQts) && parsedQts > 0) {
+        return `${formLabel} | ${PRESCRIPTION_DISPLAY_LABELS.quantityPrefix} ${String(parsedQts).padStart(2, '0')}`
       }
+      return formLabel
     }
+    const qtsMetaLine = getQtsMetaLine()
+
+    const getResolvedVolumeText = (fallbackText = '') => {
+      const compact = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+      const joinPair = (left, right) => [compact(left), compact(right)].filter(Boolean).join(' ')
+      const hasNumericValue = (value) => /\d/.test(String(value || ''))
+
+      const candidates = [
+        compact(fallbackText),
+        compact(medication?.inventoryStrengthText),
+        joinPair(medication?.strength, medication?.strengthUnit),
+        joinPair(medication?.containerSize, medication?.containerUnit),
+        joinPair(medication?.totalVolume, medication?.volumeUnit),
+        joinPair(medication?.volume, medication?.volumeUnit),
+        compact(medication?.strength)
+      ]
+
+      return candidates.find((candidate) => candidate && hasNumericValue(candidate)) || ''
+    }
+
     const parts = []
     const medicationSource = String(medication?.source || '').trim().toLowerCase()
     const inventoryStrengthText = String(
@@ -375,7 +390,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     const shouldIncludeInventoryStrength = medicationSource === 'inventory' && inventoryStrengthText && (
       isLiquidMedication(medication) || !requiresQtsPricing(medication)
     )
-    if (shouldIncludeInventoryStrength) {
+    if (shouldIncludeInventoryStrength && !isMeasuredLiquidMedication(medication)) {
       const inventoryForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
       const volumeForms = new Set([
         'liquid (measured)',
@@ -393,7 +408,17 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         'roll'
       ])
       const usesVolumeLabel = volumeForms.has(inventoryForm) || /\b(?:ml|l)\b/i.test(inventoryStrengthText)
-      parts.push(`${usesVolumeLabel ? 'Vol' : 'Strength'}: ${inventoryStrengthText}`)
+      if (usesVolumeLabel) {
+        const resolvedVolumeText = getResolvedVolumeText(inventoryStrengthText)
+        if (resolvedVolumeText) {
+          parts.push(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
+        }
+      } else {
+        // Strength belongs on the right side of the first line, never as second-line "Strength:".
+      }
+    }
+    if (qtsMetaLine) {
+      parts.push(qtsMetaLine)
     }
     if (isLiquidMedication(medication)) {
       const liquidDoseUnit = String(
@@ -415,19 +440,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           parts.push(`Total: ${totalMl} ${liquidDoseUnit}`)
         }
       }
-      const liquidAmountMl = Number(String(medication?.liquidAmountMl ?? medication?.amountMl ?? '').trim())
-      if (Number.isFinite(liquidAmountMl) && liquidAmountMl > 0) {
-        parts.push(`Amount: ${liquidAmountMl} ${liquidDoseUnit}`)
-      }
-      if (isBottledLiquidMedication(medication)) {
-        const inventoryMl = findInventoryStrengthText(medication)
-        const packMlText = String(inventoryMl || getStrengthText(medication?.strength, medication?.strengthUnit) || '').trim()
-        if (packMlText && /\b(ml|l)\b/i.test(packMlText)) {
-          parts.push(`Pack: ${packMlText}`)
-        }
-      }
+      // Quantity line is sufficient for count-based liquids; avoid redundant "Amount".
     }
-    if (!isLiquidMedication(medication)) {
+    if (!isLiquidMedication(medication) && !requiresQtsPricing(medication)) {
       const doseLabel = getDoseLabel(medication)
       if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
     }
@@ -441,17 +456,65 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return value
   }
 
-  const getPdfDosageLabel = (medication) => {
-    if (isLiquidMedication(medication)) {
-      const doseMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
-      const liquidDoseUnitRaw = String(medication?.liquidDoseUnit || '').trim().toLowerCase()
-      const liquidDoseUnit = ['ml', 'l'].includes(liquidDoseUnitRaw) ? liquidDoseUnitRaw : 'ml'
-      if (doseMl) return `${doseMl} ${liquidDoseUnit}`
+  const getMedicationDisplayNameParts = (medication) => {
+    const rawName = String(
+      medication?.name || medication?.drugName || medication?.brandName || ''
+    ).trim()
+    const embeddedBracketPattern = rawName.match(/^\(([^)]+)\)\s*(.+)$/)
+    const embeddedTrailingPattern = rawName.match(/^(.+?)\s*\(([^)]+)\)$/)
+    const brandName = String(
+      embeddedBracketPattern?.[2] ||
+      embeddedTrailingPattern?.[1] ||
+      rawName
+    ).trim()
+
+    const deriveGenericNameFromBrand = (value = '') => {
+      const raw = String(value || '').trim()
+      if (!raw || !raw.includes('-')) return ''
+      const [prefix] = raw.split('-')
+      let candidate = String(prefix || '').replace(/\s+/g, ' ').trim()
+      if (!candidate) return ''
+      candidate = candidate.replace(/\b(?:tablet|capsule|syrup|cream|ointment|gel|suppository|inhaler|spray|shampoo|packet|roll|injection|liquid)\b$/i, '').trim()
+      if (!candidate || candidate.length < 3) return ''
+      if (candidate.toLowerCase() === raw.toLowerCase()) return ''
+      return candidate
     }
 
+    const genericNameRaw = String(
+      embeddedBracketPattern?.[1] ||
+      embeddedTrailingPattern?.[2] ||
+      medication?.genericName
+      || medication?.generic
+      || medication?.genericDrugName
+      || medication?.drugGenericName
+      || medication?.activeIngredient
+      || deriveGenericNameFromBrand(brandName)
+      || ''
+    ).trim()
+    const genericName = genericNameRaw.toLowerCase() === brandName.toLowerCase() ? '' : genericNameRaw
+    return { brandName, genericName }
+  }
+
+  const getMedicationDisplayName = (medication) => {
+    const { brandName, genericName } = getMedicationDisplayNameParts(medication)
+
+    if (brandName && genericName) return `${brandName} (${genericName})`
+    if (genericName) return `(${genericName})`
+    return brandName
+  }
+
+  const getPdfDosageLabel = (medication) => {
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
-    if (strength && strengthUnit) return strengthText
+    if (strength && strengthUnit) {
+      // Keep ml/l volumes off the right-side dosage header; render them in second-line meta as Vol.
+      if (
+        /\b(?:ml|l)\b/i.test(strengthText)
+        && !isMeasuredLiquidMedication(medication)
+        && !isBottledLiquidMedication(medication)
+      ) return ''
+      return strengthText
+    }
 
     return ''
   }
@@ -544,9 +607,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       }
     }
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
-      const base = Number(medication.amount) || 0
-      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
-      return Math.ceil(base * dosageMultiplier)
+      const base = Number(String(medication.amount).trim())
+      if (Number.isFinite(base) && base > 0) {
+        const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+        return Math.ceil(base * dosageMultiplier)
+      }
     }
     if (medication?.frequency && medication.frequency.includes('PRN')) {
       const base = Number(medication.prnAmount) || 0
@@ -3916,12 +3981,36 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           doc.setFontSize(10)
           doc.setFont('helvetica', 'bold')
           
+          const headerLabel = getPdfDosageLabel(medication)
+          const { brandName, genericName } = getMedicationDisplayNameParts(medication)
+          const prefixedBrandName = `${index + 1}. ${brandName || ''}`.trim()
+          const genericSuffix = genericName ? ` (${genericName})` : ''
+          const nameMaxWidth = headerLabel ? Math.max(contentWidth - 28, 50) : contentWidth
+          const fullName = `${prefixedBrandName}${genericSuffix}`
+          const measuredNameWidth = (() => {
+            if (typeof doc?.getTextWidth === 'function') {
+              try {
+                const value = Number(doc.getTextWidth(fullName))
+                if (Number.isFinite(value) && value > 0) return value
+              } catch (_error) {
+                // Fall through to approximation for mocked jsPDF instances.
+              }
+            }
+            // Fallback for mocked/non-standard jsPDF environments.
+            return fullName.length * 2.1
+          })()
+          const shouldWrapGeneric = Boolean(genericSuffix) && measuredNameWidth > nameMaxWidth
+          const nameLineY = yPos
+
           // Drug name on the left
-          doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
+          doc.text(shouldWrapGeneric ? prefixedBrandName : fullName, margin, nameLineY)
+          if (shouldWrapGeneric) {
+            yPos += 4
+            doc.text(genericSuffix.trim(), margin, yPos)
+          }
           
           // Dosage on the right (bold and right-aligned)
-          const headerLabel = getPdfDosageLabel(medication)
-          doc.text(headerLabel, pageWidth - margin, yPos, { align: 'right' })
+          doc.text(headerLabel, pageWidth - margin, nameLineY, { align: 'right' })
           
           // Other medication details on next line
           doc.setFontSize(9)
@@ -3951,8 +4040,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           if (medicationDetailsParts.length > 0) {
             yPos += 4
             const medicationDetails = medicationDetailsParts.join(' | ')
-            // Split text if too long for page width
-            const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
+            // Wrap second line before the right-side strength column when present.
+            const secondLineWidth = headerLabel ? Math.max(contentWidth - 28, 50) : contentWidth
+            const detailsLines = doc.splitTextToSize(medicationDetails, secondLineWidth)
             doc.text(detailsLines, margin, yPos)
             yPos += detailsLines.length * 3
           }
@@ -5509,15 +5599,15 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                 </div>
               {:else}
                 <!-- Patient Bio -->
-              <div class="rounded-lg border border-teal-200 bg-teal-50 p-4">
+              <div class="rounded-lg border border-teal-200 bg-teal-50 p-4 dark:border-teal-700 dark:bg-teal-950/40">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <p class="text-sm font-semibold text-teal-800">Patient Bio</p>
-                    <p class="text-xs text-teal-700">Quick snapshot of demographics and contact details.</p>
+                    <p class="text-sm font-semibold text-teal-800 dark:text-teal-200">Patient Bio</p>
+                    <p class="text-xs text-teal-700 dark:text-teal-300">Quick snapshot of demographics and contact details.</p>
                   </div>
                   <button
                     type="button"
-                    class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-teal-300 text-teal-800 bg-teal-100 hover:bg-teal-200 transition-colors"
+                    class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-teal-300 text-teal-800 bg-teal-100 hover:bg-teal-200 transition-colors dark:border-teal-600 dark:text-teal-100 dark:bg-teal-900/60 dark:hover:bg-teal-800/70"
                     on:click={startEditingBio}
                   >
                     <i class="fas fa-pen mr-1"></i>
@@ -5527,10 +5617,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
                 <div class="mt-4 space-y-2">
                   {#each patientBioLines as line}
-                    <p class="text-sm text-teal-800">{line}</p>
+                    <p class="text-sm text-teal-800 dark:text-teal-100">{line}</p>
                   {/each}
                   {#if patientBioLines.length === 0}
-                    <p class="text-sm text-teal-800">No patient details available yet.</p>
+                    <p class="text-sm text-teal-800 dark:text-teal-100">No patient details available yet.</p>
                   {/if}
                 </div>
               </div>
@@ -5807,21 +5897,21 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               </div>
 
               <div class="mt-4">
-                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 dark:bg-yellow-950/30 dark:border-yellow-700">
                   <div class="flex items-center justify-between mb-2">
-                    <h6 class="text-sm font-semibold text-yellow-800 mb-0">
+                    <h6 class="text-sm font-semibold text-yellow-800 mb-0 dark:text-yellow-200">
                       <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
                     </h6>
                     <button
                       type="button"
-                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-yellow-300 text-yellow-800 bg-yellow-100 hover:bg-yellow-200 transition-colors"
+                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-yellow-300 text-yellow-800 bg-yellow-100 hover:bg-yellow-200 transition-colors dark:border-yellow-600 dark:text-yellow-100 dark:bg-yellow-900/60 dark:hover:bg-yellow-800/70"
                       on:click={() => editAllergiesOverview = selectedPatient.allergies || ''}
                     >
                       <i class="fas fa-pen mr-1"></i>
                       {selectedPatient.allergies ? 'Edit' : 'Add'}
                     </button>
                   </div>
-                  <p class="text-sm text-yellow-700 mb-0">{selectedPatient.allergies || 'None recorded'}</p>
+                  <p class="text-sm text-yellow-700 mb-0 dark:text-yellow-100">{selectedPatient.allergies || 'None recorded'}</p>
                 </div>
               </div>
 
@@ -5862,21 +5952,21 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               {/if}
 
               <div class="mt-4">
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 dark:bg-blue-950/30 dark:border-blue-700">
                   <div class="flex items-center justify-between mb-2">
-                    <h6 class="text-sm font-semibold text-blue-800 mb-0">
+                    <h6 class="text-sm font-semibold text-blue-800 mb-0 dark:text-blue-200">
                       <i class="fas fa-pills mr-2"></i>Long Term Medications
                     </h6>
                     <button
                       type="button"
-                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-blue-300 text-blue-800 bg-blue-100 hover:bg-blue-200 transition-colors"
+                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-blue-300 text-blue-800 bg-blue-100 hover:bg-blue-200 transition-colors dark:border-blue-600 dark:text-blue-100 dark:bg-blue-900/60 dark:hover:bg-blue-800/70"
                       on:click={() => editLongTermMedications = selectedPatient.longTermMedications || ''}
                     >
                       <i class="fas fa-pen mr-1"></i>
                       {selectedPatient.longTermMedications ? 'Edit' : 'Add'}
                     </button>
                   </div>
-                  <p class="text-sm text-blue-700 mb-0">{selectedPatient.longTermMedications || 'None recorded'}</p>
+                  <p class="text-sm text-blue-700 mb-0 dark:text-blue-100">{selectedPatient.longTermMedications || 'None recorded'}</p>
                 </div>
               </div>
                 

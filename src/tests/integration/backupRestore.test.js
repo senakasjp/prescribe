@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import { collection, connectFirestoreEmulator, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore'
+import { collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore'
 import { connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import { auth, db } from '../../firebase-config.js'
 import backupService from '../../services/backupService.js'
@@ -54,17 +54,59 @@ const connectAuthIfNeeded = () => {
   authEmulatorConnected = true
 }
 
+const withTimeout = async (promise, label, ms = 8000) => {
+  let timer
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      })
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 const ensureAdminSignedIn = async () => {
   const adminEmail = 'senakahks@gmail.com'
   const adminPassword = 'TestAdmin#123'
+  if (auth.currentUser?.email === adminEmail) {
+    return
+  }
   try {
-    await createUserWithEmailAndPassword(auth, adminEmail, adminPassword)
+    await withTimeout(
+      signInWithEmailAndPassword(auth, adminEmail, adminPassword),
+      'signInWithEmailAndPassword'
+    )
+    return
+  } catch (error) {
+    const code = String(error?.code || '')
+    const canCreateFallback = [
+      'auth/user-not-found',
+      'auth/invalid-credential',
+      'auth/wrong-password'
+    ].includes(code)
+    if (!canCreateFallback) {
+      throw error
+    }
+  }
+
+  try {
+    await withTimeout(
+      createUserWithEmailAndPassword(auth, adminEmail, adminPassword),
+      'createUserWithEmailAndPassword'
+    )
   } catch (error) {
     if (error?.code !== 'auth/email-already-in-use') {
       throw error
     }
   }
-  await signInWithEmailAndPassword(auth, adminEmail, adminPassword)
+
+  await withTimeout(
+    signInWithEmailAndPassword(auth, adminEmail, adminPassword),
+    'signInWithEmailAndPassword(retry)'
+  )
 }
 
 describe('backupService (integration)', () => {
@@ -88,6 +130,7 @@ describe('backupService (integration)', () => {
     'exports and restores pharmacist backup using Firestore emulator',
     async () => {
       if (!emulatorAvailable) return
+      await ensureAdminSignedIn()
       const runId = Date.now()
       const pharmacistA = `test-pharm-a-${runId}`
     const pharmacyUserId = `test-user-${runId}`
@@ -138,8 +181,12 @@ describe('backupService (integration)', () => {
     const backup = await backupService.exportPharmacistBackup(pharmacistA)
     expect(backup.type).toBe('pharmacist')
     expect(backup.inventoryItems.length).toBe(2)
-    expect(backup.pharmacyUsers.length).toBe(1)
-    expect(backup.receivedPrescriptions.length).toBe(1)
+    expect(backup.pharmacyUsers).toBeUndefined()
+    expect(backup.receivedPrescriptions).toBeUndefined()
+    expect(backup.pharmacist).toBeUndefined()
+
+    await deleteDoc(doc(db, 'pharmacyUsers', pharmacyUserId))
+    await deleteDoc(doc(collection(doc(db, 'pharmacists', pharmacistA), 'receivedPrescriptions'), rxId))
 
     await backupService.restorePharmacistBackup(pharmacistA, backup)
 
@@ -151,21 +198,22 @@ describe('backupService (integration)', () => {
     expect(inventorySnap.size).toBe(2)
 
     const restoredUserSnap = await getDoc(doc(db, 'pharmacyUsers', pharmacyUserId))
-    expect(restoredUserSnap.exists()).toBe(true)
-    expect(restoredUserSnap.data().pharmacyId).toBe(pharmacistA)
+    expect(restoredUserSnap.exists()).toBe(false)
 
     const rxSnap = await getDocs(
       collection(doc(db, 'pharmacists', pharmacistA), 'receivedPrescriptions')
     )
-    expect(rxSnap.size).toBe(1)
+    expect(rxSnap.size).toBe(0)
+
   },
-  30000
+  60000
   )
 
   it.skipIf(!shouldRun)(
     'exports and restores doctor backup data using Firestore emulator',
     async () => {
       if (!emulatorAvailable) return
+      await ensureAdminSignedIn()
       const runId = Date.now()
       const sourceDoctorId = `test-doc-src-${runId}`
       const patientId = `test-patient-${runId}`
@@ -174,10 +222,45 @@ describe('backupService (integration)', () => {
       const prescriptionId = `test-prescription-${runId}`
       const longTermMedicationId = `test-ltm-${runId}`
       const reportId = `test-report-${runId}`
+      const pharmacistId = `test-pharm-owner-${runId}`
+      const pharmacyUserId = `test-pharm-user-${runId}`
+      const pharmacyInventoryId = `test-pharm-inventory-${runId}`
+      const pharmacyRxId = `test-pharm-rx-${runId}`
+      const ownerEmail = `doctor-src-${runId}@example.com`
 
       await setDoc(doc(db, 'doctors', sourceDoctorId), {
         id: sourceDoctorId,
-        email: `doctor-src-${runId}@example.com`,
+        email: ownerEmail,
+        createdAt: new Date().toISOString()
+      })
+
+      await setDoc(doc(db, 'pharmacists', pharmacistId), {
+        id: pharmacistId,
+        email: ownerEmail,
+        pharmacistNumber: '123456',
+        createdAt: new Date().toISOString()
+      })
+
+      await setDoc(doc(db, 'pharmacyUsers', pharmacyUserId), {
+        id: pharmacyUserId,
+        email: `owner-team-${runId}@example.com`,
+        pharmacyId: pharmacistId,
+        pharmacistNumber: '123456',
+        role: 'pharmacist',
+        createdAt: new Date().toISOString()
+      })
+
+      await setDoc(doc(db, 'pharmacistInventory', pharmacyInventoryId), {
+        id: pharmacyInventoryId,
+        pharmacistId,
+        pharmacyId: pharmacistId,
+        brandName: 'Backup Drug',
+        createdAt: new Date().toISOString()
+      })
+
+      await setDoc(doc(collection(doc(db, 'pharmacists', pharmacistId), 'receivedPrescriptions'), pharmacyRxId), {
+        id: pharmacyRxId,
+        patientName: 'Backup Rx',
         createdAt: new Date().toISOString()
       })
 
@@ -246,6 +329,14 @@ describe('backupService (integration)', () => {
       expect(backup.longTermMedications.length).toBe(1)
       expect(backup.reports.length).toBe(1)
       expect(backup.doctorReport?.overview).toBe('Source doctor report')
+      expect(backup.pharmacyBackup?.pharmacistId).toBe(pharmacistId)
+      expect(backup.pharmacyBackup?.inventoryItems?.length).toBe(1)
+      expect(backup.pharmacyBackup?.pharmacyUsers).toBeUndefined()
+      expect(backup.pharmacyBackup?.receivedPrescriptions).toBeUndefined()
+      expect(backup.pharmacyBackup?.pharmacist).toBeUndefined()
+
+      await deleteDoc(doc(db, 'pharmacyUsers', pharmacyUserId))
+      await deleteDoc(doc(collection(doc(db, 'pharmacists', pharmacistId), 'receivedPrescriptions'), pharmacyRxId))
 
       const restoreResult = await backupService.restoreDoctorBackup(sourceDoctorId, backup)
       expect(restoreResult).toMatchObject({
@@ -255,6 +346,9 @@ describe('backupService (integration)', () => {
         illnesses: 1,
         prescriptions: 1,
         longTermMedications: 1
+      })
+      expect(restoreResult.pharmacy).toMatchObject({
+        inventoryItems: 1
       })
 
       const restoredDoctorSnap = await getDoc(doc(db, 'doctors', sourceDoctorId))
@@ -282,14 +376,27 @@ describe('backupService (integration)', () => {
       const restoredReportSnap = await getDoc(doc(db, 'reports', reportId))
       expect(restoredReportSnap.exists()).toBe(true)
       expect(restoredReportSnap.data().doctorId).toBe(sourceDoctorId)
+
+      const restoredPharmacyInventorySnap = await getDoc(doc(db, 'pharmacistInventory', pharmacyInventoryId))
+      expect(restoredPharmacyInventorySnap.exists()).toBe(true)
+      expect(restoredPharmacyInventorySnap.data().pharmacistId).toBe(pharmacistId)
+
+      const restoredPharmacyUserSnap = await getDoc(doc(db, 'pharmacyUsers', pharmacyUserId))
+      expect(restoredPharmacyUserSnap.exists()).toBe(false)
+
+      const restoredPharmacyRxSnap = await getDocs(
+        collection(doc(db, 'pharmacists', pharmacistId), 'receivedPrescriptions')
+      )
+      expect(restoredPharmacyRxSnap.size).toBe(0)
     },
-    30000
+    60000
   )
 
   it.skipIf(!shouldRun)(
     'rejects cross-tenant restore when backup owner id does not match target id',
     async () => {
       if (!emulatorAvailable) return
+      await ensureAdminSignedIn()
 
       await expect(backupService.restoreDoctorBackup('doc-target', {
         type: 'doctor',
@@ -305,9 +412,7 @@ describe('backupService (integration)', () => {
       await expect(backupService.restorePharmacistBackup('ph-target', {
         type: 'pharmacist',
         pharmacistId: 'ph-source',
-        pharmacyUsers: [],
-        inventoryItems: [],
-        receivedPrescriptions: []
+        inventoryItems: []
       })).rejects.toThrow('Backup pharmacistId mismatch')
     }
   )
@@ -334,10 +439,8 @@ describe('backupService (integration)', () => {
 
       await expect(backupService.restorePharmacistBackup(pharmacistId, {
         type: 'pharmacist',
-        pharmacist: { id: pharmacistId, email: 'senakahks@gmail.com' },
-        pharmacyUsers: [],
-        inventoryItems: [],
-        receivedPrescriptions: []
+        pharmacistId,
+        inventoryItems: []
       })).rejects.toMatchObject({
         code: 'permission-denied'
       })

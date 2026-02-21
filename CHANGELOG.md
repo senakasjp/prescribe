@@ -3,13 +3,17 @@
 ## Version 2.3.15 - Dosage Scope Restriction for Non-Tablet Forms (February 17, 2026)
 
 ### 💊 MedicationForm Dosage Rule
-- Restricted prescription dosage value/fraction usage to `Tablet` and `Capsule` only.
+- Restricted prescription dosage usage to `Tablet` and `Capsule` only.
+- Restricted fractional dosage options (`1/2`, `1/4`, etc.) to `Tablet` only.
+- `Capsule` now uses whole-number dosage options only (`1`, `2`, `3`, `4`).
 - Non-tablet/capsule forms no longer show dosage selector and no longer persist fallback dosage values (such as `1`).
 - This prevents legacy non-tablet records from showing misleading dosage values in prescription views.
 
 ### 🧪 Tests
 - Updated and expanded `src/tests/components/MedicationForm.test.js`:
   - Added matrix assertions for dosage-input visibility by dispense form.
+  - Added assertions that fractional dosage options are available only for `Tablet`.
+  - Added assertions that `Capsule` dosage options remain whole-number only.
   - Added payload assertions to ensure non-tablet/capsule forms save `dosage: ''`.
   - Kept tablet/capsule payload behavior covered (`dosage` remains persisted).
 

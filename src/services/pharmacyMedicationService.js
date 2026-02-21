@@ -11,6 +11,38 @@ class PharmacyMedicationService {
     this.cacheExpiry = 5 * 60 * 1000 // 5 minutes cache
   }
 
+  normalizeKeyPart(value) {
+    return String(value ?? '').trim().toLowerCase()
+  }
+
+  getNormalizedVolumeText(medication = {}) {
+    const containerSize = String(medication?.containerSize ?? '').trim()
+    const containerUnit = String(medication?.containerUnit ?? '').trim()
+    if (containerSize) return `${containerSize} ${containerUnit}`.trim().toLowerCase()
+
+    const totalVolume = String(medication?.totalVolume ?? medication?.volume ?? '').trim()
+    const volumeUnit = String(medication?.volumeUnit ?? '').trim()
+    if (totalVolume) return `${totalVolume} ${volumeUnit}`.trim().toLowerCase()
+
+    const strength = String(medication?.strength ?? '').trim()
+    const strengthUnit = String(medication?.strengthUnit ?? '').trim()
+    const strengthText = `${strength} ${strengthUnit}`.trim().toLowerCase()
+    if (/\b(?:ml|l)\b/.test(strengthText)) return strengthText
+
+    return ''
+  }
+
+  buildMedicationDedupKey(medication = {}) {
+    return [
+      this.normalizeKeyPart(medication.brandName),
+      this.normalizeKeyPart(medication.genericName),
+      this.normalizeKeyPart(medication.dosageForm),
+      this.normalizeKeyPart(medication.strength),
+      this.normalizeKeyPart(medication.strengthUnit),
+      this.getNormalizedVolumeText(medication)
+    ].join('|')
+  }
+
   /**
    * Get medication names from connected pharmacy inventories
    * @param {string} doctorId - Doctor's ID
@@ -41,14 +73,11 @@ class PharmacyMedicationService {
 
       const pharmacyMedications = await Promise.all(promises)
       
-      // Flatten and deduplicate medications
+      // Flatten and deduplicate medications while preserving volume variants (e.g. 200 ml vs 1000 ml).
       pharmacyMedications.forEach(medications => {
         medications.forEach(medication => {
-          // Check if medication already exists (by brand/generic combination)
-          const exists = allMedications.find(existing => 
-            existing.brandName?.toLowerCase() === medication.brandName?.toLowerCase() &&
-            existing.genericName?.toLowerCase() === medication.genericName?.toLowerCase()
-          )
+          const medicationKey = this.buildMedicationDedupKey(medication)
+          const exists = allMedications.some(existing => this.buildMedicationDedupKey(existing) === medicationKey)
           
           if (!exists) {
             allMedications.push(medication)
@@ -142,12 +171,16 @@ class PharmacyMedicationService {
           genericName: item.genericName || '',
           displayName: this.createDisplayName(item.brandName || item.drugName, item.genericName),
           strength: item.strength || '',
-          strengthUnit: item.strengthUnit || '',
+          strengthUnit: item.strengthUnit || item.unit || '',
           dosageForm: item.dosageForm || '',
           manufacturer: item.manufacturer || '',
           pharmacyId: pharmacyId,
           currentStock: item.currentStock || 0,
           packUnit: item.packUnit || '',
+          containerSize: item.containerSize ?? '',
+          containerUnit: item.containerUnit || '',
+          totalVolume: item.containerSize ?? item.totalVolume ?? item.volume ?? '',
+          volumeUnit: item.containerUnit || item.volumeUnit || '',
           expiryDate: item.expiryDate || ''
         }))
         .filter(med => med.brandName || med.genericName) // Ensure at least one name exists

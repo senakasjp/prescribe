@@ -184,6 +184,20 @@ describe('chargeCalculationService', () => {
 
       expect(requested).toBe(3)
     })
+
+    it('ignores zero amount and calculates measured-liquid quantity from strength/frequency/duration', () => {
+      const requested = chargeCalculationService.resolveRequestedQuantity({
+        dosageForm: 'Liquid (measured)',
+        amount: '0',
+        strength: '5',
+        strengthUnit: 'ml',
+        frequency: 'Four times daily (QDS)',
+        duration: '5 days'
+      })
+
+      // 5 ml * 4/day * 5 days
+      expect(requested).toBe(100)
+    })
   })
 
   describe('formatCurrency', () => {
@@ -204,14 +218,14 @@ describe('chargeCalculationService', () => {
   })
 
   describe('liquid pricing', () => {
-    it('prices liquid meds by ml using inventory strength', async () => {
+    it('prices measured liquid meds by ml using inventory strength', async () => {
       inventoryService.getInventoryItems.mockResolvedValue([
         {
           id: 'inv-1',
           brandName: 'Corex',
           strength: '100',
           strengthUnit: 'ml',
-          dosageForm: 'Liquid',
+          dosageForm: 'Liquid (measured)',
           currentStock: 10,
           sellingPrice: 20
         }
@@ -225,6 +239,7 @@ describe('chargeCalculationService', () => {
             medications: [
               {
                 name: 'Corex',
+                dosageForm: 'Liquid (measured)',
                 strength: '50',
                 strengthUnit: 'ml',
                 frequency: 'three times daily',
@@ -241,6 +256,44 @@ describe('chargeCalculationService', () => {
 
       expect(result.totalCost).toBeCloseTo(60, 4)
       expect(result.medicationBreakdown[0].quantity).toBeCloseTo(300, 4)
+    })
+
+    it('prices Liquid (bottles) by bottle count, not per ml', async () => {
+      inventoryService.getInventoryItems.mockResolvedValue([
+        {
+          id: 'inv-bottle-1',
+          brandName: 'Corex',
+          strength: '100',
+          strengthUnit: 'ml',
+          dosageForm: 'Liquid (bottles)',
+          currentStock: 5,
+          sellingPrice: 20
+        }
+      ])
+
+      const prescription = {
+        id: 'rx-bottle-1',
+        prescriptions: [
+          {
+            id: 'rx-bottle-1',
+            medications: [
+              {
+                name: 'Corex',
+                dosageForm: 'Liquid (bottles)',
+                amount: '2',
+                isDispensed: true
+              }
+            ]
+          }
+        ]
+      }
+
+      const result = await chargeCalculationService.calculateDrugCharges(prescription, { id: 'ph-1' })
+
+      // 2 bottles * LKR 20 per bottle
+      expect(result.totalCost).toBe(40)
+      expect(result.medicationBreakdown[0].quantity).toBe(2)
+      expect(result.medicationBreakdown[0].unitCost).toBe(20)
     })
 
     it('prices Liquid (measured) as unit ml price × strength(ml) × daily frequency × duration(days)', async () => {
@@ -287,7 +340,7 @@ describe('chargeCalculationService', () => {
       expect(result.medicationBreakdown[0].unitCost).toBeCloseTo(0.2, 4)
     })
 
-    it('does not price Liquid (measured) when inventory does not provide ml/l pack size', async () => {
+    it('prices Liquid (measured) directly from per-ml inventory price without pack-size metadata', async () => {
       inventoryService.getInventoryItems.mockResolvedValue([
         {
           id: 'inv-measured-2',
@@ -295,7 +348,7 @@ describe('chargeCalculationService', () => {
           strength: '1',
           strengthUnit: 'bottle',
           dosageForm: 'Liquid (measured)',
-          currentStock: 10,
+          currentStock: 200,
           sellingPrice: 20
         }
       ])
@@ -323,8 +376,12 @@ describe('chargeCalculationService', () => {
       const pharmacist = { id: 'ph-1' }
       const result = await chargeCalculationService.calculateDrugCharges(prescription, pharmacist)
 
-      expect(result.totalCost).toBe(0)
-      expect(result.medicationBreakdown[0].found).toBe(false)
+      // quantity = 5 ml * 2/day * 2 days = 20 ml
+      // unit price = 20 per ml
+      expect(result.totalCost).toBe(400)
+      expect(result.medicationBreakdown[0].found).toBe(true)
+      expect(result.medicationBreakdown[0].quantity).toBe(20)
+      expect(result.medicationBreakdown[0].unitCost).toBe(20)
     })
   })
 
@@ -391,6 +448,85 @@ describe('chargeCalculationService', () => {
       expect(tabletLine.quantity).toBe(4)
       expect(tabletLine.totalCost).toBeCloseTo(20, 4)
       expect(tabletLine.allocationDetails).toHaveLength(1)
+    })
+
+    it('does not apply ml liquid pricing to packet/qts medications even when strength unit is ml', () => {
+      const prescription = {
+        id: 'rx-packet-ml',
+        medications: [
+          {
+            name: 'Jeewani',
+            dosageForm: 'Packet',
+            qts: '2',
+            strength: '200',
+            strengthUnit: 'ml'
+          }
+        ]
+      }
+
+      const inventoryItems = [
+        {
+          id: 'packet-1',
+          brandName: 'Jeewani',
+          dosageForm: 'Packet',
+          strength: '200',
+          strengthUnit: 'ml',
+          currentStock: 20,
+          sellingPrice: 50,
+          expiryDate: '2027-06-18'
+        }
+      ]
+
+      const result = chargeCalculationService.calculateExpectedDrugChargesFromInventory(
+        prescription,
+        inventoryItems
+      )
+
+      // Count pricing: 2 packets * 50 each = 100 (must not become per-ml pricing)
+      expect(result.totalCost).toBe(100)
+      expect(result.medicationBreakdown).toHaveLength(1)
+      expect(result.medicationBreakdown[0].quantity).toBe(2)
+      expect(result.medicationBreakdown[0].unitCost).toBe(50)
+    })
+
+    it('returns explicit pricing reason when inventory match has stock but missing selling price', async () => {
+      inventoryService.getInventoryItems.mockResolvedValue([
+        {
+          id: 'antipa-b1',
+          brandName: 'Antipa',
+          genericName: 'Antipaa',
+          dosageForm: 'Liquid (bottles)',
+          currentStock: 200,
+          sellingPrice: '',
+          strength: '200',
+          strengthUnit: 'ml',
+          expiryDate: '2027-06-18'
+        }
+      ])
+
+      const prescription = {
+        id: 'rx-antipa-price-missing',
+        prescriptions: [
+          {
+            id: 'rx-antipa-price-missing',
+            medications: [
+              {
+                id: 'med-antipa',
+                name: 'Antipa(Antipaa)',
+                dosageForm: 'Liquid (bottles)',
+                amount: '20',
+                isDispensed: true
+              }
+            ]
+          }
+        ]
+      }
+
+      const result = await chargeCalculationService.calculateDrugCharges(prescription, { id: 'ph-1' })
+
+      expect(result.medicationBreakdown).toHaveLength(1)
+      expect(result.medicationBreakdown[0].found).toBe(false)
+      expect(result.medicationBreakdown[0].note).toBe('Price missing in inventory')
     })
 
     it('marks partial allocation when qts exceeds available stock', async () => {

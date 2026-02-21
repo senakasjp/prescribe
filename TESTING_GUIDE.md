@@ -79,6 +79,8 @@ src/tests/
 - auth-path assertions that new doctor creation triggers dummy-data seeding.
 - Medication form dosage constraints:
 - dosage selector appears only for `Tablet`/`Capsule`.
+- fractional dosage options (`1/2`, `1/4`, etc.) appear only for `Tablet`.
+- `Capsule` dosage options are whole-number only.
 - non-tablet/capsule payloads save `dosage: ''` even when legacy records contain `1`.
 
 ## Current Baseline

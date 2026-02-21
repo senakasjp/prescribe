@@ -6,6 +6,10 @@
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import DateInput from './DateInput.svelte'
   import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
+  import {
+    PRESCRIPTION_DISPLAY_LABELS,
+    requiresCountForDosageForm
+  } from '../utils/prescriptionMedicationSemantics.js'
   
   export let selectedPatient
   export let showMedicationForm
@@ -522,7 +526,66 @@
     if (!strength && !dosage) return ''
     if (!strength) return dosage
     const strengthText = strengthUnit ? `${strength} ${strengthUnit}` : strength
-    return dosage ? `${strengthText} ${dosage}` : strengthText
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    const volumeForms = new Set([
+      'liquid',
+      'liquid (bottles)',
+      'injection',
+      'cream',
+      'ointment',
+      'gel',
+      'suppository',
+      'inhaler',
+      'spray',
+      'shampoo',
+      'packet',
+      'roll'
+    ])
+    const usesVolumeLabel = volumeForms.has(form) || /\b(?:ml|l)\b/i.test(strengthText)
+    const resolvedVolumeText = getResolvedVolumeText(medication)
+    const leading = usesVolumeLabel
+      ? (resolvedVolumeText ? `${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}` : strengthText)
+      : strengthText
+    return dosage ? `${leading} ${dosage}` : leading
+  }
+
+  const getResolvedVolumeText = (medication) => {
+    const compact = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+    const joinPair = (left, right) => [compact(left), compact(right)].filter(Boolean).join(' ')
+    const hasNumericValue = (value) => /\d/.test(String(value || ''))
+
+    const candidates = [
+      compact(medication?.inventoryStrengthText),
+      joinPair(medication?.strength, medication?.strengthUnit),
+      joinPair(medication?.containerSize, medication?.containerUnit),
+      joinPair(medication?.totalVolume, medication?.volumeUnit),
+      joinPair(medication?.volume, medication?.volumeUnit),
+      compact(medication?.strength)
+    ]
+
+    return candidates.find((candidate) => candidate && hasNumericValue(candidate)) || ''
+  }
+
+  const getVolumeSecondaryLine = (medication) => {
+    const volumeText = getResolvedVolumeText(medication)
+    if (!volumeText) return ''
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    const volumeForms = new Set([
+      'liquid',
+      'liquid (bottles)',
+      'injection',
+      'cream',
+      'ointment',
+      'gel',
+      'suppository',
+      'inhaler',
+      'spray',
+      'shampoo',
+      'packet',
+      'roll'
+    ])
+    const usesVolumeLabel = volumeForms.has(form) || /\b(?:ml|l)\b/i.test(volumeText)
+    return usesVolumeLabel ? `${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${volumeText}` : ''
   }
 
   const isLiquidMedication = (medication) => {
@@ -533,17 +596,8 @@
   }
 
   const requiresQtsPricing = (medication) => {
-    if (isLiquidMedication(medication)) return false
-    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
-    if (!form) return false
-    return !(
-      form.includes('tablet') ||
-      form.includes('tab') ||
-      form.includes('capsule') ||
-      form.includes('cap') ||
-      form.includes('syrup') ||
-      form.includes('liquid')
-    )
+    const form = String(medication?.dosageForm || medication?.form || '').trim()
+    return requiresCountForDosageForm(form)
   }
 
   const getQtsMetaLine = (medication) => {
@@ -556,12 +610,15 @@
     if (!Number.isFinite(parsedQts) || parsedQts <= 0) {
       return formLabel
     }
-    return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
+    return `${formLabel} | ${PRESCRIPTION_DISPLAY_LABELS.quantityPrefix} ${String(parsedQts).padStart(2, '0')}`
   }
 
   const getMedicationSecondaryLine = (medication) => {
     const qtsMeta = getQtsMetaLine(medication)
-    if (qtsMeta) return qtsMeta
+    if (qtsMeta) {
+      const volumeLine = getVolumeSecondaryLine(medication)
+      return [volumeLine, qtsMeta].filter(Boolean).join(' | ')
+    }
 
     return [
       getMedicationDosageDisplay(medication),
@@ -628,9 +685,11 @@
     }
 
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
-      const base = chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
-      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
-      return Math.ceil(base * dosageMultiplier)
+      const base = chargeCalculationService.parseMedicationQuantity(medication.amount)
+      if (Number.isFinite(base) && base > 0) {
+        const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+        return Math.ceil(base * dosageMultiplier)
+      }
     }
 
     if (medication?.frequency && medication.frequency.includes('PRN')) {

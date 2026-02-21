@@ -40,7 +40,8 @@ This is the primary user-facing operations manual for M-Prescribe.
 
 ### Quantity + Unit Rules
 - For count-based medications where computed quantity is unavailable, entered count (`qts`) is used.
-- Prescription dosage fraction/value is now only used for `Tablet` and `Capsule`.
+- Prescription fractional dosage values (for example `1/2`, `1/4`) are available only for `Tablet`.
+- `Capsule` uses whole-number dosage values only.
 - For all other dispense forms (for example `Syrup`, `Cream`, `Liquid (bottles)`, `Liquid (measured)`), dosage is hidden and saved as empty.
 - In prescription outputs (PDF/pharmacy payload), units are omitted when value is missing.
 

@@ -114,6 +114,14 @@
     Packet: ['g', 'mg', 'ml', 'packets'],
     Roll: ['roll', 'g', 'ml']
   }
+
+  const ALL_CONTAINER_SIZE_UNITS = Array.from(
+    new Set([
+      ...Object.values(CONTAINER_SIZE_UNIT_OPTIONS).flat(),
+      'mcg',
+      'pcs'
+    ])
+  )
   
   // Load data on mount
   onMount(async () => {
@@ -383,9 +391,12 @@
     return [normalized, ...STRENGTH_UNITS]
   }
 
-  const getContainerUnitsForDispenseForm = (value) => {
-    const normalized = normalizeDosageFormValue(value)
-    return CONTAINER_SIZE_UNIT_OPTIONS[normalized] || ['ml', 'g', 'pcs']
+  const getContainerUnitsForDispenseForm = (_value) => {
+    return ALL_CONTAINER_SIZE_UNITS
+  }
+
+  const getVolumeUnitOptions = () => {
+    return ALL_CONTAINER_SIZE_UNITS
   }
 
   const syncContainerUnitForDispenseForm = (value) => {
@@ -468,7 +479,7 @@
         { key: 'minimumStock', id: 'newItemMinimumStock', label: 'Minimum Stock', required: true },
         { key: 'maximumStock', id: 'newItemMaximumStock', label: 'Maximum Stock', required: false },
         { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false },
-        { key: 'containerSize', id: 'newItemContainerSize', label: 'Container Size', required: false }
+        { key: 'containerSize', id: 'newItemContainerSize', label: 'Total volume', required: false }
       ]
       for (const rule of integerValidationRules) {
         const raw = String(addPayload[rule.key] ?? '').trim()
@@ -632,6 +643,32 @@
       return dosageForm
     }
     return packUnit || 'units'
+  }
+
+  const getResolvedStrengthValue = (item) => {
+    const strength = String(item?.strength ?? '').trim()
+    if (strength) return strength
+    return String(item?.containerSize ?? '').trim()
+  }
+
+  const getResolvedStrengthUnit = (item) => {
+    const strengthUnit = String(item?.strengthUnit ?? '').trim()
+    if (strengthUnit) return strengthUnit
+    return String(item?.containerUnit ?? '').trim()
+  }
+
+  const getResolvedVolumeText = (item) => {
+    const containerSize = String(item?.containerSize ?? '').trim()
+    const containerUnit = String(item?.containerUnit ?? '').trim()
+    if (containerSize) return [containerSize, containerUnit || getResolvedStrengthUnit(item)].filter(Boolean).join(' ')
+
+    if (shouldUseVolumeLabels(item?.dosageForm)) {
+      const strength = getResolvedStrengthValue(item)
+      const unit = getResolvedStrengthUnit(item)
+      if (strength) return [strength, unit].filter(Boolean).join(' ')
+    }
+
+    return ''
   }
 
   const escapeHtml = (value) => String(value ?? '')
@@ -1148,7 +1185,7 @@
               <thead class="bg-gray-50">
                 <tr>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32">Brand Name</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Strength</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Strength/Volume</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Stock</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Pricing</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Status</th>
@@ -1171,9 +1208,13 @@
                     </td>
                     <td class="px-6 py-4">
                       <div class="min-w-0 flex-1">
-                        {#if item.strength}
-                          <div class="font-medium text-gray-900">{item.strength} {item.strengthUnit || ''}</div>
-                          <div class="text-xs text-gray-500">{item.dosageForm || 'N/A'}</div>
+                        {#if getResolvedStrengthValue(item)}
+                          <div class="font-medium text-gray-900">{getResolvedStrengthValue(item)} {getResolvedStrengthUnit(item)}</div>
+                          {#if getResolvedVolumeText(item)}
+                            <div class="text-xs text-gray-500">Vol: {getResolvedVolumeText(item)}</div>
+                          {:else}
+                            <div class="text-xs text-gray-500">{item.dosageForm || 'N/A'}</div>
+                          {/if}
                         {:else}
                           <div class="text-sm text-gray-400">Not specified</div>
                         {/if}
@@ -1241,8 +1282,11 @@
                 <div class="flex justify-between items-start mb-3">
                   <div class="flex-1">
                     <h3 class="font-semibold text-gray-900 text-sm">{item.brandName || item.drugName}</h3>
-                    {#if item.strength}
-                      <p class="text-xs text-blue-600 font-medium">Strength: {item.strength} {item.strengthUnit || ''}</p>
+                    {#if getResolvedStrengthValue(item)}
+                      <p class="text-xs text-blue-600 font-medium">Strength/Volume: {getResolvedStrengthValue(item)} {getResolvedStrengthUnit(item)}</p>
+                      {#if getResolvedVolumeText(item)}
+                        <p class="text-xs text-gray-500">Vol: {getResolvedVolumeText(item)}</p>
+                      {/if}
                     {/if}
                     {#if item.genericName && item.genericName !== (item.brandName || item.drugName)}
                       <p class="text-xs text-gray-500">Generic: {item.genericName}</p>
@@ -1569,14 +1613,20 @@
                   required={isStrengthRequiredDispenseForm(newItemForm.dosageForm)}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {#each STRENGTH_UNITS as unit}
-                    <option value={unit}>{unit}</option>
-                  {/each}
+                  {#if shouldUseVolumeLabels(newItemForm.dosageForm)}
+                    {#each getVolumeUnitOptions() as unit}
+                      <option value={unit}>{unit}</option>
+                    {/each}
+                  {:else}
+                    {#each STRENGTH_UNITS as unit}
+                      <option value={unit}>{unit}</option>
+                    {/each}
+                  {/if}
                 </select>
               </div>
               {:else if isContainerSizeDispenseForm(newItemForm.dosageForm)}
               <div>
-                <label for="newItemContainerSize" class="block text-sm font-medium text-gray-700 mb-2">Container Size</label>
+                <label for="newItemContainerSize" class="block text-sm font-medium text-gray-700 mb-2">Total volume</label>
                 <input 
                   id="newItemContainerSize"
                   type="number"
@@ -1590,7 +1640,7 @@
               </div>
               
               <div>
-                <label for="newItemContainerUnit" class="block text-sm font-medium text-gray-700 mb-2">Container Unit</label>
+                <label for="newItemContainerUnit" class="block text-sm font-medium text-gray-700 mb-2">Volume unit</label>
                 <select 
                   id="newItemContainerUnit"
                   bind:value={newItemForm.containerUnit}

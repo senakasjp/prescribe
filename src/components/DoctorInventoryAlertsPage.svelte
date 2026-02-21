@@ -140,6 +140,36 @@
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
+  const formatDrugLabel = (item) => {
+    const brand = String(item?.drugName || item?.brandName || '').trim()
+    const generic = String(item?.genericName || '').trim()
+    if (brand && generic && brand.toLowerCase() !== generic.toLowerCase()) {
+      return `${brand} (${generic})`
+    }
+    return brand || generic || 'Unknown'
+  }
+
+  const buildVariantDetails = (item) => {
+    const details = []
+    const dosageForm = String(item?.dosageForm || item?.form || '').trim()
+    const strength = String(item?.strength || '').trim()
+    const strengthUnit = String(item?.strengthUnit || item?.unit || '').trim()
+    const totalVolume = String(item?.totalVolume || item?.containerSize || '').trim()
+    const volumeUnit = String(item?.volumeUnit || item?.containerUnit || '').trim()
+    const packUnit = String(item?.packUnit || '').trim()
+    const batch = String(item?.batchNumber || item?.batchNo || '').trim()
+    const manufacturer = String(item?.manufacturer || '').trim()
+
+    if (dosageForm) details.push(`Form: ${dosageForm}`)
+    if (strength) details.push(`Strength: ${strength}${strengthUnit ? ` ${strengthUnit}` : ''}`)
+    if (totalVolume) details.push(`Volume: ${totalVolume}${volumeUnit ? ` ${volumeUnit}` : ''}`)
+    if (packUnit) details.push(`Pack unit: ${packUnit}`)
+    if (batch) details.push(`Batch: ${batch}`)
+    if (manufacturer) details.push(`Mfg: ${manufacturer}`)
+
+    return details.length ? details.join(' | ') : 'No variant details'
+  }
+
   const createRowsHtml = (items, type) => {
     if (!items.length) {
       return '<tr><td colspan="4">No items found.</td></tr>'
@@ -148,7 +178,8 @@
     if (type === 'low-stock') {
       return items.map((item) => `
         <tr>
-          <td>${escapeHtml(item.drugName || item.genericName || 'Unknown')}</td>
+          <td>${escapeHtml(formatDrugLabel(item))}</td>
+          <td>${escapeHtml(buildVariantDetails(item))}</td>
           <td>${escapeHtml(item.pharmacyName || 'Own Pharmacy')}</td>
           <td>${escapeHtml(item.currentStock)}</td>
           <td>${escapeHtml(item.minimumStock)}</td>
@@ -159,7 +190,8 @@
     if (type === 'expiring') {
       return items.map((item) => `
         <tr>
-          <td>${escapeHtml(item.drugName || item.genericName || 'Unknown')}</td>
+          <td>${escapeHtml(formatDrugLabel(item))}</td>
+          <td>${escapeHtml(buildVariantDetails(item))}</td>
           <td>${escapeHtml(item.pharmacyName || 'Own Pharmacy')}</td>
           <td>${escapeHtml(item.expiryDate ? formatDate(item.expiryDate) : 'N/A')}</td>
           <td>${escapeHtml(item.daysToExpiry)}</td>
@@ -169,7 +201,8 @@
 
     return items.map((item) => `
       <tr>
-        <td>${escapeHtml(item.drugName || item.genericName || 'Unknown')}</td>
+        <td>${escapeHtml(formatDrugLabel(item))}</td>
+        <td>${escapeHtml(buildVariantDetails(item))}</td>
         <td>${escapeHtml(item.pharmacyName || 'Own Pharmacy')}</td>
         <td>${escapeHtml(item.expiryDate ? formatDate(item.expiryDate) : 'N/A')}</td>
       </tr>
@@ -190,6 +223,7 @@
         <thead>
           <tr>
             <th>Drug</th>
+            <th>Details</th>
             <th>Pharmacy</th>
             <th>Expiry Date</th>
           </tr>
@@ -237,6 +271,7 @@
             <thead>
               <tr>
                 <th>Drug</th>
+                <th>Details</th>
                 <th>Pharmacy</th>
                 <th>Current</th>
                 <th>Minimum</th>
@@ -252,6 +287,7 @@
             <thead>
               <tr>
                 <th>Drug</th>
+                <th>Details</th>
                 <th>Pharmacy</th>
                 <th>Expiry Date</th>
                 <th>Days Left</th>
@@ -348,6 +384,7 @@
             <thead class="text-xs text-gray-600 uppercase bg-gray-50">
               <tr>
                 <th class="px-3 py-2">Drug</th>
+                <th class="px-3 py-2">Details</th>
                 <th class="px-3 py-2">Pharmacy</th>
                 <th class="px-3 py-2">Current</th>
                 <th class="px-3 py-2">Minimum</th>
@@ -356,9 +393,15 @@
             <tbody>
               {#each lowStockItems as item}
                 <tr class="border-b border-gray-100">
-                  <td class="px-3 py-2 text-gray-700">{item.drugName || item.genericName || 'Unknown'}</td>
+                  <td class="px-3 py-2 text-gray-700">{formatDrugLabel(item)}</td>
+                  <td class="px-3 py-2 text-xs text-gray-600">{buildVariantDetails(item)}</td>
                   <td class="px-3 py-2">{item.pharmacyName}</td>
-                  <td class="px-3 py-2 font-semibold text-amber-700">{item.currentStock}</td>
+                  <td class="px-3 py-2 font-semibold {item.currentStock <= 0 ? 'text-rose-700' : 'text-amber-700'}">
+                    {item.currentStock}
+                    {#if item.currentStock <= 0}
+                      <span class="ml-1 text-[11px] uppercase tracking-wide">Out of stock</span>
+                    {/if}
+                  </td>
                   <td class="px-3 py-2">{item.minimumStock}</td>
                 </tr>
               {/each}
@@ -378,6 +421,7 @@
             <thead class="text-xs text-gray-600 uppercase bg-gray-50">
               <tr>
                 <th class="px-3 py-2">Drug</th>
+                <th class="px-3 py-2">Details</th>
                 <th class="px-3 py-2">Pharmacy</th>
                 <th class="px-3 py-2">Expiry Date</th>
                 <th class="px-3 py-2">Days Left</th>
@@ -386,7 +430,8 @@
             <tbody>
               {#each expiringSoonItems as item}
                 <tr class="border-b border-gray-100">
-                  <td class="px-3 py-2 text-gray-700">{item.drugName || item.genericName || 'Unknown'}</td>
+                  <td class="px-3 py-2 text-gray-700">{formatDrugLabel(item)}</td>
+                  <td class="px-3 py-2 text-xs text-gray-600">{buildVariantDetails(item)}</td>
                   <td class="px-3 py-2">{item.pharmacyName}</td>
                   <td class="px-3 py-2">{item.expiryDate ? formatDate(item.expiryDate) : 'N/A'}</td>
                   <td class="px-3 py-2 font-semibold text-orange-700">{item.daysToExpiry}</td>
@@ -406,6 +451,7 @@
             <thead class="text-xs text-gray-600 uppercase bg-gray-50">
               <tr>
                 <th class="px-3 py-2">Drug</th>
+                <th class="px-3 py-2">Details</th>
                 <th class="px-3 py-2">Pharmacy</th>
                 <th class="px-3 py-2">Expiry Date</th>
               </tr>
@@ -413,7 +459,8 @@
             <tbody>
               {#each expiredItems as item}
                 <tr class="border-b border-gray-100">
-                  <td class="px-3 py-2 text-gray-700">{item.drugName || item.genericName || 'Unknown'}</td>
+                  <td class="px-3 py-2 text-gray-700">{formatDrugLabel(item)}</td>
+                  <td class="px-3 py-2 text-xs text-gray-600">{buildVariantDetails(item)}</td>
                   <td class="px-3 py-2">{item.pharmacyName}</td>
                   <td class="px-3 py-2 text-rose-700 font-semibold">{item.expiryDate ? formatDate(item.expiryDate) : 'N/A'}</td>
                 </tr>

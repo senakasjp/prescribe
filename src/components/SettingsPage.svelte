@@ -2001,14 +2001,14 @@
         <div>
           <h2 class="text-lg font-semibold text-gray-900 mb-4">Backup & Restore</h2>
           <p class="text-sm text-gray-600 mb-6">
-            Download a backup of your patients and prescriptions, then restore it if data is deleted.
+            Download a backup of your clinical records, then restore it if data is deleted.
           </p>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
               <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
               <p class="text-xs text-gray-500 mb-3">
-                Exports patients, prescriptions, symptoms, and long-term medications.
+                Exports patients, symptoms, illnesses/diagnoses, prescriptions, long-term medications, and reports. Includes pharmacy inventory items if you own a pharmacy.
               </p>
               <button
                 type="button"

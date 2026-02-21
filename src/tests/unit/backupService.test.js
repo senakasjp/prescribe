@@ -10,7 +10,23 @@ const firestoreMocks = vi.hoisted(() => ({
 }))
 
 const firebaseStorageMocks = vi.hoisted(() => ({
-  getPharmacistById: vi.fn(() => Promise.resolve({ pharmacistNumber: '123456' }))
+  getDoctorById: vi.fn(() => Promise.resolve(null)),
+  getPatientsByDoctorId: vi.fn(() => Promise.resolve([])),
+  getSymptomsByPatientId: vi.fn(() => Promise.resolve([])),
+  getIllnessesByPatientId: vi.fn(() => Promise.resolve([])),
+  getPrescriptionsByPatientId: vi.fn(() => Promise.resolve([])),
+  getLongTermMedicationsByPatientId: vi.fn(() => Promise.resolve([])),
+  getReportsByPatientId: vi.fn(() => Promise.resolve([])),
+  getDoctorReport: vi.fn(() => Promise.resolve(null)),
+  getPharmacistById: vi.fn(() => Promise.resolve({ pharmacistNumber: '123456' })),
+  getPharmacistByUid: vi.fn(() => Promise.resolve(null)),
+  getPharmacistByEmail: vi.fn(() => Promise.resolve(null)),
+  getPharmacyUsersByPharmacyId: vi.fn(() => Promise.resolve([])),
+  getPharmacistPrescriptions: vi.fn(() => Promise.resolve([]))
+}))
+
+const inventoryServiceMocks = vi.hoisted(() => ({
+  getInventoryItems: vi.fn(() => Promise.resolve([]))
 }))
 
 vi.mock('../../firebase-config.js', () => ({
@@ -31,9 +47,7 @@ vi.mock('../../services/firebaseStorage.js', () => ({
 }))
 
 vi.mock('../../services/pharmacist/inventoryService.js', () => ({
-  default: {
-    getInventoryItems: vi.fn(() => Promise.resolve([]))
-  }
+  default: inventoryServiceMocks
 }))
 
 import backupService from '../../services/backupService.js'
@@ -46,7 +60,20 @@ describe('backupService.restorePharmacistBackup (unit)', () => {
     firestoreMocks.collection.mockClear()
     firestoreMocks.query.mockClear()
     firestoreMocks.where.mockClear()
+    firebaseStorageMocks.getDoctorById.mockClear()
+    firebaseStorageMocks.getPatientsByDoctorId.mockClear()
+    firebaseStorageMocks.getSymptomsByPatientId.mockClear()
+    firebaseStorageMocks.getIllnessesByPatientId.mockClear()
+    firebaseStorageMocks.getPrescriptionsByPatientId.mockClear()
+    firebaseStorageMocks.getLongTermMedicationsByPatientId.mockClear()
+    firebaseStorageMocks.getReportsByPatientId.mockClear()
+    firebaseStorageMocks.getDoctorReport.mockClear()
     firebaseStorageMocks.getPharmacistById.mockClear()
+    firebaseStorageMocks.getPharmacistByUid.mockClear()
+    firebaseStorageMocks.getPharmacistByEmail.mockClear()
+    firebaseStorageMocks.getPharmacyUsersByPharmacyId.mockClear()
+    firebaseStorageMocks.getPharmacistPrescriptions.mockClear()
+    inventoryServiceMocks.getInventoryItems.mockClear()
   })
 
   it('writes restored items with pharmacistId, pharmacyId, and pharmacistNumber', async () => {
@@ -167,5 +194,97 @@ describe('backupService.restorePharmacistBackup (unit)', () => {
       backupService.restorePharmacistBackup('pharm-1', backup)
     ).rejects.toThrow('Backup payload too large')
     expect(firestoreMocks.setDoc).not.toHaveBeenCalled()
+  })
+})
+
+describe('backupService.exportDoctorBackup (unit)', () => {
+  beforeEach(() => {
+    firebaseStorageMocks.getDoctorById.mockReset()
+    firebaseStorageMocks.getPatientsByDoctorId.mockReset()
+    firebaseStorageMocks.getSymptomsByPatientId.mockReset()
+    firebaseStorageMocks.getIllnessesByPatientId.mockReset()
+    firebaseStorageMocks.getPrescriptionsByPatientId.mockReset()
+    firebaseStorageMocks.getLongTermMedicationsByPatientId.mockReset()
+    firebaseStorageMocks.getReportsByPatientId.mockReset()
+    firebaseStorageMocks.getDoctorReport.mockReset()
+    firebaseStorageMocks.getPharmacistById.mockReset()
+    firebaseStorageMocks.getPharmacistByUid.mockReset()
+    firebaseStorageMocks.getPharmacistByEmail.mockReset()
+    firebaseStorageMocks.getPharmacyUsersByPharmacyId.mockReset()
+    firebaseStorageMocks.getPharmacistPrescriptions.mockReset()
+    inventoryServiceMocks.getInventoryItems.mockReset()
+  })
+
+  it('includes pharmacy backup when doctor owns a pharmacy', async () => {
+    firebaseStorageMocks.getDoctorById.mockResolvedValue({ id: 'doc-1', email: 'doc@example.com' })
+    firebaseStorageMocks.getPatientsByDoctorId.mockResolvedValue([{ id: 'p-1' }])
+    firebaseStorageMocks.getSymptomsByPatientId.mockResolvedValue([{ id: 's-1' }])
+    firebaseStorageMocks.getIllnessesByPatientId.mockResolvedValue([{ id: 'i-1' }])
+    firebaseStorageMocks.getPrescriptionsByPatientId.mockResolvedValue([{ id: 'm-1' }])
+    firebaseStorageMocks.getLongTermMedicationsByPatientId.mockResolvedValue([{ id: 'ltm-1' }])
+    firebaseStorageMocks.getReportsByPatientId.mockResolvedValue([{ id: 'r-1' }])
+    firebaseStorageMocks.getDoctorReport.mockResolvedValue({ id: 'doc-1', overview: 'ok' })
+    firebaseStorageMocks.getPharmacistById.mockResolvedValueOnce(null).mockResolvedValue({ id: 'ph-1', email: 'doc@example.com' })
+    firebaseStorageMocks.getPharmacistByUid.mockResolvedValue(null)
+    firebaseStorageMocks.getPharmacistByEmail.mockResolvedValue({ id: 'ph-1', email: 'doc@example.com' })
+    firebaseStorageMocks.getPharmacyUsersByPharmacyId.mockResolvedValue([{ id: 'u-1', pharmacyId: 'ph-1' }])
+    firebaseStorageMocks.getPharmacistPrescriptions.mockResolvedValue([{ id: 'rx-1' }])
+    inventoryServiceMocks.getInventoryItems.mockResolvedValue([{ id: 'inv-1', pharmacistId: 'ph-1' }])
+
+    const backup = await backupService.exportDoctorBackup('doc-1')
+
+    expect(backup.patients).toHaveLength(1)
+    expect(backup.symptoms).toHaveLength(1)
+    expect(backup.illnesses).toHaveLength(1)
+    expect(backup.prescriptions).toHaveLength(1)
+    expect(backup.longTermMedications).toHaveLength(1)
+    expect(backup.reports).toHaveLength(1)
+    expect(backup.pharmacyBackup).toBeTruthy()
+    expect(backup.pharmacyBackup).toMatchObject({
+      pharmacistId: 'ph-1'
+    })
+    expect(backup.pharmacyBackup.inventoryItems).toHaveLength(1)
+  })
+
+  it('omits pharmacy backup when doctor does not own a pharmacy', async () => {
+    firebaseStorageMocks.getDoctorById.mockResolvedValue({ id: 'doc-2', email: 'doc2@example.com' })
+    firebaseStorageMocks.getPatientsByDoctorId.mockResolvedValue([{ id: 'p-1' }])
+    firebaseStorageMocks.getSymptomsByPatientId.mockResolvedValue([])
+    firebaseStorageMocks.getIllnessesByPatientId.mockResolvedValue([])
+    firebaseStorageMocks.getPrescriptionsByPatientId.mockResolvedValue([])
+    firebaseStorageMocks.getLongTermMedicationsByPatientId.mockResolvedValue([])
+    firebaseStorageMocks.getReportsByPatientId.mockResolvedValue([])
+    firebaseStorageMocks.getDoctorReport.mockResolvedValue(null)
+    firebaseStorageMocks.getPharmacistById.mockResolvedValue(null)
+    firebaseStorageMocks.getPharmacistByUid.mockResolvedValue(null)
+    firebaseStorageMocks.getPharmacistByEmail.mockResolvedValue(null)
+
+    const backup = await backupService.exportDoctorBackup('doc-2')
+
+    expect(backup.pharmacyBackup).toBeUndefined()
+  })
+})
+
+describe('backupService.exportPharmacistBackup (unit)', () => {
+  beforeEach(() => {
+    firebaseStorageMocks.getPharmacistById.mockReset()
+    firebaseStorageMocks.getPharmacyUsersByPharmacyId.mockReset()
+    firebaseStorageMocks.getPharmacistPrescriptions.mockReset()
+    inventoryServiceMocks.getInventoryItems.mockReset()
+  })
+
+  it('exports inventory-only pharmacy backup payload', async () => {
+    inventoryServiceMocks.getInventoryItems.mockResolvedValue([
+      { id: 'inv-1', pharmacistId: 'ph-1', brandName: 'Drug A' }
+    ])
+
+    const backup = await backupService.exportPharmacistBackup('ph-1')
+
+    expect(backup.type).toBe('pharmacist')
+    expect(backup.pharmacistId).toBe('ph-1')
+    expect(backup.inventoryItems).toHaveLength(1)
+    expect(backup.pharmacyUsers).toBeUndefined()
+    expect(backup.receivedPrescriptions).toBeUndefined()
+    expect(backup.pharmacist).toBeUndefined()
   })
 })

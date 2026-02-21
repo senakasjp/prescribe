@@ -19,6 +19,14 @@ const addMedication = async (
 
   const dosageField = form.locator('#medicationDosage')
   const requiresDosage = dispenseForm === 'Tablet' || dispenseForm === 'Capsule'
+  const strengthEnabledForms = new Set([
+    'Tablet',
+    'Capsule',
+    'Liquid (measured)',
+    'Liquid (bottles)',
+    'Injection'
+  ])
+  const shouldAttemptStrength = strengthEnabledForms.has(dispenseForm)
   if (requiresDosage) {
     await expect(dosageField).toBeVisible()
   } else {
@@ -26,8 +34,12 @@ const addMedication = async (
   }
 
   if (dosage) await form.locator('#medicationDosage').selectOption(dosage)
-  if (strength) await form.locator('#medicationStrength').fill(String(strength))
-  if (strengthUnit) await form.locator('#medicationStrengthUnit').selectOption(strengthUnit)
+  if (shouldAttemptStrength && strength && await form.locator('#medicationStrength').count()) {
+    await form.locator('#medicationStrength').fill(String(strength))
+  }
+  if (shouldAttemptStrength && strengthUnit && await form.locator('#medicationStrengthUnit').count()) {
+    await form.locator('#medicationStrengthUnit').selectOption(strengthUnit)
+  }
   if (qts && await form.locator('#medicationQts').count()) {
     await form.locator('#medicationQts').fill(String(qts))
   }

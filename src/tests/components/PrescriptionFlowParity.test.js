@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, waitFor } from '@testing-library/svelte'
 import PrescriptionsTab from '../../components/PrescriptionsTab.svelte'
 import PrescriptionPDF from '../../components/PrescriptionPDF.svelte'
+import { DOSAGE_FORM_OPTIONS } from '../../utils/medicationOptions.js'
+import { requiresCountForDosageForm } from '../../utils/prescriptionMedicationSemantics.js'
 
 let lastPdfProxy = null
 
@@ -127,7 +129,7 @@ describe('Prescription flow formatting parity', () => {
     })
 
     await waitFor(() => {
-      expect(view.getByText('Shampoo | Quantity: 01')).toBeTruthy()
+      expect(view.getByText('Vol: 100 mg | Shampoo | Quantity: 01')).toBeTruthy()
     })
 
     const pdf = render(PrescriptionPDF, {
@@ -193,7 +195,7 @@ describe('Prescription flow formatting parity', () => {
         frequency: 'Twice daily (BID)',
         duration: '3 days'
       },
-      expectedSecondaryLine: '5 ml 5 • Twice daily (BID) • 3 days • Liquid',
+      expectedSecondaryLine: 'Vol: 5 ml | Liquid',
       expectedPdfTokens: ['Twice daily (BID)', 'Duration: 3 days'],
       forbiddenPdfTokens: []
     }
@@ -247,6 +249,57 @@ describe('Prescription flow formatting parity', () => {
     })
     forbiddenPdfTokens.forEach((token) => {
       expect(merged).not.toContain(token)
+    })
+  })
+
+  it('applies form semantics matrix across all dosage forms in UI second-line metadata', async () => {
+    const medications = DOSAGE_FORM_OPTIONS.map((dosageForm, index) => ({
+      id: `matrix-${index + 1}`,
+      name: `Drug ${index + 1}`,
+      dosageForm,
+      strength: '100',
+      strengthUnit: 'mg',
+      qts: '3',
+      frequency: '',
+      duration: 'days'
+    }))
+
+    const view = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: medications,
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-matrix-1', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      const rows = Array.from(view.container.querySelectorAll('.text-gray-500.text-sm'))
+      expect(rows.length).toBe(medications.length)
+    })
+
+    const lines = Array.from(view.container.querySelectorAll('.text-gray-500.text-sm'))
+      .map((node) => node.textContent?.replace(/\s+/g, ' ').trim() || '')
+
+    medications.forEach((medication) => {
+      const line = lines.find((value) => value.includes(medication.dosageForm))
+      expect(line).toBeTruthy()
+      if (requiresCountForDosageForm(medication.dosageForm)) {
+        expect(line).toContain(`${medication.dosageForm} | Quantity: 03`)
+      } else {
+        expect(line).not.toContain('Quantity:')
+      }
     })
   })
 })

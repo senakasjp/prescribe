@@ -410,14 +410,30 @@
           return null
         }
 
-        const isLiquidMedication = (med) => {
-          const unit = String(med?.strengthUnit || '').trim().toLowerCase()
+        const isMeasuredLiquidMedication = (med) => {
           const form = String(med?.dosageForm || med?.form || '').trim().toLowerCase()
-          const strengthText = String(med?.strength || '').trim().toLowerCase()
-          return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
+          return form === 'liquid (measured)'
+        }
+        const isLiquidBottlesMedication = (med) => {
+          const form = String(med?.dosageForm || med?.form || '').trim().toLowerCase()
+          return form === 'liquid (bottles)'
+        }
+        const resolveDisplayPackUnit = (rawUnit = '') => {
+          const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+          const isTabletOrCapsule = form.includes('tablet') || form.includes('tab') || form.includes('capsule') || form.includes('cap')
+          const normalized = String(rawUnit || '').trim().toLowerCase()
+          if (isLiquidBottlesMedication(medication)) return 'bottles'
+          if (isMeasuredLiquidMedication(medication)) return 'ml'
+          if (!isTabletOrCapsule && (normalized === 'tablet' || normalized === 'tablets' || !normalized)) {
+            return form || 'units'
+          }
+          if (normalized === 'tablet' || normalized === 'tablets') return 'tablets'
+          return String(rawUnit || '').trim()
         }
 
-        const liquidMode = isLiquidMedication(medication)
+        // Convert inventory stock into ml units only for measured-liquid medications.
+        // Liquid (bottles) must remain in bottle-count units for Remaining/Alloc displays.
+        const liquidMode = isMeasuredLiquidMedication(medication)
 
         const pushBatchEntry = (item, batch = null) => {
           const quantityRaw = batch ? (batch.quantity ?? batch.currentStock) : item.currentStock
@@ -432,6 +448,7 @@
               packUnit = 'ml'
             }
           }
+          packUnit = resolveDisplayPackUnit(packUnit)
 
           batchEntries.push({
             id: batch?.id ? `${item.id}|${batch.id}` : item.id,
@@ -608,6 +625,17 @@
     }
 
     return { strength: normalized, unit: fallbackUnit || '' }
+  }
+
+  const getDisplayDosageText = (medication) => {
+    const dosage = String(medication?.dosage || '').trim()
+    if (dosage) return dosage
+    const { strength, unit } = parseStrengthParts(
+      medication?.strength ?? '',
+      medication?.strengthUnit ?? medication?.dosageUnit ?? ''
+    )
+    const strengthText = [strength, unit].filter(Boolean).join(' ').trim()
+    return strengthText || '-'
   }
 
   const buildMedicationKey = (medication) => {
@@ -857,6 +885,26 @@
     console.log('🔍 Getting inventory data for:', medicationId, 'Key:', key, 'Data:', data, 'version:', version)
     console.log('🔍 Available keys in medicationInventoryData:', Object.keys(medicationInventoryData))
     return data
+  }
+
+  const getAmountUnitLabel = (prescriptionId, medication) => {
+    const medicationId = medication?.id || medication?.name
+    const inventoryData = getMedicationInventoryData(prescriptionId, medicationId, medicationInventoryVersion)
+    const fromInventory = String(inventoryData?.packUnit || '').trim()
+    if (fromInventory) return fromInventory
+
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    if (form === 'liquid (measured)' || form.includes('syrup')) return 'ml'
+    if (form === 'liquid (bottles)' || form === 'liquid') return 'bottles'
+    if (form.includes('tablet') || form.includes('tab')) return 'tablets'
+    if (form.includes('capsule') || form.includes('cap')) return 'capsules'
+    if (form.includes('packet')) return 'packets'
+    return 'units'
+  }
+
+  const getDisplayValue = (value, fallback = '-') => {
+    const text = String(value ?? '').trim()
+    return text || fallback
   }
   
   // Confirmation modal state
@@ -1647,7 +1695,10 @@
   const calculateMedicationAmount = (medication) => {
     console.log('🧮 Calculating amount for medication:', medication)
     if (medication.amount !== undefined && medication.amount !== null && medication.amount !== '') {
-      return medication.amount
+      const providedAmount = chargeCalculationService.parseMedicationQuantity(medication.amount)
+      if (Number.isFinite(providedAmount) && providedAmount > 0) {
+        return medication.amount
+      }
     }
 
     const resolveStrengthToMl = (value, unitHint = '') => {
@@ -1863,6 +1914,17 @@
       country: displayCountry,
       lkrSymbol: 'none'
     })
+
+  const normalizeChargeNote = (note) => {
+    const value = String(note || '').trim()
+    if (!value) return ''
+    // Backward-compatibility: old builds emitted this message for measured liquids
+    // even when inventory had valid per-ml price.
+    if (/inventory volume\/strength missing for measured liquid/i.test(value)) {
+      return 'Price missing in inventory'
+    }
+    return value
+  }
 
   onMount(() => {
     console.log('🔍 PharmacistDashboard: Received pharmacist data:', pharmacist)
@@ -2566,40 +2628,27 @@
 
                               <!-- Main Info Grid -->
                               <div class="p-4">
-                                <div class="grid grid-cols-8 gap-4 text-sm">
-                                  <!-- Column Headers -->
+                                <div class="grid grid-cols-6 gap-4 text-sm">
                                   <div class="col-span-1">
                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Dosage</div>
-                                    <div class="text-gray-900">{medication.dosage}</div>
-                                  </div>
-
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Frequency</div>
-                                    <div class="text-gray-900">{medication.frequency}</div>
-                                  </div>
-
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">When</div>
-                                    <div class="text-gray-900">{medication.timing || '-'}</div>
-                                  </div>
-
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Duration</div>
-                                    <div class="text-gray-900">{medication.duration}</div>
+                                    <div class="text-gray-900">{getDisplayDosageText(medication)}</div>
                                   </div>
 
                                   <div class="col-span-1">
                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Amount</div>
-                                    <input
-                                      type="number"
-                                      class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
-                                      value={getEditableAmount(prescription.id, medication)}
-                                      on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
-                                      placeholder="0"
-                                      min="0"
-                                      step="0.01"
-                                      inputmode="decimal"
-                                    />
+                                    <div class="space-y-1">
+                                      <input
+                                        type="number"
+                                        class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
+                                        value={getEditableAmount(prescription.id, medication)}
+                                        on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
+                                        placeholder="0"
+                                        min="0"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                      />
+                                      <div class="text-[11px] text-gray-500 text-center">{getAmountUnitLabel(prescription.id, medication)}</div>
+                                    </div>
                                   </div>
 
                                   <div class="col-span-1">
@@ -2655,10 +2704,25 @@
                                     {/if}
                                   </div>
 
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Instructions</div>
-                                    <div class="text-gray-900">{medication.instructions}</div>
+                                </div>
+
+                                <div class="grid grid-cols-3 gap-4 text-sm mt-4 pt-3 border-t border-gray-100">
+                                  <div>
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Frequency</div>
+                                    <div class="text-gray-900">{(medication.frequency && medication.frequency.trim()) || '-'}</div>
                                   </div>
+                                  <div>
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">When</div>
+                                    <div class="text-gray-900">{(medication.timing && medication.timing.trim()) || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Duration</div>
+                                    <div class="text-gray-900">{(medication.duration && medication.duration.trim()) || '-'}</div>
+                                  </div>
+                                </div>
+                                <div class="mt-4 text-sm">
+                                  <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Instructions</div>
+                                  <div class="text-gray-900 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
                                 </div>
                               </div>
 
@@ -2711,33 +2775,44 @@
                             <div class="space-y-1 text-xs">
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Dosage:</span>
-                                <span class="text-gray-900">{medication.dosage}</span>
-                              </div>
-                              <div class="flex justify-between">
-                                <span class="text-gray-600">Frequency:</span>
-                                <span class="text-gray-900">{medication.frequency}</span>
-                              </div>
-                              <div class="flex justify-between">
-                                <span class="text-gray-600">When:</span>
-                                <span class="text-gray-900">{medication.timing || '-'}</span>
-                              </div>
-                              <div class="flex justify-between">
-                                <span class="text-gray-600">Duration:</span>
-                                <span class="text-gray-900">{medication.duration}</span>
+                                <span class="text-gray-900">{getDisplayDosageText(medication)}</span>
                               </div>
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Amount:</span>
                                 <!-- All medications - show as editable input -->
-                                <input 
-                                  type="number" 
-                                  class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
-                                  value={getEditableAmount(prescription.id, medication)}
-                                  on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
-                                  placeholder="0"
-                                  min="0"
-                                  step="0.01"
-                                  inputmode="decimal"
-                                />
+                                <div class="flex flex-col items-end">
+                                  <input 
+                                    type="number" 
+                                    class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
+                                    value={getEditableAmount(prescription.id, medication)}
+                                    on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
+                                    placeholder="0"
+                                    min="0"
+                                    step="0.01"
+                                    inputmode="decimal"
+                                  />
+                                  <span class="text-[10px] text-gray-500 mt-0.5">{getAmountUnitLabel(prescription.id, medication)}</span>
+                                </div>
+                              </div>
+                              <div class="pt-2 mt-2 border-t border-gray-200">
+                                <div class="grid grid-cols-2 gap-2 text-center">
+                                  <div>
+                                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Frequency</div>
+                                    <div class="text-gray-900 mt-0.5">{(medication.frequency && medication.frequency.trim()) || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div class="text-[10px] uppercase tracking-wide text-gray-400">When</div>
+                                    <div class="text-gray-900 mt-0.5">{(medication.timing && medication.timing.trim()) || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Duration</div>
+                                    <div class="text-gray-900 mt-0.5">{(medication.duration && medication.duration.trim()) || '-'}</div>
+                                  </div>
+                                </div>
+                                <div class="mt-2 text-center">
+                                  <div class="text-[10px] uppercase tracking-wide text-gray-400">Instructions</div>
+                                  <div class="text-gray-900 mt-0.5 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
+                                </div>
                               </div>
                               <div class="flex justify-between">
                                 <span class="text-gray-600">Expiry Date:</span>
@@ -2786,10 +2861,6 @@
                                   {/if}
                                 </div>
                               {/if}
-                              <div class="mt-2">
-                                <span class="text-gray-600 text-xs">Instructions:</span>
-                                <p class="text-gray-900 text-xs mt-1">{medication.instructions}</p>
-                              </div>
                             </div>
                           </div>
                         {/each}
@@ -2901,7 +2972,7 @@
                           {#if medication.found}
                           {formatCurrencyDisplay(medication.totalCost, displayCurrency)}
                           {:else}
-                            <span class="text-gray-400 italic">Not available</span>
+                            <span class="text-gray-400 italic">{normalizeChargeNote(medication.note) || 'Not available'}</span>
                           {/if}
                         </span>
                       </div>

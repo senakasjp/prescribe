@@ -31,6 +31,7 @@
   let activeTab = "payments"
   let hasRestoredPaymentsTab = false
   let restoredPaymentsTabUserKey = ""
+  let hasProcessedCheckoutReturn = false
   const PAYMENTS_TAB_STORAGE_PREFIX = "prescribe-payments-active-tab"
   const ALLOWED_PAYMENT_TABS = new Set(["payments", "billing", "referral"])
   let checkoutAdminDiscountPercent = 0
@@ -464,6 +465,8 @@
   const loadServerDoctorProfile = async (force = false) => {
     const doctorId = String(user?.id || "").trim()
     const doctorEmail = String(user?.email || "").trim().toLowerCase()
+    const doctorUid = String(user?.uid || "").trim()
+    const doctorShortId = String(user?.doctorIdShort || "").trim().toUpperCase()
     const profileLookupKey = getProfileLookupKey(user)
     if (!profileLookupKey) {
       serverDoctorProfile = null
@@ -480,6 +483,12 @@
       }
       if (!latestDoctor?.id && doctorEmail) {
         latestDoctor = await firebaseStorage.getDoctorByEmail(doctorEmail)
+      }
+      if (!latestDoctor?.id && doctorUid && typeof firebaseStorage.getDoctorByUid === "function") {
+        latestDoctor = await firebaseStorage.getDoctorByUid(doctorUid)
+      }
+      if (!latestDoctor?.id && doctorShortId && typeof firebaseStorage.getDoctorByShortId === "function") {
+        latestDoctor = await firebaseStorage.getDoctorByShortId(doctorShortId)
       }
       if (latestDoctor?.id) {
         serverDoctorProfile = latestDoctor
@@ -638,11 +647,9 @@
     }
   }
 
-  onMount(async () => {
-    if (!hasRestoredPaymentsTab) {
-      restorePaymentsTab()
-      hasRestoredPaymentsTab = true
-    }
+  const processCheckoutReturn = async () => {
+    if (hasProcessedCheckoutReturn || typeof window === "undefined") return
+    hasProcessedCheckoutReturn = true
     const params = new URLSearchParams(window.location.search)
     const checkoutStatus = params.get("checkout") || params.get("payment")
     const sessionId = params.get("session_id")
@@ -662,6 +669,14 @@
     if (checkoutStatus || sessionId) {
       clearPaymentReturnParams()
     }
+  }
+
+  onMount(async () => {
+    if (!hasRestoredPaymentsTab) {
+      restorePaymentsTab()
+      hasRestoredPaymentsTab = true
+    }
+    await processCheckoutReturn()
     await loadServerDoctorProfile(true)
     await loadBillingHistory(true)
 
@@ -673,6 +688,10 @@
       window.removeEventListener("focus", handleWindowFocus)
     }
   })
+
+  $: if (typeof window !== "undefined" && !hasProcessedCheckoutReturn) {
+    processCheckoutReturn()
+  }
 
   $: if (typeof window !== "undefined" && hasRestoredPaymentsTab) {
     persistPaymentsTab()

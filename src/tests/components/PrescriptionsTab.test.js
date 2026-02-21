@@ -312,6 +312,80 @@ describe('PrescriptionsTab', () => {
     })
   })
 
+  it('shows Vol on send line for volume-based QTY medications', async () => {
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [
+          {
+            name: 'ORS-Jeevanee',
+            dosageForm: 'Packet',
+            strength: '1000',
+            strengthUnit: 'ml',
+            qts: '3',
+            frequency: '',
+            duration: ''
+          }
+        ],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-qty-vol-1', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Vol: 1000 ml | Packet | Quantity: 03')).toBeTruthy()
+    })
+  })
+
+  it('resolves Vol value from container fallback fields when strength is missing', async () => {
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [
+          {
+            name: 'ORS-Jeevanee',
+            dosageForm: 'Packet',
+            strength: '',
+            strengthUnit: '',
+            containerSize: '1000',
+            containerUnit: 'ml',
+            qts: '3',
+            frequency: '',
+            duration: ''
+          }
+        ],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-qty-vol-fallback-1', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Vol: 1000 ml | Packet | Quantity: 03')).toBeTruthy()
+    })
+  })
+
   it('supports core prescription actions without flow regression', async () => {
     const onNewPrescription = vi.fn()
     const onAddDrug = vi.fn()
@@ -454,7 +528,7 @@ describe('PrescriptionsTab', () => {
           frequency: 'Twice daily (BID)',
           duration: '3 days'
         },
-        expected: '5 ml 5 • Twice daily (BID) • 3 days • Liquid'
+        expected: 'Vol: 5 ml | Liquid'
       }
     ]
 

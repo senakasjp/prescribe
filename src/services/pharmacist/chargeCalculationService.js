@@ -47,8 +47,11 @@ class ChargeCalculationService {
     }
 
     const parsedQuantity = this.parseMedicationQuantity(medication.amount)
-    const isLiquid = this.isLiquidMedication(medication)
-    const liquidAmount = isLiquid ? this.calculateLiquidAmount(medication) : 0
+    // Only measured liquids are quantity-derived from strength × frequency × duration.
+    // Liquid (bottles) is count-based and should use entered amount/qts as bottle count.
+    const liquidAmount = this.isMeasuredLiquidMedication(medication)
+      ? this.calculateLiquidAmount(medication)
+      : 0
 
     if (liquidAmount > 0) return liquidAmount
     if (parsedQuantity !== null && parsedQuantity > 0) return parsedQuantity
@@ -58,13 +61,22 @@ class ChargeCalculationService {
 
   isLiquidMedication(medication) {
     if (!medication) return false
-    const unit = String(medication.strengthUnit || '').trim().toLowerCase()
     const dosageForm = String(medication.dosageForm || medication.form || '').trim().toLowerCase()
+    if (dosageForm) {
+      // Treat liquid pricing only for explicit liquid/syrup dispense forms.
+      // Do not infer liquid pricing for count-based forms (e.g. packet) even if unit is ml/l.
+      return (
+        dosageForm === 'liquid' ||
+        dosageForm === 'liquid (measured)' ||
+        dosageForm === 'liquid (bottles)' ||
+        dosageForm.includes('syrup')
+      )
+    }
+    const unit = String(medication.strengthUnit || '').trim().toLowerCase()
     const strengthText = String(medication.strength || '').trim().toLowerCase()
     return (
       unit === 'ml' ||
       unit === 'l' ||
-      dosageForm.includes('liquid') ||
       strengthText.includes('ml') ||
       strengthText.includes(' l')
     )
@@ -73,7 +85,7 @@ class ChargeCalculationService {
   isMeasuredLiquidMedication(medication) {
     if (!medication) return false
     const dosageForm = String(medication.dosageForm || medication.form || '').trim().toLowerCase()
-    return dosageForm === 'liquid (measured)'
+    return dosageForm === 'liquid (measured)' || dosageForm.includes('syrup')
   }
 
   resolveStrengthToMl(value, unitHint = '') {
@@ -519,6 +531,13 @@ class ChargeCalculationService {
                   })
                 }
               } else {
+                const unavailableReason = requestedQuantity <= 0
+                  ? 'No quantity specified'
+                  : this.getInventoryPricingUnavailableReason(
+                    medication,
+                    inventoryItems,
+                    medication.inventoryMatch && medication.inventoryMatch.found ? medication.inventoryMatch : null
+                  )
                 medicationBreakdown.push({
                   medicationName: medication.name,
                   dosage: medication.dosage,
@@ -529,9 +548,7 @@ class ChargeCalculationService {
                   unitCost: 0,
                   totalCost: 0,
                   found: false,
-                  note: requestedQuantity <= 0
-                    ? 'No quantity specified'
-                    : 'Not available in inventory'
+                  note: unavailableReason
                 })
               }
             }
@@ -599,7 +616,6 @@ class ChargeCalculationService {
   }
 
   buildInventoryPricingSources(medication, inventoryItems, inventoryContext) {
-    const isLiquid = this.isLiquidMedication(medication)
     const isMeasuredLiquid = this.isMeasuredLiquidMedication(medication)
     const sources = []
     const inventoryById = new Map()
@@ -629,17 +645,18 @@ class ChargeCalculationService {
       if (!available || available <= 0) return
       if (unitCost === null) return
 
-      if (isLiquid) {
+      // For measured liquids, inventory selling price is expected as per-ml.
+      // Keep direct per-ml values as-is. Convert only legacy bottle-style rows.
+      if (isMeasuredLiquid) {
+        const unitHint = String(entry.unit ?? entry.packUnit ?? '').trim().toLowerCase()
+        const isAlreadyMlUnit = unitHint === 'ml'
         const packMl = this.resolveStrengthToMl(
           entry.strength ?? entry.dosage ?? entry.packSize,
           entry.strengthUnit ?? entry.unit ?? entry.packUnit
         )
-        if (packMl && packMl > 0) {
+        if (!isAlreadyMlUnit && packMl && packMl > 0) {
           available *= packMl
           unitCost /= packMl
-        } else if (isMeasuredLiquid) {
-          // Measured liquid pricing must use unit ml price from inventory.
-          return
         }
       }
 
@@ -694,6 +711,66 @@ class ChargeCalculationService {
       const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity
       return aTime - bTime
     })
+  }
+
+  getInventoryPricingUnavailableReason(medication, inventoryItems, inventoryContext) {
+    const resolvedMatches = []
+    const seenIds = new Set()
+
+    const pushMatch = (entry) => {
+      if (!entry) return
+      const key = entry.id || entry.inventoryItemId || `${entry.brandName || ''}|${entry.genericName || ''}|${entry.expiryDate || ''}`
+      if (key && seenIds.has(key)) return
+      if (key) seenIds.add(key)
+      resolvedMatches.push(entry)
+    }
+
+    if (inventoryContext?.inventoryItemId) {
+      const direct = (inventoryItems || []).find(item => item.id === inventoryContext.inventoryItemId)
+      pushMatch(direct)
+    }
+
+    if (Array.isArray(inventoryContext?.matches) && inventoryContext.matches.length > 0) {
+      inventoryContext.matches.forEach((entry) => {
+        const resolved = entry?.inventoryItemId
+          ? (inventoryItems || []).find(item => item.id === entry.inventoryItemId)
+          : null
+        pushMatch(resolved || entry)
+      })
+    }
+
+    if (resolvedMatches.length === 0) {
+      this.findMatchingDrugs(medication, inventoryItems || []).forEach(pushMatch)
+    }
+
+    if (resolvedMatches.length === 0) return 'Not available in inventory'
+
+    const hasStock = resolvedMatches.some((entry) => {
+      if (Array.isArray(entry.batches) && entry.batches.length > 0) {
+        return entry.batches.some((batch) => {
+          if ((batch.status || 'active') !== 'active') return false
+          const qty = this.extractNumericValue(batch.quantity ?? batch.currentStock ?? 0)
+          return Number.isFinite(qty) && qty > 0
+        })
+      }
+      const qty = this.extractNumericValue(entry.currentStock ?? entry.available ?? entry.quantity ?? 0)
+      return Number.isFinite(qty) && qty > 0
+    })
+    if (!hasStock) return 'Out of stock'
+
+    const hasPrice = resolvedMatches.some((entry) => {
+      if (Array.isArray(entry.batches) && entry.batches.length > 0) {
+        return entry.batches.some((batch) => {
+          if ((batch.status || 'active') !== 'active') return false
+          const parsed = this.parseCurrencyValue(batch.sellingPrice ?? entry.sellingPrice ?? batch.unitCost ?? entry.unitCost ?? batch.costPrice ?? entry.costPrice)
+          return parsed !== null
+        })
+      }
+      return this.parseCurrencyValue(entry.sellingPrice ?? entry.unitCost ?? entry.costPrice) !== null
+    })
+    if (!hasPrice) return 'Price missing in inventory'
+
+    return 'Unable to price from inventory data'
   }
 
   allocateQuantityAcrossSources(requestedQuantity, sources) {

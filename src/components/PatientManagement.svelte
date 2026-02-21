@@ -608,7 +608,10 @@
       // Update component-level doctorData to ensure reactive doctorId is correct
       doctorData = doctor
       
-      patients = await firebaseStorage.getPatients(doctor.id)
+      patients = await firebaseStorage.getPatientsByDoctorIdentity({
+        doctorId: doctor.id,
+        doctorEmail: doctor.email || user?.email || ''
+      })
       filteredPatients = [...patients]
       
       // Load statistics after patients are loaded
@@ -2279,28 +2282,28 @@
 <!-- Patients List View -->
 <div class="space-y-4">
   <!-- Search Patient Card -->
-  <div class="bg-white rounded-lg shadow-sm border-2 border-teal-200">
-    <div class="bg-teal-50 px-4 py-3 border-b border-teal-200 rounded-t-lg flex items-center justify-between gap-3">
-      <h3 class="text-sm sm:text-base md:text-xl font-semibold text-gray-900 mb-0">
-        <i class="fas fa-search text-teal-600 mr-1 sm:mr-2"></i>
+  <div class="bg-white rounded-lg shadow-sm border-2 border-teal-200 dark:bg-slate-900 dark:border-teal-300/70">
+    <div class="bg-teal-50 px-4 py-3 border-b border-teal-200 rounded-t-lg flex items-center justify-between gap-3 dark:bg-slate-800 dark:border-slate-700">
+      <h3 class="text-sm sm:text-base md:text-xl font-semibold text-gray-900 mb-0 dark:text-slate-100">
+        <i class="fas fa-search text-teal-600 mr-1 sm:mr-2 dark:text-teal-400"></i>
         Search Patient
       </h3>
         
     </div>
-    <div class="p-4">
+    <div class="p-4 dark:bg-slate-900">
       <div class="relative">
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <i class="fas fa-search text-gray-400"></i>
+          <i class="fas fa-search text-gray-400 dark:text-slate-400"></i>
         </div>
         <input 
           type="text" 
-          class="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500" 
+          class="block w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100 dark:placeholder-slate-400" 
           placeholder="Search patients by name, ID, phone, or email..."
           bind:value={searchQuery}
         >
         {#if searchQuery}
         <button 
-            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600" 
+            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:text-slate-400 dark:hover:text-slate-200" 
             type="button" 
             on:click={clearSearch}
             title="Clear search"
@@ -2310,7 +2313,7 @@
         {/if}
       </div>
       {#if searchQuery}
-        <div class="mt-2 text-xs text-gray-600">
+        <div class="mt-2 text-xs text-gray-600 dark:text-slate-300">
           {#if filteredPatients.length > 0}
             Showing {Math.min(filteredPatients.length, 20)} of {filteredPatients.length} result{filteredPatients.length !== 1 ? 's' : ''}
             {#if filteredPatients.length > 20}
@@ -2613,17 +2616,17 @@
 
     <!-- Last Prescription Card -->
     {#if selectedPatient}
-      <div class="bg-white border-2 border-rose-200 rounded-lg shadow-sm mt-3">
-        <div class="bg-rose-50 px-3 py-2 border-b border-rose-200 rounded-t-lg">
+      <div class="bg-white border-2 border-rose-200 rounded-lg shadow-sm mt-3 dark:bg-slate-900 dark:border-rose-500/50">
+        <div class="bg-rose-50 px-3 py-2 border-b border-rose-200 rounded-t-lg dark:bg-rose-950/25 dark:border-rose-500/40">
           <div class="flex items-center justify-between">
-            <h6 class="text-lg font-semibold text-gray-900 mb-0">
-              <i class="fas fa-prescription-bottle-alt text-rose-600 mr-2"></i>
+            <h6 class="text-lg font-semibold text-gray-900 mb-0 dark:text-slate-100">
+              <i class="fas fa-prescription-bottle-alt text-rose-600 mr-2 dark:text-rose-300"></i>
               Last Prescription
             </h6>
             {#if selectedPrescriptionForCard}
               <button
                 type="button"
-                class="inline-flex items-center px-2.5 py-1 border border-rose-300 text-xs font-medium text-rose-700 bg-white hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 rounded-lg transition-colors duration-200"
+                class="inline-flex items-center px-2.5 py-1 border border-rose-300 text-xs font-medium text-rose-700 bg-white hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 rounded-lg transition-colors duration-200 dark:bg-slate-800 dark:border-rose-400/60 dark:text-rose-200 dark:hover:bg-rose-900/40"
                 on:click={loadLastPrescriptionToEditor}
                 title="Load this prescription for editing"
               >
@@ -2638,25 +2641,25 @@
           {#if prescriptions.length > 0}
             {#if selectedPrescriptionForCard}
             <div class="space-y-2">
-              <div class="flex items-center justify-between text-xs text-gray-600 mb-2">
+              <div class="flex items-center justify-between text-xs text-gray-600 mb-2 dark:text-slate-300">
                 <span><i class="fas fa-calendar mr-1"></i>{formatDate(selectedPrescriptionForCard.createdAt, { country: user?.country })}</span>
                 <div class="flex items-center gap-2">
-                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">{selectedPrescriptionForCard.medications.length} drug{selectedPrescriptionForCard.medications.length !== 1 ? 's' : ''}</span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-slate-700 dark:text-slate-100">{selectedPrescriptionForCard.medications.length} drug{selectedPrescriptionForCard.medications.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
               {#each (showAllLastPrescriptionMeds ? selectedPrescriptionForCard.medications : selectedPrescriptionForCard.medications.slice(0, 3)) as medication}
-                <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
+                <div class="bg-gray-50 rounded-lg p-2 border border-gray-200 dark:bg-slate-950 dark:border-slate-700">
                   <div class="flex items-start justify-between gap-2">
                     <div class="flex-1">
                       <div class="flex items-center gap-2 mb-1">
-                        <p class="text-base font-semibold text-blue-600">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</p>
+                        <p class="text-base font-semibold text-blue-600 dark:text-blue-300">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</p>
                         {#if isMedicationDispensed(selectedPrescriptionForCard.id, medication.id || medication.name)}
                           <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             Dispensed
                           </span>
                         {:else}
                           <!-- Debug: Show why medication is not dispensed -->
-                          <span class="text-xs text-gray-400" title="Debug: {JSON.stringify({prescriptionId: selectedPrescriptionForCard.id, medicationId: medication.id || medication.name, dispensedStatus: prescriptionDispensedStatus[selectedPrescriptionForCard.id]})}">
+                          <span class="text-xs text-gray-400 dark:text-slate-400" title="Debug: {JSON.stringify({prescriptionId: selectedPrescriptionForCard.id, medicationId: medication.id || medication.name, dispensedStatus: prescriptionDispensedStatus[selectedPrescriptionForCard.id]})}">
                             Not dispensed
                           </span>
                         {/if}
@@ -2666,19 +2669,19 @@
                           <i class="fas fa-pills mr-1"></i>{medication.dosage || medication.dose || 'N/A'}
                         </span>
                         {#if medication.frequency || medication.duration}
-                          <text-sm class="text-gray-500 text-xs">
+                          <text-sm class="text-gray-500 text-xs dark:text-slate-300">
                             <i class="fas fa-clock mr-1"></i>{medication.frequency || ''}{#if medication.frequency && medication.duration} · {/if}{medication.duration || ''}
                           </text-sm>
                         {/if}
                       </div>
                       {#if medication.instructions}
-                        <p class="text-xs text-gray-500 mt-1 italic">
+                        <p class="text-xs text-gray-500 mt-1 italic dark:text-slate-300">
                           <i class="fas fa-info-circle mr-1"></i>{medication.instructions}
                         </p>
                       {/if}
                     </div>
                     <button 
-                      class="inline-flex items-center px-3 py-1 border border-teal-300 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 rounded-lg transition-colors duration-200 flex-shrink-0"
+                      class="inline-flex items-center px-3 py-1 border border-teal-300 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 rounded-lg transition-colors duration-200 flex-shrink-0 dark:bg-slate-800 dark:border-teal-400/60 dark:text-teal-200 dark:hover:bg-teal-900/30"
                       on:click={() => addToPrescription(medication)}
                       title="Add to current prescription"
                     >
@@ -2691,7 +2694,7 @@
                 {#if selectedPrescriptionForCard.medications.length > 3}
                   <button
                     type="button"
-                    class="w-full text-gray-500 hover:text-teal-600 text-xs block text-center mt-2 py-1 transition-colors duration-200"
+                    class="w-full text-gray-500 hover:text-teal-600 text-xs block text-center mt-2 py-1 transition-colors duration-200 dark:text-slate-300 dark:hover:text-teal-300"
                     on:click={() => showAllLastPrescriptionMeds = !showAllLastPrescriptionMeds}
                   >
                     {#if showAllLastPrescriptionMeds}
@@ -3513,7 +3516,7 @@
                       Backup & Restore
                     </h6>
                     <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">
-                      Download a full backup of your patients and prescriptions, then restore it if data is deleted.
+                      Download a full backup of your clinical records, then restore it if data is deleted.
                     </p>
                   </div>
 
@@ -3521,7 +3524,7 @@
                     <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
                       <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
                       <p class="text-xs text-gray-500 mb-3">
-                        Exports patients, prescriptions, symptoms, illnesses, and long-term medications.
+                        Exports patients, symptoms, illnesses/diagnoses, prescriptions, long-term medications, and reports. Includes pharmacy inventory items if you own a pharmacy.
                       </p>
                       <button
                         type="button"

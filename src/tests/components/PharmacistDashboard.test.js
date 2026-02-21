@@ -186,4 +186,58 @@ describe('PharmacistDashboard', () => {
     expect(source).toContain("<strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}")
   })
 
+  it('keeps Liquid (bottles) remaining/allocation units in bottle counts (not ml conversion)', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain("return form === 'liquid (measured)'")
+    expect(source).toContain("return form === 'liquid (bottles)'")
+    expect(source).toContain("if (isLiquidBottlesMedication(medication)) return 'bottles'")
+    expect(source).toContain("if (!isTabletOrCapsule && (normalized === 'tablet' || normalized === 'tablets' || !normalized))")
+    expect(source).toContain('const liquidMode = isMeasuredLiquidMedication(medication)')
+    expect(source).not.toContain('const liquidMode = isLiquidMedication(medication)')
+  })
+
+  it('shows strength in DOSAGE display when dosage value is blank', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const getDisplayDosageText = (medication) => {')
+    expect(source).toContain("const dosage = String(medication?.dosage || '').trim()")
+    expect(source).toContain('medication?.strength ?? \'\'')
+    // Guard: both desktop + mobile dosage labels must render through helper,
+    // so empty dosage falls back to strength/unit instead of blank cell.
+    expect(source).toContain('{getDisplayDosageText(medication)}')
+    // Guard against reverting back to direct dosage binding in either view.
+    expect(source).not.toContain('>{medication.dosage}<')
+  })
+
+  it('normalizes legacy measured-liquid pricing error note in UI', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const normalizeChargeNote = (note) => {')
+    expect(source).toContain('/inventory volume\\/strength missing for measured liquid/i.test(value)')
+    expect(source).toContain("return 'Price missing in inventory'")
+    expect(source).toContain('{normalizeChargeNote(medication.note) || \'Not available\'}')
+  })
+
+  it('shows amount unit hint under amount input in desktop and mobile views', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const getAmountUnitLabel = (prescriptionId, medication) => {')
+    expect(source).toContain("if (form === 'liquid (measured)' || form.includes('syrup')) return 'ml'")
+    expect(source).toContain("if (form === 'liquid (bottles)' || form === 'liquid') return 'bottles'")
+    expect(source).toContain('{getAmountUnitLabel(prescription.id, medication)}')
+  })
+
 })

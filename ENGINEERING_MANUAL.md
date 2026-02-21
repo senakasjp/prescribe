@@ -48,8 +48,18 @@ npm run test:e2e
 
 ## Prescription Data Rule
 - `MedicationForm` persists `dosage` only when `dosageForm` is `Tablet` or `Capsule`.
+- Fractional dosage values (for example `1/2`, `1/4`) are allowed only when `dosageForm` is `Tablet`.
+- `Capsule` must use whole-number dosage options only (`1`, `2`, `3`, `4`).
 - Non-tablet/capsule forms must submit `dosage: ''` to avoid legacy fallback values like `1` appearing in prescription displays.
 - Keep count-based quantity logic (`qts`) unchanged for forms that require count entry.
+- `Liquid (measured)` has two mandatory separate values:
+  - `Strength` = how much the patient takes each dose.
+  - `Volume` = total available drug size.
+- `Liquid (measured)` must never be treated as tablet/capsule semantics and must never display tablet units.
+- Canonical labels must be unchanged across screens: `Vol:`, `Quantity:`, and `Total volume`.
+- Read-time normalization is required for legacy prescriptions:
+  - Normalize dosage form names to current canonical options.
+  - For `Packet` rows that stored volume as `strength` in `ml/l`, move to `totalVolume`/`volumeUnit` and clear strength so right-side line 1 stays true-strength only.
 
 ## Deployment
 Build + deploy:
