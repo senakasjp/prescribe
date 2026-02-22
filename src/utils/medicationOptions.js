@@ -1,4 +1,4 @@
-export const STRENGTH_UNITS = ['mg', 'g', 'ml', 'l', 'mcg', 'IU', 'units', '%']
+export const STRENGTH_UNITS = ['mg', 'g', 'ml', 'l', 'mcg', 'IU', 'units', 'drops', 'puffs', '%']
 
 export const DOSAGE_FORM_OPTIONS = [
   'Tablet',

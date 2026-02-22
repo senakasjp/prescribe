@@ -28,8 +28,8 @@
   let genericName = '' // Generic name for display
   let dosage = ''
   let dosageUnit = ''
-  const TABLET_DOSAGE_OPTIONS = ['1/4', '1/3', '1/2', '3/4', '1', '1 1/4', '1 1/2', '2', '3', '4']
-  const NON_TABLET_DOSAGE_OPTIONS = ['1', '2', '3', '4']
+  const TABLET_DOSAGE_OPTIONS = ['1/4', '1/3', '1/2', '3/4', '1', '1 1/4', '1 1/2', '2', '3', '4', '5', '6', '7', '8']
+  const NON_TABLET_DOSAGE_OPTIONS = ['1', '2', '3', '4', '5', '6', '7', '8']
   let dosageForm = ''
   let strength = ''
   let strengthUnit = ''

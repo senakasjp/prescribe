@@ -15,8 +15,8 @@ describe('inventoryDispensePlan', () => {
     })
 
     expect(plan).toEqual([
-      { inventoryItemId: 'item-a', quantity: 2 },
-      { inventoryItemId: 'item-b', quantity: 1 }
+      { inventoryItemId: 'item-a', batchId: null, quantity: 2 },
+      { inventoryItemId: 'item-b', batchId: null, quantity: 1 }
     ])
   })
 

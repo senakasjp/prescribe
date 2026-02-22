@@ -42,6 +42,7 @@ const buildInventoryDispensePlan = ({ inventoryData, allocationPreview, fallback
       .filter(match => Number(match.allocated) > 0 && match.inventoryItemId)
       .map(match => ({
         inventoryItemId: match.inventoryItemId,
+        batchId: match.batchId || null,
         quantity: Number(match.allocated)
       }))
   }

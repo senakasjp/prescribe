@@ -29,6 +29,7 @@
   export let onDeletePrescription
   export let onDeleteMedicationByIndex
   export let onFinalizePrescription
+  export let onUnfinalizePrescription = null
   export let onShowPharmacyModal
   export let onGoToPreviousTab
   export let onGenerateAIDrugSuggestions
@@ -874,7 +875,21 @@
     return procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
   }
 
+  $: isAlreadySentToPharmacy = Boolean(
+    currentPrescription &&
+    (
+      String(currentPrescription.status || '').toLowerCase() === 'sent' ||
+      currentPrescription.sentToPharmacy ||
+      currentPrescription.sentAt
+    )
+  )
+
   const handleSendToPharmacy = () => {
+    if (isAlreadySentToPharmacy) {
+      notifyWarning('Prescription is already sent to pharmacy. Unfinalize to edit and resend.')
+      return
+    }
+
     let internalMedications = getInternalMedications()
 
     // New prescriptions can be sent before inventory lookup settles. In that case,
@@ -1339,9 +1354,18 @@
                 </button>
               {:else}
                 <button 
-                  class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200"
+                  class="inline-flex items-center px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 transition-colors duration-200"
+                  on:click={onUnfinalizePrescription}
+                  title="Unfinalize this prescription and enable editing"
+                  disabled={!onUnfinalizePrescription}
+                >
+                  <i class="fas fa-undo mr-1"></i>Unfinalize Prescription
+                </button>
+                <button 
+                  class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   on:click={handleSendToPharmacy}
-                  title="Send to pharmacy"
+                  disabled={isAlreadySentToPharmacy}
+                  title={isAlreadySentToPharmacy ? 'Already sent. Unfinalize to enable sending again.' : 'Send to pharmacy'}
                 >
                   <i class="fas fa-paper-plane mr-1"></i>Send to Pharmacy
                 </button>

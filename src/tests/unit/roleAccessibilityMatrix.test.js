@@ -7,7 +7,8 @@ import adminAuthService from '../../services/adminAuthService.js'
 const firebaseStorageMock = vi.hoisted(() => ({
   getPharmacistByEmail: vi.fn(),
   getPharmacyUserByEmail: vi.fn(),
-  getPharmacistById: vi.fn()
+  getPharmacistById: vi.fn(),
+  getDoctorById: vi.fn()
 }))
 
 vi.mock('../../services/firebaseStorage.js', () => ({
@@ -89,12 +90,18 @@ describe('Role Accessibility Matrix', () => {
       pharmacistNumber: 'PH-001',
       connectedDoctors: ['doc-1']
     })
+    firebaseStorageMock.getDoctorById.mockResolvedValue({
+      id: 'doc-1',
+      country: 'Sri Lanka',
+      currency: 'LKR'
+    })
 
     const member = await pharmacistAuthService.signInPharmacist('team@example.com', 'pass123 ')
     expect(member.role).toBe('pharmacist')
     expect(member.isPharmacyUser).toBe(true)
     expect(member.pharmacyId).toBe('ph-1')
     expect(member.connectedDoctors).toEqual(['doc-1'])
+    expect(member.currency).toBe('LKR')
 
     const pharmacistSettingsSource = readSource('src/components/pharmacist/PharmacistSettings.svelte')
     expect(pharmacistSettingsSource).toContain('$: isTeamMember = !!pharmacist?.isPharmacyUser')

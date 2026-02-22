@@ -1112,6 +1112,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       prescriptionDiscount = Number.isFinite(Number(currentPrescription.discount)) ? Number(currentPrescription.discount) : 0
       prescriptionDiscountScope = currentPrescription.discountScope || 'consultation'
       nextAppointmentDate = currentPrescription.nextAppointmentDate || ''
+      prescriptionsFinalized = isPrescriptionLockedForEditing(currentPrescription)
+      prescriptionFinished = prescriptionsFinalized
       
       console.log('📅 Set current medications:', currentMedications.length)
     } else {
@@ -1124,6 +1126,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       prescriptionDiscount = 0
       prescriptionDiscountScope = 'consultation'
       nextAppointmentDate = ''
+      prescriptionsFinalized = false
+      prescriptionFinished = false
     }
     
     // Clear any existing AI analysis when loading data
@@ -1177,6 +1181,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         prescriptionProcedures = Array.isArray(updatedPrescription.procedures) ? updatedPrescription.procedures : []
         otherProcedurePrice = updatedPrescription.otherProcedurePrice || ''
         excludeConsultationCharge = !!updatedPrescription.excludeConsultationCharge
+        prescriptionsFinalized = isPrescriptionLockedForEditing(updatedPrescription)
+        prescriptionFinished = prescriptionsFinalized
         console.log('🔍 Updated currentPrescription with latest data:', currentPrescription.id)
       } else {
         console.log('⚠️ Current prescription not found in prescriptions array - this might cause issues')
@@ -4654,6 +4660,18 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     window.debugPrescriptions = debugDataState
   }
   
+  function isPrescriptionLockedForEditing(prescription) {
+    if (!prescription) return false
+    const status = String(prescription.status || '').toLowerCase()
+    return (
+      status === 'finalized' ||
+      status === 'sent' ||
+      Boolean(prescription.finalizedAt) ||
+      Boolean(prescription.sentToPharmacy) ||
+      Boolean(prescription.printedAt)
+    )
+  }
+
   // Finalize prescription function
   const finalizePrescription = async () => {
     try {
@@ -4706,6 +4724,42 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     } catch (error) {
       console.error('❌ Error finalizing prescription:', error)
       notifyError('Failed to finalize prescription: ' + error.message)
+    }
+  }
+
+  const unfinalizePrescription = async () => {
+    try {
+      if (!currentPrescription) {
+        return
+      }
+
+      currentPrescription.status = 'draft'
+      currentPrescription.finalizedAt = null
+      currentPrescription.sentToPharmacy = false
+      currentPrescription.sentAt = null
+      currentPrescription.endDate = null
+      currentPrescription.updatedAt = new Date().toISOString()
+
+      await firebaseStorage.updatePrescription(currentPrescription.id, {
+        status: 'draft',
+        finalizedAt: null,
+        sentToPharmacy: false,
+        sentAt: null,
+        endDate: null,
+        updatedAt: currentPrescription.updatedAt
+      })
+
+      const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id)
+      if (prescriptionIndex !== -1) {
+        prescriptions[prescriptionIndex] = currentPrescription
+        prescriptions = [...prescriptions]
+      }
+
+      prescriptionsFinalized = false
+      prescriptionFinished = false
+    } catch (error) {
+      console.error('❌ Error unfinalizing prescription:', error)
+      notifyError('Failed to unfinalize prescription: ' + error.message)
     }
   }
   
@@ -7381,6 +7435,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           onDeletePrescription={handleDeletePrescription}
           onDeleteMedicationByIndex={handleDeleteMedicationByIndex}
           onFinalizePrescription={finalizePrescription}
+          onUnfinalizePrescription={unfinalizePrescription}
           onShowPharmacyModal={showPharmacySelection}
           onGoToPreviousTab={goToPreviousTab}
           onGenerateAIDrugSuggestions={generateAIDrugSuggestions}

@@ -97,6 +97,38 @@ describe('PrescriptionsTab', () => {
     expect(warningMessages).not.toContain('All medications are marked for external pharmacy or not in stock.')
   })
 
+  it('disables send to pharmacy when prescription is already sent', async () => {
+    const onShowPharmacyModal = vi.fn()
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [{ name: 'Amoxicillin', dosage: '500mg', amount: '10' }],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-1', doctorId: 'doc-1', status: 'sent', sentToPharmacy: true },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal,
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Send to Pharmacy')).toBeTruthy()
+    })
+
+    const sendButton = getByText('Send to Pharmacy')
+    expect(sendButton.hasAttribute('disabled')).toBe(true)
+    await fireEvent.click(sendButton)
+    expect(onShowPharmacyModal).not.toHaveBeenCalled()
+  })
+
   it('shows warning when all medications are external/unavailable and there are no chargeable items', async () => {
     const onShowPharmacyModal = vi.fn()
     const { getByText } = render(PrescriptionsTab, {
@@ -390,6 +422,7 @@ describe('PrescriptionsTab', () => {
     const onNewPrescription = vi.fn()
     const onAddDrug = vi.fn()
     const onFinalizePrescription = vi.fn()
+    const onUnfinalizePrescription = vi.fn()
     const onPrintPrescriptions = vi.fn()
 
     const { getByText, queryByText, rerender } = render(PrescriptionsTab, {
@@ -404,6 +437,7 @@ describe('PrescriptionsTab', () => {
         onNewPrescription,
         onAddDrug,
         onFinalizePrescription,
+        onUnfinalizePrescription,
         onShowPharmacyModal: vi.fn(),
         onPrintPrescriptions,
         onPrintExternalPrescriptions: vi.fn(),
@@ -432,6 +466,7 @@ describe('PrescriptionsTab', () => {
       onNewPrescription,
       onAddDrug,
       onFinalizePrescription,
+      onUnfinalizePrescription,
       onShowPharmacyModal: vi.fn(),
       onPrintPrescriptions,
       onPrintExternalPrescriptions: vi.fn(),
@@ -441,8 +476,11 @@ describe('PrescriptionsTab', () => {
 
     await waitFor(() => {
       expect(getByText('Print (Full)')).toBeTruthy()
+      expect(getByText('Unfinalize Prescription')).toBeTruthy()
     })
+    await fireEvent.click(getByText('Unfinalize Prescription'))
     await fireEvent.click(getByText('Print (Full)'))
+    expect(onUnfinalizePrescription).toHaveBeenCalledTimes(1)
     expect(onPrintPrescriptions).toHaveBeenCalledTimes(1)
   })
 

@@ -250,16 +250,35 @@ describe('PharmacistDashboard', () => {
     expect(source).toContain('qts: qtsValue')
   })
 
-  it('prevents measured-liquid and bottle-liquid rows from mixing in Remaining', () => {
+  it('prevents cross-form inventory rows from mixing in Remaining/allocation', () => {
     const __filename = fileURLToPath(import.meta.url)
     const __dirname = path.dirname(__filename)
     const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
     const source = fs.readFileSync(sourcePath, 'utf8')
 
+    expect(source).toContain('const resolveDispenseFormGroup = (value) => {')
     expect(source).toContain('const isLiquidFormCompatible = (medicationForm, inventoryForm) => {')
     expect(source).toContain('if (medicationMeasured && inventoryBottle) return false')
     expect(source).toContain('if (medicationBottle && inventoryMeasured) return false')
+    expect(source).toContain('if (medicationGroup && !inventoryGroup) return false')
+    expect(source).toContain('if (medicationGroup && inventoryGroup && medicationGroup !== inventoryGroup) return false')
     expect(source).toContain('if (!isLiquidFormCompatible(medicationForm, inventoryForm)) {')
+    expect(source).toContain('const sourceForm = batch?.dosageForm || batch?.packUnit || item?.dosageForm || item?.packUnit || item?.unit || \'\'')
+    expect(source).toContain('if (!isLiquidFormCompatible(medicationForm, sourceForm)) return')
+  })
+
+  it('passes edited amount parity payload into charge calculation (amount + qts + inventoryMatch)', async () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const override = editableAmounts.get(key)')
+    expect(source).toContain('amount: amountValue')
+    expect(source).toContain('const shouldMirrorAmountToQts = chargeCalculationService.isQtsMedication(medication)')
+    expect(source).toContain('qts: qtsValue')
+    expect(source).toContain('inventoryMatch: inventoryData ? {')
+    expect(source).toContain('inventoryItemId: inventoryData.inventoryItemId')
   })
 
 })

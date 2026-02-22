@@ -436,6 +436,10 @@
         const liquidMode = isMeasuredLiquidMedication(medication)
 
         const pushBatchEntry = (item, batch = null) => {
+          const medicationForm = medication?.dosageForm || medication?.form || ''
+          const sourceForm = batch?.dosageForm || batch?.packUnit || item?.dosageForm || item?.packUnit || item?.unit || ''
+          if (!isLiquidFormCompatible(medicationForm, sourceForm)) return
+
           const quantityRaw = batch ? (batch.quantity ?? batch.currentStock) : item.currentStock
           let quantity = parseFloat(quantityRaw)
           if (!Number.isFinite(quantity)) return
@@ -455,6 +459,7 @@
             inventoryItemId: item.id,
             batchId: batch?.id || null,
             batchNumber: batch?.batchNumber || '',
+            dosageForm: batch?.dosageForm || item?.dosageForm || '',
             currentStock: quantity,
             sellingPrice: (batch?.sellingPrice ?? item.sellingPrice),
             expiryDate: batch?.expiryDate ?? item.expiryDate,
@@ -599,6 +604,29 @@
       .replace(/[\(\)（）]/g, '') // remove parentheses that often wrap generic names
       .trim()
   }
+
+  const extractBrandFromMedicationName = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    return raw.split(/[\(（]/)[0]?.trim() || ''
+  }
+
+  const extractGenericFromMedicationName = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    const parts = raw.split(/[\(（]/)
+    if (parts.length < 2) return ''
+    return (parts[1] || '').replace(/[\)）]/g, '').trim()
+  }
+
+  const buildStrictNameSet = (...values) => {
+    const set = new Set()
+    for (const value of values) {
+      const normalized = normalizeName(value)
+      if (normalized) set.add(normalized)
+    }
+    return set
+  }
   
   const normalizeKeyPart = (value) => {
     return (value || '')
@@ -718,6 +746,15 @@
   }
 
   const normalizeDispenseForm = (value) => String(value || '').trim().toLowerCase()
+  const resolveDispenseFormGroup = (value) => {
+    const form = normalizeDispenseForm(value)
+    if (!form) return ''
+    if (form.includes('tablet') || form === 'tab' || form === 'tabs') return 'tablet'
+    if (form.includes('capsule') || form === 'cap' || form === 'caps') return 'capsule'
+    if (form === 'liquid (measured)' || form.includes('syrup')) return 'liquid_measured'
+    if (form === 'liquid (bottles)' || form === 'liquid' || form.includes('bottle')) return 'liquid_bottles'
+    return form
+  }
   const isMeasuredLiquidForm = (value) => {
     const form = normalizeDispenseForm(value)
     return form === 'liquid (measured)' || form.includes('syrup')
@@ -735,7 +772,85 @@
     // Prevent mixing measured-liquid and bottle-liquid stock rows.
     if (medicationMeasured && inventoryBottle) return false
     if (medicationBottle && inventoryMeasured) return false
+
+    const medicationGroup = resolveDispenseFormGroup(medicationForm)
+    const inventoryGroup = resolveDispenseFormGroup(inventoryForm)
+    if (medicationGroup && !inventoryGroup) return false
+    if (medicationGroup && inventoryGroup && medicationGroup !== inventoryGroup) return false
     return true
+  }
+
+  const resolveMedicationBrandName = (medication) => {
+    return String(
+      medication?.brandName
+      || extractBrandFromMedicationName(medication?.name)
+      || medication?.name
+      || ''
+    ).trim()
+  }
+
+  const resolveInventoryBrandName = (item) => {
+    return String(
+      item?.brandName
+      || item?.drugName
+      || item?.name
+      || ''
+    ).trim()
+  }
+
+  const resolveMedicationGenericName = (medication) => {
+    return String(
+      medication?.genericName
+      || extractGenericFromMedicationName(medication?.name)
+      || ''
+    ).trim()
+  }
+
+  const resolveInventoryGenericName = (item) => {
+    return String(
+      item?.genericName
+      || extractGenericFromMedicationName(item?.brandName)
+      || extractGenericFromMedicationName(item?.drugName)
+      || ''
+    ).trim()
+  }
+
+  const isStrictInventoryMatchForDispense = (medication, inventoryMatch) => {
+    if (!medication || !inventoryMatch) return false
+
+    const medicationFormGroup = resolveDispenseFormGroup(medication?.dosageForm || medication?.form || '')
+    const inventoryFormGroup = resolveDispenseFormGroup(
+      inventoryMatch?.dosageForm || inventoryMatch?.packUnit || inventoryMatch?.unit || ''
+    )
+    if (!medicationFormGroup || !inventoryFormGroup || medicationFormGroup !== inventoryFormGroup) {
+      return false
+    }
+
+    const medicationBrandSet = buildStrictNameSet(
+      medication?.brandName,
+      extractBrandFromMedicationName(medication?.name),
+      medication?.name
+    )
+    const inventoryBrandSet = buildStrictNameSet(
+      inventoryMatch?.brandName,
+      inventoryMatch?.drugName,
+      inventoryMatch?.name
+    )
+    if (medicationBrandSet.size === 0 || inventoryBrandSet.size === 0) return false
+    const hasExactBrand = Array.from(medicationBrandSet).some((value) => inventoryBrandSet.has(value))
+    if (!hasExactBrand) return false
+
+    const medicationGenericSet = buildStrictNameSet(
+      medication?.genericName,
+      extractGenericFromMedicationName(medication?.name)
+    )
+    const inventoryGenericSet = buildStrictNameSet(
+      inventoryMatch?.genericName,
+      extractGenericFromMedicationName(inventoryMatch?.brandName),
+      extractGenericFromMedicationName(inventoryMatch?.drugName)
+    )
+    if (medicationGenericSet.size === 0 || inventoryGenericSet.size === 0) return false
+    return Array.from(medicationGenericSet).some((value) => inventoryGenericSet.has(value))
   }
 
   // Find matching inventory items for a medication using flexible name matching
@@ -745,10 +860,15 @@
       return []
     }
 
-    const medicationNames = buildMedicationNameSet(medication)
-    const medicationKey = medication.medicationKey || buildMedicationKey(medication)
+    const medicationBrand = normalizeName(resolveMedicationBrandName(medication))
+    const medicationGeneric = normalizeName(resolveMedicationGenericName(medication))
     const medicationForm = medication?.dosageForm || medication?.form || ''
-    console.log('🔍 Matching medication using names:', Array.from(medicationNames))
+    const medicationFormGroup = resolveDispenseFormGroup(medicationForm)
+    console.log('🔍 Strict matching medication:', {
+      brand: medicationBrand,
+      generic: medicationGeneric,
+      formGroup: medicationFormGroup
+    })
 
     const matches = []
 
@@ -757,28 +877,35 @@
       if (!isLiquidFormCompatible(medicationForm, inventoryForm)) {
         continue
       }
-      const itemNames = buildInventoryNameSet(item)
-      const itemKey = buildInventoryKey(item)
-      const keyMatch = medicationKey && itemKey && medicationKey === itemKey
+      const inventoryBrand = normalizeName(resolveInventoryBrandName(item))
+      const inventoryGeneric = normalizeName(resolveInventoryGenericName(item))
+      const inventoryFormGroup = resolveDispenseFormGroup(inventoryForm)
 
-      const hasNameMatch = Array.from(medicationNames).some(medName => 
-        Array.from(itemNames).some(invName => invName && (invName === medName || invName.includes(medName) || medName.includes(invName)))
-      )
-
-      if (keyMatch || hasNameMatch) {
-        console.log('✅ Found matching inventory item:', {
-          medicationNames: Array.from(medicationNames),
-          medicationKey,
-          inventoryKey: itemKey,
-          inventoryNames: Array.from(itemNames),
-          expiryDate: item.expiryDate
-        })
-        matches.push(item)
+      if (!medicationBrand || !inventoryBrand || medicationBrand !== inventoryBrand) {
+        continue
       }
+      if (!medicationFormGroup || !inventoryFormGroup || medicationFormGroup !== inventoryFormGroup) {
+        continue
+      }
+      if (medicationGeneric || inventoryGeneric) {
+        if (!medicationGeneric || !inventoryGeneric || medicationGeneric !== inventoryGeneric) {
+          continue
+        }
+      }
+
+      console.log('✅ Found strict inventory match:', {
+        medicationBrand,
+        medicationGeneric,
+        inventoryBrand,
+        inventoryGeneric,
+        inventoryFormGroup,
+        expiryDate: item.expiryDate
+      })
+      matches.push(item)
     }
 
     if (matches.length === 0) {
-      console.log('❌ No match found. Inventory items:', inventoryItems.map(item => ({
+      console.log('❌ No strict match found. Inventory items:', inventoryItems.map(item => ({
         brandName: item.brandName,
         genericName: item.genericName,
         drugName: item.drugName,
@@ -1113,6 +1240,27 @@
 
           if (dispensePlan.length > 0) {
             for (const entry of dispensePlan) {
+              const strictCandidates = (allocationPreview?.orderedMatches || []).filter((match) => {
+                if (match.inventoryItemId !== entry.inventoryItemId) return false
+                if (entry.batchId && match.batchId && entry.batchId !== match.batchId) return false
+                return true
+              })
+              const strictMatch = strictCandidates.find((match) => isStrictInventoryMatchForDispense(medication, match))
+              if (!strictMatch) {
+                inventoryErrors.push({
+                  drugName: medication.name,
+                  error: 'No exact match by brand name + generic name + dispense type. Stock not reduced.'
+                })
+                console.warn('⚠️ Strict stock reduction skipped due to mismatch:', {
+                  medication: medication?.name,
+                  genericName: medication?.genericName,
+                  dosageForm: medication?.dosageForm || medication?.form || '',
+                  inventoryItemId: entry.inventoryItemId,
+                  batchId: entry.batchId || null
+                })
+                continue
+              }
+
               await inventoryService.createStockMovement(pharmacyId, {
                 itemId: entry.inventoryItemId,
                 type: 'dispatch',
@@ -1132,101 +1280,10 @@
               })
             }
           } else {
-            // Try to create a basic inventory item for this medication
-            console.log(`⚠️ Inventory item not found for: ${medication.name}, attempting to create basic record`)
-            try {
-              const newInventoryItem = await inventoryService.createInventoryItem(pharmacyId, {
-                drugName: medication.name,
-                genericName: medication.name,
-                brandName: medication.name,
-                manufacturer: 'Unknown',
-                category: 'prescription',
-                strength: medication.dosage || 'Unknown',
-                strengthUnit: 'mg',
-                dosageForm: 'tablet',
-                packSize: '1',
-                packUnit: 'box',
-                initialStock: 0, // Start with 0 stock
-                minimumStock: 10,
-                maximumStock: 1000,
-                costPrice: 0,
-                sellingPrice: 0,
-                storageLocation: 'Main Storage',
-                storageConditions: 'room_temperature',
-                expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                description: `Auto-created for dispensed medication: ${medication.name}`
-              })
-              
-              console.log(`✅ Created basic inventory item for ${medication.name}:`, newInventoryItem.id)
-              
-              // Calculate quantity for tracking
-              const fallbackAmount = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
-              let quantity = resolveDispenseQuantity(
-                fallbackAmount !== undefined && fallbackAmount !== null && fallbackAmount !== ''
-                  ? fallbackAmount
-                  : (medication.quantity || medication.dosage || 1)
-              )
-              
-              // Try to create stock movement, but don't fail if inventory item doesn't exist
-              try {
-                await inventoryService.createStockMovement(pharmacyId, {
-                  itemId: newInventoryItem.id,
-                  type: 'dispatch',
-                  quantity: quantity,
-                  unitCost: 0,
-                  reference: 'prescription_dispatch',
-                  referenceId: prescriptionId,
-                  notes: `Dispensed for prescription ${prescriptionId} - ${medication.name} (auto-created inventory)`,
-                  batchNumber: '',
-                  expiryDate: ''
-                })
-                
-                inventoryReductions.push({
-                  drugName: medication.name,
-                  quantity: quantity,
-                  inventoryItem: 'Auto-created'
-                })
-                
-                console.log(`✅ Created inventory item and reduced stock for ${medication.name}: -${quantity}`)
-                
-              } catch (stockMovementError) {
-                console.warn(`⚠️ Could not create stock movement for ${medication.name}, but continuing with dispensing:`, stockMovementError.message)
-                
-                // Still track the dispensing even if inventory update fails
-                inventoryReductions.push({
-                  drugName: medication.name,
-                  quantity: quantity,
-                  inventoryItem: 'Auto-created (inventory tracking failed)'
-                })
-                
-                inventoryErrors.push({
-                  drugName: medication.name,
-                  error: `Inventory item created but stock movement failed: ${stockMovementError.message}`
-                })
-              }
-              
-            } catch (createError) {
-              console.error(`❌ Failed to create inventory item for ${medication.name}:`, createError)
-              
-              // Still track the dispensing even if inventory creation fails
-              const fallbackAmount = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
-              let quantity = resolveDispenseQuantity(
-                fallbackAmount !== undefined && fallbackAmount !== null && fallbackAmount !== ''
-                  ? fallbackAmount
-                  : (medication.quantity || medication.dosage || 1)
-              )
-              
-              inventoryReductions.push({
-                drugName: medication.name,
-                quantity: quantity,
-                inventoryItem: 'Inventory creation failed'
-              })
-              
-              inventoryErrors.push({
-                drugName: medication.name,
-                error: `Could not create inventory item: ${createError.message}`
-              })
-            }
+            inventoryErrors.push({
+              drugName: medication.name,
+              error: 'No exact match by brand name + generic name + dispense type. Stock not reduced.'
+            })
           }
         } catch (error) {
           inventoryErrors.push({

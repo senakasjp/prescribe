@@ -217,6 +217,65 @@
     return `${CURRENT_VIEW_STORAGE_PREFIX}:${userKey}`
   }
 
+  const rehydratePharmacyTeamCurrency = async (currentUser) => {
+    if (!currentUser || currentUser.role !== 'pharmacist' || !currentUser.isPharmacyUser) {
+      return currentUser
+    }
+
+    const pharmacyId = currentUser.pharmacyId || currentUser.id
+    if (!pharmacyId) return currentUser
+
+    try {
+      const parentPharmacy = await firebaseStorage.getPharmacistById(pharmacyId)
+      if (!parentPharmacy) return currentUser
+
+      const connectedDoctorIds = Array.isArray(parentPharmacy.connectedDoctors)
+        ? parentPharmacy.connectedDoctors.filter(Boolean)
+        : []
+      let connectedDoctor = null
+      for (const doctorId of connectedDoctorIds) {
+        const doctor = await firebaseStorage.getDoctorById(doctorId)
+        if (doctor?.id) {
+          connectedDoctor = doctor
+          break
+        }
+      }
+      if (!connectedDoctor) {
+        const allDoctors = typeof firebaseStorage.getAllDoctors === 'function'
+          ? await firebaseStorage.getAllDoctors()
+          : []
+        connectedDoctor = (allDoctors || []).find((doctor) =>
+          Array.isArray(doctor?.connectedPharmacists) &&
+          doctor.connectedPharmacists.includes(parentPharmacy.id || pharmacyId)
+        ) || null
+      }
+
+      const resolvedCountry = connectedDoctor?.country
+        || parentPharmacy.country
+        || currentUser.country
+        || ''
+      const resolvedCurrency = String(
+        connectedDoctor?.currency
+        || resolveCurrencyFromCountry(connectedDoctor?.country)
+        || parentPharmacy.currency
+        || resolveCurrencyFromCountry(parentPharmacy.country)
+        || currentUser.currency
+        || resolveCurrencyFromCountry(currentUser.country)
+        || 'USD'
+      ).trim().toUpperCase()
+
+      return {
+        ...currentUser,
+        doctorCountry: connectedDoctor?.country || currentUser.doctorCountry || '',
+        country: resolvedCountry,
+        currency: resolvedCurrency
+      }
+    } catch (error) {
+      console.error('Failed to rehydrate pharmacy team currency:', error)
+      return currentUser
+    }
+  }
+
   const normalizeDoctorView = (value, externalDoctor = false) => {
     const normalized = String(value || '').trim()
     if (!DOCTOR_ALLOWED_VIEWS.has(normalized)) return 'home'
@@ -714,6 +773,10 @@
       }
       
       if (existingUser) {
+        existingUser = await rehydratePharmacyTeamCurrency(existingUser)
+        if (existingUser?.role === 'pharmacist') {
+          pharmacistAuthService.saveCurrentPharmacist(existingUser)
+        }
         console.log('🔍 User auth provider:', existingUser.authProvider)
         
         // For email/password users, prioritize local storage and skip Firebase auth listener

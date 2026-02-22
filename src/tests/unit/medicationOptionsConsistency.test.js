@@ -8,7 +8,7 @@ import {
 
 describe('medication option consistency', () => {
   it('exposes a stable strength unit list', () => {
-    expect(STRENGTH_UNITS).toEqual(['mg', 'g', 'ml', 'l', 'mcg', 'IU', 'units', '%'])
+    expect(STRENGTH_UNITS).toEqual(['mg', 'g', 'ml', 'l', 'mcg', 'IU', 'units', 'drops', 'puffs', '%'])
     expect(new Set(STRENGTH_UNITS).size).toBe(STRENGTH_UNITS.length)
   })
 
