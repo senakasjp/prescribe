@@ -182,8 +182,11 @@ describe('PharmacistDashboard', () => {
     const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
     const source = fs.readFileSync(sourcePath, 'utf8')
 
-    expect(source).toContain("<strong>Age:</strong> {selectedPrescription.patientAge || selectedPrescription.age || 'Not specified'}")
-    expect(source).toContain("<strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}")
+    expect(source).toContain('const getPrescriptionPatientAge = (prescription) => {')
+    expect(source).toContain('const getPrescriptionPatientSex = (prescription) => {')
+    expect(source).toContain("<strong>Age:</strong> {getPrescriptionPatientAge(selectedPrescription)}")
+    expect(source).toContain("<strong>Sex:</strong> {getPrescriptionPatientSex(selectedPrescription)}")
+    expect(source).toContain('const firstNested = Array.isArray(prescription.prescriptions) ? prescription.prescriptions[0] : null')
   })
 
   it('keeps Liquid (bottles) remaining/allocation units in bottle counts (not ml conversion)', () => {
@@ -279,6 +282,18 @@ describe('PharmacistDashboard', () => {
     expect(source).toContain('qts: qtsValue')
     expect(source).toContain('inventoryMatch: inventoryData ? {')
     expect(source).toContain('inventoryItemId: inventoryData.inventoryItemId')
+  })
+
+  it('shows rack location under each medication card in prescription details', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const getMedicationRackLocation = (prescriptionId, medication) => {')
+    expect(source).toContain('storageLocation')
+    expect(source).toContain('>Rack<')
+    expect(source).toContain('{getMedicationRackLocation(prescription.id, medication)}')
   })
 
 })

@@ -108,6 +108,9 @@
   let nameSelectedIndex = -1
   let nameSearchTimeout = null
   let isInventoryDrug = false
+  let selectedInventoryItemId = ''
+  let selectedInventoryPharmacyId = ''
+  let selectedInventoryCurrentStock = null
   let lastClearedDoctorId = ''
   const clearPharmacyMedicationCache = (resolvedDoctorId) => {
     if (!resolvedDoctorId) return
@@ -332,6 +335,9 @@
     strength = ''
     strengthUnit = ''
     isInventoryDrug = false
+    selectedInventoryItemId = ''
+    selectedInventoryPharmacyId = ''
+    selectedInventoryCurrentStock = null
     route = 'PO' // Set default route
     instructions = ''
     frequency = ''
@@ -412,6 +418,11 @@
     endDate = editingMedication.endDate || ''
     notes = editingMedication.notes || ''
     isInventoryDrug = editingMedication?.source === 'inventory'
+    selectedInventoryItemId = editingMedication?.inventoryItemId || ''
+    selectedInventoryPharmacyId = editingMedication?.inventoryPharmacyId || editingMedication?.pharmacyId || ''
+    selectedInventoryCurrentStock = Number.isFinite(Number(editingMedication?.selectedInventoryCurrentStock))
+      ? Number(editingMedication.selectedInventoryCurrentStock)
+      : null
     moveVolumeFromStrengthForInventoryLiquidBottles()
     formInitialized = true
   }
@@ -480,6 +491,9 @@
   const handleNameInput = () => {
     isInventoryDrug = false
     inventoryStrengthText = ''
+    selectedInventoryItemId = ''
+    selectedInventoryPharmacyId = ''
+    selectedInventoryCurrentStock = null
     clearTimeout(nameSearchTimeout)
     nameSearchTimeout = setTimeout(searchNameSuggestions, 250)
   }
@@ -529,6 +543,9 @@
     totalVolume = String(s.totalVolume ?? s.containerSize ?? '').trim()
     volumeUnit = String(s.volumeUnit || s.containerUnit || volumeUnit || 'ml').trim() || 'ml'
     isInventoryDrug = s.source === 'inventory'
+    selectedInventoryItemId = s.id || ''
+    selectedInventoryPharmacyId = s.pharmacyId || ''
+    selectedInventoryCurrentStock = Number.isFinite(Number(s.currentStock)) ? Number(s.currentStock) : null
     const suggestionVolumeText = [String(s.totalVolume ?? s.containerSize ?? '').trim(), String(s.volumeUnit || s.containerUnit || '').trim()]
       .filter(Boolean)
       .join(' ')
@@ -742,6 +759,11 @@
         containerSize: storesVolumeInLineTwo ? resolvedVolumeValue : '',
         containerUnit: storesVolumeInLineTwo ? resolvedVolumeUnit : '',
         inventoryStrengthText: isInventoryDrug ? String(inventoryStrengthText || '').trim() : '',
+        inventoryItemId: isInventoryDrug ? String(selectedInventoryItemId || '').trim() : '',
+        inventoryPharmacyId: isInventoryDrug ? String(selectedInventoryPharmacyId || '').trim() : '',
+        selectedInventoryCurrentStock: isInventoryDrug && Number.isFinite(Number(selectedInventoryCurrentStock))
+          ? Number(selectedInventoryCurrentStock)
+          : null,
         route: String(route ?? '').trim(),
         instructions: String(instructions ?? '').trim(),
         frequency,
@@ -777,6 +799,10 @@
       dosageForm = ''
       strength = ''
       strengthUnit = ''
+      isInventoryDrug = false
+      selectedInventoryItemId = ''
+      selectedInventoryPharmacyId = ''
+      selectedInventoryCurrentStock = null
       route = 'PO' // Set default route
       instructions = ''
       frequency = ''

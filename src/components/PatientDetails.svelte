@@ -12,6 +12,7 @@
   import PrescriptionsTab from './PrescriptionsTab.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
   import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
@@ -671,6 +672,109 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     const calculated = Math.ceil(days * dailyFrequency * dosageMultiplier)
     if (calculated > 0) return calculated
     return enteredCount || 0
+  }
+
+  const normalizeInventoryForm = (value) => String(value || '').trim().toLowerCase()
+
+  const requiresSelectedBatchLimitCheck = (medication) => {
+    if (!medication || String(medication?.source || '').trim().toLowerCase() !== 'inventory') return false
+    const form = normalizeInventoryForm(getMedicationFormValue(medication))
+    return form.includes('tablet') || form.includes('capsule') || form === 'liquid (measured)'
+  }
+
+  const matchesMedicationBatch = (stockItem, medication) => {
+    const stockBrand = normalizeKeyPart(stockItem?.drugName)
+    const stockGeneric = normalizeKeyPart(stockItem?.genericName)
+    const medBrand = normalizeKeyPart(medication?.name)
+    const medGeneric = normalizeKeyPart(medication?.genericName)
+
+    const hasNameMatch = Boolean(
+      (stockBrand && medBrand && (stockBrand === medBrand || stockBrand.includes(medBrand) || medBrand.includes(stockBrand))) ||
+      (stockGeneric && medGeneric && (stockGeneric === medGeneric || stockGeneric.includes(medGeneric) || medGeneric.includes(stockGeneric))) ||
+      (stockBrand && medGeneric && (stockBrand === medGeneric || stockBrand.includes(medGeneric) || medGeneric.includes(stockBrand))) ||
+      (stockGeneric && medBrand && (stockGeneric === medBrand || stockGeneric.includes(medBrand) || medBrand.includes(stockGeneric)))
+    )
+    if (!hasNameMatch) return false
+
+    const stockForm = normalizeInventoryForm(stockItem?.dosageForm || stockItem?.packUnit || stockItem?.unit || '')
+    const medForm = normalizeInventoryForm(getMedicationFormValue(medication))
+    if (stockForm && medForm && stockForm !== medForm) return false
+
+    const stockStrength = normalizeKeyPart(stockItem?.strength)
+    const stockStrengthUnit = normalizeKeyPart(stockItem?.strengthUnit)
+    const medStrength = normalizeKeyPart(medication?.strength)
+    const medStrengthUnit = normalizeKeyPart(medication?.strengthUnit)
+    if (stockStrength && medStrength && stockStrength !== medStrength) return false
+    if (stockStrengthUnit && medStrengthUnit && stockStrengthUnit !== medStrengthUnit) return false
+
+    return true
+  }
+
+  const validateSelectedInventoryBatchCapacity = async (medication) => {
+    if (!requiresSelectedBatchLimitCheck(medication)) {
+      return { isValid: true }
+    }
+
+    const requestedAmount = calculateMedicationQuantity(medication)
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return { isValid: true }
+    }
+
+    const resolvedDoctorId = doctorId || currentPrescription?.doctorId || selectedPatient?.doctorId
+    if (!resolvedDoctorId) {
+      return { isValid: true }
+    }
+
+    const stock = await pharmacyMedicationService.getPharmacyStock(resolvedDoctorId)
+    const selectedItemId = String(medication?.inventoryItemId || '').trim()
+    const selectedPharmacyId = String(medication?.inventoryPharmacyId || '').trim()
+
+    let selectedBatch = null
+    if (selectedItemId) {
+      selectedBatch = stock.find(item => String(item?.inventoryItemId || '') === selectedItemId) || null
+    }
+    if (!selectedBatch) {
+      selectedBatch = stock.find(item =>
+        (!selectedPharmacyId || String(item?.pharmacyId || '') === selectedPharmacyId) &&
+        matchesMedicationBatch(item, medication)
+      ) || null
+    }
+
+    const selectedBatchAvailable = Number.isFinite(Number(selectedBatch?.currentStock))
+      ? Number(selectedBatch.currentStock)
+      : Number.isFinite(Number(medication?.selectedInventoryCurrentStock))
+        ? Number(medication.selectedInventoryCurrentStock)
+        : 0
+
+    if (requestedAmount <= selectedBatchAvailable) {
+      return { isValid: true }
+    }
+
+    const remainingAmount = Math.max(0, requestedAmount - Math.max(0, selectedBatchAvailable))
+    const alternateBatches = stock.filter(item => {
+      const sameBatch = selectedItemId && String(item?.inventoryItemId || '') === selectedItemId
+      if (sameBatch) return false
+      if (selectedPharmacyId && String(item?.pharmacyId || '') !== selectedPharmacyId) return false
+      const available = Number(item?.currentStock || 0)
+      if (!Number.isFinite(available) || available <= 0) return false
+      return matchesMedicationBatch(item, medication)
+    })
+    const alternateAvailable = alternateBatches.reduce((sum, item) => sum + Math.max(0, Number(item?.currentStock || 0)), 0)
+
+    const itemLabel = getMedicationFormValue(medication) || 'units'
+    if (alternateAvailable > 0) {
+      return {
+        isValid: false,
+        popupTitle: 'Insufficient stock in selected batch',
+        popupMessage: `Only ${selectedBatchAvailable} ${itemLabel} can be selected from the selected batch. Remaining ${remainingAmount} should be selected from another batch.`
+      }
+    }
+
+    return {
+      isValid: false,
+      popupTitle: 'Insufficient stock in selected batch',
+      popupMessage: `Only ${selectedBatchAvailable} ${itemLabel} can be selected from the selected batch. Remaining ${remainingAmount} is not available in other batches. Please write the remaining amount for an external pharmacy.`
+    }
   }
 
   const enrichMedicationForPharmacy = (medication) => {
@@ -1582,9 +1686,25 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   const handleMedicationAdded = async (event) => {
     const medicationData = event.detail
     console.log('💊 Medication added:', medicationData)
-    
+    let medicationSaved = false
+
     try {
       savingMedication = true
+
+      const capacityValidation = await validateSelectedInventoryBatchCapacity(medicationData)
+      if (!capacityValidation.isValid) {
+        pendingAction = null
+        showConfirmation(
+          capacityValidation.popupTitle || 'Inventory stock warning',
+          capacityValidation.popupMessage || 'Selected inventory batch does not have enough stock.',
+          'OK',
+          'Close',
+          'warning',
+          { requireCode: false }
+        )
+        return
+      }
+
       if (medicationData.isEdit) {
         // Update existing medication in database
         const updatedMedication = await firebaseStorage.createMedication({
@@ -1613,6 +1733,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           aiCheckMessage = ''
           lastAnalyzedMedications = []
         }
+        medicationSaved = true
       } else {
         // Add new medication to current prescription
         if (!currentPrescription) {
@@ -1659,6 +1780,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           type: 'prescription', 
           data: newMedication 
         })
+        medicationSaved = true
       }
     } catch (error) {
       console.error('❌ Error saving medication:', error)
@@ -1667,9 +1789,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     } finally {
       savingMedication = false
     }
-    
-    showMedicationForm = false
-    editingMedication = null
+    if (medicationSaved) {
+      showMedicationForm = false
+      editingMedication = null
+    }
   }
   
   // Handle form cancellations
@@ -2109,6 +2232,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let availablePharmacies = []
   let selectedPharmacies = []
   let pendingPharmacyMedications = null
+  let isSendingToPharmacies = false
   
   // Reports functionality
   let showReportForm = false
@@ -3139,7 +3263,12 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
   // Send prescriptions to selected pharmacies
   const sendToSelectedPharmacies = async () => {
+    if (isSendingToPharmacies) {
+      return
+    }
+
     try {
+      isSendingToPharmacies = true
       console.log('📤 Sending prescriptions to selected pharmacies:', selectedPharmacies)
       
       const doctor = await getEffectiveDoctorProfile()
@@ -3277,6 +3406,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       console.error('❌ Error sending prescriptions to pharmacies:', error)
       pendingPharmacyMedications = null
       notifyError('Failed to send prescription to pharmacies. Please try again.')
+    } finally {
+      isSendingToPharmacies = false
     }
   }
 
@@ -4663,12 +4794,13 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   function isPrescriptionLockedForEditing(prescription) {
     if (!prescription) return false
     const status = String(prescription.status || '').toLowerCase()
+    if (status === 'draft') {
+      return false
+    }
     return (
       status === 'finalized' ||
       status === 'sent' ||
-      Boolean(prescription.finalizedAt) ||
-      Boolean(prescription.sentToPharmacy) ||
-      Boolean(prescription.printedAt)
+      Boolean(prescription.finalizedAt)
     )
   }
 
@@ -7691,7 +7823,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 {#if showPharmacyModal}
   <div id="pharmacyModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-2xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 overflow-hidden">
         <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
           <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-paper-plane mr-2"></i>
@@ -7704,6 +7836,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             on:click={() => {
               showPharmacyModal = false
               pendingPharmacyMedications = null
+              isSendingToPharmacies = false
             }}
           >
             <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
@@ -7772,6 +7905,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             on:click={() => {
               showPharmacyModal = false
               pendingPharmacyMedications = null
+              isSendingToPharmacies = false
             }}
           >
             <i class="fas fa-times mr-2"></i>
@@ -7779,12 +7913,20 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           </button>
           <button 
             type="button" 
-            class="text-white bg-yellow-700 hover:bg-yellow-800 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-yellow-600 dark:hover:bg-yellow-700 dark:focus:ring-yellow-800" 
+            class="text-white bg-yellow-700 hover:bg-yellow-800 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-yellow-600 dark:hover:bg-yellow-700 dark:focus:ring-yellow-800" 
             on:click={sendToSelectedPharmacies}
-            disabled={selectedPharmacies.length === 0}
+            disabled={selectedPharmacies.length === 0 || isSendingToPharmacies}
           >
-            <i class="fas fa-paper-plane mr-2"></i>
-            Send to {selectedPharmacies.length} Pharmacy{selectedPharmacies.length !== 1 ? 'ies' : ''}
+            {#if isSendingToPharmacies}
+              <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Sending...
+            {:else}
+              <i class="fas fa-paper-plane mr-2"></i>
+              Send to {selectedPharmacies.length} Pharmacy{selectedPharmacies.length !== 1 ? 'ies' : ''}
+            {/if}
           </button>
         </div>
       </div>
@@ -7796,7 +7938,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 {#if showPrescriptionPDF}
   <div id="prescriptionPDFModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-4xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 overflow-hidden">
         <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
           <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-file-pdf mr-2"></i>Prescription PDF

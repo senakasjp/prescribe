@@ -1364,7 +1364,7 @@
   <!-- Flowbite Modal Container -->
   <div class="relative z-10 w-full max-w-4xl max-h-full mx-auto flex items-center justify-center min-h-screen">
     <!-- Flowbite Modal Content -->
-    <div class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100">
+    <div class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100 overflow-hidden">
       <!-- Flowbite Modal Header -->
       <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
         <h3 id="prescription-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">

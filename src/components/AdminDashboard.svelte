@@ -6375,7 +6375,7 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
   >
     <div class="relative w-full max-w-sm max-h-full mx-auto flex items-center justify-center min-h-screen">
       <div 
-        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100"
+        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100 overflow-hidden"
         on:click|stopPropagation
       >
         <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">

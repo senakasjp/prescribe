@@ -467,7 +467,8 @@
             brandName: item.brandName,
             genericName: item.genericName,
             strength: item.strength,
-            strengthUnit: item.strengthUnit
+            strengthUnit: item.strengthUnit,
+            storageLocation: resolveStorageLocationValue(batch) || resolveStorageLocationValue(item)
           })
         }
 
@@ -522,6 +523,7 @@
             brandName: earliestEntry.brandName,
             genericName: earliestEntry.genericName,
             inventoryItemId: earliestEntry.inventoryItemId || null,
+            storageLocation: earliestEntry.storageLocation || '',
             matches: effectiveEntries,
             found: true
           }
@@ -568,6 +570,7 @@
             brandName: null,
             genericName: null,
             inventoryItemId: null,
+            storageLocation: '',
             matches: [],
             found: false
           }
@@ -586,12 +589,13 @@
           packUnit: '',
           sellingPrice: null,
           brandName: null,
-          genericName: null,
-          inventoryItemId: null,
-          matches: [],
-          found: false
+            genericName: null,
+            inventoryItemId: null,
+            storageLocation: '',
+            matches: [],
+            found: false
+          }
         }
-      }
       medicationInventoryVersion += 1
     }
   }
@@ -1031,6 +1035,7 @@
       brandName: null,
       genericName: null,
       inventoryItemId: null,
+      storageLocation: '',
       matches: [],
       found: false
     }
@@ -1058,6 +1063,100 @@
   const getDisplayValue = (value, fallback = '-') => {
     const text = String(value ?? '').trim()
     return text || fallback
+  }
+
+  const resolveStorageLocationValue = (source) => {
+    if (!source || typeof source !== 'object') return ''
+    const candidates = [
+      source.storageLocation,
+      source.rack,
+      source.rackLocation,
+      source.location,
+      source.storageRack,
+      source.binLocation,
+      source.shelf,
+      source.shelfLocation,
+      source.storage?.location,
+      source.storage?.rack
+    ]
+    for (const candidate of candidates) {
+      const text = String(candidate ?? '').trim()
+      if (text) return text
+    }
+    return ''
+  }
+
+  const getMedicationRackLocation = (prescriptionId, medication) => {
+    const medicationId = medication?.id || medication?.name
+    const inventoryData = getMedicationInventoryData(prescriptionId, medicationId, medicationInventoryVersion)
+    const fromPrimary = resolveStorageLocationValue(inventoryData)
+    if (fromPrimary) return fromPrimary
+
+    const preview = getAllocationPreview(prescriptionId, medication)
+    const fromBatch = resolveStorageLocationValue(preview?.orderedMatches?.[0])
+    if (fromBatch) return fromBatch
+
+    return 'Not specified'
+  }
+
+  const getPrescriptionPatientRecord = (prescription) => {
+    if (!prescription || typeof prescription !== 'object') return null
+    if (prescription.patient && typeof prescription.patient === 'object') return prescription.patient
+    const firstNested = Array.isArray(prescription.prescriptions) ? prescription.prescriptions[0] : null
+    if (firstNested?.patient && typeof firstNested.patient === 'object') return firstNested.patient
+    return null
+  }
+
+  const getPrescriptionPatientAge = (prescription) => {
+    const patient = getPrescriptionPatientRecord(prescription)
+    const directAge = [
+      prescription?.patientAge,
+      prescription?.age,
+      prescription?.patient?.age,
+      patient?.age
+    ].map((value) => String(value ?? '').trim()).find(Boolean) || ''
+
+    const directAgeType = [
+      prescription?.ageType,
+      prescription?.patient?.ageType,
+      patient?.ageType
+    ].map((value) => String(value ?? '').trim()).find(Boolean) || ''
+
+    if (directAge) return [directAge, directAgeType].filter(Boolean).join(' ')
+
+    const dob = [
+      prescription?.patientDateOfBirth,
+      prescription?.dateOfBirth,
+      prescription?.patient?.dateOfBirth,
+      patient?.dateOfBirth
+    ].map((value) => String(value ?? '').trim()).find(Boolean) || ''
+
+    if (dob) {
+      const birthDate = new Date(dob)
+      if (!Number.isNaN(birthDate.getTime())) {
+        const now = new Date()
+        const ageYears = Math.floor((now - birthDate) / (365.25 * 24 * 60 * 60 * 1000))
+        if (Number.isFinite(ageYears) && ageYears >= 0) return `${ageYears} years`
+      }
+    }
+
+    return 'Not specified'
+  }
+
+  const getPrescriptionPatientSex = (prescription) => {
+    const patient = getPrescriptionPatientRecord(prescription)
+    const value = [
+      prescription?.patientSex,
+      prescription?.patientGender,
+      prescription?.sex,
+      prescription?.gender,
+      prescription?.patient?.gender,
+      prescription?.patient?.sex,
+      patient?.gender,
+      patient?.sex
+    ].map((entry) => String(entry ?? '').trim()).find(Boolean)
+
+    return value || 'Not specified'
   }
   
   // Confirmation modal state
@@ -2632,7 +2731,7 @@
 {#if showPrescriptionDetails && selectedPrescription}
   <div id="prescriptionModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-2 sm:p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-full max-h-full bg-black bg-opacity-50 backdrop-blur-sm">
     <div class="relative w-full max-w-4xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 h-full max-h-full flex flex-col border border-white">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 h-full max-h-full flex flex-col border border-white overflow-hidden">
         <!-- Mobile Header -->
         <div class="flex items-center justify-between p-3 sm:p-5 border-b rounded-t dark:border-gray-600 bg-blue-600 text-white sm:bg-white sm:text-gray-900">
           <h3 class="text-lg sm:text-xl font-medium">
@@ -2661,8 +2760,8 @@
                 <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
                 <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
                 <div class="flex gap-4">
-                  <p><strong>Age:</strong> {selectedPrescription.patientAge || selectedPrescription.age || 'Not specified'}</p>
-                  <p><strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}</p>
+                  <p><strong>Age:</strong> {getPrescriptionPatientAge(selectedPrescription)}</p>
+                  <p><strong>Sex:</strong> {getPrescriptionPatientSex(selectedPrescription)}</p>
                 </div>
               </div>
             </div>
@@ -2812,6 +2911,10 @@
                                   <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Instructions</div>
                                   <div class="text-gray-900 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
                                 </div>
+                                <div class="mt-3 text-sm">
+                                  <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Rack</div>
+                                  <div class="text-gray-900">{getMedicationRackLocation(prescription.id, medication)}</div>
+                                </div>
                               </div>
 
                               <!-- Allocation Summary Footer -->
@@ -2845,11 +2948,11 @@
                           {@const inventoryMatchesMobile = getInventoryMatches(prescription.id, medication.id || medication.name)}
                           {@const allocationPreviewMobile = getAllocationPreview(prescription.id, medication)}
                           <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                            <div class="flex items-center justify-between mb-2">
-                              <div class="flex items-center gap-2">
-                                <h4 class="font-semibold text-gray-900 text-sm">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</h4>
+                            <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
+                              <div class="min-w-0 flex-1">
+                                <h4 class="font-semibold text-gray-900 text-sm break-words">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</h4>
                               </div>
-                              <label class="flex items-center space-x-2 {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'cursor-not-allowed' : 'cursor-pointer'}">
+                              <label class="flex items-center space-x-2 shrink-0 {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'cursor-not-allowed' : 'cursor-pointer'}">
                                 <input 
                                   type="checkbox" 
                                   class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2860,18 +2963,18 @@
                                 <span class="text-xs {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'text-gray-400' : 'text-gray-600'}">Dispensed</span>
                               </label>
                             </div>
-                            <div class="space-y-1 text-xs">
-                              <div class="flex justify-between">
+                            <div class="space-y-2 text-xs">
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Dosage:</span>
-                                <span class="text-gray-900">{getDisplayDosageText(medication)}</span>
+                                <span class="text-gray-900 text-right break-words">{getDisplayDosageText(medication)}</span>
                               </div>
-                              <div class="flex justify-between">
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Amount:</span>
                                 <!-- All medications - show as editable input -->
-                                <div class="flex flex-col items-end">
+                                <div class="flex flex-col items-end min-w-0">
                                   <input 
                                     type="number" 
-                                    class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
+                                    class="w-full max-w-28 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
                                     value={getEditableAmount(prescription.id, medication)}
                                     on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
                                     placeholder="0"
@@ -2901,42 +3004,46 @@
                                   <div class="text-[10px] uppercase tracking-wide text-gray-400">Instructions</div>
                                   <div class="text-gray-900 mt-0.5 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
                                 </div>
+                                <div class="mt-2 text-center">
+                                  <div class="text-[10px] uppercase tracking-wide text-gray-400">Rack</div>
+                                  <div class="text-gray-900 mt-0.5 break-words">{getMedicationRackLocation(prescription.id, medication)}</div>
+                                </div>
                               </div>
-                              <div class="flex justify-between">
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Expiry Date:</span>
                                 {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
-                                  <span class="text-green-600 font-medium text-xs">
+                                  <span class="text-green-600 font-medium text-xs text-right break-words">
                                     {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ? 
                                       formatDate(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate) : 
                                       'N/A'
                                     }
                                   </span>
                                 {:else}
-                                  <span class="text-red-500 text-xs">Not in inventory</span>
+                                  <span class="text-red-500 text-xs text-right">Not in inventory</span>
                                 {/if}
                               </div>
-                              <div class="flex justify-between">
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Remaining:</span>
                                 {#if inventoryMatchesMobile.length > 0}
-                                  <span class="text-blue-600 font-medium text-xs">
+                                  <span class="text-blue-600 font-medium text-xs text-right break-words">
                                     {allocationPreviewMobile.orderedMatches[0]?.available || getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock}
                                     {allocationPreviewMobile.orderedMatches[0]?.packUnit || getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
                                   </span>
                                 {:else if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
-                                  <span class="text-blue-600 font-medium text-xs">
+                                  <span class="text-blue-600 font-medium text-xs text-right break-words">
                                     {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
                                   </span>
                                 {:else}
-                                  <span class="text-red-500 text-xs">0</span>
+                                  <span class="text-red-500 text-xs text-right">0</span>
                                 {/if}
                               </div>
                               {#if inventoryMatchesMobile.length > 0}
                                 <div class="pt-2 mt-2 border-t border-gray-200 space-y-1">
                                   <div class="text-[10px] uppercase text-gray-400 tracking-wide">Inventory Batches</div>
                                   {#each allocationPreviewMobile.orderedMatches as batch, index}
-                                    <div class="flex justify-between text-xs text-gray-600">
-                                      <span>Batch {index + 1}{#if batch.expiryDate} · {formatDate(batch.expiryDate)}{/if}</span>
-                                      <span class="text-gray-700">
+                                    <div class="flex flex-wrap justify-between gap-x-2 gap-y-1 text-xs text-gray-600">
+                                      <span class="min-w-0 break-words">Batch {index + 1}{#if batch.expiryDate} · {formatDate(batch.expiryDate)}{/if}</span>
+                                      <span class="text-gray-700 text-right">
                                         {batch.available} {batch.packUnit || 'units'}
                                         {#if batch.allocated > 0}
                                           <span class="text-teal-600 font-semibold ml-1">→ {batch.allocated}</span>

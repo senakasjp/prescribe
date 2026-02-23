@@ -150,6 +150,43 @@ describe('MedicationForm qty behavior', () => {
     expect(container.textContent).toContain('Liquid (bottles)')
   })
 
+  it('preserves selected inventory batch metadata in submit payload', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Tablet',
+          dosage: '1',
+          strength: '500',
+          strengthUnit: 'mg',
+          frequency: 'Twice daily (BD)',
+          timing: 'After meals (PC)',
+          duration: '5 days',
+          inventoryItemId: 'inv-batch-001',
+          inventoryPharmacyId: 'ph-1',
+          selectedInventoryCurrentStock: 12
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.source).toBe('inventory')
+    expect(payload.inventoryItemId).toBe('inv-batch-001')
+    expect(payload.inventoryPharmacyId).toBe('ph-1')
+    expect(payload.selectedInventoryCurrentStock).toBe(12)
+  })
+
   it('shows fractional dosage options for tablets only', async () => {
     const { container } = render(MedicationForm, {
       props: {
