@@ -224,16 +224,16 @@
   let smsSenderIdStatus = ''
   let smsTestRecipientSaving = false
   let smsTestRecipientStatus = ''
-  let registrationTestStatus = ''
+  let patientRegistrationTestStatus = ''
   let appointmentReminderTestStatus = ''
   let doctorRegistrationTestStatus = ''
   let doctorApprovedTestStatus = ''
   let appUrl = ''
   let appUrlSaving = false
   let appUrlStatus = ''
-  let registrationTemplate =
+  let patientRegistrationTemplate =
     'Welcome {{name}} to Prescribe! Your account is ready with Dr. {{doctorName}}. Sign in at {{appUrl}}.'
-  let registrationTemplateEnabled = true
+  let patientRegistrationTemplateEnabled = true
   let appointmentReminderTemplate =
     'Reminder: your appointment with {{doctorName}} is on {{date}} at {{time}}. Reply if you need to reschedule.'
   let appointmentReminderTemplateEnabled = true
@@ -244,7 +244,7 @@
   let doctorApprovedTemplate =
     'Hi Dr. {{doctorName}}, your account is approved. You can sign in at {{appUrl}}. — M-Prescribe'
   let doctorApprovedTemplateEnabled = true
-  let registrationChannel = 'sms'
+  let patientRegistrationChannel = 'sms'
   let appointmentReminderChannel = 'sms'
   let messagingTemplatesLoading = false
   let messagingTemplatesSaving = false
@@ -913,8 +913,14 @@
       messagingTemplatesLoading = true
       const templates = await firebaseStorage.getMessagingTemplates()
       if (templates) {
-        registrationTemplate = templates.registrationTemplate || registrationTemplate
-        registrationTemplateEnabled = templates.registrationTemplateEnabled !== false
+        patientRegistrationTemplate =
+          templates.patientRegistrationTemplate ||
+          templates.registrationTemplate ||
+          patientRegistrationTemplate
+        patientRegistrationTemplateEnabled =
+          templates.patientRegistrationTemplateEnabled !== undefined
+            ? templates.patientRegistrationTemplateEnabled !== false
+            : templates.registrationTemplateEnabled !== false
         appointmentReminderTemplate =
           templates.appointmentReminderTemplate || appointmentReminderTemplate
         appointmentReminderTemplateEnabled = templates.appointmentReminderTemplateEnabled !== false
@@ -927,7 +933,10 @@
         doctorApprovedTemplate =
           templates.doctorApprovedTemplate || doctorApprovedTemplate
         doctorApprovedTemplateEnabled = templates.doctorApprovedTemplateEnabled !== false
-        registrationChannel = templates.registrationChannel || registrationChannel
+        patientRegistrationChannel =
+          templates.patientRegistrationChannel ||
+          templates.registrationChannel ||
+          patientRegistrationChannel
         appointmentReminderChannel =
           templates.appointmentReminderChannel || appointmentReminderChannel
         smsTestSenderId = templates.smsSenderId || smsTestSenderId
@@ -946,16 +955,19 @@
       messagingTemplatesSaving = true
       messagingTemplatesStatus = ''
       await firebaseStorage.saveMessagingTemplates({
-        registrationTemplate: registrationTemplate.trim(),
+        patientRegistrationTemplate: patientRegistrationTemplate.trim(),
+        registrationTemplate: patientRegistrationTemplate.trim(),
         appointmentReminderTemplate: appointmentReminderTemplate.trim(),
-        registrationTemplateEnabled,
+        patientRegistrationTemplateEnabled,
+        registrationTemplateEnabled: patientRegistrationTemplateEnabled,
         appointmentReminderTemplateEnabled,
         doctorRegistrationTemplate: doctorRegistrationTemplate.trim(),
         doctorRegistrationTemplateEnabled,
         doctorRegistrationCopyToTestEnabled,
         doctorApprovedTemplate: doctorApprovedTemplate.trim(),
         doctorApprovedTemplateEnabled,
-        registrationChannel,
+        patientRegistrationChannel,
+        registrationChannel: patientRegistrationChannel,
         appointmentReminderChannel,
         smsSenderId: smsTestSenderId.trim(),
         smsTestRecipient: smsTestRecipient.trim()
@@ -1221,14 +1233,19 @@
     }
   }
 
-  const handleRegistrationSmsTest = () => {
+  const handlePatientRegistrationSmsTest = () => {
     const resolvedAppUrl = appUrl || 'https://prescribe-7e1e8.web.app'
-    const message = (registrationTemplate || '')
+    const sampleTitle = 'Mr.'
+    const message = (patientRegistrationTemplate || '')
+      .replace(/\{\{title\}\}/g, sampleTitle)
+      .replace(/\{\{patientTitle\}\}/g, sampleTitle)
       .replace(/\{\{name\}\}/g, 'Kamal')
+      .replace(/\{\{patientName\}\}/g, 'Kamal')
+      .replace(/\{\{patientDisplayName\}\}/g, `${sampleTitle} Kamal`)
       .replace(/\{\{doctorName\}\}/g, 'Senaka')
       .replace(/\{\{patientShortId\}\}/g, 'PT12345')
       .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
-    sendTemplateSmsTest(message, (msg) => registrationTestStatus = msg)
+    sendTemplateSmsTest(message, (msg) => patientRegistrationTestStatus = msg)
   }
 
   const handleAppointmentReminderSmsTest = () => {
@@ -1373,6 +1390,7 @@
           doctorName: 'Dr. Test',
           patientData: {
             id: testPatientId,
+            title: 'Mr',
             firstName: 'Test',
             lastName: 'Patient',
             email: 'senakahks@gmail.com'
@@ -4287,14 +4305,14 @@
                   <div class="border border-gray-200 rounded-lg p-4 space-y-3">
                     <div class="flex items-center gap-2">
                       <i class="fas fa-user-plus text-red-600"></i>
-                      <p class="text-sm font-semibold text-gray-800">Registration</p>
+                      <p class="text-sm font-semibold text-gray-800">Patient Registration</p>
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-500 mb-1" for="registrationChannel">Channel</label>
+                      <label class="block text-xs text-gray-500 mb-1" for="patientRegistrationChannel">Channel</label>
                       <select
-                        id="registrationChannel"
+                        id="patientRegistrationChannel"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-                        bind:value={registrationChannel}
+                        bind:value={patientRegistrationChannel}
                       >
                         <option value="sms">SMS</option>
                         <option value="whatsapp">WhatsApp</option>
@@ -4303,32 +4321,32 @@
                     </div>
                     <div class="flex items-center gap-2">
                       <input
-                        id="registrationTemplateEnabled"
+                        id="patientRegistrationTemplateEnabled"
                         type="checkbox"
-                        bind:checked={registrationTemplateEnabled}
+                        bind:checked={patientRegistrationTemplateEnabled}
                         class="h-4 w-4 text-red-600 border-gray-300 rounded"
                       />
-                      <label for="registrationTemplateEnabled" class="text-sm text-gray-700">
-                        Enable registration messages
+                      <label for="patientRegistrationTemplateEnabled" class="text-sm text-gray-700">
+                        Enable patient registration SMS
                       </label>
                     </div>
                     <label class="block text-xs text-gray-500">Template</label>
                     <textarea
                       class="w-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
-                      bind:value={registrationTemplate}
+                      bind:value={patientRegistrationTemplate}
                     ></textarea>
-                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;name&#125;&#125;, &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
+                    <p class="text-xs text-gray-500">Suggested placeholders: &#123;&#123;title&#125;&#125;, &#123;&#123;patientTitle&#125;&#125;, &#123;&#123;name&#125;&#125;, &#123;&#123;patientName&#125;&#125;, &#123;&#123;patientDisplayName&#125;&#125;, &#123;&#123;doctorName&#125;&#125;, &#123;&#123;patientShortId&#125;&#125;, &#123;&#123;appUrl&#125;&#125;</p>
                     <div class="flex items-center gap-3">
                       <button
                         class="inline-flex items-center px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50"
                         type="button"
-                        on:click={handleRegistrationSmsTest}
-                        disabled={!registrationTemplateEnabled}
+                        on:click={handlePatientRegistrationSmsTest}
+                        disabled={!patientRegistrationTemplateEnabled}
                       >
                         <i class="fas fa-paper-plane mr-2"></i>Send Test SMS
                       </button>
-                      {#if registrationTestStatus}
-                        <span class="text-xs text-gray-500">{registrationTestStatus}</span>
+                      {#if patientRegistrationTestStatus}
+                        <span class="text-xs text-gray-500">{patientRegistrationTestStatus}</span>
                       {/if}
                     </div>
                   </div>
@@ -5232,6 +5250,8 @@ firebase functions:secrets:set OPENAI_API_KEY</code></pre>
                   <p class="text-xs text-gray-500">
                     Available variables:
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{name}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{title}}'}</code>,
+                    <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{patientTitle}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{email}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorId}}'}</code>,
                     <code class="text-xs bg-gray-100 px-1 py-0.5 rounded">{'{{doctorIdShort}}'}</code>,

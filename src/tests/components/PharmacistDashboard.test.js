@@ -151,6 +151,8 @@ describe('PharmacistDashboard', () => {
     const teamMember = {
       id: 'team-1',
       email: 'team@example.com',
+      firstName: 'Alex',
+      lastName: 'Miller',
       isPharmacyUser: true,
       pharmacyId: 'ph-parent',
       connectedDoctors: ['doc-1']
@@ -172,6 +174,7 @@ describe('PharmacistDashboard', () => {
       }
     })
 
+    await findByText('Team member: Alex Miller')
     await findByText('New')
     expect(getByText('New')).toBeTruthy()
   })
@@ -284,16 +287,16 @@ describe('PharmacistDashboard', () => {
     expect(source).toContain('inventoryItemId: inventoryData.inventoryItemId')
   })
 
-  it('shows rack location under each medication card in prescription details', () => {
+  it('shows storage location under each medication card in prescription details', () => {
     const __filename = fileURLToPath(import.meta.url)
     const __dirname = path.dirname(__filename)
     const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
     const source = fs.readFileSync(sourcePath, 'utf8')
 
-    expect(source).toContain('const getMedicationRackLocation = (prescriptionId, medication) => {')
+    expect(source).toContain('const getMedicationStorageLocation = (prescriptionId, medication) => {')
     expect(source).toContain('storageLocation')
-    expect(source).toContain('>Rack<')
-    expect(source).toContain('{getMedicationRackLocation(prescription.id, medication)}')
+    expect(source).toContain('>Storage location<')
+    expect(source).toContain('{getMedicationStorageLocation(prescription.id, medication)}')
   })
 
 })

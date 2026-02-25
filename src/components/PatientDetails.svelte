@@ -3157,7 +3157,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         return
       }
       
-      const medicationsToSend = Array.isArray(medicationsOverride) ? medicationsOverride : currentMedications
+      const medicationsToSend = Array.isArray(medicationsOverride)
+        ? medicationsOverride
+        : (Array.isArray(currentMedications) ? currentMedications : [])
       // Get current medications (the actual prescriptions to send)
       console.log('🔍 Current medications to send:', medicationsToSend)
       const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
@@ -4813,7 +4815,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         return
       }
       
-      if (currentMedications.length === 0) {
+      const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      const hasChargeableItems = procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
+      if (currentMedications.length === 0 && !hasChargeableItems) {
         return
       }
       
@@ -4821,7 +4825,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       currentPrescription.patient = buildPatientSnapshot()
       currentPrescription.status = 'finalized'
       currentPrescription.medications = currentMedications
-      currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      currentPrescription.procedures = procedures
       currentPrescription.otherProcedurePrice = otherProcedurePrice
       currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
       currentPrescription.discountScope = prescriptionDiscountScope || 'consultation'
@@ -4832,7 +4836,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       await firebaseStorage.updatePrescription(currentPrescription.id, {
         status: 'finalized',
         medications: currentMedications,
-        procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
+        procedures: procedures,
         otherProcedurePrice: otherProcedurePrice,
         excludeConsultationCharge: !!excludeConsultationCharge,
         patient: buildPatientSnapshot(),

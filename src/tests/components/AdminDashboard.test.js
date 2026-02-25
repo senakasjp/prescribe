@@ -364,7 +364,7 @@ describe('AdminDashboard.svelte', () => {
     await user.click(await screen.findByRole('button', { name: 'Messaging' }));
     await user.click(screen.getByRole('button', { name: 'Templates' }));
 
-    const registrationSection = screen.getByText('Registration').closest('div.border');
+    const registrationSection = screen.getByText('Patient Registration').closest('div.border');
     const appointmentSection = screen.getByText('Appointment Reminder').closest('div.border');
     expect(registrationSection).not.toBeNull();
     expect(appointmentSection).not.toBeNull();
@@ -384,10 +384,116 @@ describe('AdminDashboard.svelte', () => {
     expect(firebaseStorage.saveMessagingTemplates).toHaveBeenCalledTimes(1);
     expect(firebaseStorage.saveMessagingTemplates).toHaveBeenCalledWith(
       expect.objectContaining({
+        patientRegistrationTemplate: 'Welcome name',
         registrationTemplate: 'Welcome name',
         appointmentReminderTemplate: 'Reminder doctor'
       })
     );
+  });
+
+  it('sends a patient registration SMS test request', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue('')
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    auth.currentUser = { getIdToken: vi.fn().mockResolvedValue('token') };
+    import.meta.env.VITE_FUNCTIONS_BASE_URL = 'https://example.test';
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Messaging' }));
+    await user.click(screen.getByRole('button', { name: 'Templates' }));
+
+    const patientRegistrationSection = screen.getByText('Patient Registration').closest('div.border');
+    expect(patientRegistrationSection).not.toBeNull();
+    const patientRegistrationScope = within(patientRegistrationSection);
+
+    await user.click(patientRegistrationScope.getByRole('button', { name: 'Send Test SMS' }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/sendSmsApi',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token'
+        }),
+        body: expect.stringContaining('"recipient":"94712345678"')
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('loads patient registration messaging template from new settings keys', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getMessagingTemplates.mockResolvedValueOnce({
+      patientRegistrationTemplate: 'Welcome {{name}} via new key',
+      patientRegistrationTemplateEnabled: false,
+      patientRegistrationChannel: 'both'
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Messaging' }));
+    await user.click(screen.getByRole('button', { name: 'Templates' }));
+
+    const patientRegistrationSection = screen.getByText('Patient Registration').closest('div.border');
+    expect(patientRegistrationSection).not.toBeNull();
+
+    const textarea = patientRegistrationSection.querySelector('textarea');
+    const channel = patientRegistrationSection.querySelector('#patientRegistrationChannel');
+    const enabled = patientRegistrationSection.querySelector('#patientRegistrationTemplateEnabled');
+    expect(textarea).not.toBeNull();
+    expect(channel).not.toBeNull();
+    expect(enabled).not.toBeNull();
+
+    expect(textarea).toHaveValue('Welcome {{name}} via new key');
+    expect(channel).toHaveValue('both');
+    expect(enabled.checked).toBe(false);
+  });
+
+  it('falls back to legacy patient registration messaging keys when new keys are missing', async () => {
+    const user = userEvent.setup();
+    firebaseStorage.getMessagingTemplates.mockResolvedValueOnce({
+      registrationTemplate: 'Legacy registration template',
+      registrationTemplateEnabled: false,
+      registrationChannel: 'whatsapp'
+    });
+
+    render(AdminDashboard, {
+      props: {
+        currentAdmin: { id: 'admin-1', email: 'admin@test.com' }
+      }
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Messaging' }));
+    await user.click(screen.getByRole('button', { name: 'Templates' }));
+
+    const patientRegistrationSection = screen.getByText('Patient Registration').closest('div.border');
+    expect(patientRegistrationSection).not.toBeNull();
+
+    const textarea = patientRegistrationSection.querySelector('textarea');
+    const channel = patientRegistrationSection.querySelector('#patientRegistrationChannel');
+    const enabled = patientRegistrationSection.querySelector('#patientRegistrationTemplateEnabled');
+    expect(textarea).not.toBeNull();
+    expect(channel).not.toBeNull();
+    expect(enabled).not.toBeNull();
+
+    expect(textarea).toHaveValue('Legacy registration template');
+    expect(channel).toHaveValue('whatsapp');
+    expect(enabled.checked).toBe(false);
   });
 
   it('loads and saves the welcome email template', async () => {
@@ -931,6 +1037,13 @@ describe('AdminDashboard.svelte', () => {
         body: expect.stringContaining('"templateId":"patientWelcomeEmail"')
       })
     );
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/sendPatientTemplateEmail',
+      expect.objectContaining({
+        body: expect.stringContaining('"title":"Mr"')
+      })
+    );
+    expect(screen.getByText('{{title}}')).toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });

@@ -885,12 +885,22 @@ const buildPatientWelcomeEmail = async (
     template = {},
     appUrl = "",
 ) => {
+  const patientTitle = String(
+      (patient && (
+        patient.title ||
+        patient.patientTitle ||
+        patient.salutation ||
+        patient.prefix
+      )) || "",
+  ).trim();
   const patientName =
     (patient && patient.name) ||
     [patient && patient.firstName, patient && patient.lastName]
         .filter(Boolean)
         .join(" ") ||
     "Patient";
+  const patientDisplayName =
+    [patientTitle, patientName].filter(Boolean).join(" ");
   const rawPatientId = (patient && (patient.id || patient.patientId)) || "";
   const patientIdShort = formatPatientId(rawPatientId);
   let patientIdBarcode = "";
@@ -921,7 +931,7 @@ const buildPatientWelcomeEmail = async (
 
   const defaultSubject = "Welcome to M-Prescribe";
   const defaultText = `
-Hi ${patientName},
+Hi ${patientDisplayName || patientName},
 
 Welcome to M-Prescribe. Your patient profile has been created.
 
@@ -947,7 +957,7 @@ M-Prescribe Team
   const defaultHtml = `
     <div style="font-family: Arial, sans-serif; color: #111827;">
       <h2 style="margin-bottom: 8px;">Welcome to M-Prescribe</h2>
-      <p>Hi ${patientName},</p>
+      <p>Hi ${patientDisplayName || patientName},</p>
       <p>Your patient profile has been created.</p>
       <p><strong>Patient ID:</strong> ${patientIdShort || rawPatientId}</p>
       <p><strong>Doctor:</strong> ${doctorName || "Your doctor"}</p>
@@ -1057,6 +1067,8 @@ M-Prescribe Team
   const replacements = {
     name: patientName,
     patientName,
+    title: patientTitle,
+    patientTitle,
     email: (patient && patient.email) || "",
     patientId: rawPatientId,
     patientIdShort,
@@ -2124,6 +2136,16 @@ exports.sendPatientRegistrationSms = onDocumentCreated(
 
       if (!payload.ok) {
         logger.info("Patient registration SMS skipped:", payload.reason);
+        await logSmsEvent({
+          type: "patientRegistration",
+          status: "skipped",
+          to: normalizeNotifyRecipient(
+              patient.phone || patient.phoneNumber || "",
+          ) || "",
+          doctorId: patient.doctorId || "",
+          patientId: patient.id || (event.params && event.params.patientId) || "",
+          error: payload.reason || "",
+        });
         return;
       }
 
@@ -2131,6 +2153,16 @@ exports.sendPatientRegistrationSms = onDocumentCreated(
         recipient: payload.recipient,
         senderId: payload.senderId,
         message: payload.message,
+      });
+      await logSmsEvent({
+        type: "patientRegistration",
+        status: result.ok ?
+          (result.skipped ? "skipped" : "sent") :
+          "failed",
+        to: normalizeNotifyRecipient(payload.recipient) || payload.recipient,
+        doctorId: patient.doctorId || "",
+        patientId: patient.id || (event.params && event.params.patientId) || "",
+        error: result.ok ? (result.reason || "") : String(result.error || ""),
       });
       if (!result.ok) {
         logger.warn("Patient registration SMS failed:", result.error);
@@ -3264,17 +3296,44 @@ exports.sendSmsApi = onRequest(
             (data && data.message) ||
             raw ||
             "Failed to send SMS";
+          await logSmsEvent({
+            type: "adminTest",
+            status: "failed",
+            to: formattedRecipient,
+            doctorId: "",
+            error: String(errorMessage),
+            requestedByUid: adminUser.uid || "",
+            requestedByEmail: adminUser.email || "",
+          });
           res.status(500).send(String(errorMessage));
           return;
         }
 
+        await logSmsEvent({
+          type: "adminTest",
+          status: "sent",
+          to: formattedRecipient,
+          doctorId: "",
+          error: "",
+          requestedByUid: adminUser.uid || "",
+          requestedByEmail: adminUser.email || "",
+        });
         res.json({success: true, response: data});
       } catch (error) {
         logger.error("SMS API send failed:", error);
-        const message = String(
+        const errorMessage = String(
             (error && error.message) || "Failed to send SMS",
         );
-        res.status(500).send(message);
+        await logSmsEvent({
+          type: "adminTest",
+          status: "failed",
+          to: formattedRecipient,
+          doctorId: "",
+          error: errorMessage,
+          requestedByUid: adminUser.uid || "",
+          requestedByEmail: adminUser.email || "",
+        });
+        res.status(500).send(errorMessage);
       }
     },
 );
@@ -3882,6 +3941,15 @@ exports.sendDoctorRegistrationSms = onDocumentCreated(
         senderId,
         message,
       });
+      await logSmsEvent({
+        type: "doctorRegistration",
+        status: result.ok ?
+          (result.skipped ? "skipped" : "sent") :
+          "failed",
+        to: normalizeNotifyRecipient(phone) || phone,
+        doctorId: (event.params && event.params.doctorId) || "",
+        error: result.ok ? (result.reason || "") : String(result.error || ""),
+      });
       if (!result.ok) {
         logger.warn("Doctor registration SMS failed:", result.error);
       }
@@ -3895,6 +3963,17 @@ exports.sendDoctorRegistrationSms = onDocumentCreated(
             recipient: testRecipient,
             senderId,
             message,
+          });
+          await logSmsEvent({
+            type: "doctorRegistrationTestCopy",
+            status: testResult.ok ?
+              (testResult.skipped ? "skipped" : "sent") :
+              "failed",
+            to: normalizeNotifyRecipient(testRecipient) || testRecipient,
+            doctorId: (event.params && event.params.doctorId) || "",
+            error: testResult.ok ?
+              (testResult.reason || "") :
+              String(testResult.error || ""),
           });
           if (!testResult.ok) {
             logger.warn(
@@ -3940,6 +4019,15 @@ exports.sendDoctorApprovedSms = onDocumentUpdated(
         recipient: phone,
         senderId,
         message,
+      });
+      await logSmsEvent({
+        type: "doctorApproved",
+        status: result.ok ?
+          (result.skipped ? "skipped" : "sent") :
+          "failed",
+        to: normalizeNotifyRecipient(phone) || phone,
+        doctorId: (event.params && event.params.doctorId) || "",
+        error: result.ok ? (result.reason || "") : String(result.error || ""),
       });
       if (!result.ok) {
         logger.warn("Doctor approved SMS failed:", result.error);

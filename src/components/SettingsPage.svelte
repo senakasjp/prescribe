@@ -77,6 +77,9 @@
   let isSaving = false
   let excludePharmacyDrugs = false
   let procedurePricing = []
+  let prescriptionNoteTemplates = []
+  let newPrescriptionNoteTemplateName = ''
+  let newPrescriptionNoteTemplateContent = ''
   let deleteCode = ''
   let renewingDeleteCode = false
 
@@ -103,6 +106,68 @@
   const parseHeaderFontSize = (value, fallback = 16) => {
     const numeric = typeof value === 'number' ? value : parseFloat(String(value || ''))
     return Number.isFinite(numeric) ? numeric : fallback
+  }
+
+  const normalizeTemplateId = (value, fallback = '') => {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    return normalized || String(fallback || '')
+  }
+
+  const normalizePrescriptionNoteTemplates = (savedTemplates) => {
+    if (!Array.isArray(savedTemplates)) return []
+
+    return savedTemplates
+      .map((entry, index) => {
+        if (typeof entry === 'string') {
+          const content = entry.trim()
+          if (!content) return null
+          const fallbackName = `Template ${index + 1}`
+          return {
+            id: normalizeTemplateId(fallbackName, `template-${index + 1}`),
+            name: fallbackName,
+            content
+          }
+        }
+
+        if (!entry || typeof entry !== 'object') return null
+        const name = String(entry.name || entry.title || '').trim()
+        const content = String(entry.content || entry.text || '').trim()
+        if (!name || !content) return null
+        return {
+          id: normalizeTemplateId(entry.id || name, `template-${index + 1}`),
+          name,
+          content
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const addPrescriptionNoteTemplate = () => {
+    const name = String(newPrescriptionNoteTemplateName || '').trim()
+    const content = String(newPrescriptionNoteTemplateContent || '').trim()
+    if (!name || !content) {
+      notifyError('Template name and content are required.')
+      return
+    }
+
+    const id = normalizeTemplateId(name, `template-${Date.now()}`)
+    const exists = prescriptionNoteTemplates.some((template) => template.id === id)
+    if (exists) {
+      notifyError('A template with this name already exists.')
+      return
+    }
+
+    prescriptionNoteTemplates = [...prescriptionNoteTemplates, { id, name, content }]
+    newPrescriptionNoteTemplateName = ''
+    newPrescriptionNoteTemplateContent = ''
+  }
+
+  const removePrescriptionNoteTemplate = (templateId) => {
+    prescriptionNoteTemplates = prescriptionNoteTemplates.filter((template) => template.id !== templateId)
   }
 
   // Debug: Log initial state
@@ -799,10 +864,14 @@
       templatePreview = user.templateSettings.templatePreview || null
       uploadedHeader = user.templateSettings.uploadedHeader || null
       excludePharmacyDrugs = user.templateSettings.excludePharmacyDrugs ?? false
+      prescriptionNoteTemplates = normalizePrescriptionNoteTemplates(
+        user.templateSettings.prescriptionNoteTemplates || user.templateSettings.prescriptionTemplates
+      )
     } else {
       templateType = 'printed'
       headerFontSize = 16
       excludePharmacyDrugs = false
+      prescriptionNoteTemplates = []
     }
 
     procedurePricing = normalizeProcedurePricing(user?.templateSettings?.procedurePricing)
@@ -1464,6 +1533,7 @@
         uploadedHeader: uploadedHeader || null,
         excludePharmacyDrugs: excludePharmacyDrugs,
         procedurePricing: normalizeProcedurePricingForSave(procedurePricing),
+        prescriptionNoteTemplates: normalizePrescriptionNoteTemplates(prescriptionNoteTemplates),
         updatedAt: new Date().toISOString()
       })
       
@@ -1992,7 +2062,77 @@
       </div>
     </div>
   </div>
-          
+
+          <div class="mt-6 border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <h3 class="text-sm font-semibold text-gray-900 mb-2">
+              <i class="fas fa-notes-medical mr-2 text-teal-600"></i>
+              Prescription Note Templates
+            </h3>
+            <p class="text-xs text-gray-600 mb-4">
+              These templates appear in the Prescription Notes dropdown while writing prescriptions.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label for="newPrescriptionNoteTemplateName" class="block text-xs font-medium text-gray-700 mb-1">Template Name</label>
+                <input
+                  id="newPrescriptionNoteTemplateName"
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={newPrescriptionNoteTemplateName}
+                  placeholder="e.g., Standard Follow-up"
+                />
+              </div>
+              <div class="md:col-span-1">
+                <label for="newPrescriptionNoteTemplateContent" class="block text-xs font-medium text-gray-700 mb-1">Template Content</label>
+                <textarea
+                  id="newPrescriptionNoteTemplateContent"
+                  class="w-full min-h-[88px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={newPrescriptionNoteTemplateContent}
+                  placeholder="Add your reusable prescription note text..."
+                ></textarea>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <button
+                type="button"
+                class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                on:click={addPrescriptionNoteTemplate}
+              >
+                <i class="fas fa-plus mr-1"></i>
+                Add Note Template
+              </button>
+              <span class="text-xs text-gray-500">
+                {prescriptionNoteTemplates.length} template{prescriptionNoteTemplates.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            {#if prescriptionNoteTemplates.length === 0}
+              <p class="text-xs text-gray-500">No note templates yet.</p>
+            {:else}
+              <div class="space-y-2">
+                {#each prescriptionNoteTemplates as template (template.id)}
+                  <div class="bg-white border border-gray-200 rounded-lg p-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate">{template.name}</p>
+                        <p class="text-xs text-gray-600 whitespace-pre-line">{template.content}</p>
+                      </div>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                        on:click={() => removePrescriptionNoteTemplate(template.id)}
+                      >
+                        <i class="fas fa-trash-alt mr-1"></i>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
 
         </div>
         {/if}

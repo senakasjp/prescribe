@@ -109,6 +109,14 @@ firebase deploy
 
 ## 🔄 Recent Updates
 
+### Version 2.3.16 - Prescription Finalization/Dispatch UX + Pharmacist Detail Fixes (February 23, 2026)
+- Finalized prescriptions now switch to `Unfinalize Prescription` for intentional re-editing.
+- `Send to Pharmacy` now disables after send and shows progress state to prevent duplicate clicks.
+- Added inventory batch-shortage guidance for doctor add-medication flow.
+- Pharmacist prescription cards now include rack/location display with legacy field fallbacks.
+- Fixed pharmacist detail modal patient age/sex fallback (nested patient payload compatibility).
+- Fixed modal corner border discontinuity by clipping rounded modal panels.
+
 ### Version 2.3.14 - Admin Payment Pricing Controls + Scope Rules (February 17, 2026)
 - Admin Payments now supports configurable plan pricing:
   - USD monthly / annual

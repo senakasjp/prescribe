@@ -1,5 +1,34 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.16 - Prescription Finalization/Dispatch UX + Pharmacist Detail Fixes (February 23, 2026)
+
+### 🧑‍⚕️ Doctor Prescription Flow
+- Finalized prescriptions now switch action state to `Unfinalize Prescription` so doctors can intentionally reopen and edit.
+- `Send to Pharmacy` is disabled after successful send and only re-enabled after unfinalizing.
+- Send confirmation flow now shows in-button progress/loading state to prevent duplicate send clicks.
+
+### 💊 Inventory-Aware Medication Add Validation
+- Added stock validation for doctor-added inventory medications (tablet, capsule, and measured liquid):
+  - If selected batch stock is insufficient, user is prompted that only `X` can be taken from selected batch.
+  - Remaining `Y` amount is requested from another batch.
+  - If no alternate batch exists, flow advises prescribing via external pharmacy.
+
+### 🏥 Pharmacist Prescription Details
+- Added `Rack` location display under each medication card in pharmacist prescription details (desktop + mobile).
+- Rack resolution now supports multiple field variants for compatibility:
+  - `storageLocation`, `rack`, `rackLocation`, `location`, `storageRack`, `binLocation`, `shelf`, `shelfLocation`, nested storage location/rack fields.
+- Improved medication card mobile responsiveness (wrapping/layout for headers, amount, and batch rows).
+- Fixed patient details modal fallback so age/sex render from nested prescription patient snapshots when top-level fields are absent.
+
+### 🎨 Modal Window Border Polish
+- Fixed rounded-corner border discontinuity in common modal windows by clipping panel content with rounded containers.
+- Applied to major modal components (pharmacist, patient details, confirmation, PDF, privacy, admin, pharmacist management).
+
+### 🧪 Validation
+- `npx vitest run src/tests/components/PharmacistDashboard.test.js`
+- `npx vitest run src/tests/components/ConfirmationModal.test.js src/tests/components/PharmacistDashboard.test.js`
+- `npm run test:e2e` (18 passed, 1 skipped)
+
 ## Version 2.3.15 - Dosage Scope Restriction for Non-Tablet Forms (February 17, 2026)
 
 ### 💊 MedicationForm Dosage Rule

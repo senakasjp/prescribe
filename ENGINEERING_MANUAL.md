@@ -61,6 +61,25 @@ npm run test:e2e
   - Normalize dosage form names to current canonical options.
   - For `Packet` rows that stored volume as `strength` in `ml/l`, move to `totalVolume`/`volumeUnit` and clear strength so right-side line 1 stays true-strength only.
 
+## Doctor -> Pharmacy Dispatch UX Rules
+- Finalize action toggles to `Unfinalize Prescription` after completion.
+- `Send to Pharmacy` is disabled after successful send; enabled again only when unfinalized.
+- Send action uses a busy/progress button state to block duplicate submissions during modal confirmation/dispatch.
+
+## Inventory Allocation Guard (Doctor Add-Medication)
+- For inventory-sourced `Tablet`, `Capsule`, and `Liquid (measured)`:
+  - Validate requested quantity against selected batch remaining stock before accepting.
+  - If short, return a message with exact split (`selected batch amount` + `remaining required`).
+  - If no alternative batches can satisfy the remainder, direct to external pharmacy.
+
+## Pharmacist Prescription Detail Mapping
+- Rack/location UI is sourced from inventory match/allocation preview with compatibility fallbacks:
+  - `storageLocation`, `rack`, `rackLocation`, `location`, `storageRack`, `binLocation`, `shelf`, `shelfLocation`, `storage.location`, `storage.rack`.
+- Patient age/sex display in pharmacist detail modal must fallback to nested patient snapshots under prescription payloads (`prescriptions[0].patient`) when top-level fields are absent.
+
+## Modal Border Rendering Rule
+- Rounded modal panels that include differently-colored header/body sections must use clipped rounded containers (`overflow-hidden`) to avoid corner border discontinuity artifacts.
+
 ## Deployment
 Build + deploy:
 ```bash

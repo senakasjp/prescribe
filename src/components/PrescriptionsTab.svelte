@@ -90,9 +90,55 @@
   let improvingNotes = false
   let notesImproved = false
   let lastImprovedNotes = ''
+  let selectedPrescriptionNoteTemplateId = ''
+  let prescriptionNoteTemplates = []
   let lastLowStockSignature = ''
   let pharmacyNameCache = new Map()
   const hasText = (value) => String(value ?? '').trim().length > 0
+
+  const normalizeTemplateId = (value, fallback = '') => {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    return normalized || String(fallback || '')
+  }
+
+  const normalizePrescriptionNoteTemplates = (savedTemplates) => {
+    if (!Array.isArray(savedTemplates)) return []
+
+    return savedTemplates
+      .map((entry, index) => {
+        if (typeof entry === 'string') {
+          const content = entry.trim()
+          if (!content) return null
+          const fallbackName = `Template ${index + 1}`
+          return {
+            id: normalizeTemplateId(fallbackName, `template-${index + 1}`),
+            name: fallbackName,
+            content
+          }
+        }
+
+        if (!entry || typeof entry !== 'object') return null
+        const name = String(entry.name || entry.title || '').trim()
+        const content = String(entry.content || entry.text || '').trim()
+        if (!name || !content) return null
+        return {
+          id: normalizeTemplateId(entry.id || name, `template-${index + 1}`),
+          name,
+          content
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const applyPrescriptionNoteTemplate = (templateId) => {
+    const template = prescriptionNoteTemplates.find((entry) => entry.id === templateId)
+    if (!template) return
+    prescriptionNotes = template.content
+  }
 
   $: hasEnteredPrescriptionContent = Boolean(
     (currentMedications?.length || 0) > 0 ||
@@ -107,6 +153,21 @@
   
   $: if (!prescriptionProcedures?.includes('Other')) {
     otherProcedurePrice = ''
+  }
+
+  $: {
+    const savedTemplates =
+      doctorProfileFallback?.templateSettings?.prescriptionNoteTemplates ||
+      doctorProfileFallback?.templateSettings?.prescriptionTemplates ||
+      []
+    prescriptionNoteTemplates = normalizePrescriptionNoteTemplates(savedTemplates)
+  }
+
+  $: if (
+    selectedPrescriptionNoteTemplateId &&
+    !prescriptionNoteTemplates.some((template) => template.id === selectedPrescriptionNoteTemplateId)
+  ) {
+    selectedPrescriptionNoteTemplateId = ''
   }
 
   $: if (currentPrescription?.notes && !showNotes) {
@@ -1050,7 +1111,7 @@
           
           
           <!-- Current Prescriptions List -->
-          {#if currentMedications && currentMedications.length > 0}
+          {#if currentPrescription && ((currentMedications?.length || 0) > 0 || hasChargeableItems())}
             <div class="medication-list">
               {#each currentMedications as medication, index}
                 <div class="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
@@ -1210,7 +1271,7 @@
             </div>
           {/if}
 
-          {#if currentMedications && currentMedications.length > 0}
+          {#if currentPrescription && ((currentMedications?.length || 0) > 0 || hasChargeableItems())}
             <!-- Prescription Notes Toggle -->
             <div class="mt-4">
               <div class="flex items-center justify-between gap-2 mb-2">
@@ -1252,6 +1313,24 @@
                 {/if}
               </div>
               {#if showNotes}
+                {#if prescriptionNoteTemplates.length > 0}
+                  <div class="mb-2">
+                    <label for="prescriptionNoteTemplateSelect" class="block text-xs font-medium text-gray-700 mb-1">
+                      Use Template
+                    </label>
+                    <select
+                      id="prescriptionNoteTemplateSelect"
+                      bind:value={selectedPrescriptionNoteTemplateId}
+                      on:change={(event) => applyPrescriptionNoteTemplate(event.target.value)}
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      <option value="">Select a note template...</option>
+                      {#each prescriptionNoteTemplates as template}
+                        <option value={template.id}>{template.name}</option>
+                      {/each}
+                    </select>
+                  </div>
+                {/if}
                 <textarea
                   id="prescriptionNotes"
                   bind:value={prescriptionNotes}
@@ -1346,7 +1425,7 @@
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   on:click={onFinalizePrescription}
-                  disabled={currentMedications.length === 0 && !hasChargeableItems()}
+                  disabled={(currentMedications?.length || 0) === 0 && !hasChargeableItems()}
                   title="Finalize this prescription"
                   data-tour="prescription-finalize"
                 >
@@ -1372,7 +1451,7 @@
               {/if}
               
               <!-- Print Buttons - Only available after finalizing -->
-              {#if prescriptionsFinalized && currentMedications.length > 0}
+              {#if prescriptionsFinalized && (currentMedications?.length || 0) > 0}
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                   on:click={onPrintPrescriptions}
@@ -1393,7 +1472,7 @@
               {/if}
             </div>
 
-            {#if prescriptionsFinalized && (currentMedications.length > 0 || hasChargeableItems())}
+            {#if prescriptionsFinalized && ((currentMedications?.length || 0) > 0 || hasChargeableItems())}
               <!-- Expected Price -->
               <div class="mt-4 text-center">
                 <span class="text-sm font-semibold text-green-600">

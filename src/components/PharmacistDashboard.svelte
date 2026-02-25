@@ -28,6 +28,10 @@
   export let pharmacist
   let pharmacyId = null
   $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
+  $: pharmacistDisplayName = `${pharmacist?.firstName || ''} ${pharmacist?.lastName || ''}`.trim()
+    || pharmacist?.name
+    || pharmacist?.email
+    || 'Team member'
   
   let prescriptions = []
   let connectedDoctors = []
@@ -508,6 +512,9 @@
         }, 0)
 
         const earliestEntry = sortedEntries[0] || {}
+        const firstLocatedEntry = sortedEntries.find((entry) => {
+          return Boolean(resolveStorageLocationValue(entry))
+        }) || earliestEntry
         const effectiveEntries = earliestEntry.id ? [earliestEntry] : []
         const effectiveStock = Number.isFinite(earliestEntry.currentStock) ? earliestEntry.currentStock : aggregatedStock
         const earliestExpiry = earliestEntry.expiryDate || null
@@ -523,7 +530,7 @@
             brandName: earliestEntry.brandName,
             genericName: earliestEntry.genericName,
             inventoryItemId: earliestEntry.inventoryItemId || null,
-            storageLocation: earliestEntry.storageLocation || '',
+            storageLocation: resolveStorageLocationValue(firstLocatedEntry),
             matches: effectiveEntries,
             found: true
           }
@@ -1086,14 +1093,16 @@
     return ''
   }
 
-  const getMedicationRackLocation = (prescriptionId, medication) => {
+  const getMedicationStorageLocation = (prescriptionId, medication) => {
     const medicationId = medication?.id || medication?.name
     const inventoryData = getMedicationInventoryData(prescriptionId, medicationId, medicationInventoryVersion)
     const fromPrimary = resolveStorageLocationValue(inventoryData)
     if (fromPrimary) return fromPrimary
 
     const preview = getAllocationPreview(prescriptionId, medication)
-    const fromBatch = resolveStorageLocationValue(preview?.orderedMatches?.[0])
+    const fromBatch = (preview?.orderedMatches || [])
+      .map((entry) => resolveStorageLocationValue(entry))
+      .find(Boolean)
     if (fromBatch) return fromBatch
 
     return 'Not specified'
@@ -2135,6 +2144,9 @@
               <span class="text-xs bg-teal-100 text-teal-800 px-1 py-0.5 rounded ml-1">v2.3</span>
             </h1>
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
+            {#if pharmacist?.isPharmacyUser}
+              <p class="text-xs text-gray-700 truncate">Team member: {pharmacistDisplayName}</p>
+            {/if}
           </div>
         </div>
         <div class="ml-2 flex items-center gap-2">
@@ -2912,8 +2924,8 @@
                                   <div class="text-gray-900 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
                                 </div>
                                 <div class="mt-3 text-sm">
-                                  <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Rack</div>
-                                  <div class="text-gray-900">{getMedicationRackLocation(prescription.id, medication)}</div>
+                                  <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Storage location</div>
+                                  <div class="text-gray-900">{getMedicationStorageLocation(prescription.id, medication)}</div>
                                 </div>
                               </div>
 
@@ -3005,8 +3017,8 @@
                                   <div class="text-gray-900 mt-0.5 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
                                 </div>
                                 <div class="mt-2 text-center">
-                                  <div class="text-[10px] uppercase tracking-wide text-gray-400">Rack</div>
-                                  <div class="text-gray-900 mt-0.5 break-words">{getMedicationRackLocation(prescription.id, medication)}</div>
+                                  <div class="text-[10px] uppercase tracking-wide text-gray-400">Storage location</div>
+                                  <div class="text-gray-900 mt-0.5 break-words">{getMedicationStorageLocation(prescription.id, medication)}</div>
                                 </div>
                               </div>
                               <div class="grid grid-cols-[auto,1fr] gap-2 items-start">

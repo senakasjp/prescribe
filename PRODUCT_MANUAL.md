@@ -36,7 +36,14 @@ This is the primary user-facing operations manual for M-Prescribe.
 1. Add/select patient.
 2. Open Prescriptions tab.
 3. Create prescription and add medications.
-4. Save, print PDF, or send to pharmacy.
+4. Finalize prescription when ready; action changes to `Unfinalize Prescription`.
+5. Send to pharmacy (button becomes disabled after send and re-enables only after unfinalize).
+6. Save/print PDF as needed.
+
+### Finalize + Send Rules
+- Finalized prescriptions are treated as locked until unfinalized.
+- Sending to pharmacy uses a progress state on the button to prevent duplicate sends.
+- To edit after send/finalize, click `Unfinalize Prescription` first.
 
 ### Quantity + Unit Rules
 - For count-based medications where computed quantity is unavailable, entered count (`qts`) is used.
@@ -44,6 +51,18 @@ This is the primary user-facing operations manual for M-Prescribe.
 - `Capsule` uses whole-number dosage values only.
 - For all other dispense forms (for example `Syrup`, `Cream`, `Liquid (bottles)`, `Liquid (measured)`), dosage is hidden and saved as empty.
 - In prescription outputs (PDF/pharmacy payload), units are omitted when value is missing.
+
+### Inventory Selection Safety (Doctor Medication Add)
+- For inventory-selected `Tablet`, `Capsule`, and `Liquid (measured)` rows:
+  - If chosen batch cannot satisfy requested amount, system warns with the exact available amount from that batch.
+  - System asks remaining quantity to be sourced from another batch.
+  - If no second batch exists, user is advised to prescribe via external pharmacy.
+
+### Pharmacist Prescription Details
+- Each medication card shows:
+  - Rack/location (when available in inventory record)
+  - Remaining amount and batch allocation details
+- If rack data is missing in source inventory, `Not specified` is shown.
 
 ### OCR Report Upload
 - Reports support camera/image/PDF upload and OCR extraction.
