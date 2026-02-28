@@ -245,14 +245,19 @@
     const compact = (value) => String(value || '').replace(/\s+/g, ' ').trim()
     const joinPair = (left, right) => [compact(left), compact(right)].filter(Boolean).join(' ')
     const hasNumericValue = (value) => /\d/.test(String(value || ''))
+    const resolvedVolumeUnit = compact(
+      medication?.volumeUnit
+      || medication?.containerUnit
+      || medication?.strengthUnit
+    )
 
     const candidates = [
+      joinPair(medication?.containerSize, medication?.containerUnit),
+      joinPair(medication?.totalVolume, resolvedVolumeUnit),
+      joinPair(medication?.volume, resolvedVolumeUnit),
       compact(fallbackText),
       compact(medication?.inventoryStrengthText),
       joinPair(medication?.strength, medication?.strengthUnit),
-      joinPair(medication?.containerSize, medication?.containerUnit),
-      joinPair(medication?.totalVolume, medication?.volumeUnit),
-      joinPair(medication?.volume, medication?.volumeUnit),
       compact(medication?.strength)
     ]
 

@@ -931,6 +931,41 @@ describe('PrescriptionPDF', () => {
     expect(payloads.some((value) => /Liquid\s*\(bottles\)\s*\|\s*Quantity:\s*01/i.test(value))).toBe(true)
   })
 
+  it('prefers explicit bottle volume over strength text for liquid-bottle volume line', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
+    const selectedPatient = {
+      firstName: 'Bottle',
+      lastName: 'Volume',
+      idNumber: 'ID909',
+      dateOfBirth: '1992-05-21'
+    }
+    const prescriptions = [{
+      id: 'med-liquid-bottle-volume-priority-1',
+      source: 'inventory',
+      name: 'Claritex Syrup',
+      dosageForm: 'Liquid (bottles)',
+      strength: '5',
+      strengthUnit: 'ml',
+      totalVolume: '50',
+      volumeUnit: 'ml',
+      inventoryStrengthText: '5 ml',
+      qts: '1',
+      frequency: 'Twice daily (BD)',
+      duration: '5 days'
+    }]
+
+    const { getByText } = render(PrescriptionPDF, {
+      props: { selectedPatient, illnesses: [], prescriptions, symptoms: [] }
+    })
+
+    await fireEvent.click(getByText('Generate PDF'))
+
+    const splitCalls = lastPdfProxy?._fns?.splitTextToSize?.mock?.calls || []
+    const payloads = splitCalls.map((call) => call[0]).filter((value) => typeof value === 'string')
+    expect(payloads.some((value) => /Vol:\s*50\s*ml/i.test(value))).toBe(true)
+    expect(payloads.some((value) => /Vol:\s*5\s*ml/i.test(value))).toBe(false)
+  })
+
   it('renders inventory strength in right header without duplicating second-line strength for non-QTY medication', async () => {
     pharmacyMedicationService.getPharmacyStock.mockResolvedValue([])
     const selectedPatient = {

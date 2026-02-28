@@ -567,7 +567,8 @@ describe('PrescriptionsTab', () => {
           templateSettings: {
             prescriptionNoteTemplates: [
               { id: 'standard-follow-up', name: 'Standard Follow-up', content: 'Review after 2 weeks.' },
-              { id: 'diet-advice', name: 'Diet Advice', content: 'Avoid oily foods and stay hydrated.' }
+              { id: 'diet-advice', name: 'Diet Advice', content: 'Avoid oily foods and stay hydrated.' },
+              { id: 'patient-name-test', name: 'Patient Name Test', content: 'Dear {{patient name}}, continue treatment.' }
             ]
           }
         },
@@ -590,6 +591,62 @@ describe('PrescriptionsTab', () => {
 
     const notesInput = container.querySelector('#prescriptionNotes')
     expect(notesInput.value).toBe('Avoid oily foods and stay hydrated.')
+
+    await fireEvent.change(templateSelect, { target: { value: 'patient-name-test' } })
+    expect(notesInput.value).toBe('Dear Patient, continue treatment.')
+  })
+
+  it('shows note template dropdown when templates come from loaded doctor profile', async () => {
+    const firebaseStorageModule = await import('../../services/firebaseStorage.js')
+    firebaseStorageModule.default.getDoctorById.mockResolvedValue({
+      id: 'doc-1',
+      currency: 'USD',
+      consultationCharge: 100,
+      hospitalCharge: 50,
+      templateSettings: {
+        prescriptionNoteTemplates: [
+          { id: 'loaded-template', name: 'Loaded Template', content: 'Template loaded from doctor profile.' },
+          { id: 'loaded-patient-name', name: 'Loaded Patient Name', content: 'Hi {{patient name}}, come in 1 week.' }
+        ]
+      }
+    })
+
+    const { getByLabelText, container } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1', firstName: 'Nimali', lastName: 'Perera' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [{ name: 'Amoxicillin', dosage: '500mg', amount: '10' }],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-note-template-2', doctorId: 'doc-1', status: 'finalized' },
+        prescriptionNotes: '',
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    const notesToggle = getByLabelText('Prescription Notes')
+    await fireEvent.click(notesToggle)
+
+    await waitFor(() => {
+      expect(getByLabelText('Use Template')).toBeTruthy()
+    })
+
+    const templateSelect = getByLabelText('Use Template')
+    await fireEvent.change(templateSelect, { target: { value: 'loaded-template' } })
+
+    const notesInput = container.querySelector('#prescriptionNotes')
+    expect(notesInput.value).toBe('Template loaded from doctor profile.')
+
+    await fireEvent.change(templateSelect, { target: { value: 'loaded-patient-name' } })
+    expect(notesInput.value).toBe('Hi Nimali Perera, come in 1 week.')
   })
 
   it.each([

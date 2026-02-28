@@ -59,6 +59,10 @@ class FirebaseAuthService {
     return trimmed
   }
 
+  normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase()
+  }
+
   getAndClearReferralId() {
     if (typeof localStorage === 'undefined') return ''
     const key = 'pendingReferralId'
@@ -457,24 +461,18 @@ class FirebaseAuthService {
 
   async registerDoctorWithEmailPassword(email, password, doctorData = {}) {
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password)
-      const firebaseUser = result.user
-
-      const existingDoctor = await firebaseStorage.getDoctorByEmail(email)
-      if (existingDoctor) {
-        const updatedDoctor = {
-          ...existingDoctor,
-          uid: firebaseUser.uid,
-          provider: 'password',
-          authProvider: 'firebase-email'
-        }
-        await firebaseStorage.updateDoctor(updatedDoctor)
-        if (updatedDoctor.isApproved === false) {
-          await firebaseSignOut(auth)
-          throw new Error(pendingApprovalMessage)
-        }
-        return updatedDoctor
+      const normalizedEmail = this.normalizeEmail(email)
+      if (!normalizedEmail) {
+        throw new Error('Email is required')
       }
+
+      const existingDoctor = await firebaseStorage.getDoctorByEmail(normalizedEmail)
+      if (existingDoctor?.id) {
+        throw new Error('A doctor account with this email already exists. Please log in instead.')
+      }
+
+      const result = await createUserWithEmailAndPassword(auth, normalizedEmail, password)
+      const firebaseUser = result.user
 
       let referredByDoctorId = doctorData.referredByDoctorId || ''
       if (referredByDoctorId) {
@@ -482,7 +480,7 @@ class FirebaseAuthService {
       }
 
       const doctorPayload = {
-        email,
+        email: normalizedEmail,
         firstName: doctorData.firstName || '',
         lastName: doctorData.lastName || '',
         name: doctorData.firstName && doctorData.lastName ? `${doctorData.firstName} ${doctorData.lastName}` : '',
@@ -534,11 +532,21 @@ class FirebaseAuthService {
   async createExternalDoctorAccount(email, password, profile = {}) {
     const secondaryAuth = this.getSecondaryAuth()
     try {
-      const result = await createUserWithEmailAndPassword(secondaryAuth, email, password)
+      const normalizedEmail = this.normalizeEmail(email)
+      if (!normalizedEmail) {
+        throw new Error('Email is required')
+      }
+
+      const existingDoctor = await firebaseStorage.getDoctorByEmail(normalizedEmail)
+      if (existingDoctor?.id) {
+        throw new Error('A doctor account with this email already exists.')
+      }
+
+      const result = await createUserWithEmailAndPassword(secondaryAuth, normalizedEmail, password)
       const firebaseUser = result.user
 
       const doctorPayload = {
-        email,
+        email: normalizedEmail,
         firstName: profile.firstName || '',
         lastName: profile.lastName || '',
         name: profile.firstName && profile.lastName ? `${profile.firstName} ${profile.lastName}` : '',

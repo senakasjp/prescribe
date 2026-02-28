@@ -6,6 +6,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   getDoc,
   getDocs,
   updateDoc,
@@ -17,6 +18,7 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   doc: vi.fn(),
   addDoc: vi.fn(),
+  setDoc: vi.fn(),
   getDoc: vi.fn(),
   getDocs: vi.fn(),
   updateDoc: vi.fn(),
@@ -127,6 +129,7 @@ describe('FirebaseStorage Regression Coverage', () => {
 
   it('creates pharmacist with inherited currency when provided', async () => {
     addDoc.mockResolvedValue({ id: 'ph-1' })
+    getDocs.mockResolvedValue({ empty: true, docs: [] })
 
     await firebaseStorage.createPharmacist({
       email: 'pharmacy@example.com',
@@ -143,6 +146,7 @@ describe('FirebaseStorage Regression Coverage', () => {
 
   it('resolves pharmacist currency from country when missing', async () => {
     addDoc.mockResolvedValue({ id: 'ph-2' })
+    getDocs.mockResolvedValue({ empty: true, docs: [] })
 
     await firebaseStorage.createPharmacist({
       email: 'pharmacy2@example.com',
@@ -155,5 +159,91 @@ describe('FirebaseStorage Regression Coverage', () => {
 
     const addDocPayload = addDoc.mock.calls[0]?.[1]
     expect(addDocPayload.currency).toBe('LKR')
+  })
+
+  it('reuses existing pharmacist when creating with duplicate email', async () => {
+    getDocs
+      .mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: 'ph-existing',
+            data: () => ({
+              email: 'dupe@example.com',
+              emailNormalized: 'dupe@example.com',
+              createdAt: '2026-02-01T00:00:00.000Z',
+              deleteCode: '123456',
+              pharmacyIdShort: 'PH0001'
+            })
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ empty: true, docs: [] })
+
+    const result = await firebaseStorage.createPharmacist({
+      email: 'DUPE@example.com',
+      password: 'secret',
+      role: 'pharmacist',
+      businessName: 'Duplicate Pharmacy',
+      pharmacistNumber: 'PH5555'
+    })
+
+    expect(result.id).toBe('ph-existing')
+    expect(addDoc).not.toHaveBeenCalled()
+  })
+
+  it('reuses existing doctor when creating with duplicate email', async () => {
+    getDocs
+      .mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: 'doc-existing',
+            data: () => ({
+              email: 'dupe.doctor@example.com',
+              emailLower: 'dupe.doctor@example.com',
+              createdAt: '2026-02-01T00:00:00.000Z',
+              deleteCode: '123456',
+              doctorIdShort: 'DR12345'
+            })
+          }
+        ]
+      })
+      .mockResolvedValueOnce({ empty: true, docs: [] })
+
+    const result = await firebaseStorage.createDoctor({
+      email: 'DUPE.DOCTOR@EXAMPLE.COM',
+      firstName: 'Dupe',
+      lastName: 'Doctor',
+      role: 'doctor'
+    })
+
+    expect(result.id).toBe('doc-existing')
+    expect(setDoc).not.toHaveBeenCalled()
+  })
+
+  it('creates doctor with normalized email as document id', async () => {
+    doc.mockImplementation((database, collectionName, documentId) => ({ id: documentId, database, collectionName }))
+    getDocs
+      .mockResolvedValueOnce({ empty: true, docs: [] })
+      .mockResolvedValueOnce({ empty: true, docs: [] })
+    getDoc.mockResolvedValue({ exists: () => false })
+
+    await firebaseStorage.createDoctor({
+      email: 'Doctor+One@Example.COM',
+      firstName: 'Doctor',
+      lastName: 'One',
+      role: 'doctor',
+      uid: 'uid-1'
+    })
+
+    expect(setDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'doctor+one@example.com' }),
+      expect.objectContaining({
+        email: 'doctor+one@example.com',
+        emailLower: 'doctor+one@example.com'
+      })
+    )
+    expect(addDoc).not.toHaveBeenCalled()
   })
 })

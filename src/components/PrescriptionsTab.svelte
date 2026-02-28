@@ -137,7 +137,22 @@
   const applyPrescriptionNoteTemplate = (templateId) => {
     const template = prescriptionNoteTemplates.find((entry) => entry.id === templateId)
     if (!template) return
-    prescriptionNotes = template.content
+    const patientName = String(
+      selectedPatient?.name ||
+      `${selectedPatient?.firstName || ''} ${selectedPatient?.lastName || ''}`.trim() ||
+      'Patient'
+    ).trim()
+    prescriptionNotes = String(template.content || '')
+      .replace(/\{\{\s*patient\s*name\s*\}\}/gi, patientName)
+      .replace(/\{\{\s*patientName\s*\}\}/g, patientName)
+  }
+
+  const handlePrescriptionNoteTemplateSelect = (templateId) => {
+    if (!templateId) return
+    if (!showNotes) {
+      showNotes = true
+    }
+    applyPrescriptionNoteTemplate(templateId)
   }
 
   $: hasEnteredPrescriptionContent = Boolean(
@@ -157,6 +172,8 @@
 
   $: {
     const savedTemplates =
+      doctorProfile?.templateSettings?.prescriptionNoteTemplates ||
+      doctorProfile?.templateSettings?.prescriptionTemplates ||
       doctorProfileFallback?.templateSettings?.prescriptionNoteTemplates ||
       doctorProfileFallback?.templateSettings?.prescriptionTemplates ||
       []
@@ -1274,23 +1291,39 @@
           {#if currentPrescription && ((currentMedications?.length || 0) > 0 || hasChargeableItems())}
             <!-- Prescription Notes Toggle -->
             <div class="mt-4">
-              <div class="flex items-center justify-between gap-2 mb-2">
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-700" for="toggleNotes">
-                  <input
-                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
-                    type="checkbox"
-                    id="toggleNotes"
-                    bind:checked={showNotes}
-                    disabled={!currentPrescription}
-                  >
-                  <span>Prescription Notes</span>
-                  {#if notesImproved}
-                    <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      <i class="fas fa-check-circle mr-1"></i>
-                      AI Improved
-                    </span>
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="flex items-center gap-2 text-sm font-medium text-gray-700" for="toggleNotes">
+                    <input
+                      class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                      type="checkbox"
+                      id="toggleNotes"
+                      bind:checked={showNotes}
+                      disabled={!currentPrescription}
+                    >
+                    <span>Prescription Notes</span>
+                    {#if notesImproved}
+                      <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                        <i class="fas fa-check-circle mr-1"></i>
+                        AI Improved
+                      </span>
+                    {/if}
+                  </label>
+                  {#if prescriptionNoteTemplates.length > 0}
+                    <select
+                      id="prescriptionNoteTemplateSelect"
+                      aria-label="Use Template"
+                      bind:value={selectedPrescriptionNoteTemplateId}
+                      on:change={(event) => handlePrescriptionNoteTemplateSelect(event.target.value)}
+                      class="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      <option value="">Select a note template...</option>
+                      {#each prescriptionNoteTemplates as template}
+                        <option value={template.id}>{template.name}</option>
+                      {/each}
+                    </select>
                   {/if}
-                </label>
+                </div>
                 {#if showNotes}
                   <button
                     type="button"
@@ -1313,24 +1346,6 @@
                 {/if}
               </div>
               {#if showNotes}
-                {#if prescriptionNoteTemplates.length > 0}
-                  <div class="mb-2">
-                    <label for="prescriptionNoteTemplateSelect" class="block text-xs font-medium text-gray-700 mb-1">
-                      Use Template
-                    </label>
-                    <select
-                      id="prescriptionNoteTemplateSelect"
-                      bind:value={selectedPrescriptionNoteTemplateId}
-                      on:change={(event) => applyPrescriptionNoteTemplate(event.target.value)}
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                    >
-                      <option value="">Select a note template...</option>
-                      {#each prescriptionNoteTemplates as template}
-                        <option value={template.id}>{template.name}</option>
-                      {/each}
-                    </select>
-                  </div>
-                {/if}
                 <textarea
                   id="prescriptionNotes"
                   bind:value={prescriptionNotes}

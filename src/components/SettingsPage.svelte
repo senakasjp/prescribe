@@ -2071,6 +2071,9 @@
             <p class="text-xs text-gray-600 mb-4">
               These templates appear in the Prescription Notes dropdown while writing prescriptions.
             </p>
+            <p class="text-xs text-gray-500 mb-4">
+              Placeholder available: <code class="bg-gray-100 px-1 py-0.5 rounded">{'{{patient name}}'}</code>
+            </p>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>

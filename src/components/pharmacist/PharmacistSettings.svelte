@@ -117,6 +117,10 @@
   let teamLoading = false
   let teamError = ''
   let teamLoadedFor = null
+  let passwordEditorMemberId = ''
+  let passwordEditorValue = ''
+  let passwordEditorConfirm = ''
+  let passwordEditorError = ''
 
   // Backup/restore state
   let backupLoading = false
@@ -217,12 +221,64 @@
     if (!confirmed) return
     try {
       teamLoading = true
-      await firebaseStorage.deletePharmacyUser(member.id)
+      await firebaseStorage.deletePharmacyUser(member.id, { purgeSameEmail: true })
       notifySuccess('Team member deleted successfully')
       await loadTeamMembers()
     } catch (err) {
       teamError = err.message
       notifyError(teamError)
+    } finally {
+      teamLoading = false
+    }
+  }
+
+  const openPasswordEditor = (member) => {
+    passwordEditorMemberId = member?.id || ''
+    passwordEditorValue = ''
+    passwordEditorConfirm = ''
+    passwordEditorError = ''
+  }
+
+  const closePasswordEditor = () => {
+    passwordEditorMemberId = ''
+    passwordEditorValue = ''
+    passwordEditorConfirm = ''
+    passwordEditorError = ''
+  }
+
+  const handleChangeTeamMemberPassword = async (member) => {
+    if (!member?.id) return
+    if (!isPrimaryPharmacy) {
+      notifyError('Only the primary pharmacy account can manage user passwords')
+      return
+    }
+
+    passwordEditorError = ''
+    const nextPassword = String(passwordEditorValue || '').trim()
+    const confirmPassword = String(passwordEditorConfirm || '').trim()
+
+    if (!nextPassword) {
+      passwordEditorError = 'New password is required'
+      return
+    }
+    if (nextPassword.length < 6) {
+      passwordEditorError = 'Password must be at least 6 characters'
+      return
+    }
+    if (nextPassword !== confirmPassword) {
+      passwordEditorError = 'Passwords do not match'
+      return
+    }
+
+    try {
+      teamLoading = true
+      await firebaseStorage.updatePharmacyUser(member.id, { password: nextPassword })
+      notifySuccess('Team member password updated successfully')
+      closePasswordEditor()
+      await loadTeamMembers()
+    } catch (err) {
+      passwordEditorError = err.message || 'Failed to update password'
+      notifyError(passwordEditorError)
     } finally {
       teamLoading = false
     }
@@ -770,6 +826,15 @@
                       <td class="px-4 py-2 text-right">
                         <button
                           type="button"
+                          class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed mr-2"
+                          on:click={() => openPasswordEditor(member)}
+                          disabled={teamLoading}
+                        >
+                          <i class="fas fa-key mr-1"></i>
+                          Change Password
+                        </button>
+                        <button
+                          type="button"
                           class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           on:click={() => handleDeleteTeamMember(member)}
                           disabled={teamLoading}
@@ -779,6 +844,70 @@
                         </button>
                       </td>
                     </tr>
+                    {#if passwordEditorMemberId === member.id}
+                      <tr class="bg-blue-50">
+                        <td colspan="4" class="px-4 py-3">
+                          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                              <label class="block text-xs font-medium text-gray-700 mb-1" for={`teamChangePassword-${member.id}`}>
+                                New Password
+                              </label>
+                              <input
+                                id={`teamChangePassword-${member.id}`}
+                                type="password"
+                                class="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                bind:value={passwordEditorValue}
+                                placeholder="Enter new password"
+                                disabled={teamLoading}
+                              />
+                            </div>
+                            <div>
+                              <label class="block text-xs font-medium text-gray-700 mb-1" for={`teamChangePasswordConfirm-${member.id}`}>
+                                Confirm New Password
+                              </label>
+                              <input
+                                id={`teamChangePasswordConfirm-${member.id}`}
+                                type="password"
+                                class="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                bind:value={passwordEditorConfirm}
+                                placeholder="Confirm new password"
+                                disabled={teamLoading}
+                              />
+                            </div>
+                            <div class="flex items-end justify-end gap-2">
+                              <button
+                                type="button"
+                                class="inline-flex items-center px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                on:click={closePasswordEditor}
+                                disabled={teamLoading}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                class="inline-flex items-center px-3 py-2 text-xs font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                on:click={() => handleChangeTeamMemberPassword(member)}
+                                disabled={teamLoading}
+                              >
+                                {#if teamLoading}
+                                  <i class="fas fa-spinner fa-spin mr-1"></i>
+                                  Saving...
+                                {:else}
+                                  <i class="fas fa-save mr-1"></i>
+                                  Save Password
+                                {/if}
+                              </button>
+                            </div>
+                          </div>
+                          {#if passwordEditorError}
+                            <div class="mt-2 text-xs text-red-600">
+                              <i class="fas fa-exclamation-triangle mr-1"></i>
+                              {passwordEditorError}
+                            </div>
+                          {/if}
+                        </td>
+                      </tr>
+                    {/if}
                   {/each}
                 </tbody>
               </table>

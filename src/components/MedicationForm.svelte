@@ -48,6 +48,7 @@
     'Before meals (AC)',
     'After meals (PC)',
     'At bedtime (HS)',
+    'As needed (PRN-SOS)',
     'Mane',
     'Vesper'
   ]
@@ -111,6 +112,7 @@
   let selectedInventoryItemId = ''
   let selectedInventoryPharmacyId = ''
   let selectedInventoryCurrentStock = null
+  let selectedInventoryStorageLocation = ''
   let lastClearedDoctorId = ''
   const clearPharmacyMedicationCache = (resolvedDoctorId) => {
     if (!resolvedDoctorId) return
@@ -338,6 +340,7 @@
     selectedInventoryItemId = ''
     selectedInventoryPharmacyId = ''
     selectedInventoryCurrentStock = null
+    selectedInventoryStorageLocation = ''
     route = 'PO' // Set default route
     instructions = ''
     frequency = ''
@@ -423,6 +426,9 @@
     selectedInventoryCurrentStock = Number.isFinite(Number(editingMedication?.selectedInventoryCurrentStock))
       ? Number(editingMedication.selectedInventoryCurrentStock)
       : null
+    selectedInventoryStorageLocation = String(
+      editingMedication?.selectedInventoryStorageLocation || editingMedication?.storageLocation || ''
+    ).trim()
     moveVolumeFromStrengthForInventoryLiquidBottles()
     formInitialized = true
   }
@@ -466,6 +472,7 @@
       currentStock: d.currentStock || 0,
       packUnit: d.packUnit || '',
       dosageForm: d.dosageForm || d.packUnit || d.unit || '',
+      storageLocation: d.storageLocation || '',
       expiryDate: d.expiryDate || ''
     }))
     console.log('🔎 Drug search inventory results:', inventoryMapped.length)
@@ -494,6 +501,7 @@
     selectedInventoryItemId = ''
     selectedInventoryPharmacyId = ''
     selectedInventoryCurrentStock = null
+    selectedInventoryStorageLocation = ''
     clearTimeout(nameSearchTimeout)
     nameSearchTimeout = setTimeout(searchNameSuggestions, 250)
   }
@@ -546,6 +554,7 @@
     selectedInventoryItemId = s.id || ''
     selectedInventoryPharmacyId = s.pharmacyId || ''
     selectedInventoryCurrentStock = Number.isFinite(Number(s.currentStock)) ? Number(s.currentStock) : null
+    selectedInventoryStorageLocation = String(s.storageLocation || '').trim()
     const suggestionVolumeText = [String(s.totalVolume ?? s.containerSize ?? '').trim(), String(s.volumeUnit || s.containerUnit || '').trim()]
       .filter(Boolean)
       .join(' ')
@@ -764,6 +773,8 @@
         selectedInventoryCurrentStock: isInventoryDrug && Number.isFinite(Number(selectedInventoryCurrentStock))
           ? Number(selectedInventoryCurrentStock)
           : null,
+        selectedInventoryStorageLocation: isInventoryDrug ? String(selectedInventoryStorageLocation || '').trim() : '',
+        storageLocation: isInventoryDrug ? String(selectedInventoryStorageLocation || '').trim() : '',
         route: String(route ?? '').trim(),
         instructions: String(instructions ?? '').trim(),
         frequency,
@@ -803,6 +814,7 @@
       selectedInventoryItemId = ''
       selectedInventoryPharmacyId = ''
       selectedInventoryCurrentStock = null
+      selectedInventoryStorageLocation = ''
       route = 'PO' // Set default route
       instructions = ''
       frequency = ''

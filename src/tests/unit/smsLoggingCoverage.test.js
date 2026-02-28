@@ -141,6 +141,7 @@ describe('sms logging coverage', () => {
           id: 'patient-1',
           firstName: 'Nimali',
           doctorId: 'doctor-1',
+          email: 'nimali@example.com',
           phone: '0713333333',
           phoneCountryCode: '+94'
         })
@@ -154,6 +155,7 @@ describe('sms logging coverage', () => {
         entry.type === 'patientRegistration' &&
         entry.status === 'sent' &&
         entry.patientId === 'patient-1' &&
+        entry.patientEmail === 'nimali@example.com' &&
         entry.doctorId === 'doctor-1'
       )
     ).toBe(true)

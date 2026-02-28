@@ -1186,7 +1186,7 @@
     }
   }
 
-  const sendTemplateSmsTest = async (message, statusSetter) => {
+  const sendTemplateSmsTest = async (message, statusSetter, logType = 'adminTest') => {
     const baseUrl = getFunctionsBaseUrl()
     if (!baseUrl) {
       statusSetter('Functions base URL not configured')
@@ -1218,7 +1218,8 @@
           recipient: smsTestRecipient,
           senderId: smsTestSenderId,
           type: smsTestType === 'unicode' ? smsTestType : undefined,
-          message
+          message,
+          logType
         })
       })
       const text = await response.text()
@@ -1245,7 +1246,11 @@
       .replace(/\{\{doctorName\}\}/g, 'Senaka')
       .replace(/\{\{patientShortId\}\}/g, 'PT12345')
       .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
-    sendTemplateSmsTest(message, (msg) => patientRegistrationTestStatus = msg)
+    sendTemplateSmsTest(
+      message,
+      (msg) => patientRegistrationTestStatus = msg,
+      'patientRegistrationTest'
+    )
   }
 
   const handleAppointmentReminderSmsTest = () => {
@@ -1254,7 +1259,11 @@
       .replace(/\{\{patientShortId\}\}/g, 'PT12345')
       .replace(/\{\{date\}\}/g, '10/02/2026')
       .replace(/\{\{time\}\}/g, '10:30 AM')
-    sendTemplateSmsTest(message, (msg) => appointmentReminderTestStatus = msg)
+    sendTemplateSmsTest(
+      message,
+      (msg) => appointmentReminderTestStatus = msg,
+      'appointmentReminderTest'
+    )
   }
 
   const handleDoctorRegistrationSmsTest = () => {
@@ -1262,7 +1271,11 @@
     const message = (doctorRegistrationTemplate || '')
       .replace(/\{\{doctorName\}\}/g, 'Senaka')
       .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
-    sendTemplateSmsTest(message, (msg) => doctorRegistrationTestStatus = msg)
+    sendTemplateSmsTest(
+      message,
+      (msg) => doctorRegistrationTestStatus = msg,
+      'doctorRegistrationTest'
+    )
   }
 
   const handleDoctorApprovedSmsTest = () => {
@@ -1270,7 +1283,11 @@
     const message = (doctorApprovedTemplate || '')
       .replace(/\{\{doctorName\}\}/g, 'Senaka')
       .replace(/\{\{appUrl\}\}/g, resolvedAppUrl)
-    sendTemplateSmsTest(message, (msg) => doctorApprovedTestStatus = msg)
+    sendTemplateSmsTest(
+      message,
+      (msg) => doctorApprovedTestStatus = msg,
+      'doctorApprovedTest'
+    )
   }
 
   const getFunctionsBaseUrl = () => {
@@ -3911,6 +3928,7 @@
                             <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                             <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                             <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">To</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient Email</th>
                             <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor ID</th>
                             <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Error</th>
                           </tr>
@@ -3926,6 +3944,7 @@
                                 </span>
                               </td>
                               <td class="px-3 py-2 text-gray-700">{log.to || '-'}</td>
+                              <td class="px-3 py-2 text-gray-700">{log.patientEmail || '-'}</td>
                               <td class="px-3 py-2 text-gray-700" title={log.doctorId || ''}>
                                 {log.doctorId ? formatDoctorId(log.doctorId) : '-'}
                               </td>

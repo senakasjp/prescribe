@@ -109,6 +109,30 @@ class FirebaseStorageService {
     return String(email || '').trim().toLowerCase()
   }
 
+  sortPharmacistsByCreatedAt(pharmacists = []) {
+    const toTimestamp = (value) => {
+      const parsed = new Date(value || 0).getTime()
+      return Number.isNaN(parsed) ? 0 : parsed
+    }
+    return [...pharmacists].sort((a, b) => {
+      const timeDelta = toTimestamp(a?.createdAt) - toTimestamp(b?.createdAt)
+      if (timeDelta !== 0) return timeDelta
+      return String(a?.id || '').localeCompare(String(b?.id || ''))
+    })
+  }
+
+  sortDoctorsByCreatedAt(doctors = []) {
+    const toTimestamp = (value) => {
+      const parsed = new Date(value || 0).getTime()
+      return Number.isNaN(parsed) ? 0 : parsed
+    }
+    return [...doctors].sort((a, b) => {
+      const timeDelta = toTimestamp(a?.createdAt) - toTimestamp(b?.createdAt)
+      if (timeDelta !== 0) return timeDelta
+      return String(a?.id || '').localeCompare(String(b?.id || ''))
+    })
+  }
+
   normalizePromoCode(code) {
     return String(code || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '')
   }
@@ -221,8 +245,9 @@ class FirebaseStorageService {
       }
 
       const existing = await this.getDoctorByEmail(normalizedEmail)
-      if (existing) {
-        throw new Error('Doctor with this email already exists')
+      if (existing?.id) {
+        console.warn('⚠️ Reusing existing doctor for email:', normalizedEmail, 'id:', existing.id)
+        return existing
       }
 
       let referralCode = doctorData.referralCode
@@ -286,7 +311,16 @@ class FirebaseStorageService {
         }
       })
       
-      const docRef = await addDoc(collection(db, this.collections.doctors), serializableData)
+      // Use normalized email as document id so concurrent same-email create attempts
+      // converge on a single doctor record instead of creating duplicates.
+      const docRef = doc(db, this.collections.doctors, normalizedEmail)
+      const existingById = await getDoc(docRef)
+      if (existingById.exists()) {
+        const existingData = existingById.data()
+        return { id: existingById.id, ...existingData }
+      }
+
+      await setDoc(docRef, serializableData)
       
       const doctorIdShort = this.formatDoctorId(docRef.id)
       await updateDoc(docRef, { doctorIdShort })
@@ -310,51 +344,84 @@ class FirebaseStorageService {
       if (!normalizedEmail) {
         return null
       }
+      const matches = []
+      const seenIds = new Set()
+      const pushUniqueMatch = (docSnap) => {
+        if (!docSnap?.id || seenIds.has(docSnap.id)) return
+        seenIds.add(docSnap.id)
+        matches.push({ id: docSnap.id, ...docSnap.data() })
+      }
+
       let querySnapshot = await getDocs(
         query(
           collection(db, this.collections.doctors),
           where('emailLower', '==', normalizedEmail)
         )
       )
-      if (querySnapshot.empty) {
-        querySnapshot = await getDocs(
-          query(
-            collection(db, this.collections.doctors),
-            where('email', '==', normalizedEmail)
-          )
+      querySnapshot.docs.forEach(pushUniqueMatch)
+
+      querySnapshot = await getDocs(
+        query(
+          collection(db, this.collections.doctors),
+          where('email', '==', normalizedEmail)
         )
-      }
-      if (querySnapshot.empty && rawEmail && rawEmail !== normalizedEmail) {
+      )
+      querySnapshot.docs.forEach(pushUniqueMatch)
+
+      if (rawEmail && rawEmail !== normalizedEmail) {
         querySnapshot = await getDocs(
           query(
             collection(db, this.collections.doctors),
             where('email', '==', rawEmail)
           )
         )
+        querySnapshot.docs.forEach(pushUniqueMatch)
       }
-      
-      if (querySnapshot.empty) {
+
+      if (matches.length === 0) {
         return null
       }
-      
-      const doc = querySnapshot.docs[0]
-      const data = doc.data()
-      if (!data.doctorIdShort) {
-        data.doctorIdShort = this.formatDoctorId(doc.id)
-        await updateDoc(doc.ref, { doctorIdShort: data.doctorIdShort })
+
+      const sortedMatches = this.sortDoctorsByCreatedAt(matches)
+      const doctor = { ...sortedMatches[0] }
+
+      if (sortedMatches.length > 1) {
+        console.warn(
+          '⚠️ Duplicate doctor records found for email:',
+          normalizedEmail,
+          'keeping canonical id:',
+          doctor.id,
+          'duplicate ids:',
+          sortedMatches.slice(1).map((item) => item.id)
+        )
       }
-      if (!data.deleteCode) {
-        const deleteCode = this.generateDeleteCode()
-        await updateDoc(doc.ref, { deleteCode })
-        data.deleteCode = deleteCode
+
+      const patch = {}
+      if (!doctor.doctorIdShort) {
+        patch.doctorIdShort = this.formatDoctorId(doctor.id)
       }
-      if (!data.currency) {
-        const resolvedCurrency = resolveCurrencyFromCountry(data.country)
+      if (!doctor.deleteCode) {
+        patch.deleteCode = this.generateDeleteCode()
+      }
+      if (!doctor.currency) {
+        const resolvedCurrency = resolveCurrencyFromCountry(doctor.country)
         if (resolvedCurrency) {
-          data.currency = resolvedCurrency
+          patch.currency = resolvedCurrency
         }
       }
-      return { id: doc.id, ...data }
+      if (doctor.email !== normalizedEmail) {
+        patch.email = normalizedEmail
+      }
+      if (doctor.emailLower !== normalizedEmail) {
+        patch.emailLower = normalizedEmail
+      }
+
+      if (Object.keys(patch).length > 0) {
+        await updateDoc(doc(db, this.collections.doctors, doctor.id), patch)
+        Object.assign(doctor, patch)
+      }
+
+      return doctor
     } catch (error) {
       console.error('Error getting doctor by email:', error)
       throw error
@@ -763,21 +830,41 @@ class FirebaseStorageService {
   async createPharmacist(pharmacistData) {
     try {
       console.log('🏥 Creating pharmacist with Firebase:', pharmacistData)
+      const normalizedEmail = this.normalizeEmail(pharmacistData?.email)
+      if (!normalizedEmail) {
+        throw new Error('Email is required')
+      }
+
+      // Idempotent create: re-use an existing same-email pharmacist to prevent duplicates.
+      const existingPharmacist = await this.getPharmacistByEmail(normalizedEmail)
+      if (existingPharmacist?.id) {
+        console.warn('⚠️ Reusing existing pharmacist for email:', normalizedEmail, 'id:', existingPharmacist.id)
+        return existingPharmacist
+      }
       
       const resolvedCurrency = pharmacistData.currency ||
         resolveCurrencyFromCountry(pharmacistData.country) ||
         'USD'
       const pharmacist = {
-        email: pharmacistData.email,
+        email: normalizedEmail,
+        emailNormalized: normalizedEmail,
         password: pharmacistData.password,
         role: pharmacistData.role,
         businessName: pharmacistData.businessName,
         pharmacistNumber: pharmacistData.pharmacistNumber,
         currency: String(resolvedCurrency).trim(),
         connectedDoctors: [], // Array of doctor IDs who have connected with this pharmacist
+        uid: pharmacistData.uid ? String(pharmacistData.uid).trim() : undefined,
+        displayName: pharmacistData.displayName ? String(pharmacistData.displayName).trim() : undefined,
+        photoURL: pharmacistData.photoURL ? String(pharmacistData.photoURL).trim() : undefined,
+        provider: pharmacistData.provider ? String(pharmacistData.provider).trim() : undefined,
         deleteCode: pharmacistData.deleteCode || this.generateDeleteCode(),
         createdAt: new Date().toISOString()
       }
+
+      Object.keys(pharmacist).forEach((key) => {
+        if (pharmacist[key] === undefined) delete pharmacist[key]
+      })
       
       const docRef = await addDoc(collection(db, this.collections.pharmacists), pharmacist)
       const pharmacyIdShort = formatPharmacyId(docRef.id)
@@ -794,26 +881,81 @@ class FirebaseStorageService {
 
   async getPharmacistByEmail(email) {
     try {
-      const q = query(collection(db, this.collections.pharmacists), where('email', '==', email))
-      const querySnapshot = await getDocs(q)
-      
-      if (querySnapshot.empty) {
+      const normalizedEmail = this.normalizeEmail(email)
+      if (!normalizedEmail) {
         return null
       }
-      
-      const doc = querySnapshot.docs[0]
-      const data = doc.data()
-      if (!data.deleteCode) {
-        const deleteCode = this.generateDeleteCode()
-        await updateDoc(doc.ref, { deleteCode })
-        data.deleteCode = deleteCode
+
+      const matches = []
+      const seenIds = new Set()
+      const pushUniqueMatch = (record) => {
+        if (!record?.id || seenIds.has(record.id)) return
+        seenIds.add(record.id)
+        matches.push(record)
       }
-      if (!data.pharmacyIdShort) {
-        const pharmacyIdShort = formatPharmacyId(doc.id)
-        await updateDoc(doc.ref, { pharmacyIdShort })
-        data.pharmacyIdShort = pharmacyIdShort
+
+      const normalizedQuery = query(
+        collection(db, this.collections.pharmacists),
+        where('emailNormalized', '==', normalizedEmail)
+      )
+      const normalizedSnapshot = await getDocs(normalizedQuery)
+      normalizedSnapshot.docs.forEach((docSnap) => {
+        pushUniqueMatch({ id: docSnap.id, ...docSnap.data() })
+      })
+
+      const exactQuery = query(
+        collection(db, this.collections.pharmacists),
+        where('email', '==', normalizedEmail)
+      )
+      const exactSnapshot = await getDocs(exactQuery)
+      exactSnapshot.docs.forEach((docSnap) => {
+        pushUniqueMatch({ id: docSnap.id, ...docSnap.data() })
+      })
+
+      if (matches.length === 0) {
+        const allPharmacists = await this.getAllPharmacists()
+        allPharmacists.forEach((pharmacist) => {
+          if (this.normalizeEmail(pharmacist?.email) === normalizedEmail) {
+            pushUniqueMatch(pharmacist)
+          }
+        })
       }
-      return { id: doc.id, ...data }
+
+      if (matches.length === 0) return null
+
+      const sortedMatches = this.sortPharmacistsByCreatedAt(matches)
+      const pharmacist = { ...sortedMatches[0] }
+
+      if (sortedMatches.length > 1) {
+        console.warn(
+          '⚠️ Duplicate pharmacist records found for email:',
+          normalizedEmail,
+          'keeping canonical id:',
+          pharmacist.id,
+          'duplicate ids:',
+          sortedMatches.slice(1).map((item) => item.id)
+        )
+      }
+
+      const patch = {}
+      if (!pharmacist.deleteCode) {
+        patch.deleteCode = this.generateDeleteCode()
+      }
+      if (!pharmacist.pharmacyIdShort) {
+        patch.pharmacyIdShort = formatPharmacyId(pharmacist.id)
+      }
+      if (pharmacist.email !== normalizedEmail) {
+        patch.email = normalizedEmail
+      }
+      if (pharmacist.emailNormalized !== normalizedEmail) {
+        patch.emailNormalized = normalizedEmail
+      }
+      if (Object.keys(patch).length > 0) {
+        await updateDoc(doc(db, this.collections.pharmacists, pharmacist.id), patch)
+        Object.assign(pharmacist, patch)
+      }
+
+      return pharmacist
     } catch (error) {
       console.error('Error getting pharmacist by email:', error)
       throw error
@@ -965,7 +1107,7 @@ class FirebaseStorageService {
         throw new Error('Email and password are required to create a pharmacy user')
       }
 
-      const normalizedEmail = String(pharmacyUserData.email || '').trim()
+      const normalizedEmail = this.normalizeEmail(pharmacyUserData.email)
       const normalizedPassword = String(pharmacyUserData.password || '').trim()
       const existingPharmacist = await this.getPharmacistByEmail(normalizedEmail)
       if (existingPharmacist) {
@@ -978,6 +1120,7 @@ class FirebaseStorageService {
 
       const pharmacyUser = {
         email: normalizedEmail,
+        emailNormalized: normalizedEmail,
         password: normalizedPassword,
         firstName: pharmacyUserData.firstName || '',
         lastName: pharmacyUserData.lastName || '',
@@ -1004,15 +1147,59 @@ class FirebaseStorageService {
 
   async getPharmacyUserByEmail(email) {
     try {
-      const q = query(collection(db, this.collections.pharmacyUsers), where('email', '==', email))
-      const querySnapshot = await getDocs(q)
-
-      if (querySnapshot.empty) {
+      const normalizedEmail = this.normalizeEmail(email)
+      if (!normalizedEmail) {
         return null
       }
 
-      const doc = querySnapshot.docs[0]
-      return { id: doc.id, ...doc.data() }
+      const seen = new Map()
+      const addMatch = (docSnap) => {
+        if (!docSnap?.id || seen.has(docSnap.id)) return
+        seen.set(docSnap.id, { id: docSnap.id, ...docSnap.data() })
+      }
+
+      const normalizedQuery = query(
+        collection(db, this.collections.pharmacyUsers),
+        where('emailNormalized', '==', normalizedEmail)
+      )
+      const normalizedSnapshot = await getDocs(normalizedQuery)
+      normalizedSnapshot.docs.forEach(addMatch)
+
+      const exactQuery = query(
+        collection(db, this.collections.pharmacyUsers),
+        where('email', '==', normalizedEmail)
+      )
+      const exactSnapshot = await getDocs(exactQuery)
+      exactSnapshot.docs.forEach(addMatch)
+
+      if (seen.size === 0) {
+        const allUsersSnapshot = await getDocs(collection(db, this.collections.pharmacyUsers))
+        allUsersSnapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data() || {}
+          if (this.normalizeEmail(data.email) === normalizedEmail) {
+            addMatch(docSnap)
+          }
+        })
+      }
+
+      if (seen.size === 0) {
+        return null
+      }
+
+      const [pharmacyUser] = Array.from(seen.values()).sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime()
+        const dateB = new Date(b.createdAt || 0).getTime()
+        return dateA - dateB
+      })
+
+      if (pharmacyUser && pharmacyUser.emailNormalized !== normalizedEmail) {
+        await updateDoc(doc(db, this.collections.pharmacyUsers, pharmacyUser.id), {
+          emailNormalized: normalizedEmail
+        })
+        pharmacyUser.emailNormalized = normalizedEmail
+      }
+
+      return pharmacyUser
     } catch (error) {
       console.error('Error getting pharmacy user by email:', error)
       throw error
@@ -1042,9 +1229,11 @@ class FirebaseStorageService {
 
   async updatePharmacyUser(pharmacyUserId, updateData) {
     try {
+      const normalizedEmail = updateData?.email ? this.normalizeEmail(updateData.email) : undefined
       const docRef = doc(db, this.collections.pharmacyUsers, pharmacyUserId)
       await updateDoc(docRef, {
         ...updateData,
+        ...(normalizedEmail ? { email: normalizedEmail, emailNormalized: normalizedEmail } : {}),
         updatedAt: new Date().toISOString()
       })
       console.log('Pharmacy user updated successfully')
@@ -1054,12 +1243,44 @@ class FirebaseStorageService {
     }
   }
 
-  async deletePharmacyUser(pharmacyUserId) {
+  async deletePharmacyUser(pharmacyUserId, options = {}) {
     try {
       if (!pharmacyUserId) {
         throw new Error('Pharmacy user ID is required')
       }
-      await deleteDoc(doc(db, this.collections.pharmacyUsers, pharmacyUserId))
+
+      const docRef = doc(db, this.collections.pharmacyUsers, pharmacyUserId)
+      let normalizedEmail = ''
+      const existingDoc = await getDoc(docRef)
+      if (existingDoc.exists()) {
+        const data = existingDoc.data() || {}
+        normalizedEmail = this.normalizeEmail(data.emailNormalized || data.email)
+      }
+
+      await deleteDoc(docRef)
+
+      if (options?.purgeSameEmail && normalizedEmail) {
+        const refsToDelete = new Map()
+
+        const byNormalized = query(
+          collection(db, this.collections.pharmacyUsers),
+          where('emailNormalized', '==', normalizedEmail)
+        )
+        const byNormalizedSnapshot = await getDocs(byNormalized)
+        byNormalizedSnapshot.docs.forEach((docSnap) => refsToDelete.set(docSnap.id, docSnap.ref))
+
+        const byEmail = query(
+          collection(db, this.collections.pharmacyUsers),
+          where('email', '==', normalizedEmail)
+        )
+        const byEmailSnapshot = await getDocs(byEmail)
+        byEmailSnapshot.docs.forEach((docSnap) => refsToDelete.set(docSnap.id, docSnap.ref))
+
+        for (const ref of refsToDelete.values()) {
+          await deleteDoc(ref)
+        }
+      }
+
       console.log('Pharmacy user deleted successfully')
     } catch (error) {
       console.error('Error deleting pharmacy user:', error)
@@ -1091,6 +1312,7 @@ class FirebaseStorageService {
       // Only include serializable fields to avoid Firebase errors
       let serializableData = {
         email: updatedPharmacist.email ? String(updatedPharmacist.email).trim() : '',
+        emailNormalized: updatedPharmacist.email ? this.normalizeEmail(updatedPharmacist.email) : '',
         businessName: updatedPharmacist.businessName ? String(updatedPharmacist.businessName).trim() : '',
         pharmacistNumber: updatedPharmacist.pharmacistNumber ? String(updatedPharmacist.pharmacistNumber).trim() : '',
         role: updatedPharmacist.role ? String(updatedPharmacist.role).trim() : 'pharmacist',
@@ -1157,7 +1379,8 @@ class FirebaseStorageService {
         city: updatedPharmacist.city ? String(updatedPharmacist.city) : undefined,
         currency: updatedPharmacist.currency ? String(updatedPharmacist.currency) : undefined,
         pharmacistNumber: updatedPharmacist.pharmacistNumber ? String(updatedPharmacist.pharmacistNumber) : undefined,
-        email: updatedPharmacist.email ? String(updatedPharmacist.email) : undefined,
+        email: updatedPharmacist.email ? this.normalizeEmail(updatedPharmacist.email) : undefined,
+        emailNormalized: updatedPharmacist.email ? this.normalizeEmail(updatedPharmacist.email) : undefined,
         connectedDoctors: Array.isArray(updatedPharmacist.connectedDoctors) ? updatedPharmacist.connectedDoctors : undefined,
         updatedAt: new Date().toISOString()
       }

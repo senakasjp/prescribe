@@ -12,7 +12,7 @@ read -r -p "Select option [1]: " deployment_option
 deployment_option="${deployment_option:-1}"
 
 if [ "$deployment_option" = "2" ]; then
-  npm run build && firebase deploy --only hosting && npm run test:run && npm run test:e2e
+  npm run build && npm run test:run && npm run test:e2e && firebase deploy --only hosting
 else
-  npm run build && firebase hosting:channel:deploy "$PREVIEW_CHANNEL_ID" --project "$FIREBASE_PROJECT_ID" && npm run test:run && npm run test:e2e
+  npm run build && npm run test:run && npm run test:e2e && firebase hosting:channel:deploy "$PREVIEW_CHANNEL_ID" --project "$FIREBASE_PROJECT_ID"
 fi

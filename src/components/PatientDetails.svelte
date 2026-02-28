@@ -16,7 +16,7 @@
   import { formatPrescriptionId } from '../utils/idFormat.js'
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
   import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
-  import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import { notifySuccess, notifyError, notifyWarning } from '../stores/notifications.js'
   import { formatDate } from '../utils/dataProcessing.js'
   import { detectDocumentCornersFromDataUrl, createSelectedAreaDataUrl } from '../utils/documentCornerDetection.js'
   import { isUnreadableText } from '../utils/unreadableText.js'
@@ -384,14 +384,19 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       const compact = (value) => String(value || '').replace(/\s+/g, ' ').trim()
       const joinPair = (left, right) => [compact(left), compact(right)].filter(Boolean).join(' ')
       const hasNumericValue = (value) => /\d/.test(String(value || ''))
+      const resolvedVolumeUnit = compact(
+        medication?.volumeUnit
+        || medication?.containerUnit
+        || medication?.strengthUnit
+      )
 
       const candidates = [
+        joinPair(medication?.containerSize, medication?.containerUnit),
+        joinPair(medication?.totalVolume, resolvedVolumeUnit),
+        joinPair(medication?.volume, resolvedVolumeUnit),
         compact(fallbackText),
         compact(medication?.inventoryStrengthText),
         joinPair(medication?.strength, medication?.strengthUnit),
-        joinPair(medication?.containerSize, medication?.containerUnit),
-        joinPair(medication?.totalVolume, medication?.volumeUnit),
-        joinPair(medication?.volume, medication?.volumeUnit),
         compact(medication?.strength)
       ]
 
@@ -751,29 +756,12 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     }
 
     const remainingAmount = Math.max(0, requestedAmount - Math.max(0, selectedBatchAvailable))
-    const alternateBatches = stock.filter(item => {
-      const sameBatch = selectedItemId && String(item?.inventoryItemId || '') === selectedItemId
-      if (sameBatch) return false
-      if (selectedPharmacyId && String(item?.pharmacyId || '') !== selectedPharmacyId) return false
-      const available = Number(item?.currentStock || 0)
-      if (!Number.isFinite(available) || available <= 0) return false
-      return matchesMedicationBatch(item, medication)
-    })
-    const alternateAvailable = alternateBatches.reduce((sum, item) => sum + Math.max(0, Number(item?.currentStock || 0)), 0)
-
     const itemLabel = getMedicationFormValue(medication) || 'units'
-    if (alternateAvailable > 0) {
-      return {
-        isValid: false,
-        popupTitle: 'Insufficient stock in selected batch',
-        popupMessage: `Only ${selectedBatchAvailable} ${itemLabel} can be selected from the selected batch. Remaining ${remainingAmount} should be selected from another batch.`
-      }
-    }
-
     return {
       isValid: false,
       popupTitle: 'Insufficient stock in selected batch',
-      popupMessage: `Only ${selectedBatchAvailable} ${itemLabel} can be selected from the selected batch. Remaining ${remainingAmount} is not available in other batches. Please write the remaining amount for an external pharmacy.`
+      popupMessage: `Only ${selectedBatchAvailable} ${itemLabel} can be selected from the selected batch. Remaining ${remainingAmount} will be sent to the external pharmacy.`,
+      autoSendExternalPharmacy: true
     }
   }
 
@@ -1693,16 +1681,23 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
       const capacityValidation = await validateSelectedInventoryBatchCapacity(medicationData)
       if (!capacityValidation.isValid) {
-        pendingAction = null
-        showConfirmation(
-          capacityValidation.popupTitle || 'Inventory stock warning',
-          capacityValidation.popupMessage || 'Selected inventory batch does not have enough stock.',
-          'OK',
-          'Close',
-          'warning',
-          { requireCode: false }
-        )
-        return
+        if (capacityValidation.autoSendExternalPharmacy) {
+          medicationData.sendToExternalPharmacy = true
+          notifyWarning(
+            capacityValidation.popupMessage || 'Selected batch is short. This drug will be sent to external pharmacy.'
+          )
+        } else {
+          pendingAction = null
+          showConfirmation(
+            capacityValidation.popupTitle || 'Inventory stock warning',
+            capacityValidation.popupMessage || 'Selected inventory batch does not have enough stock.',
+            'OK',
+            'Close',
+            'warning',
+            { requireCode: false }
+          )
+          return
+        }
       }
 
       if (medicationData.isEdit) {
@@ -3199,16 +3194,24 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       const allPharmacists = await firebaseStorage.getAllPharmacists()
       console.log('🔍 All pharmacists:', allPharmacists.length)
       
-      // Find pharmacists connected to this doctor (check both sides of the connection)
+      // Find pharmacists connected to this doctor.
+      // Require both sides when doctor has explicit connections; fallback to pharmacist side only for legacy records.
+      const doctorConnectedPharmacistIds = new Set(
+        Array.isArray(doctor?.connectedPharmacists)
+          ? doctor.connectedPharmacists.filter(Boolean)
+          : []
+      )
       const connectedPharmacists = allPharmacists.filter(pharmacist => {
-        // Check if pharmacist has this doctor in their connectedDoctors
-        const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
-        
-        // Check if doctor has this pharmacist in their connectedPharmacists
-        const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
-        
-        // Connection exists if either side has the connection (for backward compatibility)
-        return pharmacistHasDoctor || doctorHasPharmacist
+        const pharmacistId = String(pharmacist?.id || '').trim()
+        if (!pharmacistId) return false
+
+        const pharmacistHasDoctor = Array.isArray(pharmacist?.connectedDoctors) && pharmacist.connectedDoctors.includes(doctor.id)
+        const doctorHasPharmacist = doctorConnectedPharmacistIds.has(pharmacistId)
+
+        if (doctorConnectedPharmacistIds.size === 0) {
+          return pharmacistHasDoctor
+        }
+        return doctorHasPharmacist && pharmacistHasDoctor
       })
       
       console.log('🔍 Connected pharmacists for doctor:', connectedPharmacists.length)
@@ -3337,9 +3340,16 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       console.log('📤 Total prescriptions to send:', prescriptions.length)
       
       let sentCount = 0
+
+      const allowedPharmacyIds = new Set((availablePharmacies || []).map((pharmacy) => pharmacy.id))
+      const sanitizedSelectedPharmacies = (selectedPharmacies || []).filter((pharmacyId) => allowedPharmacyIds.has(pharmacyId))
+      if (sanitizedSelectedPharmacies.length === 0) {
+        notifyError('Please select at least one connected pharmacy.')
+        return
+      }
       
       // Send to selected pharmacists only
-      for (const pharmacistId of selectedPharmacies) {
+      for (const pharmacistId of sanitizedSelectedPharmacies) {
         const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
         if (pharmacist) {
           // Add prescription to pharmacist's received prescriptions

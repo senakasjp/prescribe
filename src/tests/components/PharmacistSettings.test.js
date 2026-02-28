@@ -12,6 +12,7 @@ const firebaseStorageMock = vi.hoisted(() => ({
   getDoctorByEmail: vi.fn(() => Promise.resolve(null)),
   getPharmacyUsersByPharmacyId: vi.fn(() => Promise.resolve([])),
   createPharmacyUser: vi.fn(() => Promise.resolve({ id: 'team-user-1' })),
+  updatePharmacyUser: vi.fn(() => Promise.resolve()),
   deletePharmacyUser: vi.fn(() => Promise.resolve())
 }))
 
@@ -160,5 +161,51 @@ describe('PharmacistSettings role-based access', () => {
       }))
     })
     expect(notifySuccess).toHaveBeenCalledWith('Team member added successfully')
+  })
+
+  it('allows primary owner to change a team member password', async () => {
+    firebaseStorageMock.getPharmacyUsersByPharmacyId.mockResolvedValueOnce([
+      {
+        id: 'team-user-9',
+        firstName: 'Nisha',
+        lastName: 'Demo',
+        email: 'nisha@example.com',
+        status: 'active'
+      }
+    ])
+
+    const user = userEvent.setup()
+    const { getByRole, container } = render(PharmacistSettings, {
+      props: {
+        pharmacist: {
+          id: 'ph-1',
+          email: 'owner@example.com',
+          businessName: 'Main Pharmacy',
+          pharmacistNumber: 'PH-001'
+        }
+      }
+    })
+
+    await user.click(getByRole('button', { name: /^Team$/i }))
+    await waitFor(() => {
+      expect(getByRole('button', { name: /Change Password/i })).toBeTruthy()
+    })
+
+    await user.click(getByRole('button', { name: /Change Password/i }))
+    const newPasswordInput = container.querySelector('#teamChangePassword-team-user-9')
+    const confirmPasswordInput = container.querySelector('#teamChangePasswordConfirm-team-user-9')
+    expect(newPasswordInput).toBeTruthy()
+    expect(confirmPasswordInput).toBeTruthy()
+
+    await user.type(newPasswordInput, 'newpass123')
+    await user.type(confirmPasswordInput, 'newpass123')
+    await user.click(getByRole('button', { name: /Save Password/i }))
+
+    await waitFor(() => {
+      expect(firebaseStorageMock.updatePharmacyUser).toHaveBeenCalledWith('team-user-9', {
+        password: 'newpass123'
+      })
+    })
+    expect(notifySuccess).toHaveBeenCalledWith('Team member password updated successfully')
   })
 })

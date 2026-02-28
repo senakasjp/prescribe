@@ -1092,6 +1092,16 @@
     
     // Force reactive update by creating a new object reference
     user = { ...updatedUser }
+
+    // Keep settings doctor in sync so downstream views (PatientManagement/PrescriptionsTab)
+    // receive freshly saved templateSettings without requiring a full reload.
+    if (updatedUser?.role === 'doctor') {
+      settingsDoctor = {
+        ...(settingsDoctor || {}),
+        ...updatedUser,
+        templateSettings: updatedUser?.templateSettings || settingsDoctor?.templateSettings || null
+      }
+    }
     
     // Save updated user to appropriate decoupled service
     if (updatedUser.role === 'doctor') {

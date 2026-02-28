@@ -43,6 +43,116 @@ class PharmacyMedicationService {
     ].join('|')
   }
 
+  isEmailIdentifier(value) {
+    return typeof value === 'string' && value.includes('@')
+  }
+
+  toTimestamp(value) {
+    const timestamp = new Date(value || 0).getTime()
+    return Number.isFinite(timestamp) ? timestamp : 0
+  }
+
+  collectConnectedPharmacyIds(doctorData, allPharmacists = []) {
+    const directConnections = new Set(
+      Array.isArray(doctorData?.connectedPharmacists)
+        ? doctorData.connectedPharmacists.filter(Boolean)
+        : []
+    )
+    const reverseConnections = new Set()
+
+    if (doctorData?.id) {
+      allPharmacists.forEach((pharmacist) => {
+        if (Array.isArray(pharmacist?.connectedDoctors) && pharmacist.connectedDoctors.includes(doctorData.id)) {
+          reverseConnections.add(pharmacist.id)
+        }
+      })
+    }
+
+    const combinedConnections = new Set([...directConnections, ...reverseConnections])
+    return {
+      directConnections,
+      reverseConnections,
+      combinedConnections
+    }
+  }
+
+  async resolveDoctorCandidates(doctorIdentifier) {
+    const candidates = new Map()
+    const pushCandidate = (doctor) => {
+      if (!doctor?.id) return
+      if (!candidates.has(doctor.id)) {
+        candidates.set(doctor.id, doctor)
+      }
+    }
+
+    if (!doctorIdentifier) return []
+
+    if (typeof doctorIdentifier === 'string' && this.isEmailIdentifier(doctorIdentifier)) {
+      const doctorByEmail = await firebaseStorage.getDoctorByEmail(doctorIdentifier)
+      pushCandidate(doctorByEmail)
+    }
+
+    const doctorById = await firebaseStorage.getDoctorById(doctorIdentifier)
+    pushCandidate(doctorById)
+
+    const canonicalEmail = doctorById?.email || (typeof doctorIdentifier === 'string' && this.isEmailIdentifier(doctorIdentifier) ? doctorIdentifier : '')
+    if (canonicalEmail) {
+      const canonicalByEmail = await firebaseStorage.getDoctorByEmail(canonicalEmail)
+      pushCandidate(canonicalByEmail)
+    }
+
+    const doctorUid = doctorById?.uid
+    if (doctorUid && typeof firebaseStorage.getDoctorByUid === 'function') {
+      const canonicalByUid = await firebaseStorage.getDoctorByUid(doctorUid)
+      pushCandidate(canonicalByUid)
+      if (canonicalByUid?.email) {
+        const uidEmailDoctor = await firebaseStorage.getDoctorByEmail(canonicalByUid.email)
+        pushCandidate(uidEmailDoctor)
+      }
+    }
+
+    return Array.from(candidates.values())
+  }
+
+  selectBestDoctorCandidate(candidates = [], allPharmacists = []) {
+    if (!candidates.length) return null
+
+    const scored = candidates.map((doctor) => {
+      const { directConnections, reverseConnections, combinedConnections } = this.collectConnectedPharmacyIds(doctor, allPharmacists)
+      let score = 0
+      if (combinedConnections.size > 0) score += 1000
+      score += reverseConnections.size * 50
+      score += directConnections.size * 20
+
+      const normalizedId = this.normalizeKeyPart(doctor.id)
+      const normalizedEmail = this.normalizeKeyPart(doctor.email)
+      if (normalizedId && normalizedEmail && normalizedId === normalizedEmail) {
+        score += 5
+      }
+
+      return {
+        doctor,
+        score,
+        createdAt: this.toTimestamp(doctor?.createdAt),
+        directCount: directConnections.size,
+        reverseCount: reverseConnections.size,
+        combinedCount: combinedConnections.size,
+        connectedPharmacyIds: Array.from(combinedConnections)
+      }
+    })
+
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score
+      if (b.combinedCount !== a.combinedCount) return b.combinedCount - a.combinedCount
+      if (b.reverseCount !== a.reverseCount) return b.reverseCount - a.reverseCount
+      if (b.directCount !== a.directCount) return b.directCount - a.directCount
+      if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
+      return String(a.doctor?.id || '').localeCompare(String(b.doctor?.id || ''))
+    })
+
+    return scored[0]
+  }
+
   /**
    * Get medication names from connected pharmacy inventories
    * @param {string} doctorId - Doctor's ID
@@ -107,38 +217,29 @@ class PharmacyMedicationService {
    */
   async getConnectedPharmacies(doctorId) {
     try {
-      let doctorData = null
-
-      // Try lookup by document ID first
-      if (doctorId) {
-        doctorData = await firebaseStorage.getDoctorById(doctorId)
+      const candidates = await this.resolveDoctorCandidates(doctorId)
+      if (candidates.length === 0) {
+        console.log('🔍 No doctor records found for connected pharmacy lookup:', doctorId)
+        return []
       }
 
-      // Fallback to email lookup when ID lookup fails (common during migrations)
-      if (!doctorData && doctorId && typeof doctorId === 'string') {
-        console.log('🔍 Doctor not found by ID, attempting email lookup:', doctorId)
-        doctorData = await firebaseStorage.getDoctorByEmail(doctorId)
+      let allPharmacists = []
+      try {
+        allPharmacists = await firebaseStorage.getAllPharmacists()
+      } catch (pharmacistError) {
+        console.error('Error loading pharmacists for doctor connection lookup:', pharmacistError)
       }
 
-      console.log('🔍 Doctor data for connected pharmacies:', { doctorId, hasDoctor: !!doctorData, connectedPharmacists: doctorData?.connectedPharmacists })
+      const selected = this.selectBestDoctorCandidate(candidates, allPharmacists)
+      const result = selected?.connectedPharmacyIds || []
 
-      const connectedPharmacies = new Set(doctorData?.connectedPharmacists || [])
+      console.log('🔍 Connected pharmacies resolved from doctor candidates:', {
+        requestedDoctorId: doctorId,
+        candidateIds: candidates.map((candidate) => candidate.id),
+        selectedDoctorId: selected?.doctor?.id || null,
+        resultCount: result.length
+      })
 
-      if (doctorData?.id) {
-        try {
-          const allPharmacists = await firebaseStorage.getAllPharmacists()
-          allPharmacists.forEach(pharmacist => {
-            if (Array.isArray(pharmacist.connectedDoctors) && pharmacist.connectedDoctors.includes(doctorData.id)) {
-              connectedPharmacies.add(pharmacist.id)
-            }
-          })
-        } catch (pharmacistError) {
-          console.error('Error loading pharmacists for doctor connection lookup:', pharmacistError)
-        }
-      }
-
-      const result = Array.from(connectedPharmacies)
-      console.log('🔍 Connected pharmacy IDs resolved:', result)
       return result
     } catch (error) {
       console.error('Error getting connected pharmacies:', error)
@@ -176,6 +277,7 @@ class PharmacyMedicationService {
           manufacturer: item.manufacturer || '',
           pharmacyId: pharmacyId,
           currentStock: item.currentStock || 0,
+          storageLocation: item.storageLocation || '',
           packUnit: item.packUnit || '',
           containerSize: item.containerSize ?? '',
           containerUnit: item.containerUnit || '',
@@ -240,6 +342,7 @@ class PharmacyMedicationService {
             sellingPrice: item.sellingPrice ?? item.unitCost ?? item.costPrice ?? null,
             unitCost: item.unitCost ?? item.sellingPrice ?? item.costPrice ?? null,
             costPrice: item.costPrice ?? null,
+            storageLocation: item.storageLocation || '',
             packUnit: item.packUnit || '',
             expiryDate: item.expiryDate || '',
             batches: item.batches || [],

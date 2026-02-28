@@ -1076,6 +1076,7 @@
     if (!source || typeof source !== 'object') return ''
     const candidates = [
       source.storageLocation,
+      source.selectedInventoryStorageLocation,
       source.rack,
       source.rackLocation,
       source.location,
@@ -1104,6 +1105,9 @@
       .map((entry) => resolveStorageLocationValue(entry))
       .find(Boolean)
     if (fromBatch) return fromBatch
+
+    const fromMedication = resolveStorageLocationValue(medication)
+    if (fromMedication) return fromMedication
 
     return 'Not specified'
   }
@@ -2187,7 +2191,7 @@
           aria-label="Close profile settings"
           on:click={handleBackToDashboard}
         ></button>
-        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
           <div class="flex items-center justify-between px-4 py-3 border-b">
             <h3 class="text-base font-semibold text-gray-900">Profile Settings</h3>
             <button

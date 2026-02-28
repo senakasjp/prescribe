@@ -2144,6 +2144,7 @@ exports.sendPatientRegistrationSms = onDocumentCreated(
           ) || "",
           doctorId: patient.doctorId || "",
           patientId: patient.id || (event.params && event.params.patientId) || "",
+          patientEmail: String(patient.email || "").trim().toLowerCase(),
           error: payload.reason || "",
         });
         return;
@@ -2162,6 +2163,7 @@ exports.sendPatientRegistrationSms = onDocumentCreated(
         to: normalizeNotifyRecipient(payload.recipient) || payload.recipient,
         doctorId: patient.doctorId || "",
         patientId: patient.id || (event.params && event.params.patientId) || "",
+        patientEmail: String(patient.email || "").trim().toLowerCase(),
         error: result.ok ? (result.reason || "") : String(result.error || ""),
       });
       if (!result.ok) {
@@ -3225,7 +3227,11 @@ exports.sendSmsApi = onRequest(
         return;
       }
 
-      const {recipient, senderId, type, message} = req.body || {};
+      const {recipient, senderId, type, message, logType} = req.body || {};
+      const resolvedLogType = String(logType || "").trim();
+      const normalizedLogType = /^[a-zA-Z0-9_-]{1,64}$/.test(resolvedLogType) ?
+        resolvedLogType :
+        "adminTest";
       if (!recipient || typeof recipient !== "string") {
         res.status(400).send("Recipient is required");
         return;
@@ -3297,7 +3303,7 @@ exports.sendSmsApi = onRequest(
             raw ||
             "Failed to send SMS";
           await logSmsEvent({
-            type: "adminTest",
+            type: normalizedLogType,
             status: "failed",
             to: formattedRecipient,
             doctorId: "",
@@ -3310,7 +3316,7 @@ exports.sendSmsApi = onRequest(
         }
 
         await logSmsEvent({
-          type: "adminTest",
+          type: normalizedLogType,
           status: "sent",
           to: formattedRecipient,
           doctorId: "",
@@ -3325,7 +3331,7 @@ exports.sendSmsApi = onRequest(
             (error && error.message) || "Failed to send SMS",
         );
         await logSmsEvent({
-          type: "adminTest",
+          type: normalizedLogType,
           status: "failed",
           to: formattedRecipient,
           doctorId: "",
