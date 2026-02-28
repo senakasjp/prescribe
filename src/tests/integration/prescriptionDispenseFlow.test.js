@@ -81,8 +81,8 @@ describe('prescription -> dispense inventory flow', () => {
     })
 
     expect(dispensePlan).toEqual([
-      { inventoryItemId: 'cream-b1', quantity: 2 },
-      { inventoryItemId: 'cream-b2', quantity: 1 }
+      { inventoryItemId: 'cream-b1', batchId: null, quantity: 2 },
+      { inventoryItemId: 'cream-b2', batchId: null, quantity: 1 }
     ])
 
     for (const entry of dispensePlan) {

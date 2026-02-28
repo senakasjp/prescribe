@@ -78,14 +78,44 @@ const renderDashboard = async () => {
 const fillRequiredAddFields = async () => {
   await fireEvent.input(document.getElementById('newItemBrandName'), { target: { value: 'Amoxil' } })
   await fireEvent.input(document.getElementById('newItemGenericName'), { target: { value: 'Amoxicillin' } })
-  const dosageSelect = document.getElementById('newItemDosageForm')
-  await fireEvent.change(dosageSelect, { target: { value: 'Tablet' } })
   await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '250' } })
   await fireEvent.input(document.getElementById('newItemInitialStock'), { target: { value: '100' } })
   await fireEvent.input(document.getElementById('newItemSellingPrice'), { target: { value: '75' } })
   await fireEvent.input(document.getElementById('newItemExpiryDate'), {
     target: { value: '2028-01-15' }
   })
+  const dosageSelect = screen.getByLabelText(/Dispense Form/i)
+  const options = Array.from(dosageSelect.options)
+  const tabletIndex = options.findIndex((option) => {
+    return String(option?.value || '').toLowerCase() === 'tablet'
+      || String(option?.textContent || '').trim().toLowerCase() === 'tablet'
+      || String(option?.__value || '').toLowerCase() === 'tablet'
+  })
+  expect(tabletIndex).toBeGreaterThan(-1)
+  options[tabletIndex].selected = true
+  dosageSelect.selectedIndex = tabletIndex
+}
+
+const fillRequiredAddFieldsForVolumeLabelForm = async (formValue = 'Liquid (bottles)') => {
+  await fireEvent.input(document.getElementById('newItemBrandName'), { target: { value: 'ContainerDrug' } })
+  await fireEvent.input(document.getElementById('newItemGenericName'), { target: { value: 'ContainerGeneric' } })
+  await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '100' } })
+  await fireEvent.input(document.getElementById('newItemInitialStock'), { target: { value: '100' } })
+  await fireEvent.input(document.getElementById('newItemSellingPrice'), { target: { value: '75' } })
+  await fireEvent.input(document.getElementById('newItemExpiryDate'), {
+    target: { value: '2028-01-15' }
+  })
+
+  const dosageSelect = screen.getByLabelText(/Dispense Form/i)
+  const options = Array.from(dosageSelect.options)
+  const index = options.findIndex((option) => {
+    return String(option?.value || '').toLowerCase() === String(formValue).toLowerCase()
+      || String(option?.textContent || '').trim().toLowerCase() === String(formValue).toLowerCase()
+      || String(option?.__value || '').toLowerCase() === String(formValue).toLowerCase()
+  })
+  expect(index).toBeGreaterThan(-1)
+  options[index].selected = true
+  dosageSelect.selectedIndex = index
 }
 
 const ADD_FIELD_IDS = [
@@ -215,6 +245,110 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
   })
 
+  it('accepts decimal strength values when adding an item', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFields()
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '2.5' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    await waitFor(() => {
+      expect(inventoryService.createInventoryItem).toHaveBeenCalled()
+    })
+
+    const [, payload] = inventoryService.createInventoryItem.mock.calls.at(-1)
+    expect(payload).toEqual(expect.objectContaining({
+      strength: 2.5
+    }))
+  })
+
+  it('rejects strength values with more than 3 decimal places', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFields()
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '2.1234' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    const errorMessage = notifyError.mock.calls[0]?.[0] || ''
+    expect([
+      'Strength must be a valid positive number',
+      'Total volume must be a valid positive number'
+    ]).toContain(errorMessage)
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('rejects non-positive strength values', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFields()
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '0' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    const errorMessage = notifyError.mock.calls[0]?.[0] || ''
+    expect([
+      'Strength must be a valid positive number',
+      'Total volume must be a valid positive number'
+    ]).toContain(errorMessage)
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('accepts decimal total volume values', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFieldsForVolumeLabelForm('Liquid (bottles)')
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '10.5' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    await waitFor(() => {
+      expect(inventoryService.createInventoryItem).toHaveBeenCalled()
+    })
+
+    const [, payload] = inventoryService.createInventoryItem.mock.calls.at(-1)
+    expect(payload).toEqual(expect.objectContaining({
+      strength: 10.5
+    }))
+  })
+
+  it('rejects total volume values with more than 3 decimal places', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFieldsForVolumeLabelForm('Liquid (bottles)')
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '10.1234' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    expect(notifyError).toHaveBeenCalledWith('Total volume must be a valid positive number')
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
+  it('rejects non-positive total volume values', async () => {
+    const { container } = await renderDashboard()
+
+    await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
+    await fillRequiredAddFieldsForVolumeLabelForm('Liquid (bottles)')
+    await fireEvent.input(document.getElementById('newItemStrength'), { target: { value: '0' } })
+    const addForm = container.querySelector('form')
+    expect(addForm).toBeTruthy()
+    await fireEvent.submit(addForm)
+
+    expect(notifyError).toHaveBeenCalledWith('Total volume must be a valid positive number')
+    expect(inventoryService.createInventoryItem).not.toHaveBeenCalled()
+  })
+
   it('renders complete add form field contract', async () => {
     await renderDashboard()
     await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
@@ -242,7 +376,10 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Add Inventory Item/i }))
     const dosageSelect = document.getElementById('newItemDosageForm')
-    await fireEvent.change(dosageSelect, { target: { value: 'Tablet' } })
+    const firstSelectableIndex = Array.from(dosageSelect.options).findIndex((option) => !option.disabled && option.value)
+    expect(firstSelectableIndex).toBeGreaterThan(-1)
+    dosageSelect.selectedIndex = firstSelectableIndex
+    await fireEvent.change(dosageSelect)
     const addForm = container.querySelector('form')
     expect(addForm).toBeTruthy()
     const addLabels = Array.from(addForm.querySelectorAll('label'))
@@ -365,6 +502,47 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     expect(getLabelTextByFor('editItemStrengthUnit')).toMatch(/Volume unit/i)
   })
 
+  it('prefills total volume from legacy container fields in edit and saves mapped strength values', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        id: 'item-container-1',
+        dosageForm: 'Packet',
+        strength: '',
+        strengthUnit: '',
+        containerSize: '25',
+        containerUnit: 'packets'
+      }
+    ])
+    const { container } = await renderDashboard()
+    await userEvent.click(screen.getByText('Inventory Items'))
+    await userEvent.click(screen.getAllByRole('button', { name: /^Edit$/i })[0])
+
+    const strengthField = document.getElementById('editItemStrength')
+    const strengthUnitField = document.getElementById('editItemStrengthUnit')
+    expect(strengthField).toBeTruthy()
+    expect(strengthUnitField).toBeTruthy()
+    expect(String(strengthField.value)).toBe('25')
+    expect(String(strengthUnitField.value)).toBe('packets')
+
+    const editForm = container.querySelector('form')
+    expect(editForm).toBeTruthy()
+    await fireEvent.submit(editForm)
+
+    await waitFor(() => {
+      expect(inventoryService.updateInventoryItem).toHaveBeenCalled()
+    })
+
+    const [, , payload] = inventoryService.updateInventoryItem.mock.calls.at(-1)
+    expect(payload).toEqual(expect.objectContaining({
+      dosageForm: 'Packet',
+      strength: '25',
+      strengthUnit: 'packets',
+      containerSize: '25',
+      containerUnit: 'packets'
+    }))
+  })
+
   it('renders a single currency label format without Rs + currency duplication', async () => {
     const { container } = await renderDashboard()
     expect(container.textContent || '').toMatch(/\b(?:USD|LKR|GBP|EUR)\b/)
@@ -414,6 +592,25 @@ describe('InventoryDashboard add/edit inventory item flows', () => {
     await userEvent.click(screen.getByText('Inventory Items'))
 
     expect(screen.getAllByText(/8 packs/i).length).toBeGreaterThan(0)
+  })
+
+  it('uses dispense form label when legacy non-tablet item still has packUnit tablets', async () => {
+    inventoryService.getInventoryItems.mockResolvedValue([
+      {
+        ...baseInventoryItem,
+        id: 'item-legacy-cream',
+        brandName: 'LegacyCream',
+        dosageForm: 'Cream',
+        currentStock: 20,
+        packUnit: 'tablets'
+      }
+    ])
+
+    await renderDashboard()
+    await userEvent.click(screen.getByText('Inventory Items'))
+
+    expect(screen.getAllByText(/20 Cream/i).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/20 tablets/i)).not.toBeInTheDocument()
   })
 
   it('updates an inventory item and maps current stock to initialStock', async () => {

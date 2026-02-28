@@ -1,5 +1,51 @@
 # Changelog - Prescribe Medical System
 
+## Version 2.3.16 - Prescription Finalization/Dispatch UX + Pharmacist Detail Fixes (February 23, 2026)
+
+### 🧑‍⚕️ Doctor Prescription Flow
+- Finalized prescriptions now switch action state to `Unfinalize Prescription` so doctors can intentionally reopen and edit.
+- `Send to Pharmacy` is disabled after successful send and only re-enabled after unfinalizing.
+- Send confirmation flow now shows in-button progress/loading state to prevent duplicate send clicks.
+
+### 💊 Inventory-Aware Medication Add Validation
+- Added stock validation for doctor-added inventory medications (tablet, capsule, and measured liquid):
+  - If selected batch stock is insufficient, user is prompted that only `X` can be taken from selected batch.
+  - Remaining `Y` amount is requested from another batch.
+  - If no alternate batch exists, flow advises prescribing via external pharmacy.
+
+### 🏥 Pharmacist Prescription Details
+- Added `Rack` location display under each medication card in pharmacist prescription details (desktop + mobile).
+- Rack resolution now supports multiple field variants for compatibility:
+  - `storageLocation`, `rack`, `rackLocation`, `location`, `storageRack`, `binLocation`, `shelf`, `shelfLocation`, nested storage location/rack fields.
+- Improved medication card mobile responsiveness (wrapping/layout for headers, amount, and batch rows).
+- Fixed patient details modal fallback so age/sex render from nested prescription patient snapshots when top-level fields are absent.
+
+### 🎨 Modal Window Border Polish
+- Fixed rounded-corner border discontinuity in common modal windows by clipping panel content with rounded containers.
+- Applied to major modal components (pharmacist, patient details, confirmation, PDF, privacy, admin, pharmacist management).
+
+### 🧪 Validation
+- `npx vitest run src/tests/components/PharmacistDashboard.test.js`
+- `npx vitest run src/tests/components/ConfirmationModal.test.js src/tests/components/PharmacistDashboard.test.js`
+- `npm run test:e2e` (18 passed, 1 skipped)
+
+## Version 2.3.15 - Dosage Scope Restriction for Non-Tablet Forms (February 17, 2026)
+
+### 💊 MedicationForm Dosage Rule
+- Restricted prescription dosage usage to `Tablet` and `Capsule` only.
+- Restricted fractional dosage options (`1/2`, `1/4`, etc.) to `Tablet` only.
+- `Capsule` now uses whole-number dosage options only (`1`, `2`, `3`, `4`).
+- Non-tablet/capsule forms no longer show dosage selector and no longer persist fallback dosage values (such as `1`).
+- This prevents legacy non-tablet records from showing misleading dosage values in prescription views.
+
+### 🧪 Tests
+- Updated and expanded `src/tests/components/MedicationForm.test.js`:
+  - Added matrix assertions for dosage-input visibility by dispense form.
+  - Added assertions that fractional dosage options are available only for `Tablet`.
+  - Added assertions that `Capsule` dosage options remain whole-number only.
+  - Added payload assertions to ensure non-tablet/capsule forms save `dosage: ''`.
+  - Kept tablet/capsule payload behavior covered (`dosage` remains persisted).
+
 ## Version 2.3.14 - Admin Payment Pricing Controls + Scope Rules (February 17, 2026)
 
 ### 💳 Admin Payment Pricing Module

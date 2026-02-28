@@ -24,7 +24,16 @@
   let billingHistoryCollapsed = false
   let canExpandBillingHistory = false
   let promoCode = ""
+  let promoPreviewLoading = false
+  let promoPreviewByPlan = {}
+  let promoFormatMessage = ""
+  let promoFormatTone = "info"
   let activeTab = "payments"
+  let hasRestoredPaymentsTab = false
+  let restoredPaymentsTabUserKey = ""
+  let hasProcessedCheckoutReturn = false
+  const PAYMENTS_TAB_STORAGE_PREFIX = "prescribe-payments-active-tab"
+  const ALLOWED_PAYMENT_TABS = new Set(["payments", "billing", "referral"])
   let checkoutAdminDiscountPercent = 0
   let serverDoctorProfile = null
   let loadedDoctorProfileId = ""
@@ -34,6 +43,46 @@
 
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
   const region = import.meta.env.VITE_FUNCTIONS_REGION || "us-central1"
+
+  const getDoctorTabUserKey = () => String(user?.id || user?.email || user?.uid || "").trim().toLowerCase()
+  const getPaymentsTabStorageKey = () => {
+    const userKey = getDoctorTabUserKey()
+    if (!userKey) return ""
+    return `${PAYMENTS_TAB_STORAGE_PREFIX}:${userKey}`
+  }
+  const normalizePaymentTab = (value) => {
+    const normalized = String(value || "").trim().toLowerCase()
+    return ALLOWED_PAYMENT_TABS.has(normalized) ? normalized : "payments"
+  }
+  const restorePaymentsTab = () => {
+    if (typeof window === "undefined") return
+    const storageKey = getPaymentsTabStorageKey()
+    if (!storageKey) return
+    const stored = localStorage.getItem(storageKey)
+    if (!stored) return
+    activeTab = normalizePaymentTab(stored)
+  }
+  const persistPaymentsTab = () => {
+    if (typeof window === "undefined") return
+    const storageKey = getPaymentsTabStorageKey()
+    if (!storageKey) return
+    localStorage.setItem(storageKey, normalizePaymentTab(activeTab))
+  }
+  const setPaymentsTab = (tab) => {
+    activeTab = normalizePaymentTab(tab)
+    if (hasRestoredPaymentsTab) {
+      persistPaymentsTab()
+    }
+  }
+
+  $: {
+    const userKey = getDoctorTabUserKey()
+    if (typeof window !== "undefined" && userKey && userKey !== restoredPaymentsTabUserKey) {
+      restoredPaymentsTabUserKey = userKey
+      restorePaymentsTab()
+      hasRestoredPaymentsTab = true
+    }
+  }
 
   const getFunctionsBaseUrl = () => {
     if (!projectId && !import.meta.env.VITE_FUNCTIONS_BASE_URL) {
@@ -59,13 +108,133 @@
     return Number.isFinite(parsed) ? parsed : 0
   }
 
+  const resolveDoctorDiscountPercent = (doctor) => Math.max(
+    parseDiscountPercent(doctor?.adminStripeDiscountPercent),
+    parseDiscountPercent(doctor?.adminDiscountPercent),
+    parseDiscountPercent(doctor?.individualStripeDiscountPercent),
+    parseDiscountPercent(doctor?.individualDiscountPercent),
+    parseDiscountPercent(doctor?.stripeDiscountPercent),
+    parseDiscountPercent(doctor?.doctorDiscountPercent),
+    parseDiscountPercent(doctor?.discountPercent)
+  )
+
+  const normalizePromoCodeInput = (value = "") =>
+    String(value || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "")
+
+  const clearPromoPreview = () => {
+    promoPreviewByPlan = {}
+  }
+
+  const previewPromoForPlans = async (normalizedPromo) => {
+    const baseUrl = getFunctionsBaseUrl()
+    if (!baseUrl) {
+      throw new Error("Payments service is not configured.")
+    }
+    const token = await getAuthToken()
+    if (!token) {
+      throw new Error("Please sign in again to validate promo.")
+    }
+    const successUrl = `${window.location.origin}${window.location.pathname}?payment=success`
+    const cancelUrl = `${window.location.origin}${window.location.pathname}?payment=cancel`
+    const responses = await Promise.all(plans.map(async (plan) => {
+      const response = await fetch(`${baseUrl}/createStripeCheckoutSession`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          planId: plan.id,
+          currency: doctorCurrency,
+          doctorId: user?.id || "",
+          email: user?.email || "",
+          promoCode: normalizedPromo,
+          successUrl,
+          cancelUrl,
+          previewOnly: true
+        })
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.error || "Unable to validate promo code.")
+      }
+      return {
+        planId: String(plan.id || ""),
+        promoApplied: Boolean(payload?.promoApplied),
+        promoValidated: Boolean(payload?.promoValidated),
+        appliedDiscountSource: String(
+          payload?.appliedDiscountSource ||
+          (payload?.promoApplied ? "promo" : "")
+        ),
+        originalMinor: Number(payload?.originalAmount || plan.amountMinor || 0),
+        finalMinor: Number(payload?.discountedAmount || plan.amountMinor || 0)
+      }
+    }))
+    const nextPreview = {}
+    responses.forEach((entry) => {
+      nextPreview[entry.planId] = {
+        promoApplied: entry.promoApplied,
+        promoValidated: entry.promoValidated,
+        appliedDiscountSource: entry.appliedDiscountSource,
+        originalMinor: Math.max(0, Number(entry.originalMinor || 0)),
+        finalMinor: Math.max(0, Number(entry.finalMinor || 0))
+      }
+    })
+    promoPreviewByPlan = nextPreview
+    return responses
+  }
+
+  const applyPromoFormat = async () => {
+    const normalizedPromo = normalizePromoCodeInput(promoCode)
+    promoCode = normalizedPromo
+    clearPromoPreview()
+    if (!normalizedPromo) {
+      promoFormatTone = "error"
+      promoFormatMessage = "Enter a promo code first."
+      return
+    }
+    promoPreviewLoading = true
+    try {
+      const previewResults = await previewPromoForPlans(normalizedPromo)
+      const appliedToAnyPlan = previewResults.some(
+        (entry) => entry.appliedDiscountSource === "promo" || entry.promoApplied
+      )
+      const promoValidated = previewResults.some(
+        (entry) => entry.promoValidated || entry.promoApplied
+      )
+      if (appliedToAnyPlan) {
+        const highestAppliedPercent = previewResults.reduce((highest, entry) => {
+          const originalMinor = Number(entry?.originalMinor || 0)
+          const finalMinor = Number(entry?.finalMinor || 0)
+          if (!originalMinor || finalMinor >= originalMinor) return highest
+          return Math.max(highest, ((originalMinor - finalMinor) / originalMinor) * 100)
+        }, 0)
+        promoFormatTone = "info"
+        promoFormatMessage = highestAppliedPercent > 0
+          ? `Promo code applied. Up to ${formatDiscountPercent(highestAppliedPercent)}% off. Plan prices updated below.`
+          : "Promo code applied. Plan prices updated below."
+      } else if (promoValidated) {
+        promoFormatTone = "info"
+        promoFormatMessage = "Promo code is valid, but your individual discount is already higher."
+      } else {
+        promoFormatTone = "error"
+        promoFormatMessage = "Promo code is not eligible for current plans."
+      }
+    } catch (error) {
+      promoFormatTone = "error"
+      promoFormatMessage = error?.message || "Unable to validate promo code."
+    } finally {
+      promoPreviewLoading = false
+    }
+  }
+
   const getProfileLookupKey = (sourceUser) => {
     const doctorId = String(sourceUser?.id || "").trim()
     if (doctorId) return doctorId
     return String(sourceUser?.email || "").trim().toLowerCase()
   }
 
-  // Always prefer freshest server profile when available to avoid stale local session fields.
+  // Merge local + server profile for display fields, but compute discount from both sources.
   $: effectiveDoctor = serverDoctorProfile
     ? { ...(user || {}), ...(serverDoctorProfile || {}) }
     : user
@@ -76,8 +245,9 @@
   $: doctorAdminDiscountPercent = Math.max(
     0,
     Math.min(100, Math.max(
-      parseDiscountPercent(effectiveDoctor?.adminStripeDiscountPercent),
-      parseDiscountPercent(effectiveDoctor?.adminDiscountPercent),
+      resolveDoctorDiscountPercent(user),
+      resolveDoctorDiscountPercent(serverDoctorProfile),
+      resolveDoctorDiscountPercent(effectiveDoctor),
       parseDiscountPercent(checkoutAdminDiscountPercent)
     ))
   )
@@ -133,12 +303,38 @@
         }
       ]
 
+  $: pricedPlans = plans.map((plan) => {
+    const baseMinor = Math.max(0, Number(plan?.amountMinor || 0))
+    const preview = promoPreviewByPlan?.[String(plan?.id || "")]
+    const previewFinalMinor = Number(preview?.finalMinor)
+    const adminAdjustedMinor = Math.max(0, Math.round(baseMinor * (1 - doctorAdminDiscountPercent / 100)))
+    const displayedMinor = Number.isFinite(previewFinalMinor)
+      ? Math.max(0, previewFinalMinor)
+      : adminAdjustedMinor
+    const discountPercent = baseMinor > 0 && displayedMinor < baseMinor
+      ? Math.max(0, Math.min(100, ((baseMinor - displayedMinor) / baseMinor) * 100))
+      : 0
+    return {
+      ...plan,
+      baseMinor,
+      displayedMinor,
+      showCrossedPrice: displayedMinor < baseMinor,
+      discountPercent
+    }
+  })
+
   const formatAmountMinor = (minorAmount = 0, currencyCode = "USD") => {
     const amount = Number(minorAmount || 0) / 100
     return `${currencyCode} ${amount.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     })}`
+  }
+
+  const formatDiscountPercent = (value = 0) => {
+    const percent = Number(value || 0)
+    if (!Number.isFinite(percent) || percent <= 0) return "0"
+    return Number.isInteger(percent) ? String(percent) : percent.toFixed(1).replace(/\.0$/, "")
   }
 
   const waitForAuthRestore = async (timeoutMs = 5000) => {
@@ -269,6 +465,8 @@
   const loadServerDoctorProfile = async (force = false) => {
     const doctorId = String(user?.id || "").trim()
     const doctorEmail = String(user?.email || "").trim().toLowerCase()
+    const doctorUid = String(user?.uid || "").trim()
+    const doctorShortId = String(user?.doctorIdShort || "").trim().toUpperCase()
     const profileLookupKey = getProfileLookupKey(user)
     if (!profileLookupKey) {
       serverDoctorProfile = null
@@ -285,6 +483,12 @@
       }
       if (!latestDoctor?.id && doctorEmail) {
         latestDoctor = await firebaseStorage.getDoctorByEmail(doctorEmail)
+      }
+      if (!latestDoctor?.id && doctorUid && typeof firebaseStorage.getDoctorByUid === "function") {
+        latestDoctor = await firebaseStorage.getDoctorByUid(doctorUid)
+      }
+      if (!latestDoctor?.id && doctorShortId && typeof firebaseStorage.getDoctorByShortId === "function") {
+        latestDoctor = await firebaseStorage.getDoctorByShortId(doctorShortId)
       }
       if (latestDoctor?.id) {
         serverDoctorProfile = latestDoctor
@@ -346,7 +550,7 @@
           currency: doctorCurrency,
           doctorId: user?.id || "",
           email: user?.email || "",
-          promoCode: promoCode.trim().toUpperCase(),
+          promoCode: normalizePromoCodeInput(promoCode),
           successUrl,
           cancelUrl
         })
@@ -360,18 +564,26 @@
       const original = Number(payload?.originalAmount || 0) / 100
       const discounted = Number(payload?.discountedAmount || 0) / 100
       const adminDiscountPercent = Number(payload?.adminDiscountPercent || 0)
+      const appliedDiscountSource = String(
+        payload?.appliedDiscountSource ||
+        (payload?.promoApplied ? "promo" : (adminDiscountPercent > 0 ? "individual" : "none"))
+      )
       checkoutAdminDiscountPercent = Math.max(0, Math.min(100, adminDiscountPercent))
       if (checkoutAdminDiscountPercent >= 100) {
         statusTone = "info"
         statusMessage = "This account has 100% admin discount. Payment is not required."
         return
       }
-      if (payload?.promoApplied) {
+      if (appliedDiscountSource === "promo" && payload?.promoApplied) {
+        const appliedPercent = original > 0 ? ((original - discounted) / original) * 100 : 0
         statusTone = "info"
-        statusMessage = `${adminDiscountPercent > 0 ? `Admin discount ${adminDiscountPercent}% + ` : ""}promo ${payload?.promoCode || promoCode.trim().toUpperCase()} applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
+        statusMessage = `Promo ${payload?.promoCode || promoCode.trim().toUpperCase()} applied (${formatDiscountPercent(appliedPercent)}% off). ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
+      } else if (payload?.promoValidated && appliedDiscountSource === "individual" && adminDiscountPercent > 0) {
+        statusTone = "info"
+        statusMessage = `Individual discount ${adminDiscountPercent}% is higher than promo and was applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
       } else if (adminDiscountPercent > 0) {
         statusTone = "info"
-        statusMessage = `Admin discount ${adminDiscountPercent}% applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
+        statusMessage = `Individual discount ${adminDiscountPercent}% applied. ${doctorCurrency} ${original.toFixed(2)} -> ${doctorCurrency} ${discounted.toFixed(2)}.`
       }
 
       try {
@@ -435,11 +647,14 @@
     }
   }
 
-  onMount(async () => {
+  const processCheckoutReturn = async () => {
+    if (hasProcessedCheckoutReturn || typeof window === "undefined") return
+    hasProcessedCheckoutReturn = true
     const params = new URLSearchParams(window.location.search)
     const checkoutStatus = params.get("checkout") || params.get("payment")
     const sessionId = params.get("session_id")
     if (checkoutStatus === "success") {
+      setPaymentsTab("payments")
       if (sessionId) {
         await confirmCheckoutSuccess(sessionId)
       } else {
@@ -447,15 +662,40 @@
         statusMessage = "Payment completed in Stripe. Verification may take a moment."
       }
     } else if (checkoutStatus === "cancel") {
+      setPaymentsTab("payments")
       statusTone = "error"
       statusMessage = "Payment was canceled."
     }
     if (checkoutStatus || sessionId) {
       clearPaymentReturnParams()
     }
+  }
+
+  onMount(async () => {
+    if (!hasRestoredPaymentsTab) {
+      restorePaymentsTab()
+      hasRestoredPaymentsTab = true
+    }
+    await processCheckoutReturn()
     await loadServerDoctorProfile(true)
     await loadBillingHistory(true)
+
+    const handleWindowFocus = () => {
+      loadServerDoctorProfile(true)
+    }
+    window.addEventListener("focus", handleWindowFocus)
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus)
+    }
   })
+
+  $: if (typeof window !== "undefined" && !hasProcessedCheckoutReturn) {
+    processCheckoutReturn()
+  }
+
+  $: if (typeof window !== "undefined" && hasRestoredPaymentsTab) {
+    persistPaymentsTab()
+  }
 
   $: if (getProfileLookupKey(user) && loadedDoctorProfileId !== getProfileLookupKey(user)) {
     loadServerDoctorProfile(true)
@@ -494,7 +734,10 @@
             aria-selected={activeTab === "payments"}
             aria-controls="payments-tab-panel"
             class="inline-flex items-center rounded-t-lg border px-4 py-2 text-sm font-semibold transition-colors {activeTab === 'payments' ? 'border-cyan-300 bg-cyan-50 text-cyan-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}"
-            on:click={() => { activeTab = "payments" }}
+            on:click={() => {
+              setPaymentsTab("payments")
+              loadServerDoctorProfile(true)
+            }}
           >
             <i class="fas fa-credit-card mr-2"></i>
             Payments
@@ -505,7 +748,7 @@
             aria-selected={activeTab === "billing"}
             aria-controls="billing-tab-panel"
             class="inline-flex items-center rounded-t-lg border px-4 py-2 text-sm font-semibold transition-colors {activeTab === 'billing' ? 'border-cyan-300 bg-cyan-50 text-cyan-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}"
-            on:click={() => { activeTab = "billing" }}
+            on:click={() => { setPaymentsTab("billing") }}
           >
             <i class="fas fa-receipt mr-2"></i>
             Billing History
@@ -516,7 +759,7 @@
             aria-selected={activeTab === "referral"}
             aria-controls="referral-tab-panel"
             class="inline-flex items-center rounded-t-lg border px-4 py-2 text-sm font-semibold transition-colors {activeTab === 'referral' ? 'border-cyan-300 bg-cyan-50 text-cyan-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}"
-            on:click={() => { activeTab = "referral" }}
+            on:click={() => { setPaymentsTab("referral") }}
           >
             <i class="fas fa-link mr-2"></i>
             Referral
@@ -550,33 +793,39 @@
               <button
                 type="button"
                 class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                on:click={() => {
-                  promoCode = promoCode.trim().toUpperCase()
-                }}
+                on:click={applyPromoFormat}
+                disabled={promoPreviewLoading || Boolean(loadingPlanId) || confirmingPayment}
               >
-                Apply Format
+                {promoPreviewLoading ? "Applying..." : "Apply"}
               </button>
             </div>
             <p class="mt-2 text-xs text-gray-500">Promo is validated securely on server during checkout creation.</p>
+            {#if promoFormatMessage}
+              <p class="mt-1 text-xs {promoFormatTone === 'error' ? 'text-red-600' : 'text-cyan-700'}">
+                {promoFormatMessage}
+              </p>
+            {/if}
           </div>
 
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {#each plans as plan}
+            {#each pricedPlans as plan}
               <article class="rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5">
                 <h3 class="text-base sm:text-lg font-semibold text-gray-900">{plan.name}</h3>
-                {#if doctorAdminDiscountPercent > 0}
-                  {@const discountedMinor = Math.max(0, Math.round(Number(plan.amountMinor || 0) * (1 - doctorAdminDiscountPercent / 100)))}
+                {#if plan.showCrossedPrice}
                   <p class="mt-2 text-sm text-gray-500 line-through">
-                    {plan.price}
+                    {formatAmountMinor(plan.baseMinor, doctorCurrency)}
                     <span class="text-xs font-medium text-gray-400">{plan.cadence}</span>
                   </p>
                   <p class="text-2xl font-bold text-teal-700">
-                    {doctorAdminDiscountPercent >= 100 ? "FREE" : formatAmountMinor(discountedMinor, doctorCurrency)}
+                    {doctorAdminDiscountPercent >= 100 || plan.displayedMinor <= 0 ? "FREE" : formatAmountMinor(plan.displayedMinor, doctorCurrency)}
                     <span class="text-sm font-medium text-gray-500">{plan.cadence}</span>
+                  </p>
+                  <p class="mt-1 text-xs font-semibold text-cyan-700">
+                    {formatDiscountPercent(plan.discountPercent)}% discount applied
                   </p>
                 {:else}
                   <p class="mt-2 text-2xl font-bold text-teal-700">
-                    {plan.price}
+                    {formatAmountMinor(plan.baseMinor, doctorCurrency)}
                     <span class="text-sm font-medium text-gray-500">{plan.cadence}</span>
                   </p>
                 {/if}

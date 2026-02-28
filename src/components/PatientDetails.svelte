@@ -12,13 +12,19 @@
   import PrescriptionsTab from './PrescriptionsTab.svelte'
   import ConfirmationModal from './ConfirmationModal.svelte'
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
+  import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
   import { phoneCountryCodes } from '../data/phoneCountryCodes.js'
   import { getDialCodeForCountry } from '../utils/phoneCountryCode.js'
-  import { notifySuccess, notifyError } from '../stores/notifications.js'
+  import { notifySuccess, notifyError, notifyWarning } from '../stores/notifications.js'
   import { formatDate } from '../utils/dataProcessing.js'
   import { detectDocumentCornersFromDataUrl, createSelectedAreaDataUrl } from '../utils/documentCornerDetection.js'
   import { isUnreadableText } from '../utils/unreadableText.js'
+  import {
+    PRESCRIPTION_DISPLAY_LABELS,
+    requiresCountForDosageForm,
+    supportsStrengthForDosageForm
+  } from '../utils/prescriptionMedicationSemantics.js'
   import JsBarcode from 'jsbarcode'
   
   export let selectedPatient
@@ -306,20 +312,37 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return `${base}s`
   }
 
+  const getMedicationFormValue = (medication) => {
+    const candidates = [
+      medication?.dosageForm,
+      medication?.form,
+      medication?.packUnit,
+      medication?.unit
+    ]
+    const firstFilled = candidates.find((value) => String(value || '').trim())
+    return firstFilled ? String(firstFilled).trim() : ''
+  }
+
   const getDoseLabel = (medication) => {
     const dosage = String(medication?.dosage ?? '').trim()
     if (!dosage) return ''
     const parsedValue = parseDosageValue(dosage)
     const isPlural = parsedValue !== null ? parsedValue > 1 : !/^1(?:\s|$)/.test(dosage)
-    const form = medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? ''
+    const form = getMedicationFormValue(medication)
     const formLabel = formatDosageFormLabel(form || 'Tablet', isPlural)
     return `${dosage} ${formLabel}`.trim()
+  }
+
+  const supportsRightHeaderStrength = (medication) => {
+    const dosageForm = getMedicationFormValue(medication)
+    if (!String(dosageForm || '').trim()) return true
+    return supportsStrengthForDosageForm(dosageForm)
   }
 
   const isLiquidMedication = (medication) => {
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     const strengthTextLower = strengthText.toLowerCase()
     return Boolean(
       strengthUnit &&
@@ -328,43 +351,68 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   }
 
   const isMeasuredLiquidMedication = (medication) => {
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     return dosageForm === 'liquid (measured)'
   }
 
   const isBottledLiquidMedication = (medication) => {
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     return dosageForm === 'liquid (bottles)'
   }
 
   const requiresQtsPricing = (medication) => {
-    if (isLiquidMedication(medication)) return false
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
-    if (!dosageForm) return false
-    return !(
-      dosageForm.includes('tablet') ||
-      dosageForm.includes('tab') ||
-      dosageForm.includes('capsule') ||
-      dosageForm.includes('cap') ||
-      dosageForm.includes('syrup') ||
-      dosageForm.includes('liquid')
-    )
+    const dosageForm = String(getMedicationFormValue(medication)).trim()
+    return requiresCountForDosageForm(dosageForm)
   }
 
   const getMedicationMetaLine = (medication, headerLabel = '') => {
-    if (requiresQtsPricing(medication)) {
-      const formRaw = String(medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? '').trim()
-      if (formRaw) {
-        const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
-        const qtsRaw = String(medication?.qts ?? '').trim()
-        const parsedQts = Number.parseInt(qtsRaw, 10)
-        if (Number.isFinite(parsedQts) && parsedQts > 0) {
-          return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
-        }
-        return formLabel
+    const getQtsMetaLine = () => {
+      if (!requiresQtsPricing(medication)) return ''
+      const formRaw = String(getMedicationFormValue(medication)).trim()
+      if (!formRaw) return ''
+      const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
+      const qtsRaw = String(medication?.qts ?? '').trim()
+      const parsedQts = Number.parseInt(qtsRaw, 10)
+      if (Number.isFinite(parsedQts) && parsedQts > 0) {
+        return `${formLabel} | ${PRESCRIPTION_DISPLAY_LABELS.quantityPrefix} ${String(parsedQts).padStart(2, '0')}`
       }
+      return formLabel
     }
+    const qtsMetaLine = getQtsMetaLine()
+
+    const getResolvedVolumeText = (fallbackText = '') => {
+      const compact = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+      const joinPair = (left, right) => [compact(left), compact(right)].filter(Boolean).join(' ')
+      const hasNumericValue = (value) => /\d/.test(String(value || ''))
+      const resolvedVolumeUnit = compact(
+        medication?.volumeUnit
+        || medication?.containerUnit
+        || medication?.strengthUnit
+      )
+
+      const candidates = [
+        joinPair(medication?.containerSize, medication?.containerUnit),
+        joinPair(medication?.totalVolume, resolvedVolumeUnit),
+        joinPair(medication?.volume, resolvedVolumeUnit),
+        compact(fallbackText),
+        compact(medication?.inventoryStrengthText),
+        joinPair(medication?.strength, medication?.strengthUnit),
+        compact(medication?.strength)
+      ]
+
+      return candidates.find((candidate) => candidate && hasNumericValue(candidate)) || ''
+    }
+
     const parts = []
+    const normalizedParts = new Set()
+    const pushUniquePart = (value) => {
+      const normalized = String(value || '').replace(/\s+/g, ' ').trim()
+      if (!normalized) return
+      const key = normalized.toLowerCase()
+      if (normalizedParts.has(key)) return
+      normalizedParts.add(key)
+      parts.push(normalized)
+    }
     const medicationSource = String(medication?.source || '').trim().toLowerCase()
     const inventoryStrengthText = String(
       medication?.inventoryStrengthText
@@ -375,8 +423,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     const shouldIncludeInventoryStrength = medicationSource === 'inventory' && inventoryStrengthText && (
       isLiquidMedication(medication) || !requiresQtsPricing(medication)
     )
-    if (shouldIncludeInventoryStrength) {
-      const inventoryForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    if (shouldIncludeInventoryStrength && !isMeasuredLiquidMedication(medication)) {
+      const inventoryForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
       const volumeForms = new Set([
         'liquid (measured)',
         'liquid (bottles)',
@@ -393,7 +441,23 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         'roll'
       ])
       const usesVolumeLabel = volumeForms.has(inventoryForm) || /\b(?:ml|l)\b/i.test(inventoryStrengthText)
-      parts.push(`${usesVolumeLabel ? 'Vol' : 'Strength'}: ${inventoryStrengthText}`)
+      if (usesVolumeLabel) {
+        const resolvedVolumeText = getResolvedVolumeText(inventoryStrengthText)
+        if (resolvedVolumeText) {
+          pushUniquePart(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
+        }
+      } else {
+        // Strength belongs on the right side of the first line, never as second-line "Strength:".
+      }
+    }
+    if (!supportsRightHeaderStrength(medication)) {
+      const resolvedVolumeText = getResolvedVolumeText(inventoryStrengthText)
+      if (resolvedVolumeText) {
+        pushUniquePart(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
+      }
+    }
+    if (qtsMetaLine) {
+      pushUniquePart(qtsMetaLine)
     }
     if (isLiquidMedication(medication)) {
       const liquidDoseUnit = String(
@@ -405,31 +469,21 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       ).trim()
       const perFrequencyMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
       if (Number.isFinite(perFrequencyMl) && perFrequencyMl > 0) {
-        parts.push(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
+        pushUniquePart(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
       }
       if (isMeasuredLiquidMedication(medication) && perFrequencyMl) {
         const dailyFrequency = resolveDailyFrequency(medication?.frequency)
         const durationDays = resolveDurationDays(medication?.duration)
         const totalMl = perFrequencyMl * dailyFrequency * durationDays
         if (Number.isFinite(totalMl) && totalMl > 0) {
-          parts.push(`Total: ${totalMl} ${liquidDoseUnit}`)
+          pushUniquePart(`Total: ${totalMl} ${liquidDoseUnit}`)
         }
       }
-      const liquidAmountMl = Number(String(medication?.liquidAmountMl ?? medication?.amountMl ?? '').trim())
-      if (Number.isFinite(liquidAmountMl) && liquidAmountMl > 0) {
-        parts.push(`Amount: ${liquidAmountMl} ${liquidDoseUnit}`)
-      }
-      if (isBottledLiquidMedication(medication)) {
-        const inventoryMl = findInventoryStrengthText(medication)
-        const packMlText = String(inventoryMl || getStrengthText(medication?.strength, medication?.strengthUnit) || '').trim()
-        if (packMlText && /\b(ml|l)\b/i.test(packMlText)) {
-          parts.push(`Pack: ${packMlText}`)
-        }
-      }
+      // Quantity line is sufficient for count-based liquids; avoid redundant "Amount".
     }
-    if (!isLiquidMedication(medication)) {
+    if (!isLiquidMedication(medication) && !requiresQtsPricing(medication)) {
       const doseLabel = getDoseLabel(medication)
-      if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
+      if (doseLabel && doseLabel !== headerLabel) pushUniquePart(doseLabel)
     }
     return parts.join(' | ')
   }
@@ -441,17 +495,69 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     return value
   }
 
+  const getMedicationDisplayNameParts = (medication) => {
+    const rawName = String(
+      medication?.name || medication?.drugName || medication?.brandName || ''
+    ).trim()
+    const embeddedBracketPattern = rawName.match(/^\(([^)]+)\)\s*(.+)$/)
+    const embeddedTrailingPattern = rawName.match(/^(.+?)\s*\(([^)]+)\)$/)
+    const brandName = String(
+      embeddedBracketPattern?.[2] ||
+      embeddedTrailingPattern?.[1] ||
+      rawName
+    ).trim()
+
+    const deriveGenericNameFromBrand = (value = '') => {
+      const raw = String(value || '').trim()
+      if (!raw || !raw.includes('-')) return ''
+      const [prefix] = raw.split('-')
+      let candidate = String(prefix || '').replace(/\s+/g, ' ').trim()
+      if (!candidate) return ''
+      candidate = candidate.replace(/\b(?:tablet|capsule|syrup|cream|ointment|gel|suppository|inhaler|spray|shampoo|packet|roll|injection|liquid)\b$/i, '').trim()
+      if (!candidate || candidate.length < 3) return ''
+      if (candidate.toLowerCase() === raw.toLowerCase()) return ''
+      return candidate
+    }
+
+    const genericNameRaw = String(
+      embeddedBracketPattern?.[1] ||
+      embeddedTrailingPattern?.[2] ||
+      medication?.genericName
+      || medication?.generic
+      || medication?.genericDrugName
+      || medication?.drugGenericName
+      || medication?.activeIngredient
+      || deriveGenericNameFromBrand(brandName)
+      || ''
+    ).trim()
+    const genericName = genericNameRaw.toLowerCase() === brandName.toLowerCase() ? '' : genericNameRaw
+    return { brandName, genericName }
+  }
+
+  const getMedicationDisplayName = (medication) => {
+    const { brandName, genericName } = getMedicationDisplayNameParts(medication)
+
+    if (brandName && genericName) return `${brandName} (${genericName})`
+    if (genericName) return `(${genericName})`
+    return brandName
+  }
+
   const getPdfDosageLabel = (medication) => {
-    if (isLiquidMedication(medication)) {
-      const doseMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
-      const liquidDoseUnitRaw = String(medication?.liquidDoseUnit || '').trim().toLowerCase()
-      const liquidDoseUnit = ['ml', 'l'].includes(liquidDoseUnitRaw) ? liquidDoseUnitRaw : 'ml'
-      if (doseMl) return `${doseMl} ${liquidDoseUnit}`
+    if (!supportsRightHeaderStrength(medication)) {
+      return ''
     }
 
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
-    if (strength && strengthUnit) return strengthText
+    const hasStrength = Boolean(strength && strengthUnit)
+    if (hasStrength) {
+      return strengthText
+    }
+
+    const fromInventory = findInventoryStrengthText(medication)
+    if (fromInventory) {
+      return fromInventory
+    }
 
     return ''
   }
@@ -544,9 +650,11 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       }
     }
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
-      const base = Number(medication.amount) || 0
-      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
-      return Math.ceil(base * dosageMultiplier)
+      const base = Number(String(medication.amount).trim())
+      if (Number.isFinite(base) && base > 0) {
+        const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+        return Math.ceil(base * dosageMultiplier)
+      }
     }
     if (medication?.frequency && medication.frequency.includes('PRN')) {
       const base = Number(medication.prnAmount) || 0
@@ -569,6 +677,92 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     const calculated = Math.ceil(days * dailyFrequency * dosageMultiplier)
     if (calculated > 0) return calculated
     return enteredCount || 0
+  }
+
+  const normalizeInventoryForm = (value) => String(value || '').trim().toLowerCase()
+
+  const requiresSelectedBatchLimitCheck = (medication) => {
+    if (!medication || String(medication?.source || '').trim().toLowerCase() !== 'inventory') return false
+    const form = normalizeInventoryForm(getMedicationFormValue(medication))
+    return form.includes('tablet') || form.includes('capsule') || form === 'liquid (measured)'
+  }
+
+  const matchesMedicationBatch = (stockItem, medication) => {
+    const stockBrand = normalizeKeyPart(stockItem?.drugName)
+    const stockGeneric = normalizeKeyPart(stockItem?.genericName)
+    const medBrand = normalizeKeyPart(medication?.name)
+    const medGeneric = normalizeKeyPart(medication?.genericName)
+
+    const hasNameMatch = Boolean(
+      (stockBrand && medBrand && (stockBrand === medBrand || stockBrand.includes(medBrand) || medBrand.includes(stockBrand))) ||
+      (stockGeneric && medGeneric && (stockGeneric === medGeneric || stockGeneric.includes(medGeneric) || medGeneric.includes(stockGeneric))) ||
+      (stockBrand && medGeneric && (stockBrand === medGeneric || stockBrand.includes(medGeneric) || medGeneric.includes(stockBrand))) ||
+      (stockGeneric && medBrand && (stockGeneric === medBrand || stockGeneric.includes(medBrand) || medBrand.includes(stockGeneric)))
+    )
+    if (!hasNameMatch) return false
+
+    const stockForm = normalizeInventoryForm(stockItem?.dosageForm || stockItem?.packUnit || stockItem?.unit || '')
+    const medForm = normalizeInventoryForm(getMedicationFormValue(medication))
+    if (stockForm && medForm && stockForm !== medForm) return false
+
+    const stockStrength = normalizeKeyPart(stockItem?.strength)
+    const stockStrengthUnit = normalizeKeyPart(stockItem?.strengthUnit)
+    const medStrength = normalizeKeyPart(medication?.strength)
+    const medStrengthUnit = normalizeKeyPart(medication?.strengthUnit)
+    if (stockStrength && medStrength && stockStrength !== medStrength) return false
+    if (stockStrengthUnit && medStrengthUnit && stockStrengthUnit !== medStrengthUnit) return false
+
+    return true
+  }
+
+  const validateSelectedInventoryBatchCapacity = async (medication) => {
+    if (!requiresSelectedBatchLimitCheck(medication)) {
+      return { isValid: true }
+    }
+
+    const requestedAmount = calculateMedicationQuantity(medication)
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return { isValid: true }
+    }
+
+    const resolvedDoctorId = doctorId || currentPrescription?.doctorId || selectedPatient?.doctorId
+    if (!resolvedDoctorId) {
+      return { isValid: true }
+    }
+
+    const stock = await pharmacyMedicationService.getPharmacyStock(resolvedDoctorId)
+    const selectedItemId = String(medication?.inventoryItemId || '').trim()
+    const selectedPharmacyId = String(medication?.inventoryPharmacyId || '').trim()
+
+    let selectedBatch = null
+    if (selectedItemId) {
+      selectedBatch = stock.find(item => String(item?.inventoryItemId || '') === selectedItemId) || null
+    }
+    if (!selectedBatch) {
+      selectedBatch = stock.find(item =>
+        (!selectedPharmacyId || String(item?.pharmacyId || '') === selectedPharmacyId) &&
+        matchesMedicationBatch(item, medication)
+      ) || null
+    }
+
+    const selectedBatchAvailable = Number.isFinite(Number(selectedBatch?.currentStock))
+      ? Number(selectedBatch.currentStock)
+      : Number.isFinite(Number(medication?.selectedInventoryCurrentStock))
+        ? Number(medication.selectedInventoryCurrentStock)
+        : 0
+
+    if (requestedAmount <= selectedBatchAvailable) {
+      return { isValid: true }
+    }
+
+    const remainingAmount = Math.max(0, requestedAmount - Math.max(0, selectedBatchAvailable))
+    const itemLabel = getMedicationFormValue(medication) || 'units'
+    return {
+      isValid: false,
+      popupTitle: 'Insufficient stock in selected batch',
+      popupMessage: `Only ${selectedBatchAvailable} ${itemLabel} can be selected from the selected batch. Remaining ${remainingAmount} will be sent to the external pharmacy.`,
+      autoSendExternalPharmacy: true
+    }
   }
 
   const enrichMedicationForPharmacy = (medication) => {
@@ -1010,6 +1204,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       prescriptionDiscount = Number.isFinite(Number(currentPrescription.discount)) ? Number(currentPrescription.discount) : 0
       prescriptionDiscountScope = currentPrescription.discountScope || 'consultation'
       nextAppointmentDate = currentPrescription.nextAppointmentDate || ''
+      prescriptionsFinalized = isPrescriptionLockedForEditing(currentPrescription)
+      prescriptionFinished = prescriptionsFinalized
       
       console.log('📅 Set current medications:', currentMedications.length)
     } else {
@@ -1022,6 +1218,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       prescriptionDiscount = 0
       prescriptionDiscountScope = 'consultation'
       nextAppointmentDate = ''
+      prescriptionsFinalized = false
+      prescriptionFinished = false
     }
     
     // Clear any existing AI analysis when loading data
@@ -1075,6 +1273,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         prescriptionProcedures = Array.isArray(updatedPrescription.procedures) ? updatedPrescription.procedures : []
         otherProcedurePrice = updatedPrescription.otherProcedurePrice || ''
         excludeConsultationCharge = !!updatedPrescription.excludeConsultationCharge
+        prescriptionsFinalized = isPrescriptionLockedForEditing(updatedPrescription)
+        prescriptionFinished = prescriptionsFinalized
         console.log('🔍 Updated currentPrescription with latest data:', currentPrescription.id)
       } else {
         console.log('⚠️ Current prescription not found in prescriptions array - this might cause issues')
@@ -1474,9 +1674,32 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   const handleMedicationAdded = async (event) => {
     const medicationData = event.detail
     console.log('💊 Medication added:', medicationData)
-    
+    let medicationSaved = false
+
     try {
       savingMedication = true
+
+      const capacityValidation = await validateSelectedInventoryBatchCapacity(medicationData)
+      if (!capacityValidation.isValid) {
+        if (capacityValidation.autoSendExternalPharmacy) {
+          medicationData.sendToExternalPharmacy = true
+          notifyWarning(
+            capacityValidation.popupMessage || 'Selected batch is short. This drug will be sent to external pharmacy.'
+          )
+        } else {
+          pendingAction = null
+          showConfirmation(
+            capacityValidation.popupTitle || 'Inventory stock warning',
+            capacityValidation.popupMessage || 'Selected inventory batch does not have enough stock.',
+            'OK',
+            'Close',
+            'warning',
+            { requireCode: false }
+          )
+          return
+        }
+      }
+
       if (medicationData.isEdit) {
         // Update existing medication in database
         const updatedMedication = await firebaseStorage.createMedication({
@@ -1505,6 +1728,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           aiCheckMessage = ''
           lastAnalyzedMedications = []
         }
+        medicationSaved = true
       } else {
         // Add new medication to current prescription
         if (!currentPrescription) {
@@ -1551,6 +1775,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           type: 'prescription', 
           data: newMedication 
         })
+        medicationSaved = true
       }
     } catch (error) {
       console.error('❌ Error saving medication:', error)
@@ -1559,9 +1784,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     } finally {
       savingMedication = false
     }
-    
-    showMedicationForm = false
-    editingMedication = null
+    if (medicationSaved) {
+      showMedicationForm = false
+      editingMedication = null
+    }
   }
   
   // Handle form cancellations
@@ -2001,6 +2227,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
   let availablePharmacies = []
   let selectedPharmacies = []
   let pendingPharmacyMedications = null
+  let isSendingToPharmacies = false
   
   // Reports functionality
   let showReportForm = false
@@ -2925,7 +3152,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         return
       }
       
-      const medicationsToSend = Array.isArray(medicationsOverride) ? medicationsOverride : currentMedications
+      const medicationsToSend = Array.isArray(medicationsOverride)
+        ? medicationsOverride
+        : (Array.isArray(currentMedications) ? currentMedications : [])
       // Get current medications (the actual prescriptions to send)
       console.log('🔍 Current medications to send:', medicationsToSend)
       const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
@@ -2965,16 +3194,24 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       const allPharmacists = await firebaseStorage.getAllPharmacists()
       console.log('🔍 All pharmacists:', allPharmacists.length)
       
-      // Find pharmacists connected to this doctor (check both sides of the connection)
+      // Find pharmacists connected to this doctor.
+      // Require both sides when doctor has explicit connections; fallback to pharmacist side only for legacy records.
+      const doctorConnectedPharmacistIds = new Set(
+        Array.isArray(doctor?.connectedPharmacists)
+          ? doctor.connectedPharmacists.filter(Boolean)
+          : []
+      )
       const connectedPharmacists = allPharmacists.filter(pharmacist => {
-        // Check if pharmacist has this doctor in their connectedDoctors
-        const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctor.id)
-        
-        // Check if doctor has this pharmacist in their connectedPharmacists
-        const doctorHasPharmacist = doctor.connectedPharmacists && doctor.connectedPharmacists.includes(pharmacist.id)
-        
-        // Connection exists if either side has the connection (for backward compatibility)
-        return pharmacistHasDoctor || doctorHasPharmacist
+        const pharmacistId = String(pharmacist?.id || '').trim()
+        if (!pharmacistId) return false
+
+        const pharmacistHasDoctor = Array.isArray(pharmacist?.connectedDoctors) && pharmacist.connectedDoctors.includes(doctor.id)
+        const doctorHasPharmacist = doctorConnectedPharmacistIds.has(pharmacistId)
+
+        if (doctorConnectedPharmacistIds.size === 0) {
+          return pharmacistHasDoctor
+        }
+        return doctorHasPharmacist && pharmacistHasDoctor
       })
       
       console.log('🔍 Connected pharmacists for doctor:', connectedPharmacists.length)
@@ -3031,7 +3268,12 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
   // Send prescriptions to selected pharmacies
   const sendToSelectedPharmacies = async () => {
+    if (isSendingToPharmacies) {
+      return
+    }
+
     try {
+      isSendingToPharmacies = true
       console.log('📤 Sending prescriptions to selected pharmacies:', selectedPharmacies)
       
       const doctor = await getEffectiveDoctorProfile()
@@ -3098,9 +3340,16 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       console.log('📤 Total prescriptions to send:', prescriptions.length)
       
       let sentCount = 0
+
+      const allowedPharmacyIds = new Set((availablePharmacies || []).map((pharmacy) => pharmacy.id))
+      const sanitizedSelectedPharmacies = (selectedPharmacies || []).filter((pharmacyId) => allowedPharmacyIds.has(pharmacyId))
+      if (sanitizedSelectedPharmacies.length === 0) {
+        notifyError('Please select at least one connected pharmacy.')
+        return
+      }
       
       // Send to selected pharmacists only
-      for (const pharmacistId of selectedPharmacies) {
+      for (const pharmacistId of sanitizedSelectedPharmacies) {
         const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
         if (pharmacist) {
           // Add prescription to pharmacist's received prescriptions
@@ -3169,6 +3418,8 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       console.error('❌ Error sending prescriptions to pharmacies:', error)
       pendingPharmacyMedications = null
       notifyError('Failed to send prescription to pharmacies. Please try again.')
+    } finally {
+      isSendingToPharmacies = false
     }
   }
 
@@ -3916,12 +4167,36 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           doc.setFontSize(10)
           doc.setFont('helvetica', 'bold')
           
+          const headerLabel = getPdfDosageLabel(medication)
+          const { brandName, genericName } = getMedicationDisplayNameParts(medication)
+          const prefixedBrandName = `${index + 1}. ${brandName || ''}`.trim()
+          const genericSuffix = genericName ? ` (${genericName})` : ''
+          const nameMaxWidth = headerLabel ? Math.max(contentWidth - 28, 50) : contentWidth
+          const fullName = `${prefixedBrandName}${genericSuffix}`
+          const measuredNameWidth = (() => {
+            if (typeof doc?.getTextWidth === 'function') {
+              try {
+                const value = Number(doc.getTextWidth(fullName))
+                if (Number.isFinite(value) && value > 0) return value
+              } catch (_error) {
+                // Fall through to approximation for mocked jsPDF instances.
+              }
+            }
+            // Fallback for mocked/non-standard jsPDF environments.
+            return fullName.length * 2.1
+          })()
+          const shouldWrapGeneric = Boolean(genericSuffix) && measuredNameWidth > nameMaxWidth
+          const nameLineY = yPos
+
           // Drug name on the left
-          doc.text(`${index + 1}. ${medication.name}`, margin, yPos)
+          doc.text(shouldWrapGeneric ? prefixedBrandName : fullName, margin, nameLineY)
+          if (shouldWrapGeneric) {
+            yPos += 4
+            doc.text(genericSuffix.trim(), margin, yPos)
+          }
           
           // Dosage on the right (bold and right-aligned)
-          const headerLabel = getPdfDosageLabel(medication)
-          doc.text(headerLabel, pageWidth - margin, yPos, { align: 'right' })
+          doc.text(headerLabel, pageWidth - margin, nameLineY, { align: 'right' })
           
           // Other medication details on next line
           doc.setFontSize(9)
@@ -3951,8 +4226,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           if (medicationDetailsParts.length > 0) {
             yPos += 4
             const medicationDetails = medicationDetailsParts.join(' | ')
-            // Split text if too long for page width
-            const detailsLines = doc.splitTextToSize(medicationDetails, contentWidth)
+            // Wrap second line before the right-side strength column when present.
+            const secondLineWidth = headerLabel ? Math.max(contentWidth - 28, 50) : contentWidth
+            const detailsLines = doc.splitTextToSize(medicationDetails, secondLineWidth)
             doc.text(detailsLines, margin, yPos)
             yPos += detailsLines.length * 3
           }
@@ -4527,6 +4803,19 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     window.debugPrescriptions = debugDataState
   }
   
+  function isPrescriptionLockedForEditing(prescription) {
+    if (!prescription) return false
+    const status = String(prescription.status || '').toLowerCase()
+    if (status === 'draft') {
+      return false
+    }
+    return (
+      status === 'finalized' ||
+      status === 'sent' ||
+      Boolean(prescription.finalizedAt)
+    )
+  }
+
   // Finalize prescription function
   const finalizePrescription = async () => {
     try {
@@ -4536,7 +4825,9 @@ export let initialTab = 'overview' // Allow parent to set initial tab
         return
       }
       
-      if (currentMedications.length === 0) {
+      const procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      const hasChargeableItems = procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
+      if (currentMedications.length === 0 && !hasChargeableItems) {
         return
       }
       
@@ -4544,7 +4835,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       currentPrescription.patient = buildPatientSnapshot()
       currentPrescription.status = 'finalized'
       currentPrescription.medications = currentMedications
-      currentPrescription.procedures = Array.isArray(prescriptionProcedures) ? prescriptionProcedures : []
+      currentPrescription.procedures = procedures
       currentPrescription.otherProcedurePrice = otherProcedurePrice
       currentPrescription.excludeConsultationCharge = !!excludeConsultationCharge
       currentPrescription.discountScope = prescriptionDiscountScope || 'consultation'
@@ -4555,7 +4846,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
       await firebaseStorage.updatePrescription(currentPrescription.id, {
         status: 'finalized',
         medications: currentMedications,
-        procedures: Array.isArray(prescriptionProcedures) ? prescriptionProcedures : [],
+        procedures: procedures,
         otherProcedurePrice: otherProcedurePrice,
         excludeConsultationCharge: !!excludeConsultationCharge,
         patient: buildPatientSnapshot(),
@@ -4579,6 +4870,42 @@ export let initialTab = 'overview' // Allow parent to set initial tab
     } catch (error) {
       console.error('❌ Error finalizing prescription:', error)
       notifyError('Failed to finalize prescription: ' + error.message)
+    }
+  }
+
+  const unfinalizePrescription = async () => {
+    try {
+      if (!currentPrescription) {
+        return
+      }
+
+      currentPrescription.status = 'draft'
+      currentPrescription.finalizedAt = null
+      currentPrescription.sentToPharmacy = false
+      currentPrescription.sentAt = null
+      currentPrescription.endDate = null
+      currentPrescription.updatedAt = new Date().toISOString()
+
+      await firebaseStorage.updatePrescription(currentPrescription.id, {
+        status: 'draft',
+        finalizedAt: null,
+        sentToPharmacy: false,
+        sentAt: null,
+        endDate: null,
+        updatedAt: currentPrescription.updatedAt
+      })
+
+      const prescriptionIndex = prescriptions.findIndex(p => p.id === currentPrescription.id)
+      if (prescriptionIndex !== -1) {
+        prescriptions[prescriptionIndex] = currentPrescription
+        prescriptions = [...prescriptions]
+      }
+
+      prescriptionsFinalized = false
+      prescriptionFinished = false
+    } catch (error) {
+      console.error('❌ Error unfinalizing prescription:', error)
+      notifyError('Failed to unfinalize prescription: ' + error.message)
     }
   }
   
@@ -5509,15 +5836,15 @@ export let initialTab = 'overview' // Allow parent to set initial tab
                 </div>
               {:else}
                 <!-- Patient Bio -->
-              <div class="rounded-lg border border-teal-200 bg-teal-50 p-4">
+              <div class="rounded-lg border border-teal-200 bg-teal-50 p-4 dark:border-teal-700 dark:bg-teal-950/40">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
-                    <p class="text-sm font-semibold text-teal-800">Patient Bio</p>
-                    <p class="text-xs text-teal-700">Quick snapshot of demographics and contact details.</p>
+                    <p class="text-sm font-semibold text-teal-800 dark:text-teal-200">Patient Bio</p>
+                    <p class="text-xs text-teal-700 dark:text-teal-300">Quick snapshot of demographics and contact details.</p>
                   </div>
                   <button
                     type="button"
-                    class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-teal-300 text-teal-800 bg-teal-100 hover:bg-teal-200 transition-colors"
+                    class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-teal-300 text-teal-800 bg-teal-100 hover:bg-teal-200 transition-colors dark:border-teal-600 dark:text-teal-100 dark:bg-teal-900/60 dark:hover:bg-teal-800/70"
                     on:click={startEditingBio}
                   >
                     <i class="fas fa-pen mr-1"></i>
@@ -5527,10 +5854,10 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 
                 <div class="mt-4 space-y-2">
                   {#each patientBioLines as line}
-                    <p class="text-sm text-teal-800">{line}</p>
+                    <p class="text-sm text-teal-800 dark:text-teal-100">{line}</p>
                   {/each}
                   {#if patientBioLines.length === 0}
-                    <p class="text-sm text-teal-800">No patient details available yet.</p>
+                    <p class="text-sm text-teal-800 dark:text-teal-100">No patient details available yet.</p>
                   {/if}
                 </div>
               </div>
@@ -5807,21 +6134,21 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               </div>
 
               <div class="mt-4">
-                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 dark:bg-yellow-950/30 dark:border-yellow-700">
                   <div class="flex items-center justify-between mb-2">
-                    <h6 class="text-sm font-semibold text-yellow-800 mb-0">
+                    <h6 class="text-sm font-semibold text-yellow-800 mb-0 dark:text-yellow-200">
                       <i class="fas fa-exclamation-triangle mr-2"></i>Allergies
                     </h6>
                     <button
                       type="button"
-                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-yellow-300 text-yellow-800 bg-yellow-100 hover:bg-yellow-200 transition-colors"
+                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-yellow-300 text-yellow-800 bg-yellow-100 hover:bg-yellow-200 transition-colors dark:border-yellow-600 dark:text-yellow-100 dark:bg-yellow-900/60 dark:hover:bg-yellow-800/70"
                       on:click={() => editAllergiesOverview = selectedPatient.allergies || ''}
                     >
                       <i class="fas fa-pen mr-1"></i>
                       {selectedPatient.allergies ? 'Edit' : 'Add'}
                     </button>
                   </div>
-                  <p class="text-sm text-yellow-700 mb-0">{selectedPatient.allergies || 'None recorded'}</p>
+                  <p class="text-sm text-yellow-700 mb-0 dark:text-yellow-100">{selectedPatient.allergies || 'None recorded'}</p>
                 </div>
               </div>
 
@@ -5862,21 +6189,21 @@ export let initialTab = 'overview' // Allow parent to set initial tab
               {/if}
 
               <div class="mt-4">
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 dark:bg-blue-950/30 dark:border-blue-700">
                   <div class="flex items-center justify-between mb-2">
-                    <h6 class="text-sm font-semibold text-blue-800 mb-0">
+                    <h6 class="text-sm font-semibold text-blue-800 mb-0 dark:text-blue-200">
                       <i class="fas fa-pills mr-2"></i>Long Term Medications
                     </h6>
                     <button
                       type="button"
-                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-blue-300 text-blue-800 bg-blue-100 hover:bg-blue-200 transition-colors"
+                      class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-md border border-blue-300 text-blue-800 bg-blue-100 hover:bg-blue-200 transition-colors dark:border-blue-600 dark:text-blue-100 dark:bg-blue-900/60 dark:hover:bg-blue-800/70"
                       on:click={() => editLongTermMedications = selectedPatient.longTermMedications || ''}
                     >
                       <i class="fas fa-pen mr-1"></i>
                       {selectedPatient.longTermMedications ? 'Edit' : 'Add'}
                     </button>
                   </div>
-                  <p class="text-sm text-blue-700 mb-0">{selectedPatient.longTermMedications || 'None recorded'}</p>
+                  <p class="text-sm text-blue-700 mb-0 dark:text-blue-100">{selectedPatient.longTermMedications || 'None recorded'}</p>
                 </div>
               </div>
                 
@@ -7254,6 +7581,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           onDeletePrescription={handleDeletePrescription}
           onDeleteMedicationByIndex={handleDeleteMedicationByIndex}
           onFinalizePrescription={finalizePrescription}
+          onUnfinalizePrescription={unfinalizePrescription}
           onShowPharmacyModal={showPharmacySelection}
           onGoToPreviousTab={goToPreviousTab}
           onGenerateAIDrugSuggestions={generateAIDrugSuggestions}
@@ -7509,7 +7837,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 {#if showPharmacyModal}
   <div id="pharmacyModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-2xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 overflow-hidden">
         <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
           <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-paper-plane mr-2"></i>
@@ -7522,6 +7850,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             on:click={() => {
               showPharmacyModal = false
               pendingPharmacyMedications = null
+              isSendingToPharmacies = false
             }}
           >
             <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
@@ -7590,6 +7919,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
             on:click={() => {
               showPharmacyModal = false
               pendingPharmacyMedications = null
+              isSendingToPharmacies = false
             }}
           >
             <i class="fas fa-times mr-2"></i>
@@ -7597,12 +7927,20 @@ export let initialTab = 'overview' // Allow parent to set initial tab
           </button>
           <button 
             type="button" 
-            class="text-white bg-yellow-700 hover:bg-yellow-800 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-yellow-600 dark:hover:bg-yellow-700 dark:focus:ring-yellow-800" 
+            class="text-white bg-yellow-700 hover:bg-yellow-800 focus:ring-4 focus:outline-none focus:ring-yellow-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center disabled:bg-gray-400 disabled:cursor-not-allowed dark:bg-yellow-600 dark:hover:bg-yellow-700 dark:focus:ring-yellow-800" 
             on:click={sendToSelectedPharmacies}
-            disabled={selectedPharmacies.length === 0}
+            disabled={selectedPharmacies.length === 0 || isSendingToPharmacies}
           >
-            <i class="fas fa-paper-plane mr-2"></i>
-            Send to {selectedPharmacies.length} Pharmacy{selectedPharmacies.length !== 1 ? 'ies' : ''}
+            {#if isSendingToPharmacies}
+              <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Sending...
+            {:else}
+              <i class="fas fa-paper-plane mr-2"></i>
+              Send to {selectedPharmacies.length} Pharmacy{selectedPharmacies.length !== 1 ? 'ies' : ''}
+            {/if}
           </button>
         </div>
       </div>
@@ -7614,7 +7952,7 @@ export let initialTab = 'overview' // Allow parent to set initial tab
 {#if showPrescriptionPDF}
   <div id="prescriptionPDFModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-4xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 overflow-hidden">
         <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
           <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-file-pdf mr-2"></i>Prescription PDF

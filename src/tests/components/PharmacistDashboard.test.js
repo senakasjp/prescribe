@@ -151,6 +151,8 @@ describe('PharmacistDashboard', () => {
     const teamMember = {
       id: 'team-1',
       email: 'team@example.com',
+      firstName: 'Alex',
+      lastName: 'Miller',
       isPharmacyUser: true,
       pharmacyId: 'ph-parent',
       connectedDoctors: ['doc-1']
@@ -172,6 +174,7 @@ describe('PharmacistDashboard', () => {
       }
     })
 
+    await findByText('Team member: Alex Miller')
     await findByText('New')
     expect(getByText('New')).toBeTruthy()
   })
@@ -182,8 +185,118 @@ describe('PharmacistDashboard', () => {
     const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
     const source = fs.readFileSync(sourcePath, 'utf8')
 
-    expect(source).toContain("<strong>Age:</strong> {selectedPrescription.patientAge || selectedPrescription.age || 'Not specified'}")
-    expect(source).toContain("<strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}")
+    expect(source).toContain('const getPrescriptionPatientAge = (prescription) => {')
+    expect(source).toContain('const getPrescriptionPatientSex = (prescription) => {')
+    expect(source).toContain("<strong>Age:</strong> {getPrescriptionPatientAge(selectedPrescription)}")
+    expect(source).toContain("<strong>Sex:</strong> {getPrescriptionPatientSex(selectedPrescription)}")
+    expect(source).toContain('const firstNested = Array.isArray(prescription.prescriptions) ? prescription.prescriptions[0] : null')
+  })
+
+  it('keeps Liquid (bottles) remaining/allocation units in bottle counts (not ml conversion)', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain("return form === 'liquid (measured)'")
+    expect(source).toContain("return form === 'liquid (bottles)'")
+    expect(source).toContain("if (isLiquidBottlesMedication(medication)) return 'bottles'")
+    expect(source).toContain("if (!isTabletOrCapsule && (normalized === 'tablet' || normalized === 'tablets' || !normalized))")
+    expect(source).toContain('const liquidMode = isMeasuredLiquidMedication(medication)')
+    expect(source).not.toContain('const liquidMode = isLiquidMedication(medication)')
+  })
+
+  it('shows strength in DOSAGE display when dosage value is blank', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const getDisplayDosageText = (medication) => {')
+    expect(source).toContain("const dosage = String(medication?.dosage || '').trim()")
+    expect(source).toContain('medication?.strength ?? \'\'')
+    // Guard: both desktop + mobile dosage labels must render through helper,
+    // so empty dosage falls back to strength/unit instead of blank cell.
+    expect(source).toContain('{getDisplayDosageText(medication)}')
+    // Guard against reverting back to direct dosage binding in either view.
+    expect(source).not.toContain('>{medication.dosage}<')
+  })
+
+  it('normalizes legacy measured-liquid pricing error note in UI', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const normalizeChargeNote = (note) => {')
+    expect(source).toContain('/inventory volume\\/strength missing for measured liquid/i.test(value)')
+    expect(source).toContain("return 'Price missing in inventory'")
+    expect(source).toContain('{normalizeChargeNote(medication.note) || \'Not available\'}')
+  })
+
+  it('shows amount unit hint under amount input in desktop and mobile views', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const getAmountUnitLabel = (prescriptionId, medication) => {')
+    expect(source).toContain("if (form === 'liquid (measured)' || form.includes('syrup')) return 'ml'")
+    expect(source).toContain("if (form === 'liquid (bottles)' || form === 'liquid') return 'bottles'")
+    expect(source).toContain('{getAmountUnitLabel(prescription.id, medication)}')
+  })
+
+  it('mirrors edited amount into qts for count-based pricing forms', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const shouldMirrorAmountToQts = chargeCalculationService.isQtsMedication(medication)')
+    expect(source).toContain('qts: qtsValue')
+  })
+
+  it('prevents cross-form inventory rows from mixing in Remaining/allocation', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const resolveDispenseFormGroup = (value) => {')
+    expect(source).toContain('const isLiquidFormCompatible = (medicationForm, inventoryForm) => {')
+    expect(source).toContain('if (medicationMeasured && inventoryBottle) return false')
+    expect(source).toContain('if (medicationBottle && inventoryMeasured) return false')
+    expect(source).toContain('if (medicationGroup && !inventoryGroup) return false')
+    expect(source).toContain('if (medicationGroup && inventoryGroup && medicationGroup !== inventoryGroup) return false')
+    expect(source).toContain('if (!isLiquidFormCompatible(medicationForm, inventoryForm)) {')
+    expect(source).toContain('const sourceForm = batch?.dosageForm || batch?.packUnit || item?.dosageForm || item?.packUnit || item?.unit || \'\'')
+    expect(source).toContain('if (!isLiquidFormCompatible(medicationForm, sourceForm)) return')
+  })
+
+  it('passes edited amount parity payload into charge calculation (amount + qts + inventoryMatch)', async () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const override = editableAmounts.get(key)')
+    expect(source).toContain('amount: amountValue')
+    expect(source).toContain('const shouldMirrorAmountToQts = chargeCalculationService.isQtsMedication(medication)')
+    expect(source).toContain('qts: qtsValue')
+    expect(source).toContain('inventoryMatch: inventoryData ? {')
+    expect(source).toContain('inventoryItemId: inventoryData.inventoryItemId')
+  })
+
+  it('shows storage location under each medication card in prescription details', () => {
+    const __filename = fileURLToPath(import.meta.url)
+    const __dirname = path.dirname(__filename)
+    const sourcePath = path.resolve(__dirname, '../../components/PharmacistDashboard.svelte')
+    const source = fs.readFileSync(sourcePath, 'utf8')
+
+    expect(source).toContain('const getMedicationStorageLocation = (prescriptionId, medication) => {')
+    expect(source).toContain('storageLocation')
+    expect(source).toContain('>Storage location<')
+    expect(source).toContain('{getMedicationStorageLocation(prescription.id, medication)}')
   })
 
 })

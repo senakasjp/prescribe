@@ -126,6 +126,42 @@ describe('firebaseAuth referral and access flow', () => {
     expect(authMocks.signOut).toHaveBeenCalled()
   })
 
+  it('blocks registerDoctorWithEmailPassword when doctor email already exists', async () => {
+    firebaseStorageMock.getDoctorByEmail.mockResolvedValueOnce({
+      id: 'doc-existing-1',
+      email: 'existing@doc.com'
+    })
+    const { default: firebaseAuth } = await import('../../services/firebaseAuth.js')
+
+    await expect(
+      firebaseAuth.registerDoctorWithEmailPassword('Existing@Doc.com', 'pass-123', {
+        firstName: 'Existing',
+        lastName: 'Doctor'
+      })
+    ).rejects.toThrow('A doctor account with this email already exists. Please log in instead.')
+
+    expect(authMocks.createUserWithEmailAndPassword).not.toHaveBeenCalled()
+    expect(firebaseStorageMock.createDoctor).not.toHaveBeenCalled()
+  })
+
+  it('blocks createExternalDoctorAccount when doctor email already exists', async () => {
+    firebaseStorageMock.getDoctorByEmail.mockResolvedValueOnce({
+      id: 'doc-existing-2',
+      email: 'existing.external@doc.com'
+    })
+    const { default: firebaseAuth } = await import('../../services/firebaseAuth.js')
+
+    await expect(
+      firebaseAuth.createExternalDoctorAccount('existing.external@doc.com', 'pass-123', {
+        firstName: 'Ext',
+        lastName: 'Doctor'
+      })
+    ).rejects.toThrow('A doctor account with this email already exists.')
+
+    expect(authMocks.createUserWithEmailAndPassword).not.toHaveBeenCalled()
+    expect(firebaseStorageMock.createDoctor).not.toHaveBeenCalled()
+  })
+
   it('seeds onboarding dummy data when creating mock Google doctor', async () => {
     const { default: firebaseAuth } = await import('../../services/firebaseAuth.js')
     firebaseStorageMock.getDoctorByEmail.mockResolvedValueOnce(null)

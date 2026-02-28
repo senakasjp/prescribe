@@ -150,6 +150,341 @@ describe('MedicationForm qty behavior', () => {
     expect(container.textContent).toContain('Liquid (bottles)')
   })
 
+  it('preserves selected inventory batch metadata in submit payload', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Tablet',
+          dosage: '1',
+          strength: '500',
+          strengthUnit: 'mg',
+          frequency: 'Twice daily (BD)',
+          timing: 'After meals (PC)',
+          duration: '5 days',
+          inventoryItemId: 'inv-batch-001',
+          inventoryPharmacyId: 'ph-1',
+          selectedInventoryCurrentStock: 12
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.source).toBe('inventory')
+    expect(payload.inventoryItemId).toBe('inv-batch-001')
+    expect(payload.inventoryPharmacyId).toBe('ph-1')
+    expect(payload.selectedInventoryCurrentStock).toBe(12)
+  })
+
+  it('shows fractional dosage options for tablets only', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'manual',
+          dosageForm: 'Tablet',
+          dosage: '1/2'
+        })
+      }
+    })
+
+    const dosageSelect = container.querySelector('#medicationDosage')
+    const optionValues = Array.from(dosageSelect?.querySelectorAll('option') || []).map((o) => o.value)
+    expect(optionValues).toContain('1/2')
+  })
+
+  it('hides fractional dosage options for capsules', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'manual',
+          dosageForm: 'Capsule',
+          dosage: '1'
+        })
+      }
+    })
+
+    const dosageSelect = container.querySelector('#medicationDosage')
+    const optionValues = Array.from(dosageSelect?.querySelectorAll('option') || []).map((o) => o.value)
+    expect(optionValues).not.toContain('1/2')
+    expect(optionValues).toContain('1')
+    expect(optionValues).toContain('2')
+  })
+
+  it('derives genericName from hyphenated brand at save-time when generic is empty', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'manual',
+          name: 'Omeprazole-SPMC',
+          genericName: '',
+          dosageForm: 'Capsule',
+          dosage: '1',
+          strength: '20',
+          strengthUnit: 'mg',
+          frequency: 'Once daily (OD)',
+          timing: 'After meals (PC)',
+          duration: '5 days'
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.name).toBe('Omeprazole-SPMC')
+    expect(payload.genericName).toBe('Omeprazole')
+  })
+
+  it('submits manual drug even when not available in own pharmacy inventory', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValueOnce([
+      {
+        drugName: 'KnownDrug',
+        genericName: 'Known Generic',
+        quantity: 10
+      }
+    ])
+
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'manual',
+          name: 'UnknownBrand',
+          genericName: '',
+          dosageForm: 'Tablet',
+          dosage: '1',
+          strength: '10',
+          strengthUnit: 'mg',
+          frequency: 'Twice daily (BD)',
+          timing: 'After meals (PC)',
+          duration: '5 days'
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('submits unavailable manual drugs without extra prompt', async () => {
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValueOnce([
+      {
+        drugName: 'KnownDrug',
+        genericName: 'Known Generic',
+        quantity: 10
+      }
+    ])
+    const confirmSpy = vi.spyOn(window, 'confirm')
+
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'manual',
+          name: 'UnknownBrand',
+          genericName: '',
+          dosageForm: 'Tablet',
+          dosage: '1',
+          strength: '10',
+          strengthUnit: 'mg',
+          frequency: 'Twice daily (BD)',
+          timing: 'After meals (PC)',
+          duration: '5 days'
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+    expect(confirmSpy).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('shows Dosage Strength and editable Total volume inputs for manual liquid bottles', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'manual',
+          dosageForm: 'Liquid (bottles)',
+          strength: '5',
+          strengthUnit: 'ml',
+          totalVolume: '200',
+          volumeUnit: 'ml'
+        })
+      }
+    })
+
+    expect(container.textContent).toContain('Dosage Strength')
+    expect(container.querySelector('#medicationStrength')).toBeTruthy()
+    expect(container.querySelector('#medicationTotalVolume')).toBeTruthy()
+    expect(container.querySelector('#medicationVolumeUnit')).toBeTruthy()
+    expect(container.querySelector('#medicationTotalVolume')?.disabled).toBe(false)
+    expect(container.querySelector('#medicationVolumeUnit')?.disabled).toBe(false)
+  })
+
+  it('locks Total volume inputs for inventory liquid bottles while keeping strength editable', async () => {
+    const { container, getByText } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Liquid (bottles)',
+          strength: '',
+          strengthUnit: '',
+          totalVolume: '100',
+          volumeUnit: 'ml'
+        })
+      }
+    })
+
+    expect(container.querySelector('#medicationStrength')).toBeTruthy()
+    expect(container.querySelector('#medicationStrength')?.disabled).toBe(false)
+    expect(container.querySelector('#medicationTotalVolume')).toBeTruthy()
+    expect(container.querySelector('#medicationVolumeUnit')).toBeTruthy()
+    expect(container.querySelector('#medicationTotalVolume')?.disabled).toBe(true)
+    expect(container.querySelector('#medicationVolumeUnit')?.disabled).toBe(true)
+    expect(getByText('Total volume is locked from inventory record.')).toBeTruthy()
+  })
+
+  it('swaps inventory liquid-bottle volume from strength field into total volume field', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Liquid (bottles)',
+          strength: '1000',
+          strengthUnit: 'ml',
+          totalVolume: '',
+          volumeUnit: ''
+        })
+      }
+    })
+
+    const strengthInput = container.querySelector('#medicationStrength')
+    const totalVolumeInput = container.querySelector('#medicationTotalVolume')
+    const volumeUnitSelect = container.querySelector('#medicationVolumeUnit')
+
+    expect(strengthInput).toBeTruthy()
+    expect(totalVolumeInput).toBeTruthy()
+    expect(volumeUnitSelect).toBeTruthy()
+    expect(strengthInput?.value).toBe('')
+    expect(totalVolumeInput?.value).toBe('1000')
+    expect(volumeUnitSelect?.value).toBe('ml')
+  })
+
+  it('swaps inventory liquid-bottle volume when strength already contains unit text', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Liquid (bottles)',
+          strength: '1000 ml',
+          strengthUnit: 'ml',
+          totalVolume: '',
+          volumeUnit: ''
+        })
+      }
+    })
+
+    const strengthInput = container.querySelector('#medicationStrength')
+    const totalVolumeInput = container.querySelector('#medicationTotalVolume')
+    const volumeUnitSelect = container.querySelector('#medicationVolumeUnit')
+
+    expect(strengthInput?.value).toBe('')
+    expect(totalVolumeInput?.value).toBe('1000')
+    expect(volumeUnitSelect?.value).toBe('ml')
+  })
+
+  it('prefers inventory total volume over strength text when selecting liquid-bottle suggestion', async () => {
+    vi.useFakeTimers()
+    try {
+      pharmacyMedicationService.searchMedicationsFromPharmacies.mockResolvedValueOnce([
+        {
+          brandName: 'Dompi Suspension 5mg/5ml',
+          genericName: 'Domperidone',
+          dosageForm: 'Liquid (bottles)',
+          strength: '10',
+          strengthUnit: 'ml',
+          totalVolume: '30',
+          volumeUnit: 'ml',
+          currentStock: 50
+        }
+      ])
+
+      const { container, getByText } = render(MedicationForm, {
+        props: {
+          visible: true,
+          doctorId: 'doc-1',
+          editingMedication: null
+        }
+      })
+
+      const brandInput = container.querySelector('#brandName')
+      await fireEvent.input(brandInput, { target: { value: 'Dompi' } })
+      vi.advanceTimersByTime(300)
+
+      await waitFor(() => {
+        expect(getByText('Dompi Suspension 5mg/5ml (Domperidone)')).toBeTruthy()
+      })
+
+      await fireEvent.click(getByText('Dompi Suspension 5mg/5ml (Domperidone)'))
+
+      const totalVolumeInput = container.querySelector('#medicationTotalVolume')
+      const volumeUnitSelect = container.querySelector('#medicationVolumeUnit')
+      expect(totalVolumeInput?.value).toBe('30')
+      expect(volumeUnitSelect?.value).toBe('ml')
+      expect(totalVolumeInput?.disabled).toBe(true)
+      expect(volumeUnitSelect?.disabled).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('uses manual numeric entry fields for Count and PDF liquid value in liquid bottles', async () => {
     const { container } = render(MedicationForm, {
       props: {
@@ -232,6 +567,31 @@ describe('MedicationForm qty behavior', () => {
     expect(payload.inventoryStrengthText).toBe('100 ml')
     expect(payload.strength).toBe('100')
     expect(payload.strengthUnit).toBe('ml')
+  })
+
+  it('allows inventory liquid bottles to submit using inventory strength fallback when strength is empty', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Liquid (bottles)',
+          strength: '',
+          strengthUnit: '',
+          inventoryStrengthText: '100 ml',
+          totalVolume: '100',
+          volumeUnit: 'ml',
+          qts: '2'
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1))
   })
 
   it('allows empty frequency and duration in qts mode', async () => {
@@ -480,6 +840,7 @@ describe('MedicationForm qty behavior', () => {
 
     const payload = onAdded.mock.calls[0][0].detail
     expect(payload.qts).toBe('')
+    expect(payload.dosage).toBe('1')
     expect(payload.prnAmount).toBe('')
     expect(payload.frequency).toBe('Twice daily (BD)')
     expect(payload.timing).toBe('After meals (PC)')
@@ -580,6 +941,40 @@ describe('MedicationForm qty behavior', () => {
     expect(container.querySelector('#medicationTiming')).toBeTruthy()
   })
 
+  it('keeps packet in qts mode even when strength unit is ml', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Packet',
+          strength: '1000',
+          strengthUnit: 'ml',
+          qts: '',
+          frequency: '',
+          duration: ''
+        })
+      }
+    })
+
+    const countInput = container.querySelector('#medicationQts')
+    expect(countInput).toBeTruthy()
+    expect(container.querySelector('#medicationTiming')).toBeNull()
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.input(countInput, { target: { value: '3' } })
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.qts).toBe('3')
+  })
+
   it('maps liquid qts integer to liquidAmountMl in payload', async () => {
     const { component, container } = render(MedicationForm, {
       props: {
@@ -635,10 +1030,123 @@ describe('MedicationForm qty behavior', () => {
     })
 
     const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosage).toBe('')
     expect(payload.qts).toBe('')
     expect(payload.liquidAmountMl).toBe('')
     expect(payload.liquidDosePerFrequencyMl).toBe('')
     expect(payload.frequency).toBe('Three times daily (TDS)')
+  })
+
+  it('hides dosage fraction selector for liquid measured even when strength unit is empty', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Liquid (measured)',
+          strength: '10',
+          strengthUnit: '',
+          dosage: '1/2',
+          qts: '',
+          frequency: 'Three times daily (TDS)',
+          duration: '3 days',
+          timing: 'After meals (PC)'
+        })
+      }
+    })
+
+    expect(container.querySelector('#medicationDosage')).toBeNull()
+  })
+
+  it('allows entering strength for inventory liquid measured and requires it', async () => {
+    const { component, container, getByText } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Liquid (measured)',
+          strength: '',
+          strengthUnit: '',
+          qts: '',
+          frequency: 'Three times daily (TDS)',
+          duration: '3 days',
+          timing: 'After meals (PC)'
+        })
+      }
+    })
+
+    const strengthInput = container.querySelector('#medicationStrength')
+    expect(strengthInput).toBeTruthy()
+    expect(strengthInput?.required).toBe(true)
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+    expect(onAdded).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(getByText('Please enter the strength for this medication')).toBeTruthy()
+    })
+  })
+
+  it('does not persist legacy dosage value for non-tablet/capsule forms', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Cream',
+          dosage: '1',
+          qts: '4',
+          frequency: '',
+          duration: ''
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosage).toBe('')
+    expect(payload.qts).toBe('4')
+  })
+
+  it('does not persist dosage for syrup even in non-qts flow', async () => {
+    const { component, container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Syrup',
+          strength: '5',
+          strengthUnit: 'ml',
+          dosage: '1',
+          frequency: 'Once daily (OD)',
+          duration: '5 days',
+          timing: 'After meals (PC)'
+        })
+      }
+    })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosage).toBe('')
+    expect(payload.qts).toBe('')
+    expect(payload.frequency).toBe('Once daily (OD)')
   })
 
   it('captures liquid bottle ml print value in payload while keeping amount', async () => {
@@ -675,26 +1183,26 @@ describe('MedicationForm qty behavior', () => {
 
   describe('dosage form matrix', () => {
     const DOSAGE_FORM_MATRIX = [
-      { form: 'Tablet', expectsQts: false },
-      { form: 'Capsule', expectsQts: false },
-      { form: 'Syrup', expectsQts: false },
-      { form: 'Liquid (bottles)', expectsQts: true },
-      { form: 'Liquid (measured)', expectsQts: false },
-      { form: 'Injection', expectsQts: true },
-      { form: 'Cream', expectsQts: true },
-      { form: 'Ointment', expectsQts: true },
-      { form: 'Gel', expectsQts: true },
-      { form: 'Suppository', expectsQts: true },
-      { form: 'Inhaler', expectsQts: true },
-      { form: 'Spray', expectsQts: true },
-      { form: 'Shampoo', expectsQts: true },
-      { form: 'Packet', expectsQts: true },
-      { form: 'Roll', expectsQts: true }
+      { form: 'Tablet', expectsQts: false, expectsDosageInput: true },
+      { form: 'Capsule', expectsQts: false, expectsDosageInput: true },
+      { form: 'Syrup', expectsQts: false, expectsDosageInput: false },
+      { form: 'Liquid (bottles)', expectsQts: true, expectsDosageInput: false },
+      { form: 'Liquid (measured)', expectsQts: false, expectsDosageInput: false },
+      { form: 'Injection', expectsQts: true, expectsDosageInput: false },
+      { form: 'Cream', expectsQts: true, expectsDosageInput: false },
+      { form: 'Ointment', expectsQts: true, expectsDosageInput: false },
+      { form: 'Gel', expectsQts: true, expectsDosageInput: false },
+      { form: 'Suppository', expectsQts: true, expectsDosageInput: false },
+      { form: 'Inhaler', expectsQts: true, expectsDosageInput: false },
+      { form: 'Spray', expectsQts: true, expectsDosageInput: false },
+      { form: 'Shampoo', expectsQts: true, expectsDosageInput: false },
+      { form: 'Packet', expectsQts: true, expectsDosageInput: false },
+      { form: 'Roll', expectsQts: true, expectsDosageInput: false }
     ]
 
     it.each(DOSAGE_FORM_MATRIX)(
       'applies qts/timing visibility rules for $form',
-      async ({ form, expectsQts }) => {
+      async ({ form, expectsQts, expectsDosageInput }) => {
         const { container } = render(MedicationForm, {
           props: {
             visible: true,
@@ -723,10 +1231,16 @@ describe('MedicationForm qty behavior', () => {
           expect(container.querySelector('#medicationFrequency')?.required).toBe(true)
           expect(container.querySelector('#medicationDuration')?.required).toBe(true)
         }
+
+        if (expectsDosageInput) {
+          expect(container.querySelector('#medicationDosage')).toBeTruthy()
+        } else {
+          expect(container.querySelector('#medicationDosage')).toBeNull()
+        }
       }
     )
 
-    it('treats ml strength units as non-qts even for qts forms', async () => {
+    it('keeps qts mode for non-excluded forms even when strength unit is ml', async () => {
       const { container } = render(MedicationForm, {
         props: {
           visible: true,
@@ -743,10 +1257,36 @@ describe('MedicationForm qty behavior', () => {
         }
       })
 
-      expect(container.querySelector('#medicationQts')).toBeNull()
-      expect(container.querySelector('#medicationTiming')).toBeTruthy()
-      expect(container.querySelector('#medicationTiming')?.required).toBe(true)
+      expect(container.querySelector('#medicationQts')).toBeTruthy()
+      expect(container.querySelector('#medicationTiming')).toBeNull()
+      expect(container.querySelector('#medicationFrequency')?.required).toBe(false)
+      expect(container.querySelector('#medicationDuration')?.required).toBe(false)
     })
+
+    it.each(['Tablet', 'Capsule', 'Liquid (measured)'])(
+      'keeps count hidden for excluded form %s even with ml strength unit',
+      async (form) => {
+        const { container } = render(MedicationForm, {
+          props: {
+            visible: true,
+            doctorId: 'doc-1',
+            editingMedication: buildEditingMedication({
+              dosageForm: form,
+              strength: '10',
+              strengthUnit: 'ml',
+              qts: '2',
+              frequency: 'Once daily (OD)',
+              duration: '5 days',
+              timing: 'After meals (PC)'
+            })
+          }
+        })
+
+        expect(container.querySelector('#medicationQts')).toBeNull()
+        expect(container.querySelector('#medicationTiming')).toBeTruthy()
+        expect(container.querySelector('#medicationTiming')?.required).toBe(true)
+      }
+    )
   })
 
   describe('qts validation matrix', () => {
@@ -836,6 +1376,22 @@ describe('MedicationForm qty behavior', () => {
     )
   })
 
+  it('dispatches cancel when top-right close button is clicked', async () => {
+    const { component, getByRole } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1'
+      }
+    })
+
+    const onCancel = vi.fn()
+    component.$on('cancel', onCancel)
+
+    await fireEvent.click(getByRole('button', { name: /close medication form/i }))
+
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
   it('shows container size next to drug name in brand suggestions when available', async () => {
     pharmacyMedicationService.searchMedicationsFromPharmacies.mockResolvedValue([
       {
@@ -903,8 +1459,204 @@ describe('MedicationForm qty behavior', () => {
     })
 
     await waitFor(() => {
-      expect(getByText('Panadol')).toBeTruthy()
+      expect(getByText(/Panadol\s*\(Paracetamol\)/i)).toBeTruthy()
     })
     expect(queryByText(/Panadol\s+\d+\s*(ml|g|pcs|tube|vial|ampoule)/i)).toBeNull()
+  })
+
+  it('shows Total volume label when strength unit is volume-based', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Packet',
+          strength: '200',
+          strengthUnit: 'ml'
+        })
+      }
+    })
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Total volume')
+    })
+    expect(container.textContent).not.toContain('Dosage Strength')
+  })
+
+  it('shows Total volume label for packet dispense form even before selecting volume unit', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Packet',
+          strength: '200',
+          strengthUnit: ''
+        })
+      }
+    })
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Total volume')
+    })
+    expect(container.textContent).not.toContain('Dosage Strength')
+  })
+
+  it('hides strength inputs for inventory packet medications and keeps volume lock hint', async () => {
+    const { container, getByText } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Packet',
+          strength: '1000',
+          strengthUnit: 'ml'
+        })
+      }
+    })
+
+    expect(container.textContent).toContain('Total volume')
+    expect(container.querySelector('#medicationStrength')).toBeNull()
+    expect(container.querySelector('#medicationStrengthUnit')).toBeNull()
+    expect(getByText('Total volume is locked from inventory record.')).toBeTruthy()
+  })
+
+  it('shows editable strength for inventory injection medications', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          source: 'inventory',
+          dosageForm: 'Injection',
+          strength: '',
+          strengthUnit: '',
+          inventoryStrengthText: '1 mg'
+        })
+      }
+    })
+
+    expect(container.textContent).toContain('Dosage Strength')
+    expect(container.querySelector('#medicationStrength')).toBeTruthy()
+    expect(container.querySelector('#medicationStrength')?.disabled).toBe(false)
+    expect(container.querySelector('#medicationStrengthUnit')).toBeTruthy()
+    expect(container.querySelector('#medicationStrengthUnit')?.disabled).toBe(false)
+  })
+
+  it('keeps Dosage Strength label for liquid measured even with ml unit', async () => {
+    const { container } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1',
+        editingMedication: buildEditingMedication({
+          dosageForm: 'Liquid (measured)',
+          strength: '10',
+          strengthUnit: 'ml'
+        })
+      }
+    })
+
+    await waitFor(() => {
+      expect(container.textContent).toContain('Dosage Strength')
+    })
+    expect(container.textContent).not.toContain('Total volume')
+  })
+
+  it('separates packet volume from strength and does not show legacy tablets stock unit', async () => {
+    pharmacyMedicationService.searchMedicationsFromPharmacies.mockResolvedValue([
+      {
+        brandName: 'Jeewani',
+        genericName: 'PacketGeneric',
+        dosageForm: 'Packet',
+        strength: '200',
+        strengthUnit: 'ml',
+        containerSize: '',
+        containerUnit: '',
+        currentStock: 20,
+        packUnit: 'tablets'
+      }
+    ])
+
+    const { container, getByText } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1'
+      }
+    })
+
+    await fireEvent.input(container.querySelector('#brandName'), {
+      target: { value: 'jee' }
+    })
+    await fireEvent.focus(container.querySelector('#brandName'))
+
+    await waitFor(() => {
+      expect(pharmacyMedicationService.searchMedicationsFromPharmacies).toHaveBeenCalledWith('doc-1', 'jee', 20)
+    })
+
+    await waitFor(() => {
+      expect(getByText(/Jeewani\s*\(PacketGeneric\)/i)).toBeTruthy()
+      expect(container.textContent).toContain('Form: Packet')
+      expect(container.textContent).toContain('Total volume: 200 ml')
+      expect(container.textContent).toContain('(20 Packet)')
+    })
+
+    expect(container.textContent).not.toContain('Strength: 200 ml')
+    expect(container.textContent).not.toContain('(20 tablets)')
+  })
+
+  it('persists non-strength inventory pack size as volume metadata for cream', async () => {
+    pharmacyMedicationService.searchMedicationsFromPharmacies.mockResolvedValue([
+      {
+        brandName: 'Derm Keta cream-SPC',
+        genericName: 'Ketoconazole Cream 2%',
+        dosageForm: 'Cream',
+        strength: '10',
+        strengthUnit: 'g',
+        containerSize: '',
+        containerUnit: '',
+        currentStock: 8
+      }
+    ])
+
+    const { component, container, getByText } = render(MedicationForm, {
+      props: {
+        visible: true,
+        doctorId: 'doc-1'
+      }
+    })
+
+    await fireEvent.input(container.querySelector('#brandName'), {
+      target: { value: 'derm' }
+    })
+    await fireEvent.focus(container.querySelector('#brandName'))
+
+    await waitFor(() => {
+      expect(pharmacyMedicationService.searchMedicationsFromPharmacies).toHaveBeenCalledWith('doc-1', 'derm', 20)
+      expect(getByText(/Derm Keta cream-SPC/i)).toBeTruthy()
+    })
+
+    await fireEvent.click(getByText(/Derm Keta cream-SPC/i))
+    await fireEvent.input(container.querySelector('#medicationQts'), { target: { value: '1' } })
+
+    const onAdded = vi.fn()
+    component.$on('medication-added', onAdded)
+
+    await fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(onAdded).toHaveBeenCalledTimes(1)
+    })
+
+    const payload = onAdded.mock.calls[0][0].detail
+    expect(payload.dosageForm).toBe('Cream')
+    expect(payload.strength).toBe('')
+    expect(payload.strengthUnit).toBe('')
+    expect(payload.totalVolume).toBe('10')
+    expect(payload.volumeUnit).toBe('g')
+    expect(payload.containerSize).toBe('10')
+    expect(payload.containerUnit).toBe('g')
+    expect(payload.inventoryStrengthText).toBe('10 g')
+    expect(payload.qts).toBe('1')
   })
 })

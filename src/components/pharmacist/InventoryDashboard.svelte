@@ -73,7 +73,7 @@
     strengthUnit: normalizeStrengthUnitValue('mg'),
     containerSize: '',
     containerUnit: 'ml',
-    dosageForm: normalizeDosageFormValue('tablet'),
+    dosageForm: '',
     packSize: '',
     packUnit: 'tablets',
     initialStock: '',
@@ -114,6 +114,14 @@
     Packet: ['g', 'mg', 'ml', 'packets'],
     Roll: ['roll', 'g', 'ml']
   }
+
+  const ALL_CONTAINER_SIZE_UNITS = Array.from(
+    new Set([
+      ...Object.values(CONTAINER_SIZE_UNIT_OPTIONS).flat(),
+      'mcg',
+      'pcs'
+    ])
+  )
   
   // Load data on mount
   onMount(async () => {
@@ -298,6 +306,13 @@
 
   const isFilled = (value) => String(value ?? '').trim().length > 0
   const isIntegerString = (value) => /^\d+$/.test(String(value ?? '').trim())
+  const isPositiveDecimalString = (value) => {
+    const raw = String(value ?? '').trim()
+    if (!raw) return false
+    if (!/^(?:\d+|\d+\.\d{1,3}|\.\d{1,3})$/.test(raw)) return false
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) && parsed > 0
+  }
 
   const coerceDateToIso = (raw) => {
     const value = String(raw || '').trim()
@@ -359,9 +374,36 @@
     return !isStrengthRequiredDispenseForm(normalized)
   }
 
-  const getContainerUnitsForDispenseForm = (value) => {
-    const normalized = normalizeDosageFormValue(value)
-    return CONTAINER_SIZE_UNIT_OPTIONS[normalized] || ['ml', 'g', 'pcs']
+  const normalizeItemStrengthForEdit = (item) => {
+    if (!item || typeof item !== 'object') return item
+    const strength = String(item.strength ?? '').trim()
+    const strengthUnit = String(item.strengthUnit ?? '').trim()
+    const containerSize = String(item.containerSize ?? '').trim()
+    const containerUnit = String(item.containerUnit ?? '').trim()
+    const useContainerFallback = !strength && !!containerSize
+
+    return {
+      ...item,
+      dosageForm: normalizeDosageFormValue(item.dosageForm),
+      strength: useContainerFallback ? containerSize : item.strength,
+      strengthUnit: useContainerFallback
+        ? containerUnit
+        : (strengthUnit ? normalizeStrengthUnitValue(strengthUnit) : containerUnit)
+    }
+  }
+
+  const getEditStrengthUnitOptions = (value) => {
+    const normalized = normalizeStrengthUnitValue(value)
+    if (!normalized || STRENGTH_UNITS.includes(normalized)) return STRENGTH_UNITS
+    return [normalized, ...STRENGTH_UNITS]
+  }
+
+  const getContainerUnitsForDispenseForm = (_value) => {
+    return ALL_CONTAINER_SIZE_UNITS
+  }
+
+  const getVolumeUnitOptions = () => {
+    return ALL_CONTAINER_SIZE_UNITS
   }
 
   const syncContainerUnitForDispenseForm = (value) => {
@@ -392,15 +434,40 @@
           newItemForm.expiryDate = coerceDateToIso(expiryInput.value) || expiryInput.value
         }
       }
+
+      if (!isFilled(newItemForm.dosageForm)) {
+        const dosageSelect = typeof document !== 'undefined'
+          ? document.getElementById('newItemDosageForm')
+          : null
+        if (dosageSelect?.options?.length) {
+          const selectedOption = dosageSelect.options[dosageSelect.selectedIndex]
+          const domDosageValue = normalizeDosageFormValue(
+            selectedOption?.__value || selectedOption?.value || selectedOption?.textContent || ''
+          )
+          if (domDosageValue) {
+            newItemForm.dosageForm = domDosageValue
+          }
+        }
+      }
       
       const addPayload = {
         ...newItemForm,
-        dosageForm: normalizeDosageFormValue(newItemForm.dosageForm) || normalizeDosageFormValue('tablet')
+        dosageForm: normalizeDosageFormValue(newItemForm.dosageForm)
       }
 
       if (!isContainerSizeDispenseForm(addPayload.dosageForm)) {
         addPayload.containerSize = ''
         addPayload.containerUnit = ''
+      } else {
+        const containerSize = String(addPayload.containerSize ?? '').trim()
+        const containerUnit = String(addPayload.containerUnit ?? '').trim()
+        if (containerSize) {
+          addPayload.strength = containerSize
+          addPayload.strengthUnit = containerUnit || ''
+        } else {
+          addPayload.strength = ''
+          addPayload.strengthUnit = ''
+        }
       }
 
       const requiredFieldsForPayload = isStrengthRequiredDispenseForm(addPayload.dosageForm)
@@ -414,12 +481,22 @@
         return
       }
 
+      if (isFilled(addPayload.strength) && !isPositiveDecimalString(addPayload.strength)) {
+        if (shouldUseVolumeLabels(addPayload.dosageForm)) {
+          notifyError('Total volume must be a valid positive number')
+          await focusFieldById('newItemStrength')
+        } else {
+          notifyError('Strength must be a valid positive number')
+          await focusFieldById('newItemStrength')
+        }
+        return
+      }
+
       const integerValidationRules = [
         { key: 'initialStock', id: 'newItemInitialStock', label: 'Initial Stock', required: true },
         { key: 'minimumStock', id: 'newItemMinimumStock', label: 'Minimum Stock', required: true },
         { key: 'maximumStock', id: 'newItemMaximumStock', label: 'Maximum Stock', required: false },
-        { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false },
-        { key: 'containerSize', id: 'newItemContainerSize', label: 'Container Size', required: false }
+        { key: 'packSize', id: 'newItemPackSize', label: 'Pack Size', required: false }
       ]
       for (const rule of integerValidationRules) {
         const raw = String(addPayload[rule.key] ?? '').trim()
@@ -445,7 +522,7 @@
         strengthUnit: normalizeStrengthUnitValue('mg'),
         containerSize: '',
         containerUnit: 'ml',
-        dosageForm: normalizeDosageFormValue('tablet'),
+        dosageForm: '',
         packSize: '',
         packUnit: 'tablets',
         initialStock: '',
@@ -569,9 +646,46 @@
 
   const getStockUnitLabel = (item) => {
     const dosageForm = normalizeDosageFormValue(item?.dosageForm)
+    const packUnit = String(item?.packUnit || '').trim()
+    const normalizedPackUnit = packUnit.toLowerCase()
     if (dosageForm === 'Liquid (measured)') return 'ml'
     if (dosageForm === 'Liquid (bottles)') return 'Liquid (bottles)'
-    return item?.packUnit || 'units'
+    // Legacy records can carry a stale "tablets" packUnit for non-tablet/capsule forms.
+    if (
+      dosageForm
+      && dosageForm !== 'Tablet'
+      && dosageForm !== 'Capsule'
+      && (normalizedPackUnit === 'tablet' || normalizedPackUnit === 'tablets')
+    ) {
+      return dosageForm
+    }
+    return packUnit || 'units'
+  }
+
+  const getResolvedStrengthValue = (item) => {
+    const strength = String(item?.strength ?? '').trim()
+    if (strength) return strength
+    return String(item?.containerSize ?? '').trim()
+  }
+
+  const getResolvedStrengthUnit = (item) => {
+    const strengthUnit = String(item?.strengthUnit ?? '').trim()
+    if (strengthUnit) return strengthUnit
+    return String(item?.containerUnit ?? '').trim()
+  }
+
+  const getResolvedVolumeText = (item) => {
+    const containerSize = String(item?.containerSize ?? '').trim()
+    const containerUnit = String(item?.containerUnit ?? '').trim()
+    if (containerSize) return [containerSize, containerUnit || getResolvedStrengthUnit(item)].filter(Boolean).join(' ')
+
+    if (shouldUseVolumeLabels(item?.dosageForm)) {
+      const strength = getResolvedStrengthValue(item)
+      const unit = getResolvedStrengthUnit(item)
+      if (strength) return [strength, unit].filter(Boolean).join(' ')
+    }
+
+    return ''
   }
 
   const escapeHtml = (value) => String(value ?? '')
@@ -693,12 +807,20 @@
         return
       }
 
-      if (isStrengthRequiredDispenseForm(selectedItem?.dosageForm) && (!selectedItem.strength || !selectedItem.strengthUnit)) {
+      const normalizedSelectedItem = normalizeItemStrengthForEdit(selectedItem)
+
+      if (isStrengthRequiredDispenseForm(normalizedSelectedItem?.dosageForm) && (!normalizedSelectedItem.strength || !normalizedSelectedItem.strengthUnit)) {
         notifyError('Strength and strength unit are required')
         return
       }
 
-      if (!String(selectedItem.dosageForm || '').trim()) {
+      if (isFilled(normalizedSelectedItem?.strength) && !isPositiveDecimalString(normalizedSelectedItem.strength)) {
+        notifyError('Strength must be a valid positive number')
+        await focusFieldById('editItemStrength')
+        return
+      }
+
+      if (!String(normalizedSelectedItem.dosageForm || '').trim()) {
         notifyError('Dispense Form is required')
         await focusFieldById('editItemDosageForm')
         return
@@ -709,7 +831,7 @@
         { key: 'minimumStock', id: 'editItemMinimumStock', label: 'Minimum Stock', required: true }
       ]
       for (const rule of editIntegerValidationRules) {
-        const raw = String(selectedItem[rule.key] ?? '').trim()
+        const raw = String(normalizedSelectedItem[rule.key] ?? '').trim()
         if (!rule.required && raw === '') continue
         if (!isIntegerString(raw)) {
           notifyError(`${rule.label} must be an integer`)
@@ -720,12 +842,26 @@
 
       // Map selectedItem data to the format expected by validation
       const itemDataForUpdate = {
-        ...selectedItem,
+        ...normalizedSelectedItem,
         // Map currentStock to initialStock for validation
-        initialStock: selectedItem.currentStock,
-        category: selectedItem.category || 'prescription',
+        initialStock: normalizedSelectedItem.currentStock,
+        category: normalizedSelectedItem.category || 'prescription',
         // Ensure brandName is present (it should be readonly in the form)
-        brandName: selectedItem.brandName || selectedItem.drugName
+        brandName: normalizedSelectedItem.brandName || normalizedSelectedItem.drugName
+      }
+      if (!isFilled(itemDataForUpdate.strength) && isFilled(itemDataForUpdate.containerSize)) {
+        itemDataForUpdate.strength = String(itemDataForUpdate.containerSize).trim()
+      }
+      if (!isFilled(itemDataForUpdate.strengthUnit) && isFilled(itemDataForUpdate.containerUnit)) {
+        itemDataForUpdate.strengthUnit = String(itemDataForUpdate.containerUnit).trim()
+      }
+      if (isContainerSizeDispenseForm(itemDataForUpdate.dosageForm)) {
+        if (!isFilled(itemDataForUpdate.containerSize) && isFilled(itemDataForUpdate.strength)) {
+          itemDataForUpdate.containerSize = String(itemDataForUpdate.strength).trim()
+        }
+        if (!isFilled(itemDataForUpdate.containerUnit) && isFilled(itemDataForUpdate.strengthUnit)) {
+          itemDataForUpdate.containerUnit = String(itemDataForUpdate.strengthUnit).trim()
+        }
       }
 
       // Update the item using the inventory service
@@ -1072,7 +1208,7 @@
               <thead class="bg-gray-50">
                 <tr>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-32">Brand Name</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Strength</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Strength/Volume</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Stock</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Pricing</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-24">Status</th>
@@ -1095,9 +1231,13 @@
                     </td>
                     <td class="px-6 py-4">
                       <div class="min-w-0 flex-1">
-                        {#if item.strength}
-                          <div class="font-medium text-gray-900">{item.strength} {item.strengthUnit || ''}</div>
-                          <div class="text-xs text-gray-500">{item.dosageForm || 'N/A'}</div>
+                        {#if getResolvedStrengthValue(item)}
+                          <div class="font-medium text-gray-900">{getResolvedStrengthValue(item)} {getResolvedStrengthUnit(item)}</div>
+                          {#if getResolvedVolumeText(item)}
+                            <div class="text-xs text-gray-500">Vol: {getResolvedVolumeText(item)}</div>
+                          {:else}
+                            <div class="text-xs text-gray-500">{item.dosageForm || 'N/A'}</div>
+                          {/if}
                         {:else}
                           <div class="text-sm text-gray-400">Not specified</div>
                         {/if}
@@ -1128,11 +1268,7 @@
                           <button 
                             class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-xs font-medium transition-colors duration-200"
                             on:click={() => {
-                              selectedItem = {
-                                ...item,
-                                strengthUnit: normalizeStrengthUnitValue(item?.strengthUnit),
-                                dosageForm: normalizeDosageFormValue(item?.dosageForm)
-                              }
+                              selectedItem = normalizeItemStrengthForEdit(item)
                               showEditItemModal = true
                             }}
                           >
@@ -1169,8 +1305,11 @@
                 <div class="flex justify-between items-start mb-3">
                   <div class="flex-1">
                     <h3 class="font-semibold text-gray-900 text-sm">{item.brandName || item.drugName}</h3>
-                    {#if item.strength}
-                      <p class="text-xs text-blue-600 font-medium">Strength: {item.strength} {item.strengthUnit || ''}</p>
+                    {#if getResolvedStrengthValue(item)}
+                      <p class="text-xs text-blue-600 font-medium">Strength/Volume: {getResolvedStrengthValue(item)} {getResolvedStrengthUnit(item)}</p>
+                      {#if getResolvedVolumeText(item)}
+                        <p class="text-xs text-gray-500">Vol: {getResolvedVolumeText(item)}</p>
+                      {/if}
                     {/if}
                     {#if item.genericName && item.genericName !== (item.brandName || item.drugName)}
                       <p class="text-xs text-gray-500">Generic: {item.genericName}</p>
@@ -1203,11 +1342,7 @@
                   <button 
                     class="flex-1 text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded text-xs font-medium transition-colors duration-200"
                     on:click={() => {
-                      selectedItem = {
-                        ...item,
-                        strengthUnit: normalizeStrengthUnitValue(item?.strengthUnit),
-                        dosageForm: normalizeDosageFormValue(item?.dosageForm)
-                      }
+                      selectedItem = normalizeItemStrengthForEdit(item)
                       showEditItemModal = true
                     }}
                   >
@@ -1456,6 +1591,7 @@
                   required
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="">Select dispense form</option>
                   {#each DOSAGE_FORM_OPTIONS as option}
                     <option value={option}>{option}</option>
                   {/each}
@@ -1478,7 +1614,7 @@
                   bind:value={newItemForm.strength}
                   required={isStrengthRequiredDispenseForm(newItemForm.dosageForm)}
                   min="0"
-                  step="0.01"
+                  step="0.001"
                   inputmode="decimal"
                   placeholder={shouldUseVolumeLabels(newItemForm.dosageForm) ? 'e.g., 100' : 'e.g., 500'}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1500,28 +1636,34 @@
                   required={isStrengthRequiredDispenseForm(newItemForm.dosageForm)}
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {#each STRENGTH_UNITS as unit}
-                    <option value={unit}>{unit}</option>
-                  {/each}
+                  {#if shouldUseVolumeLabels(newItemForm.dosageForm)}
+                    {#each getVolumeUnitOptions() as unit}
+                      <option value={unit}>{unit}</option>
+                    {/each}
+                  {:else}
+                    {#each STRENGTH_UNITS as unit}
+                      <option value={unit}>{unit}</option>
+                    {/each}
+                  {/if}
                 </select>
               </div>
               {:else if isContainerSizeDispenseForm(newItemForm.dosageForm)}
               <div>
-                <label for="newItemContainerSize" class="block text-sm font-medium text-gray-700 mb-2">Container Size</label>
+                <label for="newItemContainerSize" class="block text-sm font-medium text-gray-700 mb-2">Total volume</label>
                 <input 
                   id="newItemContainerSize"
                   type="number"
                   bind:value={newItemForm.containerSize}
                   min="0"
-                  step="1"
-                  inputmode="numeric"
+                  step="0.001"
+                  inputmode="decimal"
                   placeholder="e.g., 100"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               
               <div>
-                <label for="newItemContainerUnit" class="block text-sm font-medium text-gray-700 mb-2">Container Unit</label>
+                <label for="newItemContainerUnit" class="block text-sm font-medium text-gray-700 mb-2">Volume unit</label>
                 <select 
                   id="newItemContainerUnit"
                   bind:value={newItemForm.containerUnit}
@@ -1590,7 +1732,7 @@
                   type="number" 
                   bind:value={newItemForm.costPrice}
                   min="0"
-                  step="0.01"
+                  step="0.001"
                   inputmode="decimal"
                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -1835,7 +1977,7 @@
                   disabled
                   title={shouldUseVolumeLabels(selectedItem?.dosageForm) ? 'Volume unit cannot be changed' : 'Strength Unit cannot be changed'}
                 >
-                  {#each STRENGTH_UNITS as unit}
+                  {#each getEditStrengthUnitOptions(selectedItem?.strengthUnit) as unit}
                     <option value={unit}>{unit}</option>
                   {/each}
                 </select>

@@ -97,6 +97,38 @@ describe('PrescriptionsTab', () => {
     expect(warningMessages).not.toContain('All medications are marked for external pharmacy or not in stock.')
   })
 
+  it('disables send to pharmacy when prescription is already sent', async () => {
+    const onShowPharmacyModal = vi.fn()
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [{ name: 'Amoxicillin', dosage: '500mg', amount: '10' }],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-1', doctorId: 'doc-1', status: 'sent', sentToPharmacy: true },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal,
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Send to Pharmacy')).toBeTruthy()
+    })
+
+    const sendButton = getByText('Send to Pharmacy')
+    expect(sendButton.hasAttribute('disabled')).toBe(true)
+    await fireEvent.click(sendButton)
+    expect(onShowPharmacyModal).not.toHaveBeenCalled()
+  })
+
   it('shows warning when all medications are external/unavailable and there are no chargeable items', async () => {
     const onShowPharmacyModal = vi.fn()
     const { getByText } = render(PrescriptionsTab, {
@@ -169,6 +201,73 @@ describe('PrescriptionsTab', () => {
     await fireEvent.click(getByText('Send to Pharmacy'))
     expect(onShowPharmacyModal).toHaveBeenCalledTimes(1)
     expect(onShowPharmacyModal).toHaveBeenCalledWith([])
+  })
+
+  it('allows send to pharmacy for procedure-only prescriptions without drugs', async () => {
+    const onShowPharmacyModal = vi.fn()
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-proc-only-1', doctorId: 'doc-1' },
+        excludeConsultationCharge: true,
+        prescriptionProcedures: ['ECG'],
+        otherProcedurePrice: '',
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal,
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Send to Pharmacy')).toBeTruthy()
+    })
+
+    await fireEvent.click(getByText('Send to Pharmacy'))
+    expect(onShowPharmacyModal).toHaveBeenCalledTimes(1)
+    expect(onShowPharmacyModal).toHaveBeenCalledWith([])
+  })
+
+  it('allows finalize action for procedure-only prescriptions without drugs', async () => {
+    const onFinalizePrescription = vi.fn()
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [],
+        prescriptionsFinalized: false,
+        currentPrescription: { id: 'rx-proc-only-finalize-1', doctorId: 'doc-1' },
+        excludeConsultationCharge: true,
+        prescriptionProcedures: ['ECG'],
+        otherProcedurePrice: '',
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription,
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Finalize Prescription')).toBeTruthy()
+    })
+
+    await fireEvent.click(getByText('Finalize Prescription'))
+    expect(onFinalizePrescription).toHaveBeenCalledTimes(1)
   })
 
   it('sends non-external medications for new prescriptions when stock lookup is not ready', async () => {
@@ -312,10 +411,85 @@ describe('PrescriptionsTab', () => {
     })
   })
 
+  it('shows Vol on send line for volume-based QTY medications', async () => {
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [
+          {
+            name: 'ORS-Jeevanee',
+            dosageForm: 'Packet',
+            strength: '1000',
+            strengthUnit: 'ml',
+            qts: '3',
+            frequency: '',
+            duration: ''
+          }
+        ],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-qty-vol-1', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Vol: 1000 ml | Packet | Quantity: 03')).toBeTruthy()
+    })
+  })
+
+  it('resolves Vol value from container fallback fields when strength is missing', async () => {
+    const { getByText } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [
+          {
+            name: 'ORS-Jeevanee',
+            dosageForm: 'Packet',
+            strength: '',
+            strengthUnit: '',
+            containerSize: '1000',
+            containerUnit: 'ml',
+            qts: '3',
+            frequency: '',
+            duration: ''
+          }
+        ],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-qty-vol-fallback-1', doctorId: 'doc-1', status: 'finalized' },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    await waitFor(() => {
+      expect(getByText('Vol: 1000 ml | Packet | Quantity: 03')).toBeTruthy()
+    })
+  })
+
   it('supports core prescription actions without flow regression', async () => {
     const onNewPrescription = vi.fn()
     const onAddDrug = vi.fn()
     const onFinalizePrescription = vi.fn()
+    const onUnfinalizePrescription = vi.fn()
     const onPrintPrescriptions = vi.fn()
 
     const { getByText, queryByText, rerender } = render(PrescriptionsTab, {
@@ -330,6 +504,7 @@ describe('PrescriptionsTab', () => {
         onNewPrescription,
         onAddDrug,
         onFinalizePrescription,
+        onUnfinalizePrescription,
         onShowPharmacyModal: vi.fn(),
         onPrintPrescriptions,
         onPrintExternalPrescriptions: vi.fn(),
@@ -358,6 +533,7 @@ describe('PrescriptionsTab', () => {
       onNewPrescription,
       onAddDrug,
       onFinalizePrescription,
+      onUnfinalizePrescription,
       onShowPharmacyModal: vi.fn(),
       onPrintPrescriptions,
       onPrintExternalPrescriptions: vi.fn(),
@@ -367,9 +543,110 @@ describe('PrescriptionsTab', () => {
 
     await waitFor(() => {
       expect(getByText('Print (Full)')).toBeTruthy()
+      expect(getByText('Unfinalize Prescription')).toBeTruthy()
     })
+    await fireEvent.click(getByText('Unfinalize Prescription'))
     await fireEvent.click(getByText('Print (Full)'))
+    expect(onUnfinalizePrescription).toHaveBeenCalledTimes(1)
     expect(onPrintPrescriptions).toHaveBeenCalledTimes(1)
+  })
+
+  it('applies doctor note templates from settings into prescription notes', async () => {
+    const { getByLabelText, container } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [{ name: 'Amoxicillin', dosage: '500mg', amount: '10' }],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-note-template-1', doctorId: 'doc-1', status: 'finalized' },
+        prescriptionNotes: '',
+        doctorProfileFallback: {
+          id: 'doc-1',
+          templateSettings: {
+            prescriptionNoteTemplates: [
+              { id: 'standard-follow-up', name: 'Standard Follow-up', content: 'Review after 2 weeks.' },
+              { id: 'diet-advice', name: 'Diet Advice', content: 'Avoid oily foods and stay hydrated.' },
+              { id: 'patient-name-test', name: 'Patient Name Test', content: 'Dear {{patient name}}, continue treatment.' }
+            ]
+          }
+        },
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    const notesToggle = getByLabelText('Prescription Notes')
+    await fireEvent.click(notesToggle)
+
+    const templateSelect = getByLabelText('Use Template')
+    await fireEvent.change(templateSelect, { target: { value: 'diet-advice' } })
+
+    const notesInput = container.querySelector('#prescriptionNotes')
+    expect(notesInput.value).toBe('Avoid oily foods and stay hydrated.')
+
+    await fireEvent.change(templateSelect, { target: { value: 'patient-name-test' } })
+    expect(notesInput.value).toBe('Dear Patient, continue treatment.')
+  })
+
+  it('shows note template dropdown when templates come from loaded doctor profile', async () => {
+    const firebaseStorageModule = await import('../../services/firebaseStorage.js')
+    firebaseStorageModule.default.getDoctorById.mockResolvedValue({
+      id: 'doc-1',
+      currency: 'USD',
+      consultationCharge: 100,
+      hospitalCharge: 50,
+      templateSettings: {
+        prescriptionNoteTemplates: [
+          { id: 'loaded-template', name: 'Loaded Template', content: 'Template loaded from doctor profile.' },
+          { id: 'loaded-patient-name', name: 'Loaded Patient Name', content: 'Hi {{patient name}}, come in 1 week.' }
+        ]
+      }
+    })
+
+    const { getByLabelText, container } = render(PrescriptionsTab, {
+      props: {
+        selectedPatient: { id: 'pat-1', doctorId: 'doc-1', firstName: 'Nimali', lastName: 'Perera' },
+        showMedicationForm: false,
+        editingMedication: null,
+        doctorId: 'doc-1',
+        currentMedications: [{ name: 'Amoxicillin', dosage: '500mg', amount: '10' }],
+        prescriptionsFinalized: true,
+        currentPrescription: { id: 'rx-note-template-2', doctorId: 'doc-1', status: 'finalized' },
+        prescriptionNotes: '',
+        onNewPrescription: vi.fn(),
+        onAddDrug: vi.fn(),
+        onFinalizePrescription: vi.fn(),
+        onShowPharmacyModal: vi.fn(),
+        onPrintPrescriptions: vi.fn(),
+        onPrintExternalPrescriptions: vi.fn(),
+        onGenerateAIAnalysis: vi.fn(),
+        openaiService: { isConfigured: () => true }
+      }
+    })
+
+    const notesToggle = getByLabelText('Prescription Notes')
+    await fireEvent.click(notesToggle)
+
+    await waitFor(() => {
+      expect(getByLabelText('Use Template')).toBeTruthy()
+    })
+
+    const templateSelect = getByLabelText('Use Template')
+    await fireEvent.change(templateSelect, { target: { value: 'loaded-template' } })
+
+    const notesInput = container.querySelector('#prescriptionNotes')
+    expect(notesInput.value).toBe('Template loaded from doctor profile.')
+
+    await fireEvent.change(templateSelect, { target: { value: 'loaded-patient-name' } })
+    expect(notesInput.value).toBe('Hi Nimali Perera, come in 1 week.')
   })
 
   it.each([
@@ -454,7 +731,7 @@ describe('PrescriptionsTab', () => {
           frequency: 'Twice daily (BID)',
           duration: '3 days'
         },
-        expected: '5 ml 5 • Twice daily (BID) • 3 days • Liquid'
+        expected: 'Vol: 5 ml | Liquid'
       }
     ]
 

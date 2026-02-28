@@ -12,6 +12,7 @@ const firestoreSpy = vi.spyOn(admin, 'firestore')
 let messagingTemplates = {}
 const fetchMock = vi.fn()
 global.fetch = fetchMock
+let smsLogs = []
 
 const buildFirestoreMock = () => ({
   collection: (name) => {
@@ -23,6 +24,17 @@ const buildFirestoreMock = () => ({
             data: () => messagingTemplates
           })
         })
+      }
+    }
+
+    if (name === 'smsLogs') {
+      return {
+        add: vi.fn().mockImplementation(async (payload) => {
+          smsLogs.push(payload)
+        }),
+        orderBy: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ empty: true, docs: [] })
       }
     }
 
@@ -63,6 +75,7 @@ describe('doctor notification SMS triggers', () => {
     }
 
     firestoreSpy.mockImplementation(() => buildFirestoreMock())
+    smsLogs = []
 
     fetchMock.mockReset()
     fetchMock.mockResolvedValue({
@@ -91,6 +104,13 @@ describe('doctor notification SMS triggers', () => {
     expect(params.get('to')).toBe('94712345678')
     expect(params.get('message')).toContain('Maya Silva')
     expect(params.get('message')).toContain('https://example.test')
+    expect(
+      smsLogs.some((entry) =>
+        entry.type === 'doctorRegistration' &&
+        entry.status === 'sent' &&
+        entry.to === '94712345678'
+      )
+    ).toBe(true)
   })
 
   it('sends an additional doctor registration test SMS when copy flag is enabled', async () => {
@@ -114,6 +134,8 @@ describe('doctor notification SMS triggers', () => {
     const second = new URLSearchParams(fetchMock.mock.calls[1][1].body)
     expect(first.get('to')).toBe('94712345678')
     expect(second.get('to')).toBe('94770000000')
+    expect(smsLogs.filter((entry) => entry.type === 'doctorRegistration')).toHaveLength(1)
+    expect(smsLogs.filter((entry) => entry.type === 'doctorRegistrationTestCopy')).toHaveLength(1)
   })
 
   it('does not duplicate doctor registration SMS when test recipient matches primary recipient', async () => {
@@ -198,6 +220,13 @@ describe('doctor notification SMS triggers', () => {
     })
 
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(
+      smsLogs.some((entry) =>
+        entry.type === 'doctorRegistration' &&
+        entry.status === 'failed' &&
+        entry.error === 'Recipient format invalid'
+      )
+    ).toBe(true)
   })
 
   it('sends doctor approved SMS only on transition to approved', async () => {
@@ -225,6 +254,13 @@ describe('doctor notification SMS triggers', () => {
     const params = new URLSearchParams(fetchMock.mock.calls[0][1].body)
     expect(params.get('to')).toBe('94712345678')
     expect(params.get('message')).toContain('account is approved')
+    expect(
+      smsLogs.some((entry) =>
+        entry.type === 'doctorApproved' &&
+        entry.status === 'sent' &&
+        entry.to === '94712345678'
+      )
+    ).toBe(true)
   })
 
   it('skips doctor approved SMS when approval state does not transition', async () => {

@@ -7,6 +7,11 @@
   import { pharmacyMedicationService } from '../services/pharmacyMedicationService.js'
   import { formatPrescriptionId } from '../utils/idFormat.js'
   import { formatDate } from '../utils/dataProcessing.js'
+  import {
+    PRESCRIPTION_DISPLAY_LABELS,
+    requiresCountForDosageForm,
+    supportsStrengthForDosageForm
+  } from '../utils/prescriptionMedicationSemantics.js'
   
   const dispatch = createEventDispatcher()
   
@@ -17,6 +22,8 @@
   
   let loading = false
   let pharmacyStrengthLookup = new Map()
+  let pharmacyGenericLookup = new Map()
+  let pharmacyGenericCandidates = []
   let htmlPreviewContent = ''
   let cachedTemplateSettings = null
   let currentDateLabel = ''
@@ -28,6 +35,8 @@
     .replace(/[\u3000\s]+/g, ' ')
     .replace(/[\(\)（）]/g, '')
     .trim()
+
+  const normalizeLookupKey = (value) => normalizeName(value).replace(/[^a-z0-9]/g, '')
 
 
   const findInventoryStrengthText = (medication) => {
@@ -43,6 +52,34 @@
       }
     }
 
+    return ''
+  }
+
+  const findInventoryGenericName = (medication) => {
+    if (!pharmacyGenericLookup || pharmacyGenericLookup.size === 0) return ''
+
+    const medicationName = medication?.name || medication?.drugName || medication?.brandName || ''
+    const nameKey = normalizeName(medicationName)
+    const compactKey = normalizeLookupKey(medicationName)
+
+    if (nameKey && pharmacyGenericLookup.has(nameKey)) {
+      return pharmacyGenericLookup.get(nameKey) || ''
+    }
+    if (compactKey && pharmacyGenericLookup.has(compactKey)) {
+      return pharmacyGenericLookup.get(compactKey) || ''
+    }
+
+    const candidates = Array.isArray(pharmacyGenericCandidates) ? pharmacyGenericCandidates : []
+    if (!compactKey || candidates.length === 0) return ''
+
+    const fuzzy = candidates.find((entry) =>
+      entry?.nameKey && (
+        compactKey.includes(entry.nameKey) || entry.nameKey.includes(compactKey)
+      )
+    )
+    if (fuzzy?.genericName) {
+      return fuzzy.genericName
+    }
     return ''
   }
 
@@ -118,20 +155,37 @@
     return `${base}s`
   }
 
+  const getMedicationFormValue = (medication) => {
+    const candidates = [
+      medication?.dosageForm,
+      medication?.form,
+      medication?.packUnit,
+      medication?.unit
+    ]
+    const firstFilled = candidates.find((value) => String(value || '').trim())
+    return firstFilled ? String(firstFilled).trim() : ''
+  }
+
   const getDoseLabel = (medication) => {
     const dosage = String(medication?.dosage ?? '').trim()
     if (!dosage) return ''
     const parsedValue = parseDosageValue(dosage)
     const isPlural = parsedValue !== null ? parsedValue > 1 : !/^1(?:\s|$)/.test(dosage)
-    const form = medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? ''
+    const form = getMedicationFormValue(medication)
     const formLabel = formatDosageFormLabel(form || 'Tablet', isPlural)
     return `${dosage} ${formLabel}`.trim()
+  }
+
+  const supportsRightHeaderStrength = (medication) => {
+    const dosageForm = getMedicationFormValue(medication)
+    if (!String(dosageForm || '').trim()) return true
+    return supportsStrengthForDosageForm(dosageForm)
   }
 
   const isLiquidMedication = (medication) => {
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     const strengthTextLower = strengthText.toLowerCase()
     return Boolean(
       strengthUnit &&
@@ -140,12 +194,12 @@
   }
 
   const isMeasuredLiquidMedication = (medication) => {
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     return dosageForm === 'liquid (measured)'
   }
 
   const isBottledLiquidMedication = (medication) => {
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    const dosageForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
     return dosageForm === 'liquid (bottles)'
   }
 
@@ -170,36 +224,58 @@
   }
 
   const requiresQtsPricing = (medication) => {
-    if (isLiquidMedication(medication)) return false
-    const dosageForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
-    if (!dosageForm) return false
-    return !(
-      dosageForm.includes('tablet') ||
-      dosageForm.includes('tab') ||
-      dosageForm.includes('capsule') ||
-      dosageForm.includes('cap') ||
-      dosageForm.includes('syrup') ||
-      dosageForm.includes('liquid')
-    )
+    const dosageForm = String(getMedicationFormValue(medication)).trim()
+    return requiresCountForDosageForm(dosageForm)
   }
 
   const getQtsMetaLine = (medication) => {
     if (!requiresQtsPricing(medication)) return ''
-    const formRaw = String(medication?.dosageForm ?? medication?.form ?? medication?.packUnit ?? medication?.unit ?? '').trim()
+    const formRaw = String(getMedicationFormValue(medication)).trim()
     if (!formRaw) return ''
     const formLabel = formRaw.charAt(0).toUpperCase() + formRaw.slice(1)
     const qtsRaw = String(medication?.qts ?? '').trim()
     const parsedQts = Number.parseInt(qtsRaw, 10)
     if (!Number.isFinite(parsedQts) || parsedQts <= 0) {
-      return formLabel
+      return ''
     }
-    return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
+    return `${formLabel} | ${PRESCRIPTION_DISPLAY_LABELS.quantityPrefix} ${String(parsedQts).padStart(2, '0')}`
+  }
+
+  const getResolvedVolumeText = (medication, fallbackText = '') => {
+    const compact = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+    const joinPair = (left, right) => [compact(left), compact(right)].filter(Boolean).join(' ')
+    const hasNumericValue = (value) => /\d/.test(String(value || ''))
+    const resolvedVolumeUnit = compact(
+      medication?.volumeUnit
+      || medication?.containerUnit
+      || medication?.strengthUnit
+    )
+
+    const candidates = [
+      joinPair(medication?.containerSize, medication?.containerUnit),
+      joinPair(medication?.totalVolume, resolvedVolumeUnit),
+      joinPair(medication?.volume, resolvedVolumeUnit),
+      compact(fallbackText),
+      compact(medication?.inventoryStrengthText),
+      joinPair(medication?.strength, medication?.strengthUnit),
+      compact(medication?.strength)
+    ]
+
+    return candidates.find((candidate) => candidate && hasNumericValue(candidate)) || ''
   }
 
   const getMedicationMetaLine = (medication, headerLabel = '') => {
     const qtsMetaLine = getQtsMetaLine(medication)
-    if (qtsMetaLine) return qtsMetaLine
     const parts = []
+    const normalizedParts = new Set()
+    const pushUniquePart = (value) => {
+      const normalized = String(value || '').replace(/\s+/g, ' ').trim()
+      if (!normalized) return
+      const key = normalized.toLowerCase()
+      if (normalizedParts.has(key)) return
+      normalizedParts.add(key)
+      parts.push(normalized)
+    }
     const medicationSource = String(medication?.source || '').trim().toLowerCase()
     const inventoryStrengthText = String(
       medication?.inventoryStrengthText
@@ -210,8 +286,8 @@
     const shouldIncludeInventoryStrength = medicationSource === 'inventory' && inventoryStrengthText && (
       isLiquidMedication(medication) || !requiresQtsPricing(medication)
     )
-    if (shouldIncludeInventoryStrength) {
-      const inventoryForm = String(medication?.dosageForm ?? medication?.form ?? '').trim().toLowerCase()
+    if (shouldIncludeInventoryStrength && !isMeasuredLiquidMedication(medication)) {
+      const inventoryForm = String(getMedicationFormValue(medication)).trim().toLowerCase()
       const volumeForms = new Set([
         'liquid (measured)',
         'liquid (bottles)',
@@ -228,7 +304,27 @@
         'roll'
       ])
       const usesVolumeLabel = volumeForms.has(inventoryForm) || /\b(?:ml|l)\b/i.test(inventoryStrengthText)
-      parts.push(`${usesVolumeLabel ? 'Vol' : 'Strength'}: ${inventoryStrengthText}`)
+      const normalizeInline = (value) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase()
+      const normalizedInventoryStrength = normalizeInline(inventoryStrengthText)
+      const normalizedHeaderStrength = normalizeInline(headerLabel)
+      const alreadyShownInHeader = normalizedInventoryStrength && normalizedInventoryStrength === normalizedHeaderStrength
+      if (usesVolumeLabel) {
+        const resolvedVolumeText = getResolvedVolumeText(medication, inventoryStrengthText)
+        if (resolvedVolumeText) {
+          pushUniquePart(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
+        }
+      } else if (!alreadyShownInHeader) {
+        // Strength belongs on the right side of the first line, never as second-line "Strength:".
+      }
+    }
+    if (!supportsRightHeaderStrength(medication)) {
+      const resolvedVolumeText = getResolvedVolumeText(medication, inventoryStrengthText)
+      if (resolvedVolumeText) {
+        pushUniquePart(`${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}`)
+      }
+    }
+    if (qtsMetaLine) {
+      pushUniquePart(qtsMetaLine)
     }
     if (isLiquidMedication(medication)) {
       const liquidDoseUnit = String(
@@ -240,31 +336,21 @@
       ).trim()
       const perFrequencyMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
       if (Number.isFinite(perFrequencyMl) && perFrequencyMl > 0) {
-        parts.push(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
+        pushUniquePart(`Dose: ${perFrequencyMl} ${liquidDoseUnit}/frequency`)
       }
       if (isMeasuredLiquidMedication(medication) && perFrequencyMl) {
         const dailyFrequency = resolveDailyFrequency(medication?.frequency)
         const durationDays = resolveDurationDays(medication?.duration)
         const totalMl = perFrequencyMl * dailyFrequency * durationDays
         if (Number.isFinite(totalMl) && totalMl > 0) {
-          parts.push(`Total: ${totalMl} ${liquidDoseUnit}`)
+          pushUniquePart(`Total: ${totalMl} ${liquidDoseUnit}`)
         }
       }
-      const liquidAmountMl = Number(String(medication?.liquidAmountMl ?? medication?.amountMl ?? '').trim())
-      if (Number.isFinite(liquidAmountMl) && liquidAmountMl > 0) {
-        parts.push(`Amount: ${liquidAmountMl} ${liquidDoseUnit}`)
-      }
-      if (isBottledLiquidMedication(medication)) {
-        const inventoryMl = findInventoryStrengthText(medication)
-        const packMlText = String(inventoryMl || getStrengthText(medication?.strength, medication?.strengthUnit) || '').trim()
-        if (packMlText && /\b(ml|l)\b/i.test(packMlText)) {
-          parts.push(`Pack: ${packMlText}`)
-        }
-      }
+      // Quantity line is sufficient for count-based liquids; avoid redundant "Amount".
     }
-    if (!isLiquidMedication(medication)) {
+    if (!isLiquidMedication(medication) && !requiresQtsPricing(medication)) {
       const doseLabel = getDoseLabel(medication)
-      if (doseLabel && doseLabel !== headerLabel) parts.push(doseLabel)
+      if (doseLabel && doseLabel !== headerLabel) pushUniquePart(doseLabel)
     }
     return parts.join(' | ')
   }
@@ -277,20 +363,21 @@
   }
 
   const getPdfDosageLabel = (medication) => {
-    if (isLiquidMedication(medication)) {
-      const doseMl = parsePositiveNumber(medication?.liquidDosePerFrequencyMl ?? medication?.perFrequencyMl)
-      const liquidDoseUnitRaw = String(medication?.liquidDoseUnit || '').trim().toLowerCase()
-      const liquidDoseUnit = ['ml', 'l'].includes(liquidDoseUnitRaw) ? liquidDoseUnitRaw : 'ml'
-      if (doseMl) return `${doseMl} ${liquidDoseUnit}`
+    if (!supportsRightHeaderStrength(medication)) {
+      return ''
     }
 
     const { strength, strengthUnit } = parseStrengthParts(medication)
     const strengthText = [strength, strengthUnit].filter(Boolean).join(' ').trim()
     const hasStrength = Boolean(strength && strengthUnit)
-    if (hasStrength) return strengthText
+    if (hasStrength) {
+      return strengthText
+    }
 
     const fromInventory = findInventoryStrengthText(medication)
-    if (fromInventory) return fromInventory
+    if (fromInventory) {
+      return fromInventory
+    }
 
     return ''
   }
@@ -311,6 +398,58 @@
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+
+  const getMedicationDisplayNameParts = (medication) => {
+    const rawName = String(
+      medication?.name || medication?.drugName || medication?.brandName || ''
+    ).trim()
+    const embeddedBracketPattern = rawName.match(/^\(([^)]+)\)\s*(.+)$/)
+    const embeddedTrailingPattern = rawName.match(/^(.+?)\s*\(([^)]+)\)$/)
+    const brandName = String(
+      embeddedBracketPattern?.[2] ||
+      embeddedTrailingPattern?.[1] ||
+      rawName
+    ).trim()
+    const deriveGenericNameFromBrand = (value = '') => {
+      const raw = String(value || '').trim()
+      if (!raw || !raw.includes('-')) return ''
+      const [prefix] = raw.split('-')
+      let candidate = String(prefix || '').replace(/\s+/g, ' ').trim()
+      if (!candidate) return ''
+      // Trim trailing dispense-form words from the derived generic candidate.
+      candidate = candidate.replace(/\b(?:tablet|capsule|syrup|cream|ointment|gel|suppository|inhaler|spray|shampoo|packet|roll|injection|liquid)\b$/i, '').trim()
+      if (!candidate || candidate.length < 3) return ''
+      if (candidate.toLowerCase() === raw.toLowerCase()) return ''
+      return candidate
+    }
+    const genericNameRaw = String(
+      embeddedBracketPattern?.[1] ||
+      embeddedTrailingPattern?.[2] ||
+      medication?.genericName
+      || medication?.generic
+      || medication?.genericDrugName
+      || medication?.drugGenericName
+      || medication?.activeIngredient
+      || findInventoryGenericName(medication)
+      || deriveGenericNameFromBrand(brandName)
+      || ''
+    ).trim()
+    const genericName = genericNameRaw.toLowerCase() === brandName.toLowerCase() ? '' : genericNameRaw
+    return { brandName, genericName }
+  }
+
+  const getMedicationDisplayName = (medication, { html = false } = {}) => {
+    const { brandName, genericName } = getMedicationDisplayNameParts(medication)
+    const encode = (value) => (html ? escapeHtml(value) : value)
+
+    if (brandName && genericName) {
+      return `${encode(brandName)} (${encode(genericName)})`
+    }
+    if (genericName) {
+      return `(${encode(genericName)})`
+    }
+    return encode(brandName)
+  }
 
   const getPatientAgeText = () => {
     if (selectedPatient?.age && selectedPatient.age !== '' && !isNaN(selectedPatient.age)) {
@@ -370,15 +509,35 @@
       if (!doctorId) return
       const stock = await pharmacyMedicationService.getPharmacyStock(doctorId)
       const lookup = new Map()
+      const genericLookup = new Map()
+      const genericCandidates = []
       stock.forEach(item => {
         const strengthText = getStrengthText(item.strength, item.strengthUnit)
-        if (!strengthText) return
         const nameKey = normalizeName(item.drugName || item.brandName)
+        const compactNameKey = normalizeLookupKey(item.drugName || item.brandName)
         const genericKey = normalizeName(item.genericName)
-        if (nameKey && !lookup.has(nameKey)) lookup.set(nameKey, strengthText)
-        if (genericKey && !lookup.has(genericKey)) lookup.set(genericKey, strengthText)
+        const compactGenericKey = normalizeLookupKey(item.genericName)
+        if (strengthText) {
+          if (nameKey && !lookup.has(nameKey)) lookup.set(nameKey, strengthText)
+          if (genericKey && !lookup.has(genericKey)) lookup.set(genericKey, strengthText)
+        }
+        const genericNameValue = String(item?.genericName || '').trim()
+        if (genericNameValue && nameKey && !genericLookup.has(nameKey)) {
+          genericLookup.set(nameKey, genericNameValue)
+        }
+        if (genericNameValue && compactNameKey && !genericLookup.has(compactNameKey)) {
+          genericLookup.set(compactNameKey, genericNameValue)
+        }
+        if (genericNameValue && compactGenericKey && !genericLookup.has(compactGenericKey)) {
+          genericLookup.set(compactGenericKey, genericNameValue)
+        }
+        if (genericNameValue && compactNameKey) {
+          genericCandidates.push({ nameKey: compactNameKey, genericName: genericNameValue })
+        }
       })
       pharmacyStrengthLookup = lookup
+      pharmacyGenericLookup = genericLookup
+      pharmacyGenericCandidates = genericCandidates
     } catch (error) {
       console.warn('⚠️ Could not load pharmacy inventory strengths:', error)
     }
@@ -440,9 +599,7 @@
 
     const medicationsHtml = (prescriptions || []).length > 0
       ? prescriptions.map((medication, index) => {
-          const medName = medication?.genericName
-            ? `${escapeHtml(medication.name)} (${escapeHtml(medication.genericName)})`
-            : escapeHtml(medication?.name)
+          const medName = getMedicationDisplayName(medication, { html: true })
           const metaLine = escapeHtml(getMedicationMetaLine(medication, getPdfDosageLabel(medication)))
           const dosageLabel = escapeHtml(getPdfDosageLabel(medication))
           const detailsParts = []
@@ -676,15 +833,35 @@
         if (doctorId) {
           const stock = await pharmacyMedicationService.getPharmacyStock(doctorId)
           const lookup = new Map()
+          const genericLookup = new Map()
+          const genericCandidates = []
           stock.forEach(item => {
             const strengthText = getStrengthText(item.strength, item.strengthUnit)
-            if (!strengthText) return
             const nameKey = normalizeName(item.drugName || item.brandName)
+            const compactNameKey = normalizeLookupKey(item.drugName || item.brandName)
             const genericKey = normalizeName(item.genericName)
-            if (nameKey && !lookup.has(nameKey)) lookup.set(nameKey, strengthText)
-            if (genericKey && !lookup.has(genericKey)) lookup.set(genericKey, strengthText)
+            const compactGenericKey = normalizeLookupKey(item.genericName)
+            if (strengthText) {
+              if (nameKey && !lookup.has(nameKey)) lookup.set(nameKey, strengthText)
+              if (genericKey && !lookup.has(genericKey)) lookup.set(genericKey, strengthText)
+            }
+            const genericNameValue = String(item?.genericName || '').trim()
+            if (genericNameValue && nameKey && !genericLookup.has(nameKey)) {
+              genericLookup.set(nameKey, genericNameValue)
+            }
+            if (genericNameValue && compactNameKey && !genericLookup.has(compactNameKey)) {
+              genericLookup.set(compactNameKey, genericNameValue)
+            }
+            if (genericNameValue && compactGenericKey && !genericLookup.has(compactGenericKey)) {
+              genericLookup.set(compactGenericKey, genericNameValue)
+            }
+            if (genericNameValue && compactNameKey) {
+              genericCandidates.push({ nameKey: compactNameKey, genericName: genericNameValue })
+            }
           })
           pharmacyStrengthLookup = lookup
+          pharmacyGenericLookup = genericLookup
+          pharmacyGenericCandidates = genericCandidates
         }
       } catch (error) {
         console.warn('⚠️ Could not load pharmacy inventory strengths:', error)
@@ -1059,17 +1236,42 @@
           
           doc.setFontSize(10)
           doc.setFont('helvetica', 'bold')
-          const medName = medication.genericName ? `${medication.name} (${medication.genericName})` : medication.name
-          doc.text(`${index + 1}. ${medName}`, margin, yPos)
           const headerLabel = getPdfDosageLabel(medication)
-          doc.text(headerLabel, pageWidth - margin, yPos, { align: 'right' })
+          const { brandName, genericName } = getMedicationDisplayNameParts(medication)
+          const prefixedBrandName = `${index + 1}. ${brandName || ''}`.trim()
+          const genericSuffix = genericName ? ` (${genericName})` : ''
+          const nameMaxWidth = headerLabel ? Math.max(contentWidth - 28, 50) : contentWidth
+          const fullName = `${prefixedBrandName}${genericSuffix}`
+          const measuredNameWidth = (() => {
+            if (typeof doc?.getTextWidth === 'function') {
+              try {
+                const value = Number(doc.getTextWidth(fullName))
+                if (Number.isFinite(value) && value > 0) return value
+              } catch (_error) {
+                // Fall through to approximation for mocked jsPDF instances.
+              }
+            }
+            // Fallback for mocked/non-standard jsPDF environments.
+            return fullName.length * 2.1
+          })()
+          const shouldWrapGeneric = Boolean(genericSuffix) && measuredNameWidth > nameMaxWidth
+
+          const nameLineY = yPos
+          doc.text(shouldWrapGeneric ? prefixedBrandName : fullName, margin, nameLineY)
+          if (shouldWrapGeneric) {
+            yPos += 4
+            doc.text(genericSuffix.trim(), margin, yPos)
+          }
+
+          doc.text(headerLabel, pageWidth - margin, nameLineY, { align: 'right' })
           
           const metaLine = getMedicationMetaLine(medication, headerLabel)
           doc.setFontSize(9)
           doc.setFont('helvetica', 'normal')
           if (metaLine) {
             yPos += 4
-            const metaLines = doc.splitTextToSize(metaLine, contentWidth)
+            const secondLineWidth = headerLabel ? Math.max(contentWidth - 28, 50) : contentWidth
+            const metaLines = doc.splitTextToSize(metaLine, secondLineWidth)
             doc.text(metaLines, margin, yPos)
             yPos += metaLines.length * 3
           }
@@ -1167,7 +1369,7 @@
   <!-- Flowbite Modal Container -->
   <div class="relative z-10 w-full max-w-4xl max-h-full mx-auto flex items-center justify-center min-h-screen">
     <!-- Flowbite Modal Content -->
-    <div class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100">
+    <div class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100 overflow-hidden">
       <!-- Flowbite Modal Header -->
       <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t-lg dark:border-gray-600">
         <h3 id="prescription-modal-title" class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
@@ -1253,7 +1455,7 @@
                   <div class="flex justify-between items-start">
                     <div class="flex-1">
                       <div class="font-medium text-gray-900 dark:text-white">
-                        {medication.name}{#if medication.genericName} ({medication.genericName}){/if}
+                        {getMedicationDisplayName(medication)}
                       </div>
                       {#if getMedicationMetaLine(medication, getPdfDosageLabel(medication))}
                         <div class="text-xs text-gray-500 mt-1">

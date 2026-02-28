@@ -77,11 +77,24 @@
   let isSaving = false
   let excludePharmacyDrugs = false
   let procedurePricing = []
+  let prescriptionNoteTemplates = []
+  let newPrescriptionNoteTemplateName = ''
+  let newPrescriptionNoteTemplateContent = ''
   let deleteCode = ''
   let renewingDeleteCode = false
 
   // Tab management
   let activeTab = 'edit-profile'
+  let hasRestoredSettingsTab = false
+  let restoredSettingsTabUserKey = ''
+  const SETTINGS_TAB_STORAGE_PREFIX = 'prescribe-settings-active-tab'
+  const SETTINGS_ALLOWED_TABS = new Set([
+    'edit-profile',
+    'prescription-template',
+    'external-doctor',
+    'procedures',
+    'backup-restore'
+  ])
 
   const TOUR_STORAGE_PREFIX = 'settings-tour-seen'
   let settingsTour = null
@@ -95,10 +108,108 @@
     return Number.isFinite(numeric) ? numeric : fallback
   }
 
+  const normalizeTemplateId = (value, fallback = '') => {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    return normalized || String(fallback || '')
+  }
+
+  const normalizePrescriptionNoteTemplates = (savedTemplates) => {
+    if (!Array.isArray(savedTemplates)) return []
+
+    return savedTemplates
+      .map((entry, index) => {
+        if (typeof entry === 'string') {
+          const content = entry.trim()
+          if (!content) return null
+          const fallbackName = `Template ${index + 1}`
+          return {
+            id: normalizeTemplateId(fallbackName, `template-${index + 1}`),
+            name: fallbackName,
+            content
+          }
+        }
+
+        if (!entry || typeof entry !== 'object') return null
+        const name = String(entry.name || entry.title || '').trim()
+        const content = String(entry.content || entry.text || '').trim()
+        if (!name || !content) return null
+        return {
+          id: normalizeTemplateId(entry.id || name, `template-${index + 1}`),
+          name,
+          content
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const addPrescriptionNoteTemplate = () => {
+    const name = String(newPrescriptionNoteTemplateName || '').trim()
+    const content = String(newPrescriptionNoteTemplateContent || '').trim()
+    if (!name || !content) {
+      notifyError('Template name and content are required.')
+      return
+    }
+
+    const id = normalizeTemplateId(name, `template-${Date.now()}`)
+    const exists = prescriptionNoteTemplates.some((template) => template.id === id)
+    if (exists) {
+      notifyError('A template with this name already exists.')
+      return
+    }
+
+    prescriptionNoteTemplates = [...prescriptionNoteTemplates, { id, name, content }]
+    newPrescriptionNoteTemplateName = ''
+    newPrescriptionNoteTemplateContent = ''
+  }
+
+  const removePrescriptionNoteTemplate = (templateId) => {
+    prescriptionNoteTemplates = prescriptionNoteTemplates.filter((template) => template.id !== templateId)
+  }
+
   // Debug: Log initial state
   const getSettingsTourKey = () => {
     const userKey = user?.id || user?.uid || user?.email || 'unknown'
     return `${TOUR_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const getSettingsTabStorageKey = () => {
+    const userKey = String(user?.id || user?.uid || user?.email || '').trim().toLowerCase()
+    if (!userKey) return ''
+    return `${SETTINGS_TAB_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const normalizeSettingsTab = (value) => {
+    const normalized = String(value || '').trim()
+    return SETTINGS_ALLOWED_TABS.has(normalized) ? normalized : 'edit-profile'
+  }
+
+  const restoreActiveSettingsTab = () => {
+    if (typeof localStorage === 'undefined') return
+    const storageKey = getSettingsTabStorageKey()
+    if (!storageKey) return
+    const storedTab = localStorage.getItem(storageKey)
+    if (!storedTab) return
+    activeTab = normalizeSettingsTab(storedTab)
+  }
+
+  const persistActiveSettingsTab = () => {
+    if (typeof localStorage === 'undefined') return
+    const storageKey = getSettingsTabStorageKey()
+    if (!storageKey) return
+    localStorage.setItem(storageKey, normalizeSettingsTab(activeTab))
+  }
+
+  $: {
+    const userKey = String(user?.id || user?.uid || user?.email || '').trim().toLowerCase()
+    if (typeof localStorage !== 'undefined' && userKey && userKey !== restoredSettingsTabUserKey) {
+      restoredSettingsTabUserKey = userKey
+      restoreActiveSettingsTab()
+      hasRestoredSettingsTab = true
+    }
   }
 
   const hasSeenSettingsTour = () => {
@@ -524,12 +635,20 @@
   }
 
   onMount(() => {
+    if (!hasRestoredSettingsTab) {
+      restoreActiveSettingsTab()
+      hasRestoredSettingsTab = true
+    }
     loadDeleteCode()
     startSettingsTourIfNeeded()
     if (typeof window !== 'undefined') {
       window.__startSettingsTour = startSettingsTour
     }
   })
+
+  $: if (typeof localStorage !== 'undefined' && hasRestoredSettingsTab) {
+    persistActiveSettingsTab()
+  }
 
   $: if (user?.email) {
     startSettingsTourIfNeeded()
@@ -745,10 +864,14 @@
       templatePreview = user.templateSettings.templatePreview || null
       uploadedHeader = user.templateSettings.uploadedHeader || null
       excludePharmacyDrugs = user.templateSettings.excludePharmacyDrugs ?? false
+      prescriptionNoteTemplates = normalizePrescriptionNoteTemplates(
+        user.templateSettings.prescriptionNoteTemplates || user.templateSettings.prescriptionTemplates
+      )
     } else {
       templateType = 'printed'
       headerFontSize = 16
       excludePharmacyDrugs = false
+      prescriptionNoteTemplates = []
     }
 
     procedurePricing = normalizeProcedurePricing(user?.templateSettings?.procedurePricing)
@@ -1185,7 +1308,10 @@
 
   // Handle tab switching
   const switchTab = (tabName) => {
-    activeTab = tabName
+    activeTab = normalizeSettingsTab(tabName)
+    if (hasRestoredSettingsTab) {
+      persistActiveSettingsTab()
+    }
   }
 
   // Handle template type selection
@@ -1407,6 +1533,7 @@
         uploadedHeader: uploadedHeader || null,
         excludePharmacyDrugs: excludePharmacyDrugs,
         procedurePricing: normalizeProcedurePricingForSave(procedurePricing),
+        prescriptionNoteTemplates: normalizePrescriptionNoteTemplates(prescriptionNoteTemplates),
         updatedAt: new Date().toISOString()
       })
       
@@ -1935,7 +2062,80 @@
       </div>
     </div>
   </div>
-          
+
+          <div class="mt-6 border border-gray-200 rounded-lg p-4 bg-gray-50">
+            <h3 class="text-sm font-semibold text-gray-900 mb-2">
+              <i class="fas fa-notes-medical mr-2 text-teal-600"></i>
+              Prescription Note Templates
+            </h3>
+            <p class="text-xs text-gray-600 mb-4">
+              These templates appear in the Prescription Notes dropdown while writing prescriptions.
+            </p>
+            <p class="text-xs text-gray-500 mb-4">
+              Placeholder available: <code class="bg-gray-100 px-1 py-0.5 rounded">{'{{patient name}}'}</code>
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label for="newPrescriptionNoteTemplateName" class="block text-xs font-medium text-gray-700 mb-1">Template Name</label>
+                <input
+                  id="newPrescriptionNoteTemplateName"
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={newPrescriptionNoteTemplateName}
+                  placeholder="e.g., Standard Follow-up"
+                />
+              </div>
+              <div class="md:col-span-1">
+                <label for="newPrescriptionNoteTemplateContent" class="block text-xs font-medium text-gray-700 mb-1">Template Content</label>
+                <textarea
+                  id="newPrescriptionNoteTemplateContent"
+                  class="w-full min-h-[88px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                  bind:value={newPrescriptionNoteTemplateContent}
+                  placeholder="Add your reusable prescription note text..."
+                ></textarea>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <button
+                type="button"
+                class="inline-flex items-center px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2"
+                on:click={addPrescriptionNoteTemplate}
+              >
+                <i class="fas fa-plus mr-1"></i>
+                Add Note Template
+              </button>
+              <span class="text-xs text-gray-500">
+                {prescriptionNoteTemplates.length} template{prescriptionNoteTemplates.length === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            {#if prescriptionNoteTemplates.length === 0}
+              <p class="text-xs text-gray-500">No note templates yet.</p>
+            {:else}
+              <div class="space-y-2">
+                {#each prescriptionNoteTemplates as template (template.id)}
+                  <div class="bg-white border border-gray-200 rounded-lg p-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="min-w-0">
+                        <p class="text-sm font-medium text-gray-900 truncate">{template.name}</p>
+                        <p class="text-xs text-gray-600 whitespace-pre-line">{template.content}</p>
+                      </div>
+                      <button
+                        type="button"
+                        class="inline-flex items-center px-2 py-1 border border-red-300 text-red-700 bg-white hover:bg-red-50 text-xs font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                        on:click={() => removePrescriptionNoteTemplate(template.id)}
+                      >
+                        <i class="fas fa-trash-alt mr-1"></i>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
 
         </div>
         {/if}
@@ -1944,14 +2144,14 @@
         <div>
           <h2 class="text-lg font-semibold text-gray-900 mb-4">Backup & Restore</h2>
           <p class="text-sm text-gray-600 mb-6">
-            Download a backup of your patients and prescriptions, then restore it if data is deleted.
+            Download a backup of your clinical records, then restore it if data is deleted.
           </p>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
               <h6 class="text-sm font-semibold text-gray-800 mb-2">Create Backup</h6>
               <p class="text-xs text-gray-500 mb-3">
-                Exports patients, prescriptions, symptoms, and long-term medications.
+                Exports patients, symptoms, illnesses/diagnoses, prescriptions, long-term medications, and reports. Includes pharmacy inventory items if you own a pharmacy.
               </p>
               <button
                 type="button"

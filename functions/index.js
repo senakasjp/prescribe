@@ -885,12 +885,22 @@ const buildPatientWelcomeEmail = async (
     template = {},
     appUrl = "",
 ) => {
+  const patientTitle = String(
+      (patient && (
+        patient.title ||
+        patient.patientTitle ||
+        patient.salutation ||
+        patient.prefix
+      )) || "",
+  ).trim();
   const patientName =
     (patient && patient.name) ||
     [patient && patient.firstName, patient && patient.lastName]
         .filter(Boolean)
         .join(" ") ||
     "Patient";
+  const patientDisplayName =
+    [patientTitle, patientName].filter(Boolean).join(" ");
   const rawPatientId = (patient && (patient.id || patient.patientId)) || "";
   const patientIdShort = formatPatientId(rawPatientId);
   let patientIdBarcode = "";
@@ -921,7 +931,7 @@ const buildPatientWelcomeEmail = async (
 
   const defaultSubject = "Welcome to M-Prescribe";
   const defaultText = `
-Hi ${patientName},
+Hi ${patientDisplayName || patientName},
 
 Welcome to M-Prescribe. Your patient profile has been created.
 
@@ -947,7 +957,7 @@ M-Prescribe Team
   const defaultHtml = `
     <div style="font-family: Arial, sans-serif; color: #111827;">
       <h2 style="margin-bottom: 8px;">Welcome to M-Prescribe</h2>
-      <p>Hi ${patientName},</p>
+      <p>Hi ${patientDisplayName || patientName},</p>
       <p>Your patient profile has been created.</p>
       <p><strong>Patient ID:</strong> ${patientIdShort || rawPatientId}</p>
       <p><strong>Doctor:</strong> ${doctorName || "Your doctor"}</p>
@@ -1057,6 +1067,8 @@ M-Prescribe Team
   const replacements = {
     name: patientName,
     patientName,
+    title: patientTitle,
+    patientTitle,
     email: (patient && patient.email) || "",
     patientId: rawPatientId,
     patientIdShort,
@@ -1407,7 +1419,9 @@ const applyReferralRewardForPaidDoctor = async ({
   doctorData = {},
   nowIso,
 }) => {
-  const rawReferrerId = String(doctorData?.referredByDoctorId || "").trim();
+  const rawReferrerId = String(
+      (doctorData && doctorData.referredByDoctorId) || "",
+  ).trim();
   if (!rawReferrerId) {
     return {
       referredDoctorUpdates: {},
@@ -1420,11 +1434,13 @@ const applyReferralRewardForPaidDoctor = async ({
     referredDoctorUpdates.referredByDoctorId = referrerDoctorId;
   }
 
-  if (doctorData?.referralBonusApplied) {
+  if (doctorData && doctorData.referralBonusApplied) {
     return {referredDoctorUpdates};
   }
 
-  const eligibleAtMs = new Date(doctorData?.referralEligibleAt || "").getTime();
+  const eligibleAtMs = new Date(
+      (doctorData && doctorData.referralEligibleAt) || "",
+  ).getTime();
   const nowMs = new Date(nowIso).getTime();
   if (!Number.isFinite(eligibleAtMs) || !Number.isFinite(nowMs)) {
     return {referredDoctorUpdates};
@@ -1436,7 +1452,10 @@ const applyReferralRewardForPaidDoctor = async ({
     return {referredDoctorUpdates};
   }
 
-  const referrerRef = admin.firestore().collection("doctors").doc(referrerDoctorId);
+  const referrerRef = admin
+      .firestore()
+      .collection("doctors")
+      .doc(referrerDoctorId);
   const referrerSnap = await referrerRef.get();
   if (!referrerSnap.exists) {
     return {referredDoctorUpdates};
@@ -1446,7 +1465,10 @@ const applyReferralRewardForPaidDoctor = async ({
     new Date(referrerData.accessExpiresAt).getTime() > nowMs ?
     referrerData.accessExpiresAt :
     nowIso;
-  const referrerNextAccessExpiresAt = addIntervalToIsoDate(referrerBaseIso, "month");
+  const referrerNextAccessExpiresAt = addIntervalToIsoDate(
+      referrerBaseIso,
+      "month",
+  );
 
   await referrerRef.set({
     accessExpiresAt: referrerNextAccessExpiresAt,
@@ -1471,6 +1493,157 @@ const applyReferralRewardForPaidDoctor = async ({
 
   return {referredDoctorUpdates};
 };
+
+const isFirestoreAlreadyExistsError = (error) =>
+  Boolean(error && (error.code === 6 || error.code === "already-exists"));
+
+exports.reconcileReferralRewards = onSchedule(
+    "every 6 hours",
+    async () => {
+      const nowIso = new Date().toISOString();
+      const nowMs = new Date(nowIso).getTime();
+      const maxCandidates = 500;
+      const summary = {
+        scanned: 0,
+        eligible: 0,
+        applied: 0,
+        skipped: 0,
+        errors: 0,
+      };
+
+      const candidatesSnapshot = await admin
+          .firestore()
+          .collection("doctors")
+          .where("referralBonusApplied", "==", false)
+          .limit(maxCandidates)
+          .get();
+
+      summary.scanned = candidatesSnapshot.size;
+      for (const candidateDoc of candidatesSnapshot.docs) {
+        const referredDoctorId = candidateDoc.id;
+        const referredDoctor = candidateDoc.data() || {};
+        try {
+          const rawReferrerId = String(
+              referredDoctor.referredByDoctorId || "",
+          ).trim();
+          const eligibleAtMs = new Date(
+              referredDoctor.referralEligibleAt || "",
+          ).getTime();
+          const isEligible = Boolean(
+              rawReferrerId &&
+              !referredDoctor.referralBonusApplied &&
+              referredDoctor.isApproved !== false &&
+              !referredDoctor.isDisabled &&
+              Number.isFinite(eligibleAtMs) &&
+              eligibleAtMs <= nowMs,
+          );
+          if (!isEligible) {
+            summary.skipped += 1;
+            continue;
+          }
+          summary.eligible += 1;
+
+          const resolvedReferrerId = await resolveReferralReferrerDoctorId(
+              rawReferrerId,
+          );
+          if (!resolvedReferrerId || resolvedReferrerId === referredDoctorId) {
+            summary.skipped += 1;
+            continue;
+          }
+
+          const referrerRef = admin
+              .firestore()
+              .collection("doctors")
+              .doc(resolvedReferrerId);
+          const referrerSnap = await referrerRef.get();
+          if (!referrerSnap.exists) {
+            summary.skipped += 1;
+            continue;
+          }
+
+          const lockRef = admin
+              .firestore()
+              .collection("referralRewardLocks")
+              .doc(referredDoctorId);
+          try {
+            await lockRef.create({
+              referredDoctorId,
+              referrerDoctorId: resolvedReferrerId,
+              createdAt: nowIso,
+              source: "reconcileReferralRewards",
+            });
+          } catch (error) {
+            if (isFirestoreAlreadyExistsError(error)) {
+              summary.skipped += 1;
+              continue;
+            }
+            throw error;
+          }
+
+          const referredRef = admin
+              .firestore()
+              .collection("doctors")
+              .doc(referredDoctorId);
+          const latestReferredSnap = await referredRef.get();
+          if (!latestReferredSnap.exists) {
+            summary.skipped += 1;
+            continue;
+          }
+          const latestReferred = latestReferredSnap.data() || {};
+          if (latestReferred.referralBonusApplied) {
+            summary.skipped += 1;
+            continue;
+          }
+
+          const referrerData = referrerSnap.data() || {};
+          const referrerBaseIso = referrerData.accessExpiresAt &&
+            new Date(referrerData.accessExpiresAt).getTime() > nowMs ?
+            referrerData.accessExpiresAt :
+            nowIso;
+          const referrerNextAccessExpiresAt = addIntervalToIsoDate(
+              referrerBaseIso,
+              "month",
+          );
+
+          await referrerRef.set({
+            accessExpiresAt: referrerNextAccessExpiresAt,
+            walletMonths: Number(referrerData.walletMonths || 0) + 1,
+            updatedAt: nowIso,
+          }, {merge: true});
+
+          await referredRef.set({
+            referredByDoctorId: resolvedReferrerId,
+            referralBonusApplied: true,
+            referralBonusAppliedAt: nowIso,
+            updatedAt: nowIso,
+          }, {merge: true});
+
+          await logDoctorPaymentRecord({
+            doctorId: resolvedReferrerId,
+            type: "referral_reward",
+            source: "referral",
+            status: "credited",
+            monthsDelta: 1,
+            referenceId: referredDoctorId,
+            note: `Referral reward from ${referredDoctorId}`,
+            metadata: {
+              referredDoctorId,
+            },
+          });
+
+          summary.applied += 1;
+        } catch (error) {
+          summary.errors += 1;
+          logger.error("Referral reconciliation failed for doctor", {
+            referredDoctorId,
+            message: (error && error.message) || String(error),
+          });
+        }
+      }
+
+      logger.info("Referral reconciliation summary", summary);
+    },
+);
 
 const applyDoctorPaymentSuccess = async ({
   resolvedDoctorId,
@@ -1546,7 +1719,10 @@ const applyDoctorPaymentSuccess = async ({
     stripePlanId: String(planId || ""),
     stripeLastPaymentAt: nowIso,
     walletMonths: Number(doctorData.walletMonths || 0) + monthsDelta,
-    ...(referralRewardResult?.referredDoctorUpdates || {}),
+    ...(
+      (referralRewardResult && referralRewardResult.referredDoctorUpdates) ||
+      {}
+    ),
   };
   await doctorRef.set(updatePayload, {merge: true});
   await logDoctorPaymentRecord({
@@ -1960,6 +2136,17 @@ exports.sendPatientRegistrationSms = onDocumentCreated(
 
       if (!payload.ok) {
         logger.info("Patient registration SMS skipped:", payload.reason);
+        await logSmsEvent({
+          type: "patientRegistration",
+          status: "skipped",
+          to: normalizeNotifyRecipient(
+              patient.phone || patient.phoneNumber || "",
+          ) || "",
+          doctorId: patient.doctorId || "",
+          patientId: patient.id || (event.params && event.params.patientId) || "",
+          patientEmail: String(patient.email || "").trim().toLowerCase(),
+          error: payload.reason || "",
+        });
         return;
       }
 
@@ -1967,6 +2154,17 @@ exports.sendPatientRegistrationSms = onDocumentCreated(
         recipient: payload.recipient,
         senderId: payload.senderId,
         message: payload.message,
+      });
+      await logSmsEvent({
+        type: "patientRegistration",
+        status: result.ok ?
+          (result.skipped ? "skipped" : "sent") :
+          "failed",
+        to: normalizeNotifyRecipient(payload.recipient) || payload.recipient,
+        doctorId: patient.doctorId || "",
+        patientId: patient.id || (event.params && event.params.patientId) || "",
+        patientEmail: String(patient.email || "").trim().toLowerCase(),
+        error: result.ok ? (result.reason || "") : String(result.error || ""),
       });
       if (!result.ok) {
         logger.warn("Patient registration SMS failed:", result.error);
@@ -3029,7 +3227,11 @@ exports.sendSmsApi = onRequest(
         return;
       }
 
-      const {recipient, senderId, type, message} = req.body || {};
+      const {recipient, senderId, type, message, logType} = req.body || {};
+      const resolvedLogType = String(logType || "").trim();
+      const normalizedLogType = /^[a-zA-Z0-9_-]{1,64}$/.test(resolvedLogType) ?
+        resolvedLogType :
+        "adminTest";
       if (!recipient || typeof recipient !== "string") {
         res.status(400).send("Recipient is required");
         return;
@@ -3100,17 +3302,44 @@ exports.sendSmsApi = onRequest(
             (data && data.message) ||
             raw ||
             "Failed to send SMS";
+          await logSmsEvent({
+            type: normalizedLogType,
+            status: "failed",
+            to: formattedRecipient,
+            doctorId: "",
+            error: String(errorMessage),
+            requestedByUid: adminUser.uid || "",
+            requestedByEmail: adminUser.email || "",
+          });
           res.status(500).send(String(errorMessage));
           return;
         }
 
+        await logSmsEvent({
+          type: normalizedLogType,
+          status: "sent",
+          to: formattedRecipient,
+          doctorId: "",
+          error: "",
+          requestedByUid: adminUser.uid || "",
+          requestedByEmail: adminUser.email || "",
+        });
         res.json({success: true, response: data});
       } catch (error) {
         logger.error("SMS API send failed:", error);
-        const message = String(
+        const errorMessage = String(
             (error && error.message) || "Failed to send SMS",
         );
-        res.status(500).send(message);
+        await logSmsEvent({
+          type: normalizedLogType,
+          status: "failed",
+          to: formattedRecipient,
+          doctorId: "",
+          error: errorMessage,
+          requestedByUid: adminUser.uid || "",
+          requestedByEmail: adminUser.email || "",
+        });
+        res.status(500).send(errorMessage);
       }
     },
 );
@@ -3152,6 +3381,7 @@ exports.createStripeCheckoutSession = onRequest(
         successUrl,
         cancelUrl,
         promoCode,
+        previewOnly,
       } = req.body || {};
       const normalizedPlanId = String(planId || "");
       const baseSelectedPlan = STRIPE_PLAN_CATALOG[normalizedPlanId];
@@ -3191,7 +3421,12 @@ exports.createStripeCheckoutSession = onRequest(
               .get();
           doctorData = doctorSnap.exists ? doctorSnap.data() : {};
           const adminDiscountRaw = doctorData ?
-            doctorData.adminStripeDiscountPercent :
+            Math.max(
+                Number(doctorData.adminStripeDiscountPercent || 0),
+                Number(doctorData.adminDiscountPercent || 0),
+                Number(doctorData.individualStripeDiscountPercent || 0),
+                Number(doctorData.individualDiscountPercent || 0),
+            ) :
             0;
           adminDiscountPercent = Math.max(
               0,
@@ -3224,15 +3459,51 @@ exports.createStripeCheckoutSession = onRequest(
             ...selectedPlan,
             planId: String(planId || ""),
           },
-          baseUnitAmount: amountAfterAdminDiscount,
+          baseUnitAmount: originalUnitAmount,
         });
-        const finalUnitAmount = Number(
-            promoResolution.finalUnitAmount || amountAfterAdminDiscount,
+        const promoFinalUnitAmount = Number(
+            promoResolution.finalUnitAmount || originalUnitAmount,
         );
+        const promoDiscountAmount = Math.max(
+            0,
+            originalUnitAmount - promoFinalUnitAmount,
+        );
+        const hasPromoDiscount = Boolean(promoResolution.promo) &&
+          promoFinalUnitAmount < amountAfterAdminDiscount;
+        const appliedDiscountSource = hasPromoDiscount ?
+          "promo" :
+          (adminDiscountPercent > 0 ? "individual" : "none");
+        const finalUnitAmount = hasPromoDiscount ?
+          promoFinalUnitAmount :
+          amountAfterAdminDiscount;
+        const appliedPromo = hasPromoDiscount ? promoResolution.promo : null;
         const totalDiscountAmount = Math.max(
             0,
             originalUnitAmount - finalUnitAmount,
         );
+        const isPreviewOnly = previewOnly === true;
+        if (isPreviewOnly) {
+          res.json({
+            success: true,
+            previewOnly: true,
+            promoApplied: hasPromoDiscount,
+            promoValidated: Boolean(promoResolution.promo),
+            appliedDiscountSource,
+            promoCode: String(
+                (appliedPromo && appliedPromo.code) || "",
+            ),
+            originalAmount: originalUnitAmount,
+            discountedAmount: finalUnitAmount,
+            discountAmount: totalDiscountAmount,
+            adminDiscountPercent: Number(adminDiscountPercent || 0),
+            adminDiscountAmount: Number(
+                appliedDiscountSource === "individual" ?
+                  adminDiscountAmount :
+                  0,
+            ),
+          });
+          return;
+        }
         const stripe = new Stripe(secretKey, {
           apiVersion: "2025-01-27.acacia",
         });
@@ -3266,13 +3537,18 @@ exports.createStripeCheckoutSession = onRequest(
             userUid: String(currentUser.uid || ""),
             userEmail: String(currentUser.email || email || ""),
             promoCode: String(
-                (promoResolution.promo && promoResolution.promo.code) || "",
+                (appliedPromo && appliedPromo.code) || "",
             ),
             promoCodeId: String(
-                (promoResolution.promo && promoResolution.promo.id) || "",
+                (appliedPromo && appliedPromo.id) || "",
             ),
             adminDiscountPercent: String(adminDiscountPercent),
-            adminDiscountAmountMinor: String(adminDiscountAmount),
+            adminDiscountAmountMinor: String(
+                appliedDiscountSource === "individual" ?
+                  adminDiscountAmount :
+                  0,
+            ),
+            appliedDiscountSource,
           },
           allow_promotion_codes: true,
         });
@@ -3287,18 +3563,25 @@ exports.createStripeCheckoutSession = onRequest(
           amount: finalUnitAmount,
           originalAmount: originalUnitAmount,
           discountAmount: totalDiscountAmount,
+          appliedDiscountSource,
           adminDiscountPercent: Number(adminDiscountPercent || 0),
-          adminDiscountAmount: Number(adminDiscountAmount || 0),
+          adminDiscountAmount: Number(
+              appliedDiscountSource === "individual" ?
+                adminDiscountAmount :
+                0,
+          ),
           promoDiscountAmount: Number(
-              Math.max(0, amountAfterAdminDiscount - finalUnitAmount),
+              appliedDiscountSource === "promo" ?
+                promoDiscountAmount :
+                0,
           ),
           currency: selectedPlan.currency,
           interval: selectedPlan.interval,
           promoCode: String(
-              (promoResolution.promo && promoResolution.promo.code) || "",
+              (appliedPromo && appliedPromo.code) || "",
           ),
           promoCodeId: String(
-              (promoResolution.promo && promoResolution.promo.id) || "",
+              (appliedPromo && appliedPromo.id) || "",
           ),
           status: "created",
           createdAt: new Date().toISOString(),
@@ -3308,15 +3591,21 @@ exports.createStripeCheckoutSession = onRequest(
           success: true,
           sessionId: session.id,
           url: session.url,
-          promoApplied: Boolean(promoResolution.promo),
+          promoApplied: hasPromoDiscount,
+          promoValidated: Boolean(promoResolution.promo),
+          appliedDiscountSource,
           promoCode: String(
-              (promoResolution.promo && promoResolution.promo.code) || "",
+              (appliedPromo && appliedPromo.code) || "",
           ),
           originalAmount: originalUnitAmount,
           discountedAmount: finalUnitAmount,
           discountAmount: totalDiscountAmount,
           adminDiscountPercent: Number(adminDiscountPercent || 0),
-          adminDiscountAmount: Number(adminDiscountAmount || 0),
+          adminDiscountAmount: Number(
+              appliedDiscountSource === "individual" ?
+                adminDiscountAmount :
+                0,
+          ),
         });
       } catch (error) {
         logger.error("Failed to create Stripe checkout session:", error);
@@ -3658,6 +3947,15 @@ exports.sendDoctorRegistrationSms = onDocumentCreated(
         senderId,
         message,
       });
+      await logSmsEvent({
+        type: "doctorRegistration",
+        status: result.ok ?
+          (result.skipped ? "skipped" : "sent") :
+          "failed",
+        to: normalizeNotifyRecipient(phone) || phone,
+        doctorId: (event.params && event.params.doctorId) || "",
+        error: result.ok ? (result.reason || "") : String(result.error || ""),
+      });
       if (!result.ok) {
         logger.warn("Doctor registration SMS failed:", result.error);
       }
@@ -3671,6 +3969,17 @@ exports.sendDoctorRegistrationSms = onDocumentCreated(
             recipient: testRecipient,
             senderId,
             message,
+          });
+          await logSmsEvent({
+            type: "doctorRegistrationTestCopy",
+            status: testResult.ok ?
+              (testResult.skipped ? "skipped" : "sent") :
+              "failed",
+            to: normalizeNotifyRecipient(testRecipient) || testRecipient,
+            doctorId: (event.params && event.params.doctorId) || "",
+            error: testResult.ok ?
+              (testResult.reason || "") :
+              String(testResult.error || ""),
           });
           if (!testResult.ok) {
             logger.warn(
@@ -3716,6 +4025,15 @@ exports.sendDoctorApprovedSms = onDocumentUpdated(
         recipient: phone,
         senderId,
         message,
+      });
+      await logSmsEvent({
+        type: "doctorApproved",
+        status: result.ok ?
+          (result.skipped ? "skipped" : "sent") :
+          "failed",
+        to: normalizeNotifyRecipient(phone) || phone,
+        doctorId: (event.params && event.params.doctorId) || "",
+        error: result.ok ? (result.reason || "") : String(result.error || ""),
       });
       if (!result.ok) {
         logger.warn("Doctor approved SMS failed:", result.error);

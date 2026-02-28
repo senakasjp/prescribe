@@ -32,6 +32,7 @@
   let isLoadingStoredSummary = false
   let summaryLoadRequestId = 0
   let savedReports = []
+  let lastLoadedPatientId = ''
 
   const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 
@@ -51,6 +52,31 @@
       hash &= 0xffffffff
     }
     return Math.abs(hash).toString(36)
+  }
+
+  const toComparableString = (value) => {
+    if (value === null || value === undefined) return ''
+    if (typeof value === 'string') return value.trim()
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    if (Array.isArray(value)) {
+      return value.map((entry) => toComparableString(entry)).join('|')
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, val]) => `${key}:${toComparableString(val)}`)
+      return entries.join(';')
+    }
+    return String(value)
+  }
+
+  const buildCollectionSignature = (items = [], extractor) => {
+    if (!Array.isArray(items) || items.length === 0) return ''
+    const normalized = items
+      .map((item) => extractor(item))
+      .sort()
+      .join('||')
+    return hashString(normalized)
   }
 
   const getSummaryPrescriptions = () => {
@@ -82,17 +108,79 @@
   }
 
   const buildSummarySignature = () => {
+    const summaryPrescriptions = getSummaryPrescriptions()
+    const patientContentSignature = hashString(toComparableString({
+      id: selectedPatient?.id || '',
+      firstName: selectedPatient?.firstName || '',
+      lastName: selectedPatient?.lastName || '',
+      age: selectedPatient?.age || '',
+      gender: selectedPatient?.gender || '',
+      dateOfBirth: selectedPatient?.dateOfBirth || '',
+      allergies: selectedPatient?.allergies || '',
+      longTermMedications: selectedPatient?.longTermMedications || '',
+      medicalHistory: selectedPatient?.medicalHistory || ''
+    }))
+    const symptomsSignature = buildCollectionSignature(symptoms, (symptom) => toComparableString({
+      id: symptom?.id || '',
+      symptom: symptom?.symptom || symptom?.name || '',
+      notes: symptom?.notes || symptom?.description || '',
+      severity: symptom?.severity || '',
+      date: symptom?.date || '',
+      updatedAt: symptom?.updatedAt || symptom?.createdAt || ''
+    }))
+    const illnessesSignature = buildCollectionSignature(illnesses, (illness) => toComparableString({
+      id: illness?.id || '',
+      illness: illness?.illness || illness?.name || '',
+      diagnosis: illness?.diagnosis || '',
+      notes: illness?.notes || illness?.description || '',
+      date: illness?.date || '',
+      updatedAt: illness?.updatedAt || illness?.createdAt || ''
+    }))
+    const prescriptionsSignature = buildCollectionSignature(summaryPrescriptions, (prescription) => toComparableString({
+      id: prescription?.id || '',
+      status: prescription?.status || '',
+      date: prescription?.date || prescription?.createdAt || '',
+      updatedAt: prescription?.updatedAt || prescription?.createdAt || '',
+      medications: (prescription?.medications || []).map((medication) => ({
+        id: medication?.id || '',
+        name: medication?.name || '',
+        genericName: medication?.genericName || '',
+        dosageForm: medication?.dosageForm || '',
+        dosage: medication?.dosage || '',
+        strength: medication?.strength || '',
+        strengthUnit: medication?.strengthUnit || '',
+        frequency: medication?.frequency || '',
+        timing: medication?.timing || '',
+        duration: medication?.duration || '',
+        instructions: medication?.instructions || '',
+        notes: medication?.notes || '',
+        updatedAt: medication?.updatedAt || medication?.createdAt || ''
+      }))
+    }))
+    const reportsSignature = buildCollectionSignature(summaryReports, (report) => toComparableString({
+      id: report?.id || '',
+      title: report?.title || '',
+      type: report?.type || '',
+      date: report?.date || report?.createdAt || '',
+      content: report?.content || report?.text || '',
+      analysis: report?.analysis || '',
+      updatedAt: report?.updatedAt || report?.createdAt || ''
+    }))
+
     const base = {
       patientId: selectedPatient?.id || '',
       patientUpdatedAt: selectedPatient?.updatedAt || selectedPatient?.createdAt || '',
-      patientAllergies: selectedPatient?.allergies || '',
-      patientLongTermMedications: selectedPatient?.longTermMedications || '',
+      patientContentSignature,
       symptomsCount,
       illnessesCount,
       prescriptionsCount,
       medicationsCount,
       reportsCount: summaryReports?.length || 0,
       medicationsSignature: buildMedicationsSignature(),
+      symptomsSignature,
+      illnessesSignature,
+      prescriptionsSignature,
+      reportsSignature,
       symptomsLatest: getLatestTimestamp(symptoms),
       illnessesLatest: getLatestTimestamp(illnesses),
       prescriptionsLatest: getLatestTimestamp(getSummaryPrescriptions()),
@@ -309,8 +397,13 @@
     dispatch('tabChange', { tab })
   }
 
-  $: if (selectedPatient) {
+  $: currentPatientId = selectedPatient?.id || ''
+  $: if (currentPatientId && currentPatientId !== lastLoadedPatientId) {
+    lastLoadedPatientId = currentPatientId
     loadStoredSummary()
+  }
+
+  $: if (selectedPatient) {
     const signature = buildSummarySignature()
     if (signature !== lastSummarySignature) {
       lastSummarySignature = signature

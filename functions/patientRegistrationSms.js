@@ -44,13 +44,19 @@ const buildPatientRegistrationSmsPayload = ({
   }
 
   const templateEnabled = !templates ||
-    templates.registrationTemplateEnabled !== false;
+    (
+      templates.patientRegistrationTemplateEnabled !== undefined ?
+        templates.patientRegistrationTemplateEnabled !== false :
+        templates.registrationTemplateEnabled !== false
+    );
   if (!templateEnabled) {
     return {ok: false, reason: "template-disabled"};
   }
 
   const channel = String(
-      (templates && templates.registrationChannel) || "sms",
+      (templates &&
+        (templates.patientRegistrationChannel || templates.registrationChannel)) ||
+      "sms",
   ).toLowerCase();
   if (!(channel === "sms" || channel === "both")) {
     return {ok: false, reason: "channel-not-sms"};
@@ -68,11 +74,24 @@ const buildPatientRegistrationSmsPayload = ({
 
   const rawPatientId = patient.id || patient.patientId || "";
   const patientIdShort = formatPatientId(rawPatientId);
+  const patientTitle = String(
+      patient.title ||
+      patient.patientTitle ||
+      patient.salutation ||
+      patient.prefix ||
+      "",
+  ).trim();
   const patientName = buildPatientName(patient);
+  const patientDisplayName =
+    [patientTitle, patientName].filter(Boolean).join(" ");
   const doctorName = buildDoctorName(doctor);
-  const template = (templates && templates.registrationTemplate) || "";
+  const template = (templates &&
+      (templates.patientRegistrationTemplate || templates.registrationTemplate)) || "";
   const message = renderTemplate(template, {
+    title: patientTitle,
+    patientTitle,
     name: patientName,
+    patientDisplayName,
     patientName,
     doctorName,
     patientId: rawPatientId,

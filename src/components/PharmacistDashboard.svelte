@@ -28,6 +28,10 @@
   export let pharmacist
   let pharmacyId = null
   $: pharmacyId = pharmacist?.pharmacyId || pharmacist?.id || null
+  $: pharmacistDisplayName = `${pharmacist?.firstName || ''} ${pharmacist?.lastName || ''}`.trim()
+    || pharmacist?.name
+    || pharmacist?.email
+    || 'Team member'
   
   let prescriptions = []
   let connectedDoctors = []
@@ -410,16 +414,36 @@
           return null
         }
 
-        const isLiquidMedication = (med) => {
-          const unit = String(med?.strengthUnit || '').trim().toLowerCase()
+        const isMeasuredLiquidMedication = (med) => {
           const form = String(med?.dosageForm || med?.form || '').trim().toLowerCase()
-          const strengthText = String(med?.strength || '').trim().toLowerCase()
-          return unit === 'ml' || unit === 'l' || form === 'liquid' || strengthText.includes('ml') || strengthText.includes(' l')
+          return form === 'liquid (measured)'
+        }
+        const isLiquidBottlesMedication = (med) => {
+          const form = String(med?.dosageForm || med?.form || '').trim().toLowerCase()
+          return form === 'liquid (bottles)'
+        }
+        const resolveDisplayPackUnit = (rawUnit = '') => {
+          const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+          const isTabletOrCapsule = form.includes('tablet') || form.includes('tab') || form.includes('capsule') || form.includes('cap')
+          const normalized = String(rawUnit || '').trim().toLowerCase()
+          if (isLiquidBottlesMedication(medication)) return 'bottles'
+          if (isMeasuredLiquidMedication(medication)) return 'ml'
+          if (!isTabletOrCapsule && (normalized === 'tablet' || normalized === 'tablets' || !normalized)) {
+            return form || 'units'
+          }
+          if (normalized === 'tablet' || normalized === 'tablets') return 'tablets'
+          return String(rawUnit || '').trim()
         }
 
-        const liquidMode = isLiquidMedication(medication)
+        // Convert inventory stock into ml units only for measured-liquid medications.
+        // Liquid (bottles) must remain in bottle-count units for Remaining/Alloc displays.
+        const liquidMode = isMeasuredLiquidMedication(medication)
 
         const pushBatchEntry = (item, batch = null) => {
+          const medicationForm = medication?.dosageForm || medication?.form || ''
+          const sourceForm = batch?.dosageForm || batch?.packUnit || item?.dosageForm || item?.packUnit || item?.unit || ''
+          if (!isLiquidFormCompatible(medicationForm, sourceForm)) return
+
           const quantityRaw = batch ? (batch.quantity ?? batch.currentStock) : item.currentStock
           let quantity = parseFloat(quantityRaw)
           if (!Number.isFinite(quantity)) return
@@ -432,12 +456,14 @@
               packUnit = 'ml'
             }
           }
+          packUnit = resolveDisplayPackUnit(packUnit)
 
           batchEntries.push({
             id: batch?.id ? `${item.id}|${batch.id}` : item.id,
             inventoryItemId: item.id,
             batchId: batch?.id || null,
             batchNumber: batch?.batchNumber || '',
+            dosageForm: batch?.dosageForm || item?.dosageForm || '',
             currentStock: quantity,
             sellingPrice: (batch?.sellingPrice ?? item.sellingPrice),
             expiryDate: batch?.expiryDate ?? item.expiryDate,
@@ -445,7 +471,8 @@
             brandName: item.brandName,
             genericName: item.genericName,
             strength: item.strength,
-            strengthUnit: item.strengthUnit
+            strengthUnit: item.strengthUnit,
+            storageLocation: resolveStorageLocationValue(batch) || resolveStorageLocationValue(item)
           })
         }
 
@@ -485,6 +512,9 @@
         }, 0)
 
         const earliestEntry = sortedEntries[0] || {}
+        const firstLocatedEntry = sortedEntries.find((entry) => {
+          return Boolean(resolveStorageLocationValue(entry))
+        }) || earliestEntry
         const effectiveEntries = earliestEntry.id ? [earliestEntry] : []
         const effectiveStock = Number.isFinite(earliestEntry.currentStock) ? earliestEntry.currentStock : aggregatedStock
         const earliestExpiry = earliestEntry.expiryDate || null
@@ -500,6 +530,7 @@
             brandName: earliestEntry.brandName,
             genericName: earliestEntry.genericName,
             inventoryItemId: earliestEntry.inventoryItemId || null,
+            storageLocation: resolveStorageLocationValue(firstLocatedEntry),
             matches: effectiveEntries,
             found: true
           }
@@ -546,6 +577,7 @@
             brandName: null,
             genericName: null,
             inventoryItemId: null,
+            storageLocation: '',
             matches: [],
             found: false
           }
@@ -564,12 +596,13 @@
           packUnit: '',
           sellingPrice: null,
           brandName: null,
-          genericName: null,
-          inventoryItemId: null,
-          matches: [],
-          found: false
+            genericName: null,
+            inventoryItemId: null,
+            storageLocation: '',
+            matches: [],
+            found: false
+          }
         }
-      }
       medicationInventoryVersion += 1
     }
   }
@@ -581,6 +614,29 @@
       .replace(/[\u3000\s]+/g, ' ') // collapse whitespace (including full-width space)
       .replace(/[\(\)（）]/g, '') // remove parentheses that often wrap generic names
       .trim()
+  }
+
+  const extractBrandFromMedicationName = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    return raw.split(/[\(（]/)[0]?.trim() || ''
+  }
+
+  const extractGenericFromMedicationName = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    const parts = raw.split(/[\(（]/)
+    if (parts.length < 2) return ''
+    return (parts[1] || '').replace(/[\)）]/g, '').trim()
+  }
+
+  const buildStrictNameSet = (...values) => {
+    const set = new Set()
+    for (const value of values) {
+      const normalized = normalizeName(value)
+      if (normalized) set.add(normalized)
+    }
+    return set
   }
   
   const normalizeKeyPart = (value) => {
@@ -608,6 +664,17 @@
     }
 
     return { strength: normalized, unit: fallbackUnit || '' }
+  }
+
+  const getDisplayDosageText = (medication) => {
+    const dosage = String(medication?.dosage || '').trim()
+    if (dosage) return dosage
+    const { strength, unit } = parseStrengthParts(
+      medication?.strength ?? '',
+      medication?.strengthUnit ?? medication?.dosageUnit ?? ''
+    )
+    const strengthText = [strength, unit].filter(Boolean).join(' ').trim()
+    return strengthText || '-'
   }
 
   const buildMedicationKey = (medication) => {
@@ -689,6 +756,114 @@
     return names
   }
 
+  const normalizeDispenseForm = (value) => String(value || '').trim().toLowerCase()
+  const resolveDispenseFormGroup = (value) => {
+    const form = normalizeDispenseForm(value)
+    if (!form) return ''
+    if (form.includes('tablet') || form === 'tab' || form === 'tabs') return 'tablet'
+    if (form.includes('capsule') || form === 'cap' || form === 'caps') return 'capsule'
+    if (form === 'liquid (measured)' || form.includes('syrup')) return 'liquid_measured'
+    if (form === 'liquid (bottles)' || form === 'liquid' || form.includes('bottle')) return 'liquid_bottles'
+    return form
+  }
+  const isMeasuredLiquidForm = (value) => {
+    const form = normalizeDispenseForm(value)
+    return form === 'liquid (measured)' || form.includes('syrup')
+  }
+  const isBottleLiquidForm = (value) => {
+    const form = normalizeDispenseForm(value)
+    return form === 'liquid (bottles)' || form === 'liquid' || form.includes('bottle')
+  }
+  const isLiquidFormCompatible = (medicationForm, inventoryForm) => {
+    const medicationMeasured = isMeasuredLiquidForm(medicationForm)
+    const medicationBottle = isBottleLiquidForm(medicationForm)
+    const inventoryMeasured = isMeasuredLiquidForm(inventoryForm)
+    const inventoryBottle = isBottleLiquidForm(inventoryForm)
+
+    // Prevent mixing measured-liquid and bottle-liquid stock rows.
+    if (medicationMeasured && inventoryBottle) return false
+    if (medicationBottle && inventoryMeasured) return false
+
+    const medicationGroup = resolveDispenseFormGroup(medicationForm)
+    const inventoryGroup = resolveDispenseFormGroup(inventoryForm)
+    if (medicationGroup && !inventoryGroup) return false
+    if (medicationGroup && inventoryGroup && medicationGroup !== inventoryGroup) return false
+    return true
+  }
+
+  const resolveMedicationBrandName = (medication) => {
+    return String(
+      medication?.brandName
+      || extractBrandFromMedicationName(medication?.name)
+      || medication?.name
+      || ''
+    ).trim()
+  }
+
+  const resolveInventoryBrandName = (item) => {
+    return String(
+      item?.brandName
+      || item?.drugName
+      || item?.name
+      || ''
+    ).trim()
+  }
+
+  const resolveMedicationGenericName = (medication) => {
+    return String(
+      medication?.genericName
+      || extractGenericFromMedicationName(medication?.name)
+      || ''
+    ).trim()
+  }
+
+  const resolveInventoryGenericName = (item) => {
+    return String(
+      item?.genericName
+      || extractGenericFromMedicationName(item?.brandName)
+      || extractGenericFromMedicationName(item?.drugName)
+      || ''
+    ).trim()
+  }
+
+  const isStrictInventoryMatchForDispense = (medication, inventoryMatch) => {
+    if (!medication || !inventoryMatch) return false
+
+    const medicationFormGroup = resolveDispenseFormGroup(medication?.dosageForm || medication?.form || '')
+    const inventoryFormGroup = resolveDispenseFormGroup(
+      inventoryMatch?.dosageForm || inventoryMatch?.packUnit || inventoryMatch?.unit || ''
+    )
+    if (!medicationFormGroup || !inventoryFormGroup || medicationFormGroup !== inventoryFormGroup) {
+      return false
+    }
+
+    const medicationBrandSet = buildStrictNameSet(
+      medication?.brandName,
+      extractBrandFromMedicationName(medication?.name),
+      medication?.name
+    )
+    const inventoryBrandSet = buildStrictNameSet(
+      inventoryMatch?.brandName,
+      inventoryMatch?.drugName,
+      inventoryMatch?.name
+    )
+    if (medicationBrandSet.size === 0 || inventoryBrandSet.size === 0) return false
+    const hasExactBrand = Array.from(medicationBrandSet).some((value) => inventoryBrandSet.has(value))
+    if (!hasExactBrand) return false
+
+    const medicationGenericSet = buildStrictNameSet(
+      medication?.genericName,
+      extractGenericFromMedicationName(medication?.name)
+    )
+    const inventoryGenericSet = buildStrictNameSet(
+      inventoryMatch?.genericName,
+      extractGenericFromMedicationName(inventoryMatch?.brandName),
+      extractGenericFromMedicationName(inventoryMatch?.drugName)
+    )
+    if (medicationGenericSet.size === 0 || inventoryGenericSet.size === 0) return false
+    return Array.from(medicationGenericSet).some((value) => inventoryGenericSet.has(value))
+  }
+
   // Find matching inventory items for a medication using flexible name matching
   const findMatchingInventoryItems = (medication, inventoryItems) => {
     if (!medication || !inventoryItems || inventoryItems.length === 0) {
@@ -696,35 +871,52 @@
       return []
     }
 
-    const medicationNames = buildMedicationNameSet(medication)
-    const medicationKey = medication.medicationKey || buildMedicationKey(medication)
-    console.log('🔍 Matching medication using names:', Array.from(medicationNames))
+    const medicationBrand = normalizeName(resolveMedicationBrandName(medication))
+    const medicationGeneric = normalizeName(resolveMedicationGenericName(medication))
+    const medicationForm = medication?.dosageForm || medication?.form || ''
+    const medicationFormGroup = resolveDispenseFormGroup(medicationForm)
+    console.log('🔍 Strict matching medication:', {
+      brand: medicationBrand,
+      generic: medicationGeneric,
+      formGroup: medicationFormGroup
+    })
 
     const matches = []
 
     for (const item of inventoryItems) {
-      const itemNames = buildInventoryNameSet(item)
-      const itemKey = buildInventoryKey(item)
-      const keyMatch = medicationKey && itemKey && medicationKey === itemKey
-
-      const hasNameMatch = Array.from(medicationNames).some(medName => 
-        Array.from(itemNames).some(invName => invName && (invName === medName || invName.includes(medName) || medName.includes(invName)))
-      )
-
-      if (keyMatch || hasNameMatch) {
-        console.log('✅ Found matching inventory item:', {
-          medicationNames: Array.from(medicationNames),
-          medicationKey,
-          inventoryKey: itemKey,
-          inventoryNames: Array.from(itemNames),
-          expiryDate: item.expiryDate
-        })
-        matches.push(item)
+      const inventoryForm = item?.dosageForm || item?.packUnit || item?.unit || ''
+      if (!isLiquidFormCompatible(medicationForm, inventoryForm)) {
+        continue
       }
+      const inventoryBrand = normalizeName(resolveInventoryBrandName(item))
+      const inventoryGeneric = normalizeName(resolveInventoryGenericName(item))
+      const inventoryFormGroup = resolveDispenseFormGroup(inventoryForm)
+
+      if (!medicationBrand || !inventoryBrand || medicationBrand !== inventoryBrand) {
+        continue
+      }
+      if (!medicationFormGroup || !inventoryFormGroup || medicationFormGroup !== inventoryFormGroup) {
+        continue
+      }
+      if (medicationGeneric || inventoryGeneric) {
+        if (!medicationGeneric || !inventoryGeneric || medicationGeneric !== inventoryGeneric) {
+          continue
+        }
+      }
+
+      console.log('✅ Found strict inventory match:', {
+        medicationBrand,
+        medicationGeneric,
+        inventoryBrand,
+        inventoryGeneric,
+        inventoryFormGroup,
+        expiryDate: item.expiryDate
+      })
+      matches.push(item)
     }
 
     if (matches.length === 0) {
-      console.log('❌ No match found. Inventory items:', inventoryItems.map(item => ({
+      console.log('❌ No strict match found. Inventory items:', inventoryItems.map(item => ({
         brandName: item.brandName,
         genericName: item.genericName,
         drugName: item.drugName,
@@ -850,6 +1042,7 @@
       brandName: null,
       genericName: null,
       inventoryItemId: null,
+      storageLocation: '',
       matches: [],
       found: false
     }
@@ -857,6 +1050,126 @@
     console.log('🔍 Getting inventory data for:', medicationId, 'Key:', key, 'Data:', data, 'version:', version)
     console.log('🔍 Available keys in medicationInventoryData:', Object.keys(medicationInventoryData))
     return data
+  }
+
+  const getAmountUnitLabel = (prescriptionId, medication) => {
+    const medicationId = medication?.id || medication?.name
+    const inventoryData = getMedicationInventoryData(prescriptionId, medicationId, medicationInventoryVersion)
+    const fromInventory = String(inventoryData?.packUnit || '').trim()
+    if (fromInventory) return fromInventory
+
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    if (form === 'liquid (measured)' || form.includes('syrup')) return 'ml'
+    if (form === 'liquid (bottles)' || form === 'liquid') return 'bottles'
+    if (form.includes('tablet') || form.includes('tab')) return 'tablets'
+    if (form.includes('capsule') || form.includes('cap')) return 'capsules'
+    if (form.includes('packet')) return 'packets'
+    return 'units'
+  }
+
+  const getDisplayValue = (value, fallback = '-') => {
+    const text = String(value ?? '').trim()
+    return text || fallback
+  }
+
+  const resolveStorageLocationValue = (source) => {
+    if (!source || typeof source !== 'object') return ''
+    const candidates = [
+      source.storageLocation,
+      source.selectedInventoryStorageLocation,
+      source.rack,
+      source.rackLocation,
+      source.location,
+      source.storageRack,
+      source.binLocation,
+      source.shelf,
+      source.shelfLocation,
+      source.storage?.location,
+      source.storage?.rack
+    ]
+    for (const candidate of candidates) {
+      const text = String(candidate ?? '').trim()
+      if (text) return text
+    }
+    return ''
+  }
+
+  const getMedicationStorageLocation = (prescriptionId, medication) => {
+    const medicationId = medication?.id || medication?.name
+    const inventoryData = getMedicationInventoryData(prescriptionId, medicationId, medicationInventoryVersion)
+    const fromPrimary = resolveStorageLocationValue(inventoryData)
+    if (fromPrimary) return fromPrimary
+
+    const preview = getAllocationPreview(prescriptionId, medication)
+    const fromBatch = (preview?.orderedMatches || [])
+      .map((entry) => resolveStorageLocationValue(entry))
+      .find(Boolean)
+    if (fromBatch) return fromBatch
+
+    const fromMedication = resolveStorageLocationValue(medication)
+    if (fromMedication) return fromMedication
+
+    return 'Not specified'
+  }
+
+  const getPrescriptionPatientRecord = (prescription) => {
+    if (!prescription || typeof prescription !== 'object') return null
+    if (prescription.patient && typeof prescription.patient === 'object') return prescription.patient
+    const firstNested = Array.isArray(prescription.prescriptions) ? prescription.prescriptions[0] : null
+    if (firstNested?.patient && typeof firstNested.patient === 'object') return firstNested.patient
+    return null
+  }
+
+  const getPrescriptionPatientAge = (prescription) => {
+    const patient = getPrescriptionPatientRecord(prescription)
+    const directAge = [
+      prescription?.patientAge,
+      prescription?.age,
+      prescription?.patient?.age,
+      patient?.age
+    ].map((value) => String(value ?? '').trim()).find(Boolean) || ''
+
+    const directAgeType = [
+      prescription?.ageType,
+      prescription?.patient?.ageType,
+      patient?.ageType
+    ].map((value) => String(value ?? '').trim()).find(Boolean) || ''
+
+    if (directAge) return [directAge, directAgeType].filter(Boolean).join(' ')
+
+    const dob = [
+      prescription?.patientDateOfBirth,
+      prescription?.dateOfBirth,
+      prescription?.patient?.dateOfBirth,
+      patient?.dateOfBirth
+    ].map((value) => String(value ?? '').trim()).find(Boolean) || ''
+
+    if (dob) {
+      const birthDate = new Date(dob)
+      if (!Number.isNaN(birthDate.getTime())) {
+        const now = new Date()
+        const ageYears = Math.floor((now - birthDate) / (365.25 * 24 * 60 * 60 * 1000))
+        if (Number.isFinite(ageYears) && ageYears >= 0) return `${ageYears} years`
+      }
+    }
+
+    return 'Not specified'
+  }
+
+  const getPrescriptionPatientSex = (prescription) => {
+    const patient = getPrescriptionPatientRecord(prescription)
+    const value = [
+      prescription?.patientSex,
+      prescription?.patientGender,
+      prescription?.sex,
+      prescription?.gender,
+      prescription?.patient?.gender,
+      prescription?.patient?.sex,
+      patient?.gender,
+      patient?.sex
+    ].map((entry) => String(entry ?? '').trim()).find(Boolean)
+
+    return value || 'Not specified'
   }
   
   // Confirmation modal state
@@ -1039,6 +1352,27 @@
 
           if (dispensePlan.length > 0) {
             for (const entry of dispensePlan) {
+              const strictCandidates = (allocationPreview?.orderedMatches || []).filter((match) => {
+                if (match.inventoryItemId !== entry.inventoryItemId) return false
+                if (entry.batchId && match.batchId && entry.batchId !== match.batchId) return false
+                return true
+              })
+              const strictMatch = strictCandidates.find((match) => isStrictInventoryMatchForDispense(medication, match))
+              if (!strictMatch) {
+                inventoryErrors.push({
+                  drugName: medication.name,
+                  error: 'No exact match by brand name + generic name + dispense type. Stock not reduced.'
+                })
+                console.warn('⚠️ Strict stock reduction skipped due to mismatch:', {
+                  medication: medication?.name,
+                  genericName: medication?.genericName,
+                  dosageForm: medication?.dosageForm || medication?.form || '',
+                  inventoryItemId: entry.inventoryItemId,
+                  batchId: entry.batchId || null
+                })
+                continue
+              }
+
               await inventoryService.createStockMovement(pharmacyId, {
                 itemId: entry.inventoryItemId,
                 type: 'dispatch',
@@ -1058,101 +1392,10 @@
               })
             }
           } else {
-            // Try to create a basic inventory item for this medication
-            console.log(`⚠️ Inventory item not found for: ${medication.name}, attempting to create basic record`)
-            try {
-              const newInventoryItem = await inventoryService.createInventoryItem(pharmacyId, {
-                drugName: medication.name,
-                genericName: medication.name,
-                brandName: medication.name,
-                manufacturer: 'Unknown',
-                category: 'prescription',
-                strength: medication.dosage || 'Unknown',
-                strengthUnit: 'mg',
-                dosageForm: 'tablet',
-                packSize: '1',
-                packUnit: 'box',
-                initialStock: 0, // Start with 0 stock
-                minimumStock: 10,
-                maximumStock: 1000,
-                costPrice: 0,
-                sellingPrice: 0,
-                storageLocation: 'Main Storage',
-                storageConditions: 'room_temperature',
-                expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                description: `Auto-created for dispensed medication: ${medication.name}`
-              })
-              
-              console.log(`✅ Created basic inventory item for ${medication.name}:`, newInventoryItem.id)
-              
-              // Calculate quantity for tracking
-              const fallbackAmount = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
-              let quantity = resolveDispenseQuantity(
-                fallbackAmount !== undefined && fallbackAmount !== null && fallbackAmount !== ''
-                  ? fallbackAmount
-                  : (medication.quantity || medication.dosage || 1)
-              )
-              
-              // Try to create stock movement, but don't fail if inventory item doesn't exist
-              try {
-                await inventoryService.createStockMovement(pharmacyId, {
-                  itemId: newInventoryItem.id,
-                  type: 'dispatch',
-                  quantity: quantity,
-                  unitCost: 0,
-                  reference: 'prescription_dispatch',
-                  referenceId: prescriptionId,
-                  notes: `Dispensed for prescription ${prescriptionId} - ${medication.name} (auto-created inventory)`,
-                  batchNumber: '',
-                  expiryDate: ''
-                })
-                
-                inventoryReductions.push({
-                  drugName: medication.name,
-                  quantity: quantity,
-                  inventoryItem: 'Auto-created'
-                })
-                
-                console.log(`✅ Created inventory item and reduced stock for ${medication.name}: -${quantity}`)
-                
-              } catch (stockMovementError) {
-                console.warn(`⚠️ Could not create stock movement for ${medication.name}, but continuing with dispensing:`, stockMovementError.message)
-                
-                // Still track the dispensing even if inventory update fails
-                inventoryReductions.push({
-                  drugName: medication.name,
-                  quantity: quantity,
-                  inventoryItem: 'Auto-created (inventory tracking failed)'
-                })
-                
-                inventoryErrors.push({
-                  drugName: medication.name,
-                  error: `Inventory item created but stock movement failed: ${stockMovementError.message}`
-                })
-              }
-              
-            } catch (createError) {
-              console.error(`❌ Failed to create inventory item for ${medication.name}:`, createError)
-              
-              // Still track the dispensing even if inventory creation fails
-              const fallbackAmount = editableAmounts.get(`${prescriptionId}-${medicationKey}`)
-              let quantity = resolveDispenseQuantity(
-                fallbackAmount !== undefined && fallbackAmount !== null && fallbackAmount !== ''
-                  ? fallbackAmount
-                  : (medication.quantity || medication.dosage || 1)
-              )
-              
-              inventoryReductions.push({
-                drugName: medication.name,
-                quantity: quantity,
-                inventoryItem: 'Inventory creation failed'
-              })
-              
-              inventoryErrors.push({
-                drugName: medication.name,
-                error: `Could not create inventory item: ${createError.message}`
-              })
-            }
+            inventoryErrors.push({
+              drugName: medication.name,
+              error: 'No exact match by brand name + generic name + dispense type. Stock not reduced.'
+            })
           }
         } catch (error) {
           inventoryErrors.push({
@@ -1647,7 +1890,10 @@
   const calculateMedicationAmount = (medication) => {
     console.log('🧮 Calculating amount for medication:', medication)
     if (medication.amount !== undefined && medication.amount !== null && medication.amount !== '') {
-      return medication.amount
+      const providedAmount = chargeCalculationService.parseMedicationQuantity(medication.amount)
+      if (Number.isFinite(providedAmount) && providedAmount > 0) {
+        return medication.amount
+      }
     }
 
     const resolveStrengthToMl = (value, unitHint = '') => {
@@ -1780,6 +2026,10 @@
         const amountValue = (override !== undefined && override !== null && override !== '')
           ? override
           : medication.amount
+        const shouldMirrorAmountToQts = chargeCalculationService.isQtsMedication(medication)
+        const qtsValue = shouldMirrorAmountToQts
+          ? ((override !== undefined && override !== null && override !== '') ? override : medication.qts)
+          : medication.qts
 
         const inventoryData = medicationInventoryData[key]
 
@@ -1789,6 +2039,7 @@
         return {
           ...medication,
           amount: amountValue,
+          qts: qtsValue,
           isDispensed: isDispensed, // Add dispensed status
           inventoryMatch: inventoryData ? {
             found: inventoryData.found,
@@ -1864,6 +2115,17 @@
       lkrSymbol: 'none'
     })
 
+  const normalizeChargeNote = (note) => {
+    const value = String(note || '').trim()
+    if (!value) return ''
+    // Backward-compatibility: old builds emitted this message for measured liquids
+    // even when inventory had valid per-ml price.
+    if (/inventory volume\/strength missing for measured liquid/i.test(value)) {
+      return 'Price missing in inventory'
+    }
+    return value
+  }
+
   onMount(() => {
     console.log('🔍 PharmacistDashboard: Received pharmacist data:', pharmacist)
     console.log('🔍 PharmacistDashboard: businessName:', pharmacist?.businessName)
@@ -1886,6 +2148,9 @@
               <span class="text-xs bg-teal-100 text-teal-800 px-1 py-0.5 rounded ml-1">v2.3</span>
             </h1>
             <p class="text-xs text-gray-500 truncate">Pharmacist Portal</p>
+            {#if pharmacist?.isPharmacyUser}
+              <p class="text-xs text-gray-700 truncate">Team member: {pharmacistDisplayName}</p>
+            {/if}
           </div>
         </div>
         <div class="ml-2 flex items-center gap-2">
@@ -1926,7 +2191,7 @@
           aria-label="Close profile settings"
           on:click={handleBackToDashboard}
         ></button>
-        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full">
           <div class="flex items-center justify-between px-4 py-3 border-b">
             <h3 class="text-base font-semibold text-gray-900">Profile Settings</h3>
             <button
@@ -2482,7 +2747,7 @@
 {#if showPrescriptionDetails && selectedPrescription}
   <div id="prescriptionModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-2 sm:p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-full max-h-full bg-black bg-opacity-50 backdrop-blur-sm">
     <div class="relative w-full max-w-4xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 h-full max-h-full flex flex-col border border-white">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 h-full max-h-full flex flex-col border border-white overflow-hidden">
         <!-- Mobile Header -->
         <div class="flex items-center justify-between p-3 sm:p-5 border-b rounded-t dark:border-gray-600 bg-blue-600 text-white sm:bg-white sm:text-gray-900">
           <h3 class="text-lg sm:text-xl font-medium">
@@ -2511,8 +2776,8 @@
                 <p><strong>Name:</strong> {selectedPrescription.patientName || 'Unknown Patient'}</p>
                 <p><strong>Email:</strong> {selectedPrescription.patientEmail || 'No email'}</p>
                 <div class="flex gap-4">
-                  <p><strong>Age:</strong> {selectedPrescription.patientAge || selectedPrescription.age || 'Not specified'}</p>
-                  <p><strong>Sex:</strong> {selectedPrescription.patientSex || selectedPrescription.patientGender || selectedPrescription.sex || selectedPrescription.gender || 'Not specified'}</p>
+                  <p><strong>Age:</strong> {getPrescriptionPatientAge(selectedPrescription)}</p>
+                  <p><strong>Sex:</strong> {getPrescriptionPatientSex(selectedPrescription)}</p>
                 </div>
               </div>
             </div>
@@ -2566,40 +2831,27 @@
 
                               <!-- Main Info Grid -->
                               <div class="p-4">
-                                <div class="grid grid-cols-8 gap-4 text-sm">
-                                  <!-- Column Headers -->
+                                <div class="grid grid-cols-6 gap-4 text-sm">
                                   <div class="col-span-1">
                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Dosage</div>
-                                    <div class="text-gray-900">{medication.dosage}</div>
-                                  </div>
-
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Frequency</div>
-                                    <div class="text-gray-900">{medication.frequency}</div>
-                                  </div>
-
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">When</div>
-                                    <div class="text-gray-900">{medication.timing || '-'}</div>
-                                  </div>
-
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Duration</div>
-                                    <div class="text-gray-900">{medication.duration}</div>
+                                    <div class="text-gray-900">{getDisplayDosageText(medication)}</div>
                                   </div>
 
                                   <div class="col-span-1">
                                     <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Amount</div>
-                                    <input
-                                      type="number"
-                                      class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
-                                      value={getEditableAmount(prescription.id, medication)}
-                                      on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
-                                      placeholder="0"
-                                      min="0"
-                                      step="0.01"
-                                      inputmode="decimal"
-                                    />
+                                    <div class="space-y-1">
+                                      <input
+                                        type="number"
+                                        class="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
+                                        value={getEditableAmount(prescription.id, medication)}
+                                        on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
+                                        placeholder="0"
+                                        min="0"
+                                        step="0.01"
+                                        inputmode="decimal"
+                                      />
+                                      <div class="text-[11px] text-gray-500 text-center">{getAmountUnitLabel(prescription.id, medication)}</div>
+                                    </div>
                                   </div>
 
                                   <div class="col-span-1">
@@ -2655,10 +2907,29 @@
                                     {/if}
                                   </div>
 
-                                  <div class="col-span-1">
-                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Instructions</div>
-                                    <div class="text-gray-900">{medication.instructions}</div>
+                                </div>
+
+                                <div class="grid grid-cols-3 gap-4 text-sm mt-4 pt-3 border-t border-gray-100">
+                                  <div>
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Frequency</div>
+                                    <div class="text-gray-900">{(medication.frequency && medication.frequency.trim()) || '-'}</div>
                                   </div>
+                                  <div>
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">When</div>
+                                    <div class="text-gray-900">{(medication.timing && medication.timing.trim()) || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Duration</div>
+                                    <div class="text-gray-900">{(medication.duration && medication.duration.trim()) || '-'}</div>
+                                  </div>
+                                </div>
+                                <div class="mt-4 text-sm">
+                                  <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Instructions</div>
+                                  <div class="text-gray-900 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
+                                </div>
+                                <div class="mt-3 text-sm">
+                                  <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Storage location</div>
+                                  <div class="text-gray-900">{getMedicationStorageLocation(prescription.id, medication)}</div>
                                 </div>
                               </div>
 
@@ -2693,11 +2964,11 @@
                           {@const inventoryMatchesMobile = getInventoryMatches(prescription.id, medication.id || medication.name)}
                           {@const allocationPreviewMobile = getAllocationPreview(prescription.id, medication)}
                           <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                            <div class="flex items-center justify-between mb-2">
-                              <div class="flex items-center gap-2">
-                                <h4 class="font-semibold text-gray-900 text-sm">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</h4>
+                            <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
+                              <div class="min-w-0 flex-1">
+                                <h4 class="font-semibold text-gray-900 text-sm break-words">{medication.name}{#if medication.genericName && medication.genericName !== medication.name} ({medication.genericName}){/if}</h4>
                               </div>
-                              <label class="flex items-center space-x-2 {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'cursor-not-allowed' : 'cursor-pointer'}">
+                              <label class="flex items-center space-x-2 shrink-0 {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'cursor-not-allowed' : 'cursor-pointer'}">
                                 <input 
                                   type="checkbox" 
                                   class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 dark:focus:ring-teal-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -2708,72 +2979,87 @@
                                 <span class="text-xs {isMedicationAlreadyDispensed(prescription.id, medication.id || medication.name) ? 'text-gray-400' : 'text-gray-600'}">Dispensed</span>
                               </label>
                             </div>
-                            <div class="space-y-1 text-xs">
-                              <div class="flex justify-between">
+                            <div class="space-y-2 text-xs">
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Dosage:</span>
-                                <span class="text-gray-900">{medication.dosage}</span>
+                                <span class="text-gray-900 text-right break-words">{getDisplayDosageText(medication)}</span>
                               </div>
-                              <div class="flex justify-between">
-                                <span class="text-gray-600">Frequency:</span>
-                                <span class="text-gray-900">{medication.frequency}</span>
-                              </div>
-                              <div class="flex justify-between">
-                                <span class="text-gray-600">When:</span>
-                                <span class="text-gray-900">{medication.timing || '-'}</span>
-                              </div>
-                              <div class="flex justify-between">
-                                <span class="text-gray-600">Duration:</span>
-                                <span class="text-gray-900">{medication.duration}</span>
-                              </div>
-                              <div class="flex justify-between">
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Amount:</span>
                                 <!-- All medications - show as editable input -->
-                                <input 
-                                  type="number" 
-                                  class="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
-                                  value={getEditableAmount(prescription.id, medication)}
-                                  on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
-                                  placeholder="0"
-                                  min="0"
-                                  step="0.01"
-                                  inputmode="decimal"
-                                />
+                                <div class="flex flex-col items-end min-w-0">
+                                  <input 
+                                    type="number" 
+                                    class="w-full max-w-28 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-center font-semibold text-blue-600"
+                                    value={getEditableAmount(prescription.id, medication)}
+                                    on:input={(e) => updateEditableAmount(prescription.id, medication.id || medication.name, e.target.value)}
+                                    placeholder="0"
+                                    min="0"
+                                    step="0.01"
+                                    inputmode="decimal"
+                                  />
+                                  <span class="text-[10px] text-gray-500 mt-0.5">{getAmountUnitLabel(prescription.id, medication)}</span>
+                                </div>
                               </div>
-                              <div class="flex justify-between">
+                              <div class="pt-2 mt-2 border-t border-gray-200">
+                                <div class="grid grid-cols-2 gap-2 text-center">
+                                  <div>
+                                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Frequency</div>
+                                    <div class="text-gray-900 mt-0.5">{(medication.frequency && medication.frequency.trim()) || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div class="text-[10px] uppercase tracking-wide text-gray-400">When</div>
+                                    <div class="text-gray-900 mt-0.5">{(medication.timing && medication.timing.trim()) || '-'}</div>
+                                  </div>
+                                  <div>
+                                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Duration</div>
+                                    <div class="text-gray-900 mt-0.5">{(medication.duration && medication.duration.trim()) || '-'}</div>
+                                  </div>
+                                </div>
+                                <div class="mt-2 text-center">
+                                  <div class="text-[10px] uppercase tracking-wide text-gray-400">Instructions</div>
+                                  <div class="text-gray-900 mt-0.5 whitespace-pre-line">{(medication.instructions && medication.instructions.trim()) || '-'}</div>
+                                </div>
+                                <div class="mt-2 text-center">
+                                  <div class="text-[10px] uppercase tracking-wide text-gray-400">Storage location</div>
+                                  <div class="text-gray-900 mt-0.5 break-words">{getMedicationStorageLocation(prescription.id, medication)}</div>
+                                </div>
+                              </div>
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Expiry Date:</span>
                                 {#if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
-                                  <span class="text-green-600 font-medium text-xs">
+                                  <span class="text-green-600 font-medium text-xs text-right break-words">
                                     {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate ? 
                                       formatDate(getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).expiryDate) : 
                                       'N/A'
                                     }
                                   </span>
                                 {:else}
-                                  <span class="text-red-500 text-xs">Not in inventory</span>
+                                  <span class="text-red-500 text-xs text-right">Not in inventory</span>
                                 {/if}
                               </div>
-                              <div class="flex justify-between">
+                              <div class="grid grid-cols-[auto,1fr] gap-2 items-start">
                                 <span class="text-gray-600">Remaining:</span>
                                 {#if inventoryMatchesMobile.length > 0}
-                                  <span class="text-blue-600 font-medium text-xs">
+                                  <span class="text-blue-600 font-medium text-xs text-right break-words">
                                     {allocationPreviewMobile.orderedMatches[0]?.available || getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock}
                                     {allocationPreviewMobile.orderedMatches[0]?.packUnit || getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
                                   </span>
                                 {:else if getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).found}
-                                  <span class="text-blue-600 font-medium text-xs">
+                                  <span class="text-blue-600 font-medium text-xs text-right break-words">
                                     {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).currentStock} {getMedicationInventoryData(prescription.id, medication.id || medication.name, medicationInventoryVersion).packUnit}
                                   </span>
                                 {:else}
-                                  <span class="text-red-500 text-xs">0</span>
+                                  <span class="text-red-500 text-xs text-right">0</span>
                                 {/if}
                               </div>
                               {#if inventoryMatchesMobile.length > 0}
                                 <div class="pt-2 mt-2 border-t border-gray-200 space-y-1">
                                   <div class="text-[10px] uppercase text-gray-400 tracking-wide">Inventory Batches</div>
                                   {#each allocationPreviewMobile.orderedMatches as batch, index}
-                                    <div class="flex justify-between text-xs text-gray-600">
-                                      <span>Batch {index + 1}{#if batch.expiryDate} · {formatDate(batch.expiryDate)}{/if}</span>
-                                      <span class="text-gray-700">
+                                    <div class="flex flex-wrap justify-between gap-x-2 gap-y-1 text-xs text-gray-600">
+                                      <span class="min-w-0 break-words">Batch {index + 1}{#if batch.expiryDate} · {formatDate(batch.expiryDate)}{/if}</span>
+                                      <span class="text-gray-700 text-right">
                                         {batch.available} {batch.packUnit || 'units'}
                                         {#if batch.allocated > 0}
                                           <span class="text-teal-600 font-semibold ml-1">→ {batch.allocated}</span>
@@ -2786,10 +3072,6 @@
                                   {/if}
                                 </div>
                               {/if}
-                              <div class="mt-2">
-                                <span class="text-gray-600 text-xs">Instructions:</span>
-                                <p class="text-gray-900 text-xs mt-1">{medication.instructions}</p>
-                              </div>
                             </div>
                           </div>
                         {/each}
@@ -2901,7 +3183,7 @@
                           {#if medication.found}
                           {formatCurrencyDisplay(medication.totalCost, displayCurrency)}
                           {:else}
-                            <span class="text-gray-400 italic">Not available</span>
+                            <span class="text-gray-400 italic">{normalizeChargeNote(medication.note) || 'Not available'}</span>
                           {/if}
                         </span>
                       </div>

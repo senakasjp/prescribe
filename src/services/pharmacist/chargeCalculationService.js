@@ -47,8 +47,11 @@ class ChargeCalculationService {
     }
 
     const parsedQuantity = this.parseMedicationQuantity(medication.amount)
-    const isLiquid = this.isLiquidMedication(medication)
-    const liquidAmount = isLiquid ? this.calculateLiquidAmount(medication) : 0
+    // Only measured liquids are quantity-derived from strength × frequency × duration.
+    // Liquid (bottles) is count-based and should use entered amount/qts as bottle count.
+    const liquidAmount = this.isMeasuredLiquidMedication(medication)
+      ? this.calculateLiquidAmount(medication)
+      : 0
 
     if (liquidAmount > 0) return liquidAmount
     if (parsedQuantity !== null && parsedQuantity > 0) return parsedQuantity
@@ -58,13 +61,22 @@ class ChargeCalculationService {
 
   isLiquidMedication(medication) {
     if (!medication) return false
-    const unit = String(medication.strengthUnit || '').trim().toLowerCase()
     const dosageForm = String(medication.dosageForm || medication.form || '').trim().toLowerCase()
+    if (dosageForm) {
+      // Treat liquid pricing only for explicit liquid/syrup dispense forms.
+      // Do not infer liquid pricing for count-based forms (e.g. packet) even if unit is ml/l.
+      return (
+        dosageForm === 'liquid' ||
+        dosageForm === 'liquid (measured)' ||
+        dosageForm === 'liquid (bottles)' ||
+        dosageForm.includes('syrup')
+      )
+    }
+    const unit = String(medication.strengthUnit || '').trim().toLowerCase()
     const strengthText = String(medication.strength || '').trim().toLowerCase()
     return (
       unit === 'ml' ||
       unit === 'l' ||
-      dosageForm.includes('liquid') ||
       strengthText.includes('ml') ||
       strengthText.includes(' l')
     )
@@ -73,7 +85,31 @@ class ChargeCalculationService {
   isMeasuredLiquidMedication(medication) {
     if (!medication) return false
     const dosageForm = String(medication.dosageForm || medication.form || '').trim().toLowerCase()
-    return dosageForm === 'liquid (measured)'
+    return dosageForm === 'liquid (measured)' || dosageForm.includes('syrup')
+  }
+
+  normalizeDispenseForm(value) {
+    return String(value || '').trim().toLowerCase()
+  }
+
+  isMeasuredLiquidForm(value) {
+    const form = this.normalizeDispenseForm(value)
+    return form === 'liquid (measured)' || form.includes('syrup')
+  }
+
+  isBottleLiquidForm(value) {
+    const form = this.normalizeDispenseForm(value)
+    return form === 'liquid (bottles)' || form === 'liquid' || form.includes('bottle')
+  }
+
+  isLiquidFormCompatible(medicationForm, inventoryForm) {
+    const medicationMeasured = this.isMeasuredLiquidForm(medicationForm)
+    const medicationBottle = this.isBottleLiquidForm(medicationForm)
+    const inventoryMeasured = this.isMeasuredLiquidForm(inventoryForm)
+    const inventoryBottle = this.isBottleLiquidForm(inventoryForm)
+    if (medicationMeasured && inventoryBottle) return false
+    if (medicationBottle && inventoryMeasured) return false
+    return true
   }
 
   resolveStrengthToMl(value, unitHint = '') {
@@ -519,6 +555,13 @@ class ChargeCalculationService {
                   })
                 }
               } else {
+                const unavailableReason = requestedQuantity <= 0
+                  ? 'No quantity specified'
+                  : this.getInventoryPricingUnavailableReason(
+                    medication,
+                    inventoryItems,
+                    medication.inventoryMatch && medication.inventoryMatch.found ? medication.inventoryMatch : null
+                  )
                 medicationBreakdown.push({
                   medicationName: medication.name,
                   dosage: medication.dosage,
@@ -529,9 +572,7 @@ class ChargeCalculationService {
                   unitCost: 0,
                   totalCost: 0,
                   found: false,
-                  note: requestedQuantity <= 0
-                    ? 'No quantity specified'
-                    : 'Not available in inventory'
+                  note: unavailableReason
                 })
               }
             }
@@ -567,13 +608,29 @@ class ChargeCalculationService {
 
     const medicationNames = this.buildMedicationNameSet(medication)
     const medicationKey = this.buildMedicationKey(medication)
+    const medicationCapacity = this.resolveMedicationCapacity(medication)
+    const medicationForm = medication?.dosageForm || medication?.form || ''
     const matches = []
 
     for (const item of inventoryItems) {
+      const inventoryForm = item?.dosageForm || item?.packUnit || item?.unit || ''
+      if (!this.isLiquidFormCompatible(medicationForm, inventoryForm)) {
+        continue
+      }
       const itemNames = this.buildInventoryNameSet(item)
       const itemKey = this.buildInventoryKey(item)
+      const itemCapacity = this.resolveInventoryCapacity(item)
 
       const keyMatch = medicationKey && itemKey && itemKey === medicationKey
+      const hasCapacityMismatch = Boolean(
+        medicationCapacity &&
+        itemCapacity &&
+        medicationCapacity !== itemCapacity
+      )
+      if (hasCapacityMismatch) {
+        continue
+      }
+      const capacityMatch = Boolean(medicationCapacity && itemCapacity && medicationCapacity === itemCapacity)
 
       const hasMatch = Array.from(medicationNames).some(medName =>
         Array.from(itemNames).some(invName =>
@@ -587,23 +644,41 @@ class ChargeCalculationService {
       )
 
       if (keyMatch || hasMatch) {
-        matches.push(item)
+        matches.push({
+          item,
+          score: (keyMatch ? 2 : 0) + (capacityMatch ? 1 : 0)
+        })
       }
     }
 
     return matches.sort((a, b) => {
-      const aTime = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity
-      const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity
+      if (b.score !== a.score) return b.score - a.score
+      const aItem = a.item
+      const bItem = b.item
+      const aTime = aItem.expiryDate ? new Date(aItem.expiryDate).getTime() : Infinity
+      const bTime = bItem.expiryDate ? new Date(bItem.expiryDate).getTime() : Infinity
       return aTime - bTime
-    })
+    }).map((entry) => entry.item)
   }
 
   buildInventoryPricingSources(medication, inventoryItems, inventoryContext) {
-    const isLiquid = this.isLiquidMedication(medication)
     const isMeasuredLiquid = this.isMeasuredLiquidMedication(medication)
+    const medicationCapacity = this.resolveMedicationCapacity(medication)
+    const medicationForm = medication?.dosageForm || medication?.form || ''
     const sources = []
     const inventoryById = new Map()
     inventoryItems.forEach(item => inventoryById.set(item.id, item))
+    const isCapacityCompatible = (entry) => {
+      if (!entry) return false
+      if (!medicationCapacity) return true
+      const entryCapacity = this.resolveInventoryCapacity(entry)
+      return !entryCapacity || entryCapacity === medicationCapacity
+    }
+    const isFormCompatible = (entry) => {
+      if (!entry) return false
+      const inventoryForm = entry?.dosageForm || entry?.packUnit || entry?.unit || ''
+      return this.isLiquidFormCompatible(medicationForm, inventoryForm)
+    }
 
     const addSource = (entry) => {
       if (!entry) return
@@ -629,17 +704,18 @@ class ChargeCalculationService {
       if (!available || available <= 0) return
       if (unitCost === null) return
 
-      if (isLiquid) {
+      // For measured liquids, inventory selling price is expected as per-ml.
+      // Keep direct per-ml values as-is. Convert only legacy bottle-style rows.
+      if (isMeasuredLiquid) {
+        const unitHint = String(entry.unit ?? entry.packUnit ?? '').trim().toLowerCase()
+        const isAlreadyMlUnit = unitHint === 'ml'
         const packMl = this.resolveStrengthToMl(
           entry.strength ?? entry.dosage ?? entry.packSize,
           entry.strengthUnit ?? entry.unit ?? entry.packUnit
         )
-        if (packMl && packMl > 0) {
+        if (!isAlreadyMlUnit && packMl && packMl > 0) {
           available *= packMl
           unitCost /= packMl
-        } else if (isMeasuredLiquid) {
-          // Measured liquid pricing must use unit ml price from inventory.
-          return
         }
       }
 
@@ -660,8 +736,11 @@ class ChargeCalculationService {
     if (inventoryContext && Array.isArray(inventoryContext.matches) && inventoryContext.matches.length > 0) {
       inventoryContext.matches.forEach(match => {
         const resolved = match.inventoryItemId ? inventoryById.get(match.inventoryItemId) : null
-        if (resolved && (!resolved.batches || resolved.batches.length === 0)) {
+        if (resolved && isCapacityCompatible(resolved) && isFormCompatible(resolved) && (!resolved.batches || resolved.batches.length === 0)) {
           addSource(resolved)
+        }
+        if ((!isCapacityCompatible(match) && !isCapacityCompatible(resolved)) || (!isFormCompatible(match) && !isFormCompatible(resolved))) {
+          return
         }
         addSource({
           inventoryItemId: match.inventoryItemId || resolved?.id || null,
@@ -679,7 +758,7 @@ class ChargeCalculationService {
 
     if (sources.length === 0 && inventoryContext?.inventoryItemId) {
       const resolved = inventoryById.get(inventoryContext.inventoryItemId)
-      if (resolved) {
+      if (resolved && isCapacityCompatible(resolved) && isFormCompatible(resolved)) {
         addSource(resolved)
       }
     }
@@ -694,6 +773,66 @@ class ChargeCalculationService {
       const bTime = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity
       return aTime - bTime
     })
+  }
+
+  getInventoryPricingUnavailableReason(medication, inventoryItems, inventoryContext) {
+    const resolvedMatches = []
+    const seenIds = new Set()
+
+    const pushMatch = (entry) => {
+      if (!entry) return
+      const key = entry.id || entry.inventoryItemId || `${entry.brandName || ''}|${entry.genericName || ''}|${entry.expiryDate || ''}`
+      if (key && seenIds.has(key)) return
+      if (key) seenIds.add(key)
+      resolvedMatches.push(entry)
+    }
+
+    if (inventoryContext?.inventoryItemId) {
+      const direct = (inventoryItems || []).find(item => item.id === inventoryContext.inventoryItemId)
+      pushMatch(direct)
+    }
+
+    if (Array.isArray(inventoryContext?.matches) && inventoryContext.matches.length > 0) {
+      inventoryContext.matches.forEach((entry) => {
+        const resolved = entry?.inventoryItemId
+          ? (inventoryItems || []).find(item => item.id === entry.inventoryItemId)
+          : null
+        pushMatch(resolved || entry)
+      })
+    }
+
+    if (resolvedMatches.length === 0) {
+      this.findMatchingDrugs(medication, inventoryItems || []).forEach(pushMatch)
+    }
+
+    if (resolvedMatches.length === 0) return 'Not available in inventory'
+
+    const hasStock = resolvedMatches.some((entry) => {
+      if (Array.isArray(entry.batches) && entry.batches.length > 0) {
+        return entry.batches.some((batch) => {
+          if ((batch.status || 'active') !== 'active') return false
+          const qty = this.extractNumericValue(batch.quantity ?? batch.currentStock ?? 0)
+          return Number.isFinite(qty) && qty > 0
+        })
+      }
+      const qty = this.extractNumericValue(entry.currentStock ?? entry.available ?? entry.quantity ?? 0)
+      return Number.isFinite(qty) && qty > 0
+    })
+    if (!hasStock) return 'Out of stock'
+
+    const hasPrice = resolvedMatches.some((entry) => {
+      if (Array.isArray(entry.batches) && entry.batches.length > 0) {
+        return entry.batches.some((batch) => {
+          if ((batch.status || 'active') !== 'active') return false
+          const parsed = this.parseCurrencyValue(batch.sellingPrice ?? entry.sellingPrice ?? batch.unitCost ?? entry.unitCost ?? batch.costPrice ?? entry.costPrice)
+          return parsed !== null
+        })
+      }
+      return this.parseCurrencyValue(entry.sellingPrice ?? entry.unitCost ?? entry.costPrice) !== null
+    })
+    if (!hasPrice) return 'Price missing in inventory'
+
+    return 'Unable to price from inventory data'
   }
 
   allocateQuantityAcrossSources(requestedQuantity, sources) {
@@ -775,6 +914,57 @@ class ChargeCalculationService {
     return { strength: normalized, unit: fallbackUnit || '' }
   }
 
+  normalizeNumericText(value) {
+    const raw = String(value ?? '').trim()
+    if (!raw) return ''
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return raw
+    return String(parsed)
+  }
+
+  normalizeAmountWithUnit(amount, unit = '') {
+    const normalizedAmount = this.normalizeNumericText(amount)
+    const normalizedUnit = String(unit ?? '').trim().toLowerCase()
+    if (!normalizedAmount) return ''
+    return [normalizedAmount, normalizedUnit].filter(Boolean).join(' ').trim()
+  }
+
+  parseAmountWithUnit(value) {
+    const raw = String(value ?? '').trim().toLowerCase()
+    if (!raw) return ''
+    const match = raw.match(/^(\d+(?:\.\d+)?)\s*([a-z%]+)?$/i)
+    if (!match) return ''
+    return this.normalizeAmountWithUnit(match[1], match[2] || '')
+  }
+
+  resolveMedicationCapacity(medication) {
+    if (!medication) return ''
+    if (this.isMeasuredLiquidMedication(medication)) return ''
+    const candidates = [
+      this.normalizeAmountWithUnit(medication?.containerSize, medication?.containerUnit),
+      this.normalizeAmountWithUnit(medication?.totalVolume ?? medication?.volume, medication?.volumeUnit),
+      this.parseAmountWithUnit(medication?.inventoryStrengthText)
+    ]
+    if (!this.isLiquidMedication(medication)) {
+      candidates.push(
+        this.normalizeAmountWithUnit(medication?.strength, medication?.strengthUnit),
+        this.parseAmountWithUnit(medication?.strength)
+      )
+    }
+    return candidates.find(Boolean) || ''
+  }
+
+  resolveInventoryCapacity(item) {
+    if (!item) return ''
+    const candidates = [
+      this.normalizeAmountWithUnit(item?.containerSize, item?.containerUnit),
+      this.normalizeAmountWithUnit(item?.totalVolume ?? item?.volume, item?.volumeUnit),
+      this.normalizeAmountWithUnit(item?.strength, item?.strengthUnit),
+      this.parseAmountWithUnit(item?.strength)
+    ]
+    return candidates.find(Boolean) || ''
+  }
+
   buildMedicationKey(medication) {
     if (!medication) return ''
 
@@ -784,13 +974,15 @@ class ChargeCalculationService {
     const strengthValue = medication.strength ?? medication.dosage
     const strengthUnit = (medication.strengthUnit ?? medication.dosageUnit) || ''
     const { strength, unit } = this.parseStrength(strengthValue, strengthUnit)
+    const capacity = this.resolveMedicationCapacity(medication)
 
     const parts = [
       this.normalizeKeyPart(name),
       this.normalizeKeyPart(genericName),
       this.normalizeKeyPart(strength),
       this.normalizeKeyPart(unit),
-      this.normalizeKeyPart(dosageForm)
+      this.normalizeKeyPart(dosageForm),
+      this.normalizeKeyPart(capacity)
     ].filter(Boolean)
 
     return parts.join('|')
@@ -800,12 +992,14 @@ class ChargeCalculationService {
     if (!item) return ''
 
     const dosageForm = item.dosageForm || item.packUnit || item.unit || ''
+    const capacity = this.resolveInventoryCapacity(item)
     const parts = [
       this.normalizeKeyPart(item.brandName || item.drugName || ''),
       this.normalizeKeyPart(item.genericName || ''),
       this.normalizeKeyPart(item.strength || ''),
       this.normalizeKeyPart(item.strengthUnit || ''),
-      this.normalizeKeyPart(dosageForm)
+      this.normalizeKeyPart(dosageForm),
+      this.normalizeKeyPart(capacity)
     ].filter(Boolean)
 
     return parts.join('|')

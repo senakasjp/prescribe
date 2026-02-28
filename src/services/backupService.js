@@ -15,6 +15,8 @@ const sanitizeDocData = (item) => {
   return data
 }
 
+const normalizeComparable = (value) => String(value || '').trim().toLowerCase()
+
 const getBackupSizeBytes = (backup) => {
   try {
     return new TextEncoder().encode(JSON.stringify(backup)).length
@@ -47,13 +49,107 @@ const writeDoc = async (collectionName, item, overrides = {}, options = {}) => {
   await setDoc(doc(db, collectionName, item.id), payload, options)
 }
 
-const writeSubDoc = async (parentRef, subcollectionName, item, overrides = {}, options = {}) => {
-  if (!item?.id) {
-    return
+const isDoctorOwnedPharmacy = (doctor, pharmacist) => {
+  if (!doctor || !pharmacist) {
+    return false
+  }
+  if (doctor.id && pharmacist.id && doctor.id === pharmacist.id) {
+    return true
+  }
+  if (doctor.uid && pharmacist.uid && String(doctor.uid).trim() === String(pharmacist.uid).trim()) {
+    return true
+  }
+  const doctorEmail = normalizeComparable(doctor.email)
+  const pharmacistEmail = normalizeComparable(pharmacist.email)
+  return Boolean(doctorEmail && pharmacistEmail && doctorEmail === pharmacistEmail)
+}
+
+const resolveOwnedPharmacyForDoctor = async (doctor) => {
+  if (!doctor?.id) {
+    return null
   }
 
-  const payload = { ...sanitizeDocData(item), ...overrides }
-  await setDoc(doc(collection(parentRef, subcollectionName), item.id), payload, options)
+  const candidates = []
+  const addCandidate = (candidate) => {
+    if (!candidate?.id) return
+    if (candidates.some((entry) => entry.id === candidate.id)) return
+    candidates.push(candidate)
+  }
+
+  addCandidate(await firebaseStorage.getPharmacistById(doctor.id))
+
+  if (doctor.uid && typeof firebaseStorage.getPharmacistByUid === 'function') {
+    addCandidate(await firebaseStorage.getPharmacistByUid(doctor.uid))
+  }
+
+  if (doctor.email) {
+    addCandidate(await firebaseStorage.getPharmacistByEmail(doctor.email))
+  }
+
+  return candidates.find((candidate) => isDoctorOwnedPharmacy(doctor, candidate)) || null
+}
+
+const buildPharmacyBackupPayload = async (pharmacistId) => {
+  const inventoryItems = await inventoryService.getInventoryItems(pharmacistId)
+
+  return {
+    pharmacistId,
+    inventoryItems
+  }
+}
+
+const restorePharmacyBackupPayload = async (pharmacistId, backup, options = {}) => {
+  if (backup?.pharmacistId && backup.pharmacistId !== pharmacistId) {
+    throw new Error('Backup pharmacistId mismatch')
+  }
+
+  assertCollectionOwnerIntegrity(backup?.inventoryItems, 'pharmacistId', pharmacistId, 'inventoryItems')
+
+  const writeOptions = options.merge === false ? undefined : { merge: true }
+  const currentPharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
+  const currentPharmacistNumber =
+    currentPharmacist?.pharmacistNumber || null
+
+  const inventoryItems = Array.isArray(backup?.inventoryItems) ? backup.inventoryItems : []
+  for (const item of inventoryItems) {
+    if (item?.id) {
+      await writeDoc(
+        'pharmacistInventory',
+        item,
+        { pharmacistId, pharmacyId: pharmacistId, pharmacistNumber: currentPharmacistNumber },
+        writeOptions
+      )
+      await writeDoc(
+        'drugStock',
+        item,
+        { pharmacistId, pharmacyId: pharmacistId, pharmacistNumber: currentPharmacistNumber },
+        writeOptions
+      )
+      continue
+    }
+
+    const payload = {
+      ...sanitizeDocData(item),
+      pharmacistId,
+      pharmacyId: pharmacistId,
+      pharmacistNumber: currentPharmacistNumber
+    }
+    await setDoc(doc(collection(db, 'pharmacistInventory')), payload, writeOptions)
+    await setDoc(doc(collection(db, 'drugStock')), payload, writeOptions)
+  }
+
+  const inventoryQuery = query(collection(db, 'pharmacistInventory'), where('pharmacistId', '==', pharmacistId))
+  const drugStockQuery = query(collection(db, 'drugStock'), where('pharmacistId', '==', pharmacistId))
+  const [inventorySnap, drugStockSnap] = await Promise.all([
+    getDocs(inventoryQuery),
+    getDocs(drugStockQuery)
+  ])
+
+  return {
+    inventoryItems: inventoryItems.length,
+    inventoryStored: inventorySnap.size,
+    drugStockStored: drugStockSnap.size
+  }
 }
 
 const exportDoctorBackup = async (doctorId) => {
@@ -89,6 +185,10 @@ const exportDoctorBackup = async (doctorId) => {
   }
 
   const doctorReport = await firebaseStorage.getDoctorReport(doctorId)
+  const ownedPharmacy = await resolveOwnedPharmacyForDoctor(doctor)
+  const pharmacyBackup = ownedPharmacy?.id
+    ? await buildPharmacyBackupPayload(ownedPharmacy.id)
+    : null
 
   return {
     version: BACKUP_VERSION,
@@ -102,7 +202,8 @@ const exportDoctorBackup = async (doctorId) => {
     reports,
     illnesses,
     prescriptions,
-    longTermMedications
+    longTermMedications,
+    ...(pharmacyBackup ? { pharmacyBackup } : {})
   }
 }
 
@@ -179,13 +280,24 @@ const restoreDoctorBackup = async (doctorId, backup, options = {}) => {
     await writeDoc('longTermMedications', medication, { doctorId }, writeOptions)
   }
 
+  let pharmacyRestore = null
+  if (backup.pharmacyBackup) {
+    const doctor = await firebaseStorage.getDoctorById(doctorId)
+    const ownedPharmacy = await resolveOwnedPharmacyForDoctor(doctor || { id: doctorId })
+    if (!ownedPharmacy?.id) {
+      throw new Error('Doctor does not own a pharmacy for restore')
+    }
+    pharmacyRestore = await restorePharmacyBackupPayload(ownedPharmacy.id, backup.pharmacyBackup, options)
+  }
+
   return {
     patients: patients.length,
     symptoms: symptoms.length,
     reports: reports.length,
     illnesses: illnesses.length,
     prescriptions: prescriptions.length,
-    longTermMedications: longTermMedications.length
+    longTermMedications: longTermMedications.length,
+    ...(pharmacyRestore ? { pharmacy: pharmacyRestore } : {})
   }
 }
 
@@ -194,20 +306,13 @@ const exportPharmacistBackup = async (pharmacistId) => {
     throw new Error('Pharmacist ID is required for backup')
   }
 
-  const pharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
-  const pharmacyUsers = await firebaseStorage.getPharmacyUsersByPharmacyId(pharmacistId)
-  const inventoryItems = await inventoryService.getInventoryItems(pharmacistId)
-  const receivedPrescriptions = await firebaseStorage.getPharmacistPrescriptions(pharmacistId)
+  const pharmacyBackup = await buildPharmacyBackupPayload(pharmacistId)
 
   return {
     version: BACKUP_VERSION,
     type: 'pharmacist',
     createdAt: new Date().toISOString(),
-    pharmacistId,
-    pharmacist: pharmacist || null,
-    pharmacyUsers,
-    inventoryItems,
-    receivedPrescriptions
+    ...pharmacyBackup
   }
 }
 
@@ -219,82 +324,7 @@ const restorePharmacistBackup = async (pharmacistId, backup, options = {}) => {
     throw new Error('Invalid pharmacist backup file')
   }
   assertBackupPayloadSize(backup)
-  if (backup.pharmacistId && backup.pharmacistId !== pharmacistId) {
-    throw new Error('Backup pharmacistId mismatch')
-  }
-
-  assertCollectionOwnerIntegrity(backup.pharmacyUsers, 'pharmacyId', pharmacistId, 'pharmacyUsers')
-  assertCollectionOwnerIntegrity(backup.inventoryItems, 'pharmacistId', pharmacistId, 'inventoryItems')
-
-  const writeOptions = options.merge === false ? undefined : { merge: true }
-  const currentPharmacist = await firebaseStorage.getPharmacistById(pharmacistId)
-  const currentPharmacistNumber =
-    currentPharmacist?.pharmacistNumber || backup?.pharmacist?.pharmacistNumber || null
-
-  if (backup.pharmacist) {
-    await setDoc(
-      doc(db, 'pharmacists', pharmacistId),
-      {
-        ...sanitizeDocData(backup.pharmacist),
-        updatedAt: new Date().toISOString()
-      },
-      { merge: true }
-    )
-  }
-
-  const pharmacyUsers = Array.isArray(backup.pharmacyUsers) ? backup.pharmacyUsers : []
-  for (const user of pharmacyUsers) {
-    await writeDoc('pharmacyUsers', user, { pharmacyId: pharmacistId }, writeOptions)
-  }
-
-  const inventoryItems = Array.isArray(backup.inventoryItems) ? backup.inventoryItems : []
-  for (const item of inventoryItems) {
-    if (item?.id) {
-      await writeDoc(
-        'pharmacistInventory',
-        item,
-        { pharmacistId, pharmacyId: pharmacistId, pharmacistNumber: currentPharmacistNumber },
-        writeOptions
-      )
-      await writeDoc(
-        'drugStock',
-        item,
-        { pharmacistId, pharmacyId: pharmacistId, pharmacistNumber: currentPharmacistNumber },
-        writeOptions
-      )
-      continue
-    }
-
-    const payload = {
-      ...sanitizeDocData(item),
-      pharmacistId,
-      pharmacyId: pharmacistId,
-      pharmacistNumber: currentPharmacistNumber
-    }
-    await setDoc(doc(collection(db, 'pharmacistInventory')), payload, writeOptions)
-    await setDoc(doc(collection(db, 'drugStock')), payload, writeOptions)
-  }
-
-  const receivedPrescriptions = Array.isArray(backup.receivedPrescriptions) ? backup.receivedPrescriptions : []
-  const pharmacistRef = doc(db, 'pharmacists', pharmacistId)
-  for (const prescription of receivedPrescriptions) {
-    await writeSubDoc(pharmacistRef, 'receivedPrescriptions', prescription, {}, writeOptions)
-  }
-
-  const inventoryQuery = query(collection(db, 'pharmacistInventory'), where('pharmacistId', '==', pharmacistId))
-  const drugStockQuery = query(collection(db, 'drugStock'), where('pharmacistId', '==', pharmacistId))
-  const [inventorySnap, drugStockSnap] = await Promise.all([
-    getDocs(inventoryQuery),
-    getDocs(drugStockQuery)
-  ])
-
-  return {
-    pharmacyUsers: pharmacyUsers.length,
-    inventoryItems: inventoryItems.length,
-    receivedPrescriptions: receivedPrescriptions.length,
-    inventoryStored: inventorySnap.size,
-    drugStockStored: drugStockSnap.size
-  }
+  return restorePharmacyBackupPayload(pharmacistId, backup, options)
 }
 
 export default {

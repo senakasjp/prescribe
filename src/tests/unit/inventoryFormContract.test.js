@@ -69,12 +69,18 @@ describe('inventory form contract unit tests', () => {
     const prepared = inventoryService.prepareInventoryItemData('pharmacy-1', {
       ...canonicalFormPayload,
       category: '',
-      dosageForm: '',
       costPrice: ''
     })
 
     expect(prepared.category).toBe('prescription')
-    expect(prepared.dosageForm).toBe('tablet')
+    expect(prepared.dosageForm).toBe('Liquid (bottles)')
     expect(prepared.costPrice).toBeNull()
+  })
+
+  it('requires dosageForm in validation', () => {
+    expect(() => inventoryService.validateInventoryItem({
+      ...canonicalFormPayload,
+      dosageForm: ''
+    })).toThrow('Missing required fields: dosageForm')
   })
 })

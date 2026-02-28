@@ -126,7 +126,7 @@ Email: support@mprescribe.net`
     <div class="relative w-full max-w-4xl max-h-full mx-auto flex items-center justify-center min-h-screen">
       <!-- Flowbite Modal Content -->
       <div 
-        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100 max-h-[90vh]"
+        class="relative bg-white rounded-lg shadow-xl dark:bg-gray-700 transform transition-all duration-300 ease-out scale-100 max-h-[90vh] overflow-hidden"
         on:click|stopPropagation
       >
         <!-- Flowbite Modal Header -->

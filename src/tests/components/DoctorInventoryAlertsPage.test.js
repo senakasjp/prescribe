@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/svelte'
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte'
 
 vi.mock('../../services/firebaseStorage.js', () => ({
   default: {
@@ -121,5 +121,43 @@ describe('DoctorInventoryAlertsPage', () => {
     const headerRow = heading.closest('div.flex')
     expect(headerRow).not.toBeNull()
     expect(headerRow.className).toContain('pr-12')
+  })
+
+  it('shows variant-identifying details for low stock and expired rows', async () => {
+    const pastDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+    pharmacyMedicationService.getPharmacyStock.mockResolvedValue([
+      {
+        id: 'stock-zero',
+        pharmacyId: 'ph-1',
+        drugName: 'Corex',
+        genericName: 'Dextromethorphan',
+        dosageForm: 'Liquid (bottles)',
+        strength: '5',
+        strengthUnit: 'ml',
+        totalVolume: '100',
+        volumeUnit: 'ml',
+        batchNumber: 'B-100',
+        currentStock: 0,
+        minimumStock: 5,
+        expiryDate: pastDate
+      }
+    ])
+
+    render(DoctorInventoryAlertsPage, {
+      props: {
+        user: { id: 'doc-1', name: 'Dr Demo' }
+      }
+    })
+
+    await fireEvent.click(screen.getByRole('button', { name: /Refresh/i }))
+    await waitFor(() => {
+      expect(pharmacyMedicationService.getPharmacyStock).toHaveBeenCalled()
+    })
+    expect(await screen.findAllByText(/Corex \(Dextromethorphan\)/i)).not.toHaveLength(0)
+    expect(screen.getAllByText(/Form: Liquid \(bottles\)/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Strength: 5 ml/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Volume: 100 ml/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Batch: B-100/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Out of stock/i)).toBeInTheDocument()
   })
 })

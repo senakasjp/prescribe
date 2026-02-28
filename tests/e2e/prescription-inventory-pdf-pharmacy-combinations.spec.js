@@ -17,9 +17,29 @@ const addMedication = async (
   await form.locator('#brandName').fill(brandName)
   await form.locator('#medicationDosageForm').selectOption(dispenseForm)
 
+  const dosageField = form.locator('#medicationDosage')
+  const requiresDosage = dispenseForm === 'Tablet' || dispenseForm === 'Capsule'
+  const strengthEnabledForms = new Set([
+    'Tablet',
+    'Capsule',
+    'Liquid (measured)',
+    'Liquid (bottles)',
+    'Injection'
+  ])
+  const shouldAttemptStrength = strengthEnabledForms.has(dispenseForm)
+  if (requiresDosage) {
+    await expect(dosageField).toBeVisible()
+  } else {
+    await expect(dosageField).toHaveCount(0)
+  }
+
   if (dosage) await form.locator('#medicationDosage').selectOption(dosage)
-  if (strength) await form.locator('#medicationStrength').fill(String(strength))
-  if (strengthUnit) await form.locator('#medicationStrengthUnit').selectOption(strengthUnit)
+  if (shouldAttemptStrength && strength && await form.locator('#medicationStrength').count()) {
+    await form.locator('#medicationStrength').fill(String(strength))
+  }
+  if (shouldAttemptStrength && strengthUnit && await form.locator('#medicationStrengthUnit').count()) {
+    await form.locator('#medicationStrengthUnit').selectOption(strengthUnit)
+  }
   if (qts && await form.locator('#medicationQts').count()) {
     await form.locator('#medicationQts').fill(String(qts))
   }
@@ -32,6 +52,12 @@ const addMedication = async (
 
   await form.locator('button[type="submit"]').click()
   await expect(page.getByRole('heading', { name: /add new medication/i })).toHaveCount(0)
+}
+
+const expectMedicationSecondaryLine = async (page, brandName, pattern) => {
+  const row = page.locator('.medication-list > div').filter({ hasText: brandName }).first()
+  await expect(row).toBeVisible()
+  await expect(row.locator('.text-gray-500.text-sm').first()).toContainText(pattern)
 }
 
 const setupPrescriptionWithCombinations = async (page, suffix) => {
@@ -143,4 +169,22 @@ test('mixed medication combinations keep full-print action available', async ({ 
   const printButton = page.getByRole('button', { name: /print \(full\)/i })
   await expect(printButton).toBeVisible()
   await expect(printButton).toBeEnabled()
+})
+
+test('tablet keeps dosage while non-tablet forms do not show injected "1"', async ({ page }) => {
+  const suffix = Date.now().toString().slice(-6)
+  await setupPrescriptionWithCombinations(page, suffix)
+
+  await expectMedicationSecondaryLine(page, `TabDrug${suffix}`, /500 mg 1/i)
+  await expectMedicationSecondaryLine(page, `LiqMeasured${suffix}`, /100 ml/i)
+  await expectMedicationSecondaryLine(page, `LiqBottle${suffix}`, /120 ml/i)
+  await expectMedicationSecondaryLine(page, `CreamDrug${suffix}`, /Cream \| Quantity: 02/i)
+
+  const liquidMeasuredRow = page.locator('.medication-list > div').filter({ hasText: `LiqMeasured${suffix}` }).first()
+  const liquidBottleRow = page.locator('.medication-list > div').filter({ hasText: `LiqBottle${suffix}` }).first()
+  const creamRow = page.locator('.medication-list > div').filter({ hasText: `CreamDrug${suffix}` }).first()
+
+  await expect(liquidMeasuredRow).not.toContainText(/\b100 ml 1\b/i)
+  await expect(liquidBottleRow).not.toContainText(/\b120 ml 1\b/i)
+  await expect(creamRow).not.toContainText(/\b1 Cream\b/i)
 })

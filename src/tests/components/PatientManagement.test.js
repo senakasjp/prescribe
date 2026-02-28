@@ -50,19 +50,19 @@ const {
   }
 
   const now = new Date()
-  const toIso = (daysOffset, monthOffset = 0) => {
-    const value = new Date(now.getFullYear(), now.getMonth() + monthOffset, now.getDate() + daysOffset, 10, 0, 0)
+  const toIso = (dayOfMonth, monthOffset = 0) => {
+    const value = new Date(now.getFullYear(), now.getMonth() + monthOffset, dayOfMonth, 10, 0, 0)
     return value.toISOString()
   }
 
   const currentMonthRx = [
-    { id: 'rx-current-1', patientId: 'pat-1', doctorId: 'doc-1', createdAt: toIso(-3) },
-    { id: 'rx-current-2', patientId: 'pat-1', doctorId: 'doc-1', createdAt: toIso(-1) },
-    { id: 'rx-current-3', patientId: 'pat-2', doctorId: 'doc-1', createdAt: toIso(-1) }
+    { id: 'rx-current-1', patientId: 'pat-1', doctorId: 'doc-1', createdAt: toIso(5) },
+    { id: 'rx-current-2', patientId: 'pat-1', doctorId: 'doc-1', createdAt: toIso(10) },
+    { id: 'rx-current-3', patientId: 'pat-2', doctorId: 'doc-1', createdAt: toIso(10) }
   ]
 
   const previousMonthRx = [
-    { id: 'rx-prev-1', patientId: 'pat-3', doctorId: 'doc-1', createdAt: toIso(2, -1) }
+    { id: 'rx-prev-1', patientId: 'pat-3', doctorId: 'doc-1', createdAt: toIso(8, -1) }
   ]
 
   return {

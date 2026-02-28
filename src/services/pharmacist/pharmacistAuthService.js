@@ -2,6 +2,7 @@
 // This service handles ONLY pharmacist authentication and should never interact with doctor components
 
 import firebaseStorage from '../firebaseStorage.js'
+import { resolveCurrencyFromCountry } from '../../utils/currencyByCountry.js'
 
 class PharmacistAuthService {
   constructor() {
@@ -136,12 +137,50 @@ class PharmacistAuthService {
           throw new Error('Parent pharmacy not found')
         }
 
+        const connectedDoctorIds = Array.isArray(parentPharmacy.connectedDoctors)
+          ? parentPharmacy.connectedDoctors.filter(Boolean)
+          : []
+        let connectedDoctor = null
+        for (const doctorId of connectedDoctorIds) {
+          const doctor = await firebaseStorage.getDoctorById(doctorId)
+          if (doctor?.id) {
+            connectedDoctor = doctor
+            break
+          }
+        }
+        if (!connectedDoctor) {
+          const allDoctors = typeof firebaseStorage.getAllDoctors === 'function'
+            ? await firebaseStorage.getAllDoctors()
+            : []
+          connectedDoctor = (allDoctors || []).find((doctor) =>
+            Array.isArray(doctor?.connectedPharmacists) &&
+            doctor.connectedPharmacists.includes(parentPharmacy.id || pharmacyUser.pharmacyId)
+          ) || null
+        }
+
+        const resolvedCountry = connectedDoctor?.country
+          || parentPharmacy.country
+          || pharmacyUser.country
+          || ''
+        const resolvedCurrency = String(
+          connectedDoctor?.currency
+          || resolveCurrencyFromCountry(connectedDoctor?.country)
+          || parentPharmacy.currency
+          || resolveCurrencyFromCountry(parentPharmacy.country)
+          || pharmacyUser.currency
+          || resolveCurrencyFromCountry(pharmacyUser.country)
+          || 'USD'
+        ).trim().toUpperCase()
+
         const resolvedPharmacist = {
           ...pharmacyUser,
           role: 'pharmacist',
           pharmacyId: pharmacyUser.pharmacyId,
           businessName: parentPharmacy.businessName || pharmacyUser.pharmacyName || '',
           pharmacistNumber: parentPharmacy.pharmacistNumber || pharmacyUser.pharmacistNumber || '',
+          doctorCountry: connectedDoctor?.country || '',
+          country: resolvedCountry,
+          currency: resolvedCurrency,
           connectedDoctors: parentPharmacy.connectedDoctors || [],
           isPharmacyUser: true
         }

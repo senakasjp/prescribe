@@ -30,6 +30,30 @@
       
       const allPharmacists = await firebaseStorage.getAllPharmacists()
       console.log('🔍 All pharmacists loaded:', allPharmacists.length)
+
+      // Guard against legacy duplicate pharmacist docs that share the same email.
+      const toTimestamp = (value) => {
+        const parsed = new Date(value || 0).getTime()
+        return Number.isNaN(parsed) ? 0 : parsed
+      }
+      const chooseCanonical = (existing, incoming) => {
+        if (!existing) return incoming
+        return toTimestamp(incoming?.createdAt) < toTimestamp(existing?.createdAt)
+          ? incoming
+          : existing
+      }
+      const dedupedByEmail = new Map()
+      const withoutEmail = []
+      allPharmacists.forEach((pharmacist) => {
+        const key = String(pharmacist?.email || '').trim().toLowerCase()
+        if (!key) {
+          withoutEmail.push(pharmacist)
+          return
+        }
+        dedupedByEmail.set(key, chooseCanonical(dedupedByEmail.get(key), pharmacist))
+      })
+      const uniquePharmacists = [...dedupedByEmail.values(), ...withoutEmail]
+      console.log('🔍 Pharmacists after email dedupe:', uniquePharmacists.length)
       
       // Always get fresh doctor data from Firebase to ensure we have the latest connections
       const doctor = await firebaseStorage.getDoctorByEmail(user.email)
@@ -42,7 +66,7 @@
       // Auto-connect own pharmacy (same email) once per load
       if (!autoConnectChecked && doctor?.email && doctorId) {
         autoConnectChecked = true
-        let ownPharmacy = allPharmacists.find(pharmacist => {
+        let ownPharmacy = uniquePharmacists.find(pharmacist => {
           const pharmacistEmail = (pharmacist?.email || '').toLowerCase()
           return pharmacistEmail && pharmacistEmail === doctor.email.toLowerCase()
         })
@@ -63,7 +87,7 @@
             currency: inheritedCurrency
           })
           ownPharmacy = created
-          allPharmacists.push(created)
+          uniquePharmacists.push(created)
         }
 
         if (ownPharmacy?.id) {
@@ -90,7 +114,7 @@
       }
 
       // Separate connected and unconnected pharmacists (check both sides of the connection)
-      connectedPharmacists = allPharmacists.filter(pharmacist => {
+      connectedPharmacists = uniquePharmacists.filter(pharmacist => {
         // Check if pharmacist has this doctor in their connectedDoctors
         const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctorId)
         
@@ -103,7 +127,7 @@
         return isConnected
       })
       
-      pharmacists = allPharmacists.filter(pharmacist => {
+      pharmacists = uniquePharmacists.filter(pharmacist => {
         // Check if pharmacist has this doctor in their connectedDoctors
         const pharmacistHasDoctor = pharmacist.connectedDoctors && pharmacist.connectedDoctors.includes(doctorId)
         
@@ -434,7 +458,7 @@
 {#if showConnectModal}
   <div id="connectModal" tabindex="-1" aria-hidden="true" class="fixed inset-0 z-50 w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-2xl max-h-full mx-auto">
-      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+      <div class="relative bg-white rounded-lg shadow dark:bg-gray-700 overflow-hidden">
         <div class="flex items-center justify-between p-5 border-b rounded-t dark:border-gray-600">
           <h3 class="text-xl font-medium text-gray-900 dark:text-white">
             <i class="fas fa-link mr-2"></i>

@@ -6,6 +6,10 @@
   import chargeCalculationService from '../services/pharmacist/chargeCalculationService.js'
   import DateInput from './DateInput.svelte'
   import { formatCurrency as formatCurrencyByLocale } from '../utils/formatting.js'
+  import {
+    PRESCRIPTION_DISPLAY_LABELS,
+    requiresCountForDosageForm
+  } from '../utils/prescriptionMedicationSemantics.js'
   
   export let selectedPatient
   export let showMedicationForm
@@ -25,6 +29,7 @@
   export let onDeletePrescription
   export let onDeleteMedicationByIndex
   export let onFinalizePrescription
+  export let onUnfinalizePrescription = null
   export let onShowPharmacyModal
   export let onGoToPreviousTab
   export let onGenerateAIDrugSuggestions
@@ -85,9 +90,70 @@
   let improvingNotes = false
   let notesImproved = false
   let lastImprovedNotes = ''
+  let selectedPrescriptionNoteTemplateId = ''
+  let prescriptionNoteTemplates = []
   let lastLowStockSignature = ''
   let pharmacyNameCache = new Map()
   const hasText = (value) => String(value ?? '').trim().length > 0
+
+  const normalizeTemplateId = (value, fallback = '') => {
+    const normalized = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+    return normalized || String(fallback || '')
+  }
+
+  const normalizePrescriptionNoteTemplates = (savedTemplates) => {
+    if (!Array.isArray(savedTemplates)) return []
+
+    return savedTemplates
+      .map((entry, index) => {
+        if (typeof entry === 'string') {
+          const content = entry.trim()
+          if (!content) return null
+          const fallbackName = `Template ${index + 1}`
+          return {
+            id: normalizeTemplateId(fallbackName, `template-${index + 1}`),
+            name: fallbackName,
+            content
+          }
+        }
+
+        if (!entry || typeof entry !== 'object') return null
+        const name = String(entry.name || entry.title || '').trim()
+        const content = String(entry.content || entry.text || '').trim()
+        if (!name || !content) return null
+        return {
+          id: normalizeTemplateId(entry.id || name, `template-${index + 1}`),
+          name,
+          content
+        }
+      })
+      .filter(Boolean)
+  }
+
+  const applyPrescriptionNoteTemplate = (templateId) => {
+    const template = prescriptionNoteTemplates.find((entry) => entry.id === templateId)
+    if (!template) return
+    const patientName = String(
+      selectedPatient?.name ||
+      `${selectedPatient?.firstName || ''} ${selectedPatient?.lastName || ''}`.trim() ||
+      'Patient'
+    ).trim()
+    prescriptionNotes = String(template.content || '')
+      .replace(/\{\{\s*patient\s*name\s*\}\}/gi, patientName)
+      .replace(/\{\{\s*patientName\s*\}\}/g, patientName)
+  }
+
+  const handlePrescriptionNoteTemplateSelect = (templateId) => {
+    if (!templateId) return
+    if (!showNotes) {
+      showNotes = true
+    }
+    applyPrescriptionNoteTemplate(templateId)
+  }
 
   $: hasEnteredPrescriptionContent = Boolean(
     (currentMedications?.length || 0) > 0 ||
@@ -102,6 +168,23 @@
   
   $: if (!prescriptionProcedures?.includes('Other')) {
     otherProcedurePrice = ''
+  }
+
+  $: {
+    const savedTemplates =
+      doctorProfile?.templateSettings?.prescriptionNoteTemplates ||
+      doctorProfile?.templateSettings?.prescriptionTemplates ||
+      doctorProfileFallback?.templateSettings?.prescriptionNoteTemplates ||
+      doctorProfileFallback?.templateSettings?.prescriptionTemplates ||
+      []
+    prescriptionNoteTemplates = normalizePrescriptionNoteTemplates(savedTemplates)
+  }
+
+  $: if (
+    selectedPrescriptionNoteTemplateId &&
+    !prescriptionNoteTemplates.some((template) => template.id === selectedPrescriptionNoteTemplateId)
+  ) {
+    selectedPrescriptionNoteTemplateId = ''
   }
 
   $: if (currentPrescription?.notes && !showNotes) {
@@ -522,7 +605,66 @@
     if (!strength && !dosage) return ''
     if (!strength) return dosage
     const strengthText = strengthUnit ? `${strength} ${strengthUnit}` : strength
-    return dosage ? `${strengthText} ${dosage}` : strengthText
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    const volumeForms = new Set([
+      'liquid',
+      'liquid (bottles)',
+      'injection',
+      'cream',
+      'ointment',
+      'gel',
+      'suppository',
+      'inhaler',
+      'spray',
+      'shampoo',
+      'packet',
+      'roll'
+    ])
+    const usesVolumeLabel = volumeForms.has(form) || /\b(?:ml|l)\b/i.test(strengthText)
+    const resolvedVolumeText = getResolvedVolumeText(medication)
+    const leading = usesVolumeLabel
+      ? (resolvedVolumeText ? `${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${resolvedVolumeText}` : strengthText)
+      : strengthText
+    return dosage ? `${leading} ${dosage}` : leading
+  }
+
+  const getResolvedVolumeText = (medication) => {
+    const compact = (value) => String(value || '').replace(/\s+/g, ' ').trim()
+    const joinPair = (left, right) => [compact(left), compact(right)].filter(Boolean).join(' ')
+    const hasNumericValue = (value) => /\d/.test(String(value || ''))
+
+    const candidates = [
+      compact(medication?.inventoryStrengthText),
+      joinPair(medication?.strength, medication?.strengthUnit),
+      joinPair(medication?.containerSize, medication?.containerUnit),
+      joinPair(medication?.totalVolume, medication?.volumeUnit),
+      joinPair(medication?.volume, medication?.volumeUnit),
+      compact(medication?.strength)
+    ]
+
+    return candidates.find((candidate) => candidate && hasNumericValue(candidate)) || ''
+  }
+
+  const getVolumeSecondaryLine = (medication) => {
+    const volumeText = getResolvedVolumeText(medication)
+    if (!volumeText) return ''
+    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
+    const volumeForms = new Set([
+      'liquid',
+      'liquid (bottles)',
+      'injection',
+      'cream',
+      'ointment',
+      'gel',
+      'suppository',
+      'inhaler',
+      'spray',
+      'shampoo',
+      'packet',
+      'roll'
+    ])
+    const usesVolumeLabel = volumeForms.has(form) || /\b(?:ml|l)\b/i.test(volumeText)
+    return usesVolumeLabel ? `${PRESCRIPTION_DISPLAY_LABELS.volumePrefix} ${volumeText}` : ''
   }
 
   const isLiquidMedication = (medication) => {
@@ -533,17 +675,8 @@
   }
 
   const requiresQtsPricing = (medication) => {
-    if (isLiquidMedication(medication)) return false
-    const form = String(medication?.dosageForm || medication?.form || '').trim().toLowerCase()
-    if (!form) return false
-    return !(
-      form.includes('tablet') ||
-      form.includes('tab') ||
-      form.includes('capsule') ||
-      form.includes('cap') ||
-      form.includes('syrup') ||
-      form.includes('liquid')
-    )
+    const form = String(medication?.dosageForm || medication?.form || '').trim()
+    return requiresCountForDosageForm(form)
   }
 
   const getQtsMetaLine = (medication) => {
@@ -556,12 +689,15 @@
     if (!Number.isFinite(parsedQts) || parsedQts <= 0) {
       return formLabel
     }
-    return `${formLabel} | Quantity: ${String(parsedQts).padStart(2, '0')}`
+    return `${formLabel} | ${PRESCRIPTION_DISPLAY_LABELS.quantityPrefix} ${String(parsedQts).padStart(2, '0')}`
   }
 
   const getMedicationSecondaryLine = (medication) => {
     const qtsMeta = getQtsMetaLine(medication)
-    if (qtsMeta) return qtsMeta
+    if (qtsMeta) {
+      const volumeLine = getVolumeSecondaryLine(medication)
+      return [volumeLine, qtsMeta].filter(Boolean).join(' | ')
+    }
 
     return [
       getMedicationDosageDisplay(medication),
@@ -628,9 +764,11 @@
     }
 
     if (medication?.amount !== undefined && medication?.amount !== null && medication?.amount !== '') {
-      const base = chargeCalculationService.parseMedicationQuantity(medication.amount) || 0
-      const dosageMultiplier = parseDosageMultiplier(medication.dosage)
-      return Math.ceil(base * dosageMultiplier)
+      const base = chargeCalculationService.parseMedicationQuantity(medication.amount)
+      if (Number.isFinite(base) && base > 0) {
+        const dosageMultiplier = parseDosageMultiplier(medication.dosage)
+        return Math.ceil(base * dosageMultiplier)
+      }
     }
 
     if (medication?.frequency && medication.frequency.includes('PRN')) {
@@ -815,7 +953,21 @@
     return procedures.length > 0 || !!otherProcedurePrice || !excludeConsultationCharge
   }
 
+  $: isAlreadySentToPharmacy = Boolean(
+    currentPrescription &&
+    (
+      String(currentPrescription.status || '').toLowerCase() === 'sent' ||
+      currentPrescription.sentToPharmacy ||
+      currentPrescription.sentAt
+    )
+  )
+
   const handleSendToPharmacy = () => {
+    if (isAlreadySentToPharmacy) {
+      notifyWarning('Prescription is already sent to pharmacy. Unfinalize to edit and resend.')
+      return
+    }
+
     let internalMedications = getInternalMedications()
 
     // New prescriptions can be sent before inventory lookup settles. In that case,
@@ -976,7 +1128,7 @@
           
           
           <!-- Current Prescriptions List -->
-          {#if currentMedications && currentMedications.length > 0}
+          {#if currentPrescription && ((currentMedications?.length || 0) > 0 || hasChargeableItems())}
             <div class="medication-list">
               {#each currentMedications as medication, index}
                 <div class="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
@@ -1136,26 +1288,42 @@
             </div>
           {/if}
 
-          {#if currentMedications && currentMedications.length > 0}
+          {#if currentPrescription && ((currentMedications?.length || 0) > 0 || hasChargeableItems())}
             <!-- Prescription Notes Toggle -->
             <div class="mt-4">
-              <div class="flex items-center justify-between gap-2 mb-2">
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-700" for="toggleNotes">
-                  <input
-                    class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
-                    type="checkbox"
-                    id="toggleNotes"
-                    bind:checked={showNotes}
-                    disabled={!currentPrescription}
-                  >
-                  <span>Prescription Notes</span>
-                  {#if notesImproved}
-                    <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      <i class="fas fa-check-circle mr-1"></i>
-                      AI Improved
-                    </span>
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="flex items-center gap-2 text-sm font-medium text-gray-700" for="toggleNotes">
+                    <input
+                      class="w-4 h-4 text-teal-600 bg-gray-100 border-gray-300 rounded focus:ring-teal-500 focus:ring-2"
+                      type="checkbox"
+                      id="toggleNotes"
+                      bind:checked={showNotes}
+                      disabled={!currentPrescription}
+                    >
+                    <span>Prescription Notes</span>
+                    {#if notesImproved}
+                      <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                        <i class="fas fa-check-circle mr-1"></i>
+                        AI Improved
+                      </span>
+                    {/if}
+                  </label>
+                  {#if prescriptionNoteTemplates.length > 0}
+                    <select
+                      id="prescriptionNoteTemplateSelect"
+                      aria-label="Use Template"
+                      bind:value={selectedPrescriptionNoteTemplateId}
+                      on:change={(event) => handlePrescriptionNoteTemplateSelect(event.target.value)}
+                      class="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    >
+                      <option value="">Select a note template...</option>
+                      {#each prescriptionNoteTemplates as template}
+                        <option value={template.id}>{template.name}</option>
+                      {/each}
+                    </select>
                   {/if}
-                </label>
+                </div>
                 {#if showNotes}
                   <button
                     type="button"
@@ -1272,7 +1440,7 @@
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   on:click={onFinalizePrescription}
-                  disabled={currentMedications.length === 0 && !hasChargeableItems()}
+                  disabled={(currentMedications?.length || 0) === 0 && !hasChargeableItems()}
                   title="Finalize this prescription"
                   data-tour="prescription-finalize"
                 >
@@ -1280,16 +1448,25 @@
                 </button>
               {:else}
                 <button 
-                  class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200"
+                  class="inline-flex items-center px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 transition-colors duration-200"
+                  on:click={onUnfinalizePrescription}
+                  title="Unfinalize this prescription and enable editing"
+                  disabled={!onUnfinalizePrescription}
+                >
+                  <i class="fas fa-undo mr-1"></i>Unfinalize Prescription
+                </button>
+                <button 
+                  class="inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition-colors duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
                   on:click={handleSendToPharmacy}
-                  title="Send to pharmacy"
+                  disabled={isAlreadySentToPharmacy}
+                  title={isAlreadySentToPharmacy ? 'Already sent. Unfinalize to enable sending again.' : 'Send to pharmacy'}
                 >
                   <i class="fas fa-paper-plane mr-1"></i>Send to Pharmacy
                 </button>
               {/if}
               
               <!-- Print Buttons - Only available after finalizing -->
-              {#if prescriptionsFinalized && currentMedications.length > 0}
+              {#if prescriptionsFinalized && (currentMedications?.length || 0) > 0}
                 <button 
                   class="inline-flex items-center px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-colors duration-200"
                   on:click={onPrintPrescriptions}
@@ -1310,7 +1487,7 @@
               {/if}
             </div>
 
-            {#if prescriptionsFinalized && (currentMedications.length > 0 || hasChargeableItems())}
+            {#if prescriptionsFinalized && ((currentMedications?.length || 0) > 0 || hasChargeableItems())}
               <!-- Expected Price -->
               <div class="mt-4 text-center">
                 <span class="text-sm font-semibold text-green-600">

@@ -38,6 +38,8 @@
   let loading = true
   let showAdminPanel = false
   const ADMIN_PANEL_STORAGE_KEY = 'prescribe-admin-panel-active'
+  const CURRENT_VIEW_STORAGE_PREFIX = 'prescribe-current-view'
+  const DOCTOR_ALLOWED_VIEWS = new Set(['home', 'patients', 'pharmacies', 'reports', 'payments', 'settings', 'help', 'notifications'])
   let doctorUsageStats = null
   let doctorQuotaStatus = null
   let refreshInterval = null
@@ -79,6 +81,7 @@
   const THEME_MODE_STORAGE_KEY = 'prescribe-theme-mode'
   let themeMediaQuery = null
   let themeMediaChangeHandler = null
+  let lastRestoredDoctorViewUserKey = ''
 
   $: effectiveCurrency = settingsDoctor?.currency
     || user?.currency
@@ -202,6 +205,94 @@
       window.Tawk_API.hideWidget()
     }
   }
+
+  const getDoctorViewUserKey = (currentUser) => {
+    if (!currentUser || currentUser.role !== 'doctor') return ''
+    return String(currentUser.id || currentUser.email || currentUser.uid || '').trim()
+  }
+
+  const getCurrentViewStorageKey = (currentUser) => {
+    const userKey = getDoctorViewUserKey(currentUser)
+    if (!userKey) return ''
+    return `${CURRENT_VIEW_STORAGE_PREFIX}:${userKey}`
+  }
+
+  const rehydratePharmacyTeamCurrency = async (currentUser) => {
+    if (!currentUser || currentUser.role !== 'pharmacist' || !currentUser.isPharmacyUser) {
+      return currentUser
+    }
+
+    const pharmacyId = currentUser.pharmacyId || currentUser.id
+    if (!pharmacyId) return currentUser
+
+    try {
+      const parentPharmacy = await firebaseStorage.getPharmacistById(pharmacyId)
+      if (!parentPharmacy) return currentUser
+
+      const connectedDoctorIds = Array.isArray(parentPharmacy.connectedDoctors)
+        ? parentPharmacy.connectedDoctors.filter(Boolean)
+        : []
+      let connectedDoctor = null
+      for (const doctorId of connectedDoctorIds) {
+        const doctor = await firebaseStorage.getDoctorById(doctorId)
+        if (doctor?.id) {
+          connectedDoctor = doctor
+          break
+        }
+      }
+      if (!connectedDoctor) {
+        const allDoctors = typeof firebaseStorage.getAllDoctors === 'function'
+          ? await firebaseStorage.getAllDoctors()
+          : []
+        connectedDoctor = (allDoctors || []).find((doctor) =>
+          Array.isArray(doctor?.connectedPharmacists) &&
+          doctor.connectedPharmacists.includes(parentPharmacy.id || pharmacyId)
+        ) || null
+      }
+
+      const resolvedCountry = connectedDoctor?.country
+        || parentPharmacy.country
+        || currentUser.country
+        || ''
+      const resolvedCurrency = String(
+        connectedDoctor?.currency
+        || resolveCurrencyFromCountry(connectedDoctor?.country)
+        || parentPharmacy.currency
+        || resolveCurrencyFromCountry(parentPharmacy.country)
+        || currentUser.currency
+        || resolveCurrencyFromCountry(currentUser.country)
+        || 'USD'
+      ).trim().toUpperCase()
+
+      return {
+        ...currentUser,
+        doctorCountry: connectedDoctor?.country || currentUser.doctorCountry || '',
+        country: resolvedCountry,
+        currency: resolvedCurrency
+      }
+    } catch (error) {
+      console.error('Failed to rehydrate pharmacy team currency:', error)
+      return currentUser
+    }
+  }
+
+  const normalizeDoctorView = (value, externalDoctor = false) => {
+    const normalized = String(value || '').trim()
+    if (!DOCTOR_ALLOWED_VIEWS.has(normalized)) return 'home'
+    if (externalDoctor && ['settings', 'reports', 'notifications', 'payments'].includes(normalized)) {
+      return 'home'
+    }
+    return normalized
+  }
+
+  const restoreCurrentViewForDoctor = (currentUser, externalDoctor = false) => {
+    if (typeof window === 'undefined') return
+    const storageKey = getCurrentViewStorageKey(currentUser)
+    if (!storageKey) return
+    const storedView = localStorage.getItem(storageKey)
+    if (!storedView) return
+    currentView = normalizeDoctorView(storedView, externalDoctor)
+  }
   
   $: isExternalDoctor = user?.role === 'doctor' && user?.externalDoctor && user?.invitedByDoctorId
   $: effectiveUser = isExternalDoctor && settingsDoctor
@@ -267,6 +358,34 @@
     } else if (!canAccessAdminPanel(user) && showAdminPanel) {
       showAdminPanel = false
       localStorage.removeItem(ADMIN_PANEL_STORAGE_KEY)
+    }
+  }
+
+  $: {
+    const doctorViewUserKey = getDoctorViewUserKey(user)
+    if (!doctorViewUserKey) {
+      lastRestoredDoctorViewUserKey = ''
+    } else if (doctorViewUserKey !== lastRestoredDoctorViewUserKey) {
+      lastRestoredDoctorViewUserKey = doctorViewUserKey
+      restoreCurrentViewForDoctor(user, isExternalDoctor)
+    }
+  }
+
+  $: if (
+    typeof window !== 'undefined' &&
+    user?.role === 'doctor' &&
+    !mobileCaptureOnly &&
+    !authOnly &&
+    !privacyOnly &&
+    !contactOnly &&
+    !helpOnly &&
+    !faqOnly &&
+    !pricingOnly &&
+    !showAdminPanel
+  ) {
+    const storageKey = getCurrentViewStorageKey(user)
+    if (storageKey) {
+      localStorage.setItem(storageKey, normalizeDoctorView(currentView, isExternalDoctor))
     }
   }
   
@@ -654,6 +773,10 @@
       }
       
       if (existingUser) {
+        existingUser = await rehydratePharmacyTeamCurrency(existingUser)
+        if (existingUser?.role === 'pharmacist') {
+          pharmacistAuthService.saveCurrentPharmacist(existingUser)
+        }
         console.log('🔍 User auth provider:', existingUser.authProvider)
         
         // For email/password users, prioritize local storage and skip Firebase auth listener
@@ -969,6 +1092,16 @@
     
     // Force reactive update by creating a new object reference
     user = { ...updatedUser }
+
+    // Keep settings doctor in sync so downstream views (PatientManagement/PrescriptionsTab)
+    // receive freshly saved templateSettings without requiring a full reload.
+    if (updatedUser?.role === 'doctor') {
+      settingsDoctor = {
+        ...(settingsDoctor || {}),
+        ...updatedUser,
+        templateSettings: updatedUser?.templateSettings || settingsDoctor?.templateSettings || null
+      }
+    }
     
     // Save updated user to appropriate decoupled service
     if (updatedUser.role === 'doctor') {

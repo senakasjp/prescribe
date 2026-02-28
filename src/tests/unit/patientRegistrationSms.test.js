@@ -5,10 +5,10 @@ const require = createRequire(import.meta.url)
 const { buildPatientRegistrationSmsPayload } = require('../../../functions/patientRegistrationSms.js')
 
 const baseTemplates = {
-  registrationTemplateEnabled: true,
-  registrationChannel: 'sms',
+  patientRegistrationTemplateEnabled: true,
+  patientRegistrationChannel: 'sms',
   smsSenderId: 'TEST',
-  registrationTemplate:
+  patientRegistrationTemplate:
     'Hi {{patientName}}, welcome. Doctor: {{doctorName}}. ID: {{patientShortId}}. {{appUrl}}'
 }
 
@@ -84,7 +84,7 @@ describe('patient registration SMS payload', () => {
     expect(payload.recipient).toBe('+94712345678')
   })
 
-  it('skips when registration template is disabled', () => {
+  it('skips when patient registration template is disabled', () => {
     const payload = buildPatientRegistrationSmsPayload({
       patient: {
         id: 'patient-3',
@@ -95,7 +95,7 @@ describe('patient registration SMS payload', () => {
       doctor: { firstName: 'Maya', lastName: 'Silva' },
       templates: {
         ...baseTemplates,
-        registrationTemplateEnabled: false
+        patientRegistrationTemplateEnabled: false
       },
       appUrl: 'https://example.test'
     })
@@ -103,7 +103,7 @@ describe('patient registration SMS payload', () => {
     expect(payload).toEqual({ ok: false, reason: 'template-disabled' })
   })
 
-  it('skips when registration channel is email only', () => {
+  it('skips when patient registration channel is email only', () => {
     const payload = buildPatientRegistrationSmsPayload({
       patient: {
         id: 'patient-4',
@@ -114,7 +114,7 @@ describe('patient registration SMS payload', () => {
       doctor: { firstName: 'Maya', lastName: 'Silva' },
       templates: {
         ...baseTemplates,
-        registrationChannel: 'email'
+        patientRegistrationChannel: 'email'
       },
       appUrl: 'https://example.test'
     })
@@ -155,5 +155,77 @@ describe('patient registration SMS payload', () => {
     })
 
     expect(payload).toEqual({ ok: false, reason: 'missing-phone' })
+  })
+
+  it('supports legacy registration template keys', () => {
+    const payload = buildPatientRegistrationSmsPayload({
+      patient: {
+        id: 'patient-legacy-1',
+        firstName: 'Legacy',
+        phone: '0711111111',
+        phoneCountryCode: '+94'
+      },
+      doctor: { firstName: 'Maya', lastName: 'Silva' },
+      templates: {
+        registrationTemplateEnabled: true,
+        registrationChannel: 'sms',
+        smsSenderId: 'TEST',
+        registrationTemplate: 'Legacy {{name}} {{doctorName}} {{patientShortId}}'
+      },
+      appUrl: 'https://example.test'
+    })
+
+    expect(payload.ok).toBe(true)
+    expect(payload.message).toContain('Legacy')
+    expect(payload.message).toContain('Maya Silva')
+  })
+
+  it('prefers new patient registration keys over legacy keys when both are present', () => {
+    const payload = buildPatientRegistrationSmsPayload({
+      patient: {
+        id: 'patient-priority-1',
+        firstName: 'Nimali',
+        phone: '0712222222',
+        phoneCountryCode: '+94'
+      },
+      doctor: { firstName: 'Maya', lastName: 'Silva' },
+      templates: {
+        patientRegistrationTemplateEnabled: true,
+        patientRegistrationChannel: 'sms',
+        patientRegistrationTemplate: 'NEW {{name}}',
+        registrationTemplateEnabled: true,
+        registrationChannel: 'sms',
+        registrationTemplate: 'OLD {{name}}',
+        smsSenderId: 'TEST'
+      },
+      appUrl: 'https://example.test'
+    })
+
+    expect(payload.ok).toBe(true)
+    expect(payload.message).toContain('NEW Nimali')
+    expect(payload.message).not.toContain('OLD')
+  })
+
+  it('renders title placeholders in patient registration SMS template', () => {
+    const payload = buildPatientRegistrationSmsPayload({
+      patient: {
+        id: 'patient-title-1',
+        firstName: 'Nimali',
+        phone: '0713333333',
+        phoneCountryCode: '+94',
+        title: 'Ms.'
+      },
+      doctor: { firstName: 'Maya', lastName: 'Silva' },
+      templates: {
+        ...baseTemplates,
+        patientRegistrationTemplate:
+          'Hi {{ title }} {{name}} ({{patientTitle}} / {{patientDisplayName}})'
+      },
+      appUrl: 'https://example.test'
+    })
+
+    expect(payload.ok).toBe(true)
+    expect(payload.message).toContain('Hi Ms. Nimali')
+    expect(payload.message).toContain('(Ms. / Ms. Nimali)')
   })
 })

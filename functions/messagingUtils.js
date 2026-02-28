@@ -26,7 +26,7 @@ const formatPatientId = (rawId) => {
 
 const renderTemplate = (template, data) => {
   const safe = String(template || "");
-  return safe.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+  return safe.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
     const value = data[key];
     return value !== undefined && value !== null ? String(value) : "";
   });

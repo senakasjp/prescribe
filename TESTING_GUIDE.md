@@ -77,9 +77,23 @@ src/tests/
 - Onboarding dummy-data lifecycle:
 - seed/check/delete behavior for new-doctor sample data in Firebase storage.
 - auth-path assertions that new doctor creation triggers dummy-data seeding.
+- Medication form dosage constraints:
+- dosage selector appears only for `Tablet`/`Capsule`.
+- fractional dosage options (`1/2`, `1/4`, etc.) appear only for `Tablet`.
+- `Capsule` dosage options are whole-number only.
+- non-tablet/capsule payloads save `dosage: ''` even when legacy records contain `1`.
+- Pharmacist prescription detail safeguards:
+- rack/location label rendering in medication cards.
+- patient age/sex modal fallback resolution (top-level + nested patient snapshots).
+- modal corner rendering regression guard through modal component tests.
+- End-to-end smoke coverage:
+- doctor/pharmacy core flows, inventory form combinations, send-to-pharmacy and mixed medication print/send routes.
 
 ## Current Baseline
-- Full suite status at last run: `528` passed, `0` failed (`npm run test:run`).
+- Full suite status at last run: `786` passed, `0` failed (`npm run test:run`).
+- Latest targeted checks for prescription/pharmacy UI updates:
+- `npx vitest run src/tests/components/ConfirmationModal.test.js src/tests/components/PharmacistDashboard.test.js` => `32` passed.
+- `npm run test:e2e` => `18` passed, `1` skipped.
 
 ## Emulator Notes
 `npm run test:run` uses Firebase emulators for Firestore + Auth.

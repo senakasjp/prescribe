@@ -219,11 +219,16 @@ describe('inventory -> pdf + pharmacy send flow matrix', () => {
     }))
 
     await renderAndGeneratePdf(medications)
+    const textCalls = lastPdfProxy?._fns?.text?.mock?.calls || []
+    expect(
+      textCalls.some((call) => call[0] === '500 mg' && call[3]?.align === 'right')
+    ).toBe(true)
+
     const splitPayloads = collectSplitPayloads()
-    expect(splitPayloads.some((value) => /Strength:\s*500\s*mg/i.test(value))).toBe(true)
+    expect(splitPayloads.some((value) => /Strength:\s*500\s*mg/i.test(value))).toBe(false)
   })
 
-  it('Liquid (measured) inventory: sends full medication payload and prints Vol + Dose + Total + Amount in PDF', async () => {
+  it('Liquid (measured) inventory: sends full medication payload and prints Dose + Total + Amount (no Vol) in PDF', async () => {
     pharmacyMedicationService.getPharmacyStock.mockResolvedValueOnce([
       {
         pharmacyId: 'ph-1',
@@ -265,10 +270,11 @@ describe('inventory -> pdf + pharmacy send flow matrix', () => {
     await renderAndGeneratePdf(medications)
     const splitPayloads = collectSplitPayloads()
     const fullText = splitPayloads.join(' ')
-    expect(/Vol:\s*100\s*ml/i.test(fullText)).toBe(true)
+    expect(/Vol:\s*100\s*ml/i.test(fullText)).toBe(false)
+    expect(/Pack:\s*100\s*ml/i.test(fullText)).toBe(false)
     expect(/Dose:\s*10\s+.+\/frequency/i.test(fullText)).toBe(true)
     expect(/Total:\s*60\s+.+/i.test(fullText)).toBe(true)
-    expect(/Amount:\s*90\s+.+/i.test(fullText)).toBe(true)
+    expect(/Amount:\s*90\s+.+/i.test(fullText)).toBe(false)
   })
 
   it('Special QTY cream: sends qts to pharmacy and avoids right-side count/form header text in PDF', async () => {
@@ -347,6 +353,78 @@ describe('inventory -> pdf + pharmacy send flow matrix', () => {
     const fullText = splitPayloads.join(' ')
     expect(/Vol:\s*120\s*ml/i.test(fullText)).toBe(true)
     expect(/Strength:\s*120\s*ml/i.test(fullText)).toBe(false)
+    expect(/Pack:\s*120\s*ml/i.test(fullText)).toBe(false)
+  })
+
+  it('keeps all PDF-relevant medication fields in pharmacy payload (no missing metadata)', async () => {
+    const medication = {
+      id: 'med-parity-complete-1',
+      source: 'inventory',
+      name: 'Salbutamol Syrup-Ace',
+      genericName: 'Salbutamol',
+      dosageForm: 'Liquid (bottles)',
+      dosage: '1',
+      strength: '5',
+      strengthUnit: 'ml',
+      inventoryStrengthText: '100 ml',
+      totalVolume: '100',
+      volumeUnit: 'ml',
+      containerSize: '100',
+      containerUnit: 'ml',
+      qts: '1',
+      liquidDosePerFrequencyMl: '5',
+      liquidAmountMl: '100',
+      frequency: 'Three times daily (TDS)',
+      timing: 'After meals (PC)',
+      duration: '5 days',
+      instructions: 'take after food',
+      notes: 'shake well'
+    }
+
+    const payload = await renderAndSendToPharmacy([medication])
+    expect(payload).toHaveLength(1)
+
+    const sent = payload[0]
+    const pdfRelevantKeys = [
+      'name',
+      'genericName',
+      'dosageForm',
+      'dosage',
+      'strength',
+      'strengthUnit',
+      'inventoryStrengthText',
+      'totalVolume',
+      'volumeUnit',
+      'containerSize',
+      'containerUnit',
+      'qts',
+      'liquidDosePerFrequencyMl',
+      'liquidAmountMl',
+      'frequency',
+      'timing',
+      'duration',
+      'instructions',
+      'notes'
+    ]
+
+    pdfRelevantKeys.forEach((key) => {
+      expect(sent).toHaveProperty(key, medication[key])
+    })
+
+    await renderAndGeneratePdf([medication])
+
+    const textCalls = lastPdfProxy?._fns?.text?.mock?.calls || []
+    expect(
+      textCalls.some((call) => call[0] === '5 ml' && call[3]?.align === 'right')
+    ).toBe(true)
+
+    const splitPayloads = collectSplitPayloads()
+    const merged = splitPayloads.join(' ')
+    expect(/Vol:\s*100\s*ml/i.test(merged)).toBe(true)
+    expect(/Quantity:\s*01/i.test(merged)).toBe(true)
+    expect(/Three times daily\s*\(TDS\)/i.test(merged)).toBe(true)
+    expect(/Duration:\s*5\s*days/i.test(merged)).toBe(true)
+    expect(/Instructions:\s*take after food/i.test(merged)).toBe(true)
   })
 
   it('strips unit-only values from pharmacy payload and PDF details when number is missing', async () => {
